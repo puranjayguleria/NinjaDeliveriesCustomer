@@ -1,21 +1,21 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Image, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Image, TouchableOpacity, Linking, Alert } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import MapView, { Marker, Polyline, LatLng } from 'react-native-maps';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { Ionicons } from '@expo/vector-icons'; // For icons
+import { Ionicons } from '@expo/vector-icons';
 
 import pickupMarker from '../assets/pickup-marker.png';
 import dropoffMarker from '../assets/dropoff-marker.png';
 import riderIcon from '../assets/rider-icon-1.png';
 
-type OrderTrackingScreenRouteProp = RouteProp<{ params: { orderId: string; dropoffCoords: LatLng; pickupCoords: LatLng } }, 'params'>;
+type OrderTrackingScreenRouteProp = RouteProp<{ params: { orderId: string; dropoffCoords: LatLng; pickupCoords: LatLng; totalCost: number } }, 'params'>;
 
 const OrderTrackingScreen: React.FC = () => {
   const route = useRoute<OrderTrackingScreenRouteProp>();
-  const { orderId, dropoffCoords, pickupCoords } = route.params;
-  const navigation = useNavigation(); // For navigating to the next screen
+  const { orderId, dropoffCoords, pickupCoords, totalCost } = route.params;
+  const navigation = useNavigation();
 
   const [riderLocation, setRiderLocation] = useState<LatLng | null>(null);
   const [riderInfo, setRiderInfo] = useState({ riderName: '', contactNumber: '' });
@@ -23,18 +23,24 @@ const OrderTrackingScreen: React.FC = () => {
   const [riderId, setRiderId] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [orderStatus, setOrderStatus] = useState<string>('pending');
-  const [pathCoordinates, setPathCoordinates] = useState<LatLng[]>([]); // For route coordinates
+  const [pathCoordinates, setPathCoordinates] = useState<LatLng[]>([]);
 
-  const mapRef = useRef<MapView | null>(null); // Ref for the MapView
+  const mapRef = useRef<MapView | null>(null);
+  const [isMapReady, setIsMapReady] = useState<boolean>(false);
 
-  const GOOGLE_MAPS_APIKEY = "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"; // The actual API key
+  const GOOGLE_MAPS_APIKEY = "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg";
+
+  useEffect(() => {
+    setRiderLocation(null);
+    setPathCoordinates([]);
+    setIsLoading(true);
+  }, [orderId]);
 
   useEffect(() => {
     const fetchOrderAndRiderData = async () => {
       try {
         const orderRef = firestore().collection('orders').doc(orderId);
 
-        // Subscribe to order status updates
         const unsubscribeOrder = orderRef.onSnapshot(async (orderDoc) => {
           const orderData = orderDoc.data();
           if (orderData) {
@@ -45,7 +51,6 @@ const OrderTrackingScreen: React.FC = () => {
               setRiderId(riderId);
               const riderRef = firestore().collection('riderDetails').doc(riderId);
 
-              // Subscribe to real-time updates for the rider's location
               const unsubscribeRider = riderRef.onSnapshot(async (riderDoc) => {
                 const riderData = riderDoc.data();
                 if (riderData) {
@@ -60,20 +65,15 @@ const OrderTrackingScreen: React.FC = () => {
 
                     const targetCoords = orderData.status === 'tripStarted' ? dropoffCoords : pickupCoords;
 
-                    // Calculate ETA
                     const distance = calculateDistance(location, targetCoords);
-                    const etaMinutes = (distance / 30) * 60; // Assume 30km/h average speed
+                    const etaMinutes = (distance / 30) * 60;
                     setEta(etaMinutes);
 
-                    // Fetch route if trip started
                     if (orderData.status === 'tripStarted') {
                       await fetchRoute(location, dropoffCoords);
                     }
 
-                    // Adjust map region to fit all markers and polyline
-                    fitMapToMarkers([location, pickupCoords, dropoffCoords]);
-
-                    setIsLoading(false); // Data is fetched, stop showing the loader
+                    setIsLoading(false);
                   } else {
                     setIsLoading(false);
                   }
@@ -82,7 +82,7 @@ const OrderTrackingScreen: React.FC = () => {
                 }
               });
 
-              return () => unsubscribeRider(); // Unsubscribe when component unmounts
+              return () => unsubscribeRider();
             } else {
               setIsLoading(false);
             }
@@ -91,7 +91,7 @@ const OrderTrackingScreen: React.FC = () => {
           }
         });
 
-        return () => unsubscribeOrder(); // Unsubscribe from order status updates
+        return () => unsubscribeOrder();
       } catch (error) {
         setIsLoading(false);
       }
@@ -100,13 +100,18 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderAndRiderData();
   }, [orderId, pickupCoords, dropoffCoords]);
 
-  // Fetch the route from Google Directions API
+  useEffect(() => {
+    if (riderLocation && isMapReady && mapRef.current) {
+      fitMapToMarkers([riderLocation, pickupCoords, dropoffCoords]);
+    }
+  }, [riderLocation, pickupCoords, dropoffCoords, isMapReady]);
+
   const fetchRoute = async (origin: LatLng, destination: LatLng) => {
     try {
       const response = await axios.get(
-        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${GOOGLE_MAPS_APIKEY}`
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude}&key=${GOOGLE_MAPS_APIKEY}`
       );
-
+      console.log(response)
       if (response.data.routes.length > 0) {
         const points = decodePolyline(response.data.routes[0].overview_polyline.points);
         setPathCoordinates(points);
@@ -118,7 +123,6 @@ const OrderTrackingScreen: React.FC = () => {
     }
   };
 
-  // Decode polyline from Google Directions API
   const decodePolyline = (encoded: string): LatLng[] => {
     let points: LatLng[] = [];
     let index = 0, len = encoded.length;
@@ -150,10 +154,9 @@ const OrderTrackingScreen: React.FC = () => {
     return points;
   };
 
-  // Function to calculate distance between two coordinates using Haversine formula
   const calculateDistance = (start: LatLng, end: LatLng): number => {
     const toRad = (value: number) => (value * Math.PI) / 180;
-    const R = 6371; // Radius of the Earth in kilometers
+    const R = 6371;
     const dLat = toRad(end.latitude - start.latitude);
     const dLon = toRad(end.longitude - start.longitude);
     const lat1 = toRad(start.latitude);
@@ -167,7 +170,6 @@ const OrderTrackingScreen: React.FC = () => {
     return distance;
   };
 
-  // Fit the map to show all markers and polyline route
   const fitMapToMarkers = (markers: LatLng[]) => {
     if (mapRef.current) {
       mapRef.current.fitToCoordinates(markers, {
@@ -177,7 +179,16 @@ const OrderTrackingScreen: React.FC = () => {
     }
   };
 
-  // Handle post-trip completion (e.g., display a rating screen)
+  const handleCancelOrder = async () => {
+    const refundAmount = totalCost - 25;
+    await firestore().collection('orders').doc(orderId).update({
+      status: 'cancelled',
+      refundAmount: refundAmount,
+    });
+    Alert.alert('Order Cancelled', `₹${refundAmount} will be refunded.`);
+    navigation.navigate('NewOrderCancelledScreen', { refundAmount });
+  };
+
   useEffect(() => {
     if (orderStatus === 'tripEnded') {
       navigation.navigate('RatingScreen', { orderId, riderId });
@@ -195,15 +206,16 @@ const OrderTrackingScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Top Header with Status */}
       <View style={styles.header}>
         <Text style={styles.orderStatusText}>Order is {orderStatus}</Text>
         <Text style={styles.etaText}>{eta.toFixed(0)} minutes</Text>
       </View>
 
-      {/* Map */}
-      <MapView ref={mapRef} style={styles.map}>
-        {/* Rider's current location */}
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        onMapReady={() => setIsMapReady(true)}
+      >
         {riderLocation && (
           <Marker
             coordinate={riderLocation}
@@ -214,7 +226,6 @@ const OrderTrackingScreen: React.FC = () => {
           </Marker>
         )}
 
-        {/* Pickup Location */}
         <Marker
           coordinate={pickupCoords}
           title="Pickup Location"
@@ -223,7 +234,6 @@ const OrderTrackingScreen: React.FC = () => {
           <Image source={pickupMarker} style={{ width: 40, height: 40 }} />
         </Marker>
 
-        {/* Dropoff Location */}
         <Marker
           coordinate={dropoffCoords}
           title="Dropoff Location"
@@ -232,7 +242,6 @@ const OrderTrackingScreen: React.FC = () => {
           <Image source={dropoffMarker} style={{ width: 40, height: 40 }} />
         </Marker>
 
-        {/* Route Polyline */}
         {pathCoordinates.length > 0 && (
           <Polyline
             coordinates={pathCoordinates}
@@ -242,31 +251,33 @@ const OrderTrackingScreen: React.FC = () => {
         )}
       </MapView>
 
-      {/* Bottom card with rider details */}
-      <View style={styles.card}>
-        <View style={styles.cardContent}>
-          <Image source={riderIcon} style={styles.riderImage} />
-          <View style={styles.riderInfo}>
+      {/* Rider Information Card styled similarly to Zomato */}
+      <View style={[styles.riderCard, orderStatus !== 'accepted' && { bottom: 20 }]}>
+        <View style={styles.riderCardContent}>
+          <Image source={riderIcon} style={styles.riderImageLarge} />
+          <View style={styles.riderDetails}>
             <Text style={styles.riderName}>{riderInfo.riderName}</Text>
+            <Text style={styles.riderLabel}>Delivery Partner</Text>
+            <Text style={styles.trackMessage}>Track your order on the map above or call if needed.</Text>
           </View>
-          <View style={styles.actions}>
-            {/* Call Button */}
+          <View style={styles.contactActions}>
             <TouchableOpacity
-              style={styles.callButton}
+              style={styles.contactButton}
               onPress={() => Linking.openURL(`tel:${riderInfo.contactNumber}`)}
             >
               <Ionicons name="call-outline" size={24} color="white" />
-              <Text style={styles.callButtonText}>Call</Text>
+              <Text style={styles.contactButtonText}>Call</Text>
             </TouchableOpacity>
-
-            {/* Chat Button
-            <TouchableOpacity style={styles.chatButton}>
-              <Ionicons name="chatbubbles-outline" size={24} color="white" />
-              <Text style={styles.chatButtonText}>Chat</Text>
-            </TouchableOpacity> */}
           </View>
         </View>
       </View>
+
+      {/* Show cancel button only if order status is 'accepted' */}
+      {orderStatus === 'accepted' && (
+        <TouchableOpacity style={styles.cancelButton} onPress={handleCancelOrder}>
+          <Text style={styles.cancelButtonText}>Cancel Order</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -300,65 +311,78 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '60%',
   },
-  card: {
+  riderCard: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 100,
+    left: 20,
+    right: 20,
     backgroundColor: '#fff',
-    padding: 50,
-    // borderTopLeftRadius: 15,
-    // borderTopRightRadius: 15,
+    padding: 20,
+    borderRadius: 12,
     elevation: 5,
-  },
-  cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  riderImage: {
+  riderCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  riderImageLarge: {
     width: 50,
     height: 50,
     borderRadius: 25,
+    marginRight: 15,
   },
-  riderInfo: {
+  riderDetails: {
     flex: 1,
-    marginLeft: 15,
   },
   riderName: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#333',
   },
-  actions: {
+  riderLabel: {
+    fontSize: 14,
+    color: '#888',
+  },
+  trackMessage: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 5,
+  },
+  contactActions: {
     flexDirection: 'row',
-    alignItems: 'center',
   },
-  callButton: {
+  contactButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2196F3',
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 5,
-    marginRight: 10,
   },
-  callButtonText: {
+  contactButtonText: {
     color: '#fff',
     marginLeft: 5,
     fontSize: 16,
   },
-  chatButton: {
-    flexDirection: 'row',
+  cancelButton: {
+    backgroundColor: 'red',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#32CD32',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 5,
+    marginHorizontal: 20,
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
   },
-  chatButtonText: {
+  cancelButtonText: {
     color: '#fff',
-    marginLeft: 5,
     fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

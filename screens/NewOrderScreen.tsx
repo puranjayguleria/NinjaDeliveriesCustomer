@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, Switch, StyleSheet } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 
 const NewOrderForm: React.FC = () => {
   const route = useRoute();
   const { pickupCoords, dropoffCoords } = route.params;
 
+  // Form fields
   const [parcelValue, setParcelValue] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [preferBag, setPreferBag] = useState(false);
   const [notifyBySms, setNotifyBySms] = useState(true);
   const [packageWeight, setPackageWeight] = useState('Up to 1 kg');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
+
+  // Reset form fields when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset form fields
+      setParcelValue('');
+      setPromoCode('');
+      setPreferBag(false);
+      setNotifyBySms(true);
+      setPackageWeight('Up to 1 kg');
+      setPaymentMethod('Cash');
+    }, [])
+  );
 
   return (
     <View style={styles.container}>

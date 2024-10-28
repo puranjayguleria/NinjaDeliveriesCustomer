@@ -16,43 +16,76 @@ import AdditionalInfoScreen from './screens/AdditionalInfoScreen';
 import LoginScreen from './screens/LoginScreen';
 import OrderTrackingScreen from './screens/OrderTrackingScreen';
 import OrderAllocatingScreen from './screens/OrderAllocatingScreen';
-import { CustomerProvider, useCustomer } from './context/CustomerContext';  // Import Customer Context
+import { CustomerProvider, useCustomer } from './context/CustomerContext';
 import RatingScreen from './screens/RatingScreen';
+import BusinessDirectoryScreen from './screens/BusinessDirectoryScreen';
+import NewOrderCancelledScreen from './screens/NewOrderCancelledScreen';
 
-// Create navigators
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Stack for the "New Order" process
+// New Order Stack Navigator
 const NewOrderStack = () => (
   <Stack.Navigator initialRouteName="PickupLocation">
-    <Stack.Screen name="PickupLocation" component={PickupLocationScreen} />
-    <Stack.Screen name="DropoffLocation" component={DropoffLocationScreen} />
-    <Stack.Screen name="AdditionalInfo" component={AdditionalInfoScreen} />
-    <Stack.Screen name="OrderSummary" component={OrderSummaryScreen} />
-    <Stack.Screen name="OrderAllocatingScreen" component={OrderAllocatingScreen} />
-    <Stack.Screen name="OrderTrackingScreen" component={OrderTrackingScreen} />
-    <Stack.Screen name="RatingScreen" component={RatingScreen} />
+    <Stack.Screen 
+      name="PickupLocation" 
+      component={PickupLocationScreen} 
+      options={{ title: 'Pickup Location' }} 
+    />
+    <Stack.Screen 
+      name="DropoffLocation" 
+      component={DropoffLocationScreen} 
+      options={{ title: 'Dropoff Location' }} 
+    />
+    <Stack.Screen 
+      name="AdditionalInfo" 
+      component={AdditionalInfoScreen} 
+      options={{ title: 'Additional Information' }} 
+    />
+    <Stack.Screen 
+      name="OrderSummary" 
+      component={OrderSummaryScreen} 
+      options={{ title: 'Order Summary' }} 
+    />
+    <Stack.Screen 
+      name="OrderAllocatingScreen" 
+      component={OrderAllocatingScreen} 
+      options={{ title: 'Order Allocating' }} 
+    />
+    <Stack.Screen 
+      name="OrderTrackingScreen" 
+      component={OrderTrackingScreen} 
+      options={{ title: 'Order Tracking' }} 
+    />
+    <Stack.Screen 
+      name="RatingScreen" 
+      component={RatingScreen} 
+      options={{ title: 'Rating' }} 
+    />
+    <Stack.Screen 
+    name="NewOrderCancelledScreen" 
+    component={NewOrderCancelledScreen} 
+    options={{ title: 'Order Cancelled' }} />
 
   </Stack.Navigator>
 );
 
-// Main stack to include orders and login
+
 const OrdersStack = () => {
   const [user, setUser] = useState<any>(null);
-  const { setCustomerId } = useCustomer();  // Get the customer setter from context
+  const { setCustomerId } = useCustomer();
 
   useEffect(() => {
-    // Listen to authentication state changes
     const unsubscribe = auth().onAuthStateChanged((user) => {
       if (user) {
-        setUser(user); // User is logged in
-        setCustomerId(user.uid);  // Set the customer ID globally in the context
+        setUser(user);
+        setCustomerId(user.uid);
       } else {
-        setUser(null); // No user logged in
-        setCustomerId(null);  // Clear customer ID
+        setUser(null);
+        setCustomerId(null);
       }
     });
+
     return unsubscribe;
   }, []);
 
@@ -61,7 +94,22 @@ const OrdersStack = () => {
       {!user ? (
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
       ) : (
-        <Stack.Screen name="Orders" component={OrdersScreen} options={{ headerShown: false }} />
+        <>
+          <Stack.Screen name="Orders" component={OrdersScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="OrderAllocatingScreen" component={OrderAllocatingScreen} />
+          <Stack.Screen 
+            name="OrderTrackingScreen" 
+            component={OrderTrackingScreen} 
+            options={{ headerLeft: () => null }} 
+          />
+          <Stack.Screen 
+            name="RatingScreen" 
+            component={RatingScreen} 
+            options={{ headerLeft: () => null }} 
+          />
+          <Stack.Screen name="NewOrderCancelledScreen" component={NewOrderCancelledScreen} options={{ title: 'Order Cancelled' }} />
+
+        </>
       )}
     </Stack.Navigator>
   );
@@ -70,22 +118,24 @@ const OrdersStack = () => {
 const App: React.FC = () => {
   const navigationRef = useRef(null);
 
-  // Listen to incoming notifications
+  // Handle notifications
   useEffect(() => {
     const handleNotificationResponse = (response) => {
-      const { orderId, pickupCoords, dropoffCoords } = response.notification.request.content.data;
+      const { orderId, pickupCoords, dropoffCoords, status } = response.notification.request.content.data;
+
       if (orderId) {
-        // Navigate to OrderTrackingScreen with orderId, pickupCoords, and dropoffCoords
-        navigationRef.current?.navigate('OrderTrackingScreen', { orderId, pickupCoords, dropoffCoords });
+        if (status === 'pending') {
+          navigationRef.current?.navigate('OrderAllocatingScreen', { orderId, pickupCoords, dropoffCoords });
+        } else {
+          navigationRef.current?.navigate('OrderTrackingScreen', { orderId, pickupCoords, dropoffCoords });
+        }
       }
     };
 
-    // Listener for foreground notifications
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification Received:', notification);
     });
 
-    // Listener for when the user taps the notification
     const responseListener = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
     return () => {
@@ -95,27 +145,54 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <CustomerProvider> 
+    <CustomerProvider>
       <NavigationContainer ref={navigationRef}>
-        <Tab.Navigator
-          screenOptions={({ route }) => ({
-            tabBarIcon: ({ color, size }) => {
-              let iconName;
-              if (route.name === 'Orders') iconName = 'list';
-              else if (route.name === 'NewOrder') iconName = 'add-circle-outline';
-              else if (route.name === 'ContactUs') iconName = 'call-outline';
-              else if (route.name === 'Profile') iconName = 'person-outline';
-              return <Ionicons name={iconName} size={size} color={color} />;
-            },
-            tabBarActiveTintColor: 'blue',
-            tabBarInactiveTintColor: 'gray',
-          })}
-        >
-          <Tab.Screen name="Orders" component={OrdersStack} />
-          <Tab.Screen name="NewOrder" component={NewOrderStack} />
-          <Tab.Screen name="ContactUs" component={ContactUsScreen} />
-          <Tab.Screen name="Profile" component={ProfileScreen} />
-        </Tab.Navigator>
+      <Tab.Navigator
+  screenOptions={({ route }) => ({
+    tabBarIcon: ({ color, size }) => {
+      let iconName;
+      switch (route.name) {
+        case 'Orders':
+          iconName = 'list';
+          break;
+        case 'NewOrder':
+          iconName = 'add-circle-outline';
+          break;
+        case 'ContactUs':
+          iconName = 'call-outline';
+          break;
+        case 'Profile':
+          iconName = 'person-outline';
+          break;
+        case 'Business':
+          iconName = 'briefcase-outline';
+          break;
+        default:
+          iconName = 'home';
+      }
+      return <Ionicons name={iconName} size={size} color={color} />;
+    },
+    tabBarActiveTintColor: 'blue',
+    tabBarInactiveTintColor: 'gray',
+    headerShown: false, // Hides headers for all tab screens
+  })}
+>
+  <Tab.Screen name="Orders" component={OrdersStack} />
+  <Tab.Screen 
+    name="NewOrder" 
+    component={NewOrderStack}
+    listeners={({ navigation }) => ({
+      tabPress: (e) => {
+        e.preventDefault();
+        navigation.navigate('NewOrder', { screen: 'PickupLocation' });
+      },
+    })}
+  />
+  <Tab.Screen name="ContactUs" component={ContactUsScreen} />
+  <Tab.Screen name="Business" component={BusinessDirectoryScreen} />
+  <Tab.Screen name="Profile" component={ProfileScreen} />
+</Tab.Navigator>
+
       </NavigationContainer>
     </CustomerProvider>
   );

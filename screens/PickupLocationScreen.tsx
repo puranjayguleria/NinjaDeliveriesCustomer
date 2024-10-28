@@ -1,23 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { View, Button, Text, TextInput, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Button, Text, TextInput, Alert, StyleSheet, ActivityIndicator, Modal, TouchableOpacity, FlatList } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import * as Location from 'expo-location'; // Import Expo Location API
-import { useNavigation } from '@react-navigation/native';
+import * as Location from 'expo-location';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import firestore from '@react-native-firebase/firestore';
+import { useCustomer } from '../context/CustomerContext'; // Import Customer Context
 
 const PickupLocationScreen: React.FC = () => {
-  const [markerCoords, setMarkerCoords] = useState(null); // Initial location is null
+  const [markerCoords, setMarkerCoords] = useState(null);
   const [buildingName, setBuildingName] = useState('');
   const [flatNumber, setFlatNumber] = useState('');
   const [floor, setFloor] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [loading, setLoading] = useState(true); // Loading state for location fetching
+  const [loading, setLoading] = useState(true);
+  const [showSaveLocationModal, setShowSaveLocationModal] = useState(false);
+  const [savedLocationName, setSavedLocationName] = useState('');
+  const [savedLocations, setSavedLocations] = useState([]);
+  const [loadingSavedLocations, setLoadingSavedLocations] = useState(true);
+  const [showSavedLocationsModal, setShowSavedLocationsModal] = useState(false); // Modal for saved locations
   const navigation = useNavigation();
 
-  // Fetch user's current location when the component mounts
+  const { customerId } = useCustomer(); // Get customerId from context
+
+  // Fetch user's current location and saved locations when the component mounts
   useEffect(() => {
     const fetchUserLocation = async () => {
       try {
-        // Request location permission
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('Permission Denied', 'Location permission is required to fetch your current location.');
@@ -25,7 +33,6 @@ const PickupLocationScreen: React.FC = () => {
           return;
         }
 
-        // Get user's current location
         const location = await Location.getCurrentPositionAsync({});
         setMarkerCoords({
           latitude: location.coords.latitude,
@@ -35,16 +42,33 @@ const PickupLocationScreen: React.FC = () => {
         console.error('Error fetching location:', error);
         Alert.alert('Error', 'Failed to fetch your current location.');
       } finally {
-        setLoading(false); // Stop loading spinner
+        setLoading(false);
+      }
+    };
+
+    const fetchSavedLocations = async () => {
+      try {
+        if (customerId) {
+          const userDoc = await firestore().collection('users').doc(customerId).get();
+          const userData = userDoc.data();
+          if (userData && userData.savedLocations) {
+            setSavedLocations(userData.savedLocations);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching saved locations:', error);
+      } finally {
+        setLoadingSavedLocations(false);
       }
     };
 
     fetchUserLocation();
-  }, []);
+    fetchSavedLocations();
+  }, [customerId]);
 
   const handleConfirmLocation = () => {
     if (!markerCoords) {
-      Alert.alert('Location Error', 'Unable to determine pickup location.');
+      Alert.alert('Location Error', 'Please select your pickup location on the map.');
       return;
     }
 
@@ -53,11 +77,69 @@ const PickupLocationScreen: React.FC = () => {
       return;
     }
 
+    setShowSaveLocationModal(true);
+  };
+
+  const handleSaveLocation = async () => {
+    if (!savedLocationName) {
+      Alert.alert('Error', 'Please enter a name for this location.');
+      return;
+    }
+
+    try {
+      if (customerId) {
+        await firestore()
+          .collection('users')
+          .doc(customerId)
+          .update({
+            savedLocations: firestore.FieldValue.arrayUnion({
+              name: savedLocationName,
+              buildingName,
+              flatNumber,
+              floor,
+              instructions,
+              coords: markerCoords,
+            }),
+          });
+
+        Alert.alert('Success', 'Location saved successfully.');
+      } else {
+        Alert.alert('Error', 'No customer ID available.');
+      }
+    } catch (error) {
+      console.error('Error saving location:', error);
+      Alert.alert('Error', 'Failed to save location.');
+    }
+
+    setShowSaveLocationModal(false);
+    handleNavigation();
+  };
+
+  const handleNavigation = () => {
     navigation.navigate('DropoffLocation', {
       pickupCoords: markerCoords,
       pickupDetails: { buildingName, flatNumber, floor, instructions },
     });
   };
+
+  const handleSelectSavedLocation = (location) => {
+    setMarkerCoords(location.coords);
+    setBuildingName(location.buildingName);
+    setFlatNumber(location.flatNumber);
+    setFloor(location.floor);
+    setInstructions(location.instructions);
+
+    setShowSavedLocationsModal(false);
+    handleNavigation();
+  };
+
+  const renderLocationCard = ({ item }) => (
+    <TouchableOpacity style={styles.locationCard} onPress={() => handleSelectSavedLocation(item)}>
+      <Text style={styles.locationName}>{item.name}</Text>
+      <Text style={styles.locationDetails}>{item.buildingName}, Flat {item.flatNumber}, Floor {item.floor}</Text>
+      <Text style={styles.locationDetails}>Instructions: {item.instructions}</Text>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return (
@@ -87,7 +169,6 @@ const PickupLocationScreen: React.FC = () => {
         <Text style={styles.errorText}>Unable to determine your location.</Text>
       )}
 
-      {/* Form to Enter Pickup Address */}
       <View style={styles.formContainer}>
         <TextInput
           placeholder="Building Name"
@@ -113,8 +194,79 @@ const PickupLocationScreen: React.FC = () => {
           value={instructions}
           onChangeText={setInstructions}
         />
-        <Button title="Confirm Pickup Location" onPress={handleConfirmLocation} />
+
+        <View style={styles.buttonContainer}>
+          {!loadingSavedLocations && savedLocations.length > 0 && (
+            <TouchableOpacity
+              style={[styles.button, styles.savedLocationsButton]}
+              onPress={() => setShowSavedLocationsModal(true)}
+            >
+              <Text style={styles.buttonText}>Saved Locations</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.button, styles.confirmButton]}
+            onPress={handleConfirmLocation}
+          >
+            <Text style={styles.buttonText}>Confirm</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Modal for Saved Locations with FlatList */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showSavedLocationsModal}
+        onRequestClose={() => setShowSavedLocationsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalView}>
+            <Text style={styles.modalText}>Select a Saved Location:</Text>
+            <FlatList
+              data={savedLocations}
+              renderItem={renderLocationCard}
+              keyExtractor={(item) => item.name}
+              style={styles.modalFlatList}
+            />
+            <TouchableOpacity
+              style={[styles.button, styles.modalCloseButton]} // Adjust button height, width and background color
+              onPress={() => setShowSavedLocationsModal(false)}
+            >
+              <Text style={styles.buttonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal for Saving Location */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showSaveLocationModal}
+        onRequestClose={() => setShowSaveLocationModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalView}>
+            <Text style={styles.modalText}>Do you want to save this location for future use?</Text>
+            <TextInput
+              placeholder="Location Name (e.g., Home, Office)"
+              style={styles.modalInput}
+              value={savedLocationName}
+              onChangeText={setSavedLocationName}
+            />
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity style={[styles.button, styles.modalSaveButton]} onPress={handleSaveLocation}>
+                <Text style={styles.buttonText}>Save Location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, styles.modalSkipButton]} onPress={handleNavigation}>
+                <Text style={styles.buttonText}>Skip Saving</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -152,6 +304,94 @@ const styles = StyleSheet.create({
     color: 'red',
     textAlign: 'center',
     marginTop: 20,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  button: {
+    //flex: 1,
+    padding: 10,
+    borderRadius: 5,
+    marginHorizontal: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  savedLocationsButton: {
+    backgroundColor: '#4A90E2',
+  },
+  confirmButton: {
+    backgroundColor: '#00C853',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalView: {
+    width: '90%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalText: {
+    marginBottom: 20,
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  modalFlatList: {
+    width: '100%',
+  },
+  locationCard: {
+    backgroundColor: '#f2f2f2',
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 8,
+    width: '100%',
+  },
+  locationName: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  locationDetails: {
+    fontSize: 14,
+    color: '#333',
+  },
+  modalInput: {
+    backgroundColor: '#fff',
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 10,
+    fontSize: 16,
+    width: '100%',
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  modalSaveButton: {
+    flex: 1,
+    backgroundColor: '#00C853',
+  },
+  modalSkipButton: {
+    flex: 1,
+    backgroundColor: '#FF3D00',
+    marginLeft: 10,
+  },
+  modalCloseButton: {
+    marginTop: 20,
+    backgroundColor: '#FF3D00',
+    width: '100%',
+    paddingVertical: 10, // Add padding to make the button more visible
   },
 });
 

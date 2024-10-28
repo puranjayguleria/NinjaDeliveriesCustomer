@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import * as Notifications from 'expo-notifications';
@@ -12,6 +12,14 @@ const LoginScreen: React.FC = () => {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const { setCustomerId } = useCustomer(); // Access the global state to set customerId
 
+  // Ensure that the phone number has the +91 prefix
+  const formatPhoneNumber = (number: string) => {
+    if (!number.startsWith('+91')) {
+      return `+91${number}`;
+    }
+    return number;
+  };
+
   // Function to send OTP
   const sendOtp = async () => {
     if (!phoneNumber) {
@@ -19,8 +27,10 @@ const LoginScreen: React.FC = () => {
       return;
     }
 
+    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+
     try {
-      const confirmationResult = await auth().signInWithPhoneNumber(phoneNumber);
+      const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
       setConfirmation(confirmationResult); // Store the confirmation result for later OTP verification
       Alert.alert('OTP Sent', 'Please check your phone for the OTP.');
     } catch (error) {
@@ -48,17 +58,34 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  // Function to save user info (expo push token and phone number)
+  // Function to save or update user info (expo push token and phone number)
   const saveUserInfo = async () => {
     try {
       const user = auth().currentUser;
       if (user) {
-        const userDoc = firestore().collection('users').doc(user.uid);
-        await userDoc.set({
-          phoneNumber: phoneNumber,
-          expoPushToken: expoPushToken,
-        });
-        Alert.alert('User info saved');
+        const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+        
+        // Check if the phone number already exists in the 'users' collection
+        const userSnapshot = await firestore()
+          .collection('users')
+          .where('phoneNumber', '==', formattedPhoneNumber)
+          .get();
+
+        if (!userSnapshot.empty) {
+          // If the phone number exists, just update the Expo Push Token for the existing user
+          const existingUserDoc = userSnapshot.docs[0];
+          await existingUserDoc.ref.update({
+            expoPushToken: expoPushToken,
+          });
+          Alert.alert('User info updated successfully.');
+        } else {
+          // New user, save phone number and token
+          await firestore().collection('users').doc(user.uid).set({
+            phoneNumber: formattedPhoneNumber,
+            expoPushToken: expoPushToken,
+          });
+          Alert.alert('User info saved successfully.');
+        }
       }
     } catch (error) {
       console.error('Error saving user info:', error);
@@ -96,52 +123,65 @@ const LoginScreen: React.FC = () => {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login with Phone Number</Text>
+    <ImageBackground
+      source={require('../assets/ninja-deliveries-bg.jpg')} // Custom background
+      style={styles.background}
+      resizeMode="cover"
+    >
+      <View style={styles.container}>
+        <Text style={styles.title}>Login</Text>
 
-      {/* Phone Number Input */}
-      <TextInput
-        style={styles.input}
-        placeholder="Enter phone number"
-        keyboardType="phone-pad"
-        value={phoneNumber}
-        onChangeText={setPhoneNumber}
-      />
+        {/* Phone Number Input */}
+        <TextInput
+          style={styles.input}
+          placeholder="Enter phone number"
+          keyboardType="phone-pad"
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          placeholderTextColor="#888"
+        />
 
-      {/* Button to send OTP */}
-      <Button title="Send OTP" onPress={sendOtp} color="#0066FF" />
+        {/* Button to send OTP */}
+        <Button title="Send OTP" onPress={sendOtp} color="#00C853" />
 
-      {/* OTP Input (Visible only after OTP is sent) */}
-      {confirmation && (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter OTP"
-            keyboardType="numeric"
-            value={otp}
-            onChangeText={setOtp}
-          />
+        {/* OTP Input (Visible only after OTP is sent) */}
+        {confirmation && (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter OTP"
+              keyboardType="numeric"
+              value={otp}
+              onChangeText={setOtp}
+              placeholderTextColor="#888"
+            />
 
-          {/* Button to confirm OTP */}
-          <Button title="Confirm OTP" onPress={confirmOtp} color="#0066FF" />
-        </>
-      )}
-    </View>
+            {/* Button to confirm OTP */}
+            <Button title="Confirm OTP" onPress={confirmOtp} color="#4A90E2" />
+          </>
+        )}
+      </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  container: {
+    width: '90%',
     padding: 20,
-    backgroundColor: '#1C1C1E',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)', // Transparent background for readability
+    borderRadius: 10,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#333',
     marginBottom: 20,
   },
   input: {
@@ -149,10 +189,10 @@ const styles = StyleSheet.create({
     height: 50,
     borderColor: '#CCCCCC',
     borderWidth: 1,
-    borderRadius: 5,
+    borderRadius: 10,
     padding: 10,
-    color: '#FFFFFF',
-    backgroundColor: '#333333',
+    color: '#333',
+    backgroundColor: '#fff',
     marginBottom: 20,
   },
 });

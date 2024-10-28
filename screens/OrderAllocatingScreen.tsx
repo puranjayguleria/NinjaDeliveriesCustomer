@@ -1,63 +1,69 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Animated, StyleSheet, ActivityIndicator, Dimensions, Image } from 'react-native';
+import { View, Text, Animated, StyleSheet, ActivityIndicator, Dimensions, Image, Alert, Button } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native'; // Add useNavigation
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
-import riderIcon from '../assets/rider-icon-1.png'; // Custom rider icon
-import pickupMarker from '../assets/pickup-marker.png'; // Custom pickup marker
-import dropoffMarker from '../assets/dropoff-marker.png'; // Custom dropoff marker
+import riderIcon from '../assets/rider-icon-1.png';
+import pickupMarker from '../assets/pickup-marker.png';
+import dropoffMarker from '../assets/dropoff-marker.png';
 
-type OrderAllocatingScreenRouteProp = RouteProp<{ params: { orderId: string; pickupCoords: { latitude: number; longitude: number }; dropoffCoords: { latitude: number; longitude: number } } }, 'params'>;
+type OrderAllocatingScreenRouteProp = RouteProp<
+  { params: { orderId: string; pickupCoords: { latitude: number; longitude: number }; dropoffCoords: { latitude: number; longitude: number }, totalCost: number | undefined } },
+  'params'
+>;
 
 const quotes = [
-  "Fast as a ninja, your package is on the way!",
-  "Ninja delivery – stealthy and reliable!",
-  "A ninja never rests, your delivery is on the move!",
-  "Speed and precision – the ninja way of delivery!",
+  "Ninjas are fast, but we're faster with your delivery!",
+  "Your delivery is so stealthy, even we can't see it!",
+  "Is it a bird? Is it a plane? No, it's Ninja Deliveries!",
+  "Ninja Delivery: As fast as a throwing star!",
+  "Your package is moving like a ninja in the night!",
 ];
 
 const OrderAllocatingScreen: React.FC = () => {
   const route = useRoute<OrderAllocatingScreenRouteProp>();
-  const navigation = useNavigation(); // Initialize useNavigation hook
+  const navigation = useNavigation();
   const { orderId, pickupCoords, dropoffCoords } = route.params;
+  const totalCost = route.params.totalCost || 0; // Ensure totalCost has a default value
 
   const [region, setRegion] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [quote, setQuote] = useState<string>(quotes[0]);
   const [mapReady, setMapReady] = useState(false);
-  const [nearbyRiders, setNearbyRiders] = useState([]); // List of nearby riders
-  const { width, height } = Dimensions.get('window'); // Get screen dimensions for map sizing
+  const [nearbyRiders, setNearbyRiders] = useState([]);
+  const { width, height } = Dimensions.get('window');
+  const [markerAnimation] = useState(new Animated.Value(1));
+  const [mapOpacity] = useState(new Animated.Value(1));
+  const [orderAccepted, setOrderAccepted] = useState(false);
+  const [orderData, setOrderData] = useState<any>(null);
 
   useEffect(() => {
-    console.log("Order created with ID: ", orderId);
-    console.log("Pickup Coordinates: ", pickupCoords);
-    console.log("Dropoff Coordinates: ", dropoffCoords);
-
-    // Set random quote
-    setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
+    const quoteInterval = setInterval(() => {
+      const nextQuote = quotes[Math.floor(Math.random() * quotes.length)];
+      setQuote(nextQuote);
+    }, 3000);
 
     const orderRef = firestore().collection('orders').doc(orderId);
 
-    // Firestore snapshot to detect changes in the order
-    const unsubscribeOrder = orderRef.onSnapshot(async (doc) => {
-      const orderData = doc.data();
-      console.log("Order Data: ", orderData);
-
-      if (orderData?.acceptedBy) {
-        console.log("Order Accepted by: ", orderData.acceptedBy);
-
-        // Navigate to OrderTrackingScreen when acceptedBy is populated
-        navigation.navigate('OrderTrackingScreen', {
-          orderId,
-          pickupCoords,
-          dropoffCoords,
+    const unsubscribeOrder = orderRef.onSnapshot((doc) => {
+      const data = doc.data();
+      setOrderData(data);
+      if (data?.acceptedBy) {
+        setOrderAccepted(true);
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'OrderTrackingScreen',
+              params: { orderId, pickupCoords, dropoffCoords,totalCost },
+            },
+          ],
         });
       }
     });
 
     const fetchNearbyRiders = async () => {
       try {
-        // Set region to focus the map on pickup location
         if (pickupCoords && dropoffCoords) {
           const mapRegion = {
             latitude: pickupCoords.latitude,
@@ -65,15 +71,46 @@ const OrderAllocatingScreen: React.FC = () => {
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           };
-
           setRegion(mapRegion);
         }
 
-        // Fetch nearby riders and show them on the map
-        const nearbyRidersSnapshot = await firestore().collection('riderDetails').where('isAvailable', '==', true).get();
+        const nearbyRidersSnapshot = await firestore()
+          .collection('riderDetails')
+          .where('isAvailable', '==', true)
+          .get();
         const riders = nearbyRidersSnapshot.docs.map((doc) => doc.data());
-
         setNearbyRiders(riders);
+
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(markerAnimation, {
+              toValue: 1.2,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(markerAnimation, {
+              toValue: 1,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(mapOpacity, {
+              toValue: 0.7,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(mapOpacity, {
+              toValue: 1,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+
         setIsLoading(false);
       } catch (error) {
         console.error("Error fetching nearby riders:", error);
@@ -83,42 +120,81 @@ const OrderAllocatingScreen: React.FC = () => {
 
     fetchNearbyRiders();
 
-    return () => unsubscribeOrder(); // Cleanup Firestore listener
-  }, [orderId, pickupCoords, dropoffCoords, navigation]); // Add navigation dependency
+    const timeoutId = setTimeout(async () => {
+      if (!orderAccepted) {
+        try {
+          await orderRef.update({ status: 'cancelled' });
+        } catch (error) {
+          console.error('Error updating order status:', error);
+        }
+
+        Alert.alert(
+          'No Rider Available',
+          'No rider accepted your order at this time. Please try again later.'
+        );
+
+        navigation.navigate('NewOrderCancelledScreen', { refundAmount: totalCost });
+      }
+    }, 300000);
+
+    return () => {
+      clearInterval(quoteInterval);
+      unsubscribeOrder();
+      clearTimeout(timeoutId);
+    };
+  }, [orderId, pickupCoords, dropoffCoords, navigation, orderAccepted]);
+
+  const cancelOrder = async () => {
+    try {
+      const orderRef = firestore().collection('orders').doc(orderId);
+      const refundAmount = totalCost;
+      await orderRef.update({
+        status: 'cancelled',
+        refundAmount,
+      });
+
+      Alert.alert(
+        'Order Cancelled',
+        `Your order has been cancelled. A refund of ₹${refundAmount} will be processed.`,
+        [{ text: 'OK', onPress: () => navigation.navigate('NewOrderCancelledScreen', { refundAmount }) }]
+      );
+
+    } catch (error) {
+      console.error("Error cancelling the order:", error);
+    }
+  };
 
   return (
     <View style={styles.container}>
+      <Text style={styles.header}>Assigning you to a rider...</Text>
+
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0000ff" />
-          <Text style={styles.quoteText}>{quote}</Text>
         </View>
       ) : region ? (
-        <View style={styles.container}>
+        <Animated.View style={{ opacity: mapOpacity }}>
           <MapView
-            style={[styles.map, { width: width, height: height * 0.6 }]}  // Adjusted to make sure the map fills the space
+            style={[styles.map, { width, height: height * 0.6 }]}
             initialRegion={region}
             region={region}
-            onMapReady={() => {
-              setMapReady(true);
-            }}
-            onRegionChangeComplete={(newRegion) => {
-              setRegion(newRegion);  // Update region on map movement
-            }}
+            onMapReady={() => setMapReady(true)}
+            onRegionChangeComplete={(newRegion) => setRegion(newRegion)}
           >
-            {/* Custom marker for Pickup Location */}
             <Marker coordinate={pickupCoords} title="Pickup Location">
-              <Image source={pickupMarker} style={{ width: 40, height: 40 }} />
+              <Animated.Image
+                source={pickupMarker}
+                style={{ width: 40, height: 40, transform: [{ scale: markerAnimation }] }}
+              />
             </Marker>
 
-            {/* Custom marker for Dropoff Location */}
-            {dropoffCoords && (
-              <Marker coordinate={dropoffCoords} title="Dropoff Location">
-                <Image source={dropoffMarker} style={{ width: 40, height: 40 }} />
-              </Marker>
-            )}
+            <Marker coordinate={dropoffCoords} title="Dropoff Location">
+              <Animated.Image
+                source={dropoffMarker}
+                style={{ width: 40, height: 40, transform: [{ scale: markerAnimation }] }}
+              />
+            </Marker>
 
-            {/* Display nearby riders with custom icons */}
             {nearbyRiders.map((rider, index) => (
               <Marker
                 key={index}
@@ -128,19 +204,30 @@ const OrderAllocatingScreen: React.FC = () => {
                 }}
                 description="Available Rider"
               >
-                <Image
-                  source={riderIcon}  // Custom rider icon
-                  style={{ width: 30, height: 40 }}  // Adjust size of the rider icon
+                <Animated.Image
+                  source={riderIcon}
+                  style={{ width: 30, height: 40, transform: [{ scale: markerAnimation }] }}
                 />
               </Marker>
             ))}
           </MapView>
-        </View>
+        </Animated.View>
       ) : (
         <View style={styles.loadingContainer}>
           <Text style={styles.quoteText}>{quote}</Text>
         </View>
       )}
+
+      <Text style={styles.quoteText}>{quote}</Text>
+
+      {!orderAccepted && orderData?.status === 'pending' || orderData?.status === 'accepted' ? (
+        <Button
+          title="Cancel Order"
+          color="red"
+          onPress={cancelOrder}
+          style={styles.cancelButton} // Add this for styling if needed
+        />
+      ) : null}
     </View>
   );
 };
@@ -151,22 +238,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  header: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    height: '100%',
   },
   map: {
     width: '100%',
-    height: '80%',  // Adjust the height of the map
+    height: '80%',
   },
   quoteText: {
     fontSize: 18,
-    marginBottom: 20,
+    marginTop: 20,
     textAlign: 'center',
+    fontStyle: 'italic',
   },
+  cancelButton: {
+    marginTop: 20,
+  }
 });
 
 export default OrderAllocatingScreen;
