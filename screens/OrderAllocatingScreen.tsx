@@ -146,7 +146,17 @@ const OrderAllocatingScreen: React.FC = () => {
 
   const cancelOrder = async () => {
     try {
+      console.log(totalCost)
       const orderRef = firestore().collection('orders').doc(orderId);
+      const orderSnapshot = await orderRef.get();
+      if (!orderSnapshot.exists) {
+        Alert.alert('Error', 'Order not found. Please contact help');
+        return;
+      }
+  
+      // Assuming totalCost is a field in the order document
+      const orderData = orderSnapshot.data();
+      const totalCost = orderData?.cost.totalCost || 0;
       const refundAmount = totalCost;
       await orderRef.update({
         status: 'cancelled',

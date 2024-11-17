@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, ImageBackground } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import * as Notifications from 'expo-notifications';
@@ -10,6 +10,8 @@ const LoginScreen: React.FC = () => {
   const [confirmation, setConfirmation] = useState<any>(null); // To store the confirmation result
   const [otp, setOtp] = useState(''); // OTP entered by the user
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false); // Loader and disable flag for sending OTP
+  const [isConfirmingOtp, setIsConfirmingOtp] = useState(false); // Loader and disable flag for confirming OTP
   const { setCustomerId } = useCustomer(); // Access the global state to set customerId
 
   // Ensure that the phone number has the +91 prefix
@@ -30,11 +32,14 @@ const LoginScreen: React.FC = () => {
     const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
 
     try {
+      setIsSendingOtp(true); // Show loader and disable button
       const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
       setConfirmation(confirmationResult); // Store the confirmation result for later OTP verification
       Alert.alert('OTP Sent', 'Please check your phone for the OTP.');
     } catch (error) {
       Alert.alert('Error', `Failed to send OTP: ${error.message}`);
+    } finally {
+      setIsSendingOtp(false); // Hide loader and re-enable button
     }
   };
 
@@ -46,6 +51,7 @@ const LoginScreen: React.FC = () => {
     }
 
     try {
+      setIsConfirmingOtp(true); // Show loader and disable button
       await confirmation.confirm(otp); // Confirm the OTP with Firebase
       const user = auth().currentUser;
       if (user) {
@@ -55,6 +61,8 @@ const LoginScreen: React.FC = () => {
       }
     } catch (error) {
       Alert.alert('Error', 'Invalid OTP, please try again.');
+    } finally {
+      setIsConfirmingOtp(false); // Hide loader and re-enable button
     }
   };
 
@@ -142,7 +150,11 @@ const LoginScreen: React.FC = () => {
         />
 
         {/* Button to send OTP */}
-        <Button title="Send OTP" onPress={sendOtp} color="#00C853" />
+        {isSendingOtp ? (
+          <ActivityIndicator size="large" color="#00C853" style={styles.loader} /> // Show loader while OTP is being sent
+        ) : (
+          <Button title="Send OTP" onPress={sendOtp} color="#00C853" disabled={isSendingOtp} />
+        )}
 
         {/* OTP Input (Visible only after OTP is sent) */}
         {confirmation && (
@@ -157,7 +169,11 @@ const LoginScreen: React.FC = () => {
             />
 
             {/* Button to confirm OTP */}
-            <Button title="Confirm OTP" onPress={confirmOtp} color="#4A90E2" />
+            {isConfirmingOtp ? (
+              <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} /> // Show loader while confirming OTP
+            ) : (
+              <Button title="Confirm OTP" onPress={confirmOtp} color="#4A90E2" disabled={isConfirmingOtp} />
+            )}
           </>
         )}
       </View>
@@ -194,6 +210,10 @@ const styles = StyleSheet.create({
     color: '#333',
     backgroundColor: '#fff',
     marginBottom: 20,
+    marginTop: 20,
+  },
+  loader: {
+    marginVertical: 10,
   },
 });
 

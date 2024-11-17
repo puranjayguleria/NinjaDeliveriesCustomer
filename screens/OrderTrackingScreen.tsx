@@ -3,7 +3,6 @@ import { View, Text, ActivityIndicator, StyleSheet, Image, TouchableOpacity, Lin
 import firestore from '@react-native-firebase/firestore';
 import MapView, { Marker, Polyline, LatLng } from 'react-native-maps';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 
 import pickupMarker from '../assets/pickup-marker.png';
@@ -28,7 +27,6 @@ const OrderTrackingScreen: React.FC = () => {
   const mapRef = useRef<MapView | null>(null);
   const [isMapReady, setIsMapReady] = useState<boolean>(false);
 
-  const GOOGLE_MAPS_APIKEY = "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg";
 
   useEffect(() => {
     setRiderLocation(null);
@@ -63,15 +61,12 @@ const OrderTrackingScreen: React.FC = () => {
                   if (location) {
                     setRiderLocation({ latitude: location.latitude, longitude: location.longitude });
 
-                    const targetCoords = orderData.status === 'tripStarted' ? dropoffCoords : pickupCoords;
-
+                    const targetCoords = dropoffCoords;
+                    setPathCoordinates([pickupCoords, targetCoords]);
+                    
                     const distance = calculateDistance(location, targetCoords);
                     const etaMinutes = (distance / 30) * 60;
                     setEta(etaMinutes);
-
-                    if (orderData.status === 'tripStarted') {
-                      await fetchRoute(location, dropoffCoords);
-                    }
 
                     setIsLoading(false);
                   } else {
@@ -106,54 +101,6 @@ const OrderTrackingScreen: React.FC = () => {
     }
   }, [riderLocation, pickupCoords, dropoffCoords, isMapReady]);
 
-  const fetchRoute = async (origin: LatLng, destination: LatLng) => {
-    try {
-      const response = await axios.get(
-        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude}&key=${GOOGLE_MAPS_APIKEY}`
-      );
-      console.log(response)
-      if (response.data.routes.length > 0) {
-        const points = decodePolyline(response.data.routes[0].overview_polyline.points);
-        setPathCoordinates(points);
-      } else {
-        console.log('No route found in the response.');
-      }
-    } catch (error) {
-      console.error('Error fetching route:', error);
-    }
-  };
-
-  const decodePolyline = (encoded: string): LatLng[] => {
-    let points: LatLng[] = [];
-    let index = 0, len = encoded.length;
-    let lat = 0, lng = 0;
-
-    while (index < len) {
-      let b, shift = 0, result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
-
-      points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-    }
-
-    return points;
-  };
-
   const calculateDistance = (start: LatLng, end: LatLng): number => {
     const toRad = (value: number) => (value * Math.PI) / 180;
     const R = 6371;
@@ -179,15 +126,51 @@ const OrderTrackingScreen: React.FC = () => {
     }
   };
 
-  const handleCancelOrder = async () => {
-    const refundAmount = totalCost - 25;
-    await firestore().collection('orders').doc(orderId).update({
-      status: 'cancelled',
-      refundAmount: refundAmount,
-    });
-    Alert.alert('Order Cancelled', `₹${refundAmount} will be refunded.`);
-    navigation.navigate('NewOrderCancelledScreen', { refundAmount });
+  const handleCenterOnRider = () => {
+    if (riderLocation && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          ...riderLocation,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        500
+      );
+    }
   };
+
+  const handleCancelOrder = async () => {
+    try {
+      const orderRef = firestore().collection('orders').doc(orderId);
+  
+      // Fetch the order data to retrieve totalCost
+      const orderSnapshot = await orderRef.get();
+      if (!orderSnapshot.exists) {
+        Alert.alert('Error', 'Order not found.');
+        return;
+      }
+  
+      const orderData = orderSnapshot.data();
+      const totalCost = orderData?.cost.totalCost || 0;
+  
+      // Calculate the refund amount, assuming a fixed deduction of 25
+      const refundAmount = totalCost > 25 ? totalCost - 25 : 0;
+  
+      // Update the order status and set the refund amount
+      await orderRef.update({
+        status: 'cancelled',
+        refundAmount: refundAmount,
+      });
+  
+      Alert.alert('Order Cancelled', `₹${refundAmount} will be refunded.`);
+      navigation.navigate('NewOrderCancelledScreen', { refundAmount });
+      
+    } catch (error) {
+      console.error("Error cancelling the order:", error);
+      Alert.alert('Error', 'Failed to cancel the order.');
+    }
+  };
+  
 
   useEffect(() => {
     if (orderStatus === 'tripEnded') {
@@ -204,11 +187,28 @@ const OrderTrackingScreen: React.FC = () => {
     );
   }
 
+  const getStatusMessage = (status: string): string => {
+    switch (status) {
+      case 'accepted':
+        return 'Order is accepted for pickup';
+      case 'reachedPickup':
+        return 'Rider has reached the pickup location';
+      case 'tripStarted':
+        return 'Rider is en route to the dropoff location';
+      case 'tripEnded':
+        return 'Trip has ended';
+      case 'cancelled':
+        return 'Order has been cancelled';
+      default:
+        return 'Order status is being updated....';
+    }
+  };
+  
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.orderStatusText}>Order is {orderStatus}</Text>
-        <Text style={styles.etaText}>{eta.toFixed(0)} minutes</Text>
+      <Text style={styles.orderStatusText}>{getStatusMessage(orderStatus)}</Text>
+      <Text style={styles.etaText}>{eta.toFixed(0)} minutes</Text>
       </View>
 
       <MapView
@@ -242,16 +242,16 @@ const OrderTrackingScreen: React.FC = () => {
           <Image source={dropoffMarker} style={{ width: 40, height: 40 }} />
         </Marker>
 
-        {pathCoordinates.length > 0 && (
+        {pathCoordinates.length > 1 && (
           <Polyline
             coordinates={pathCoordinates}
-            strokeWidth={4}
-            strokeColor="blue"
+            strokeWidth={3}
+            strokeColor="gray"
+            lineDashPattern={[2, 8]}
           />
         )}
       </MapView>
 
-      {/* Rider Information Card styled similarly to Zomato */}
       <View style={[styles.riderCard, orderStatus !== 'accepted' && { bottom: 20 }]}>
         <View style={styles.riderCardContent}>
           <Image source={riderIcon} style={styles.riderImageLarge} />
@@ -272,12 +272,17 @@ const OrderTrackingScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Show cancel button only if order status is 'accepted' */}
       {orderStatus === 'accepted' && (
         <TouchableOpacity style={styles.cancelButton} onPress={handleCancelOrder}>
           <Text style={styles.cancelButtonText}>Cancel Order</Text>
         </TouchableOpacity>
       )}
+
+{orderStatus !== 'accepted' && (
+  <TouchableOpacity style={styles.centerButton} onPress={handleCenterOnRider}>
+    <Ionicons name="locate" size={24} color="#fff" />
+  </TouchableOpacity>
+)}
     </View>
   );
 };
@@ -383,6 +388,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  centerButton: {
+    position: 'absolute',
+    bottom: 150,
+    right: 20,
+    backgroundColor: '#2196F3',
+    padding: 12,
+    borderRadius: 50,
+    elevation: 5,
   },
 });
 

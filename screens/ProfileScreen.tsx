@@ -12,20 +12,24 @@ import { TextInput, Button } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import { useCustomer } from '../context/CustomerContext'; // Import context
-import { useNavigation } from '@react-navigation/native'; // Import navigation
+import { useCustomer } from '../context/CustomerContext';
+import { useNavigation } from '@react-navigation/native';
 
 const ProfileScreen: React.FC = () => {
-  const navigation = useNavigation(); // Initialize navigation
-  const { customerId, setCustomerId } = useCustomer(); // Access customerId
-  const [userInfo, setUserInfo] = useState<any>(null); // Store user info
+  const navigation = useNavigation();
+  const { customerId, setCustomerId } = useCustomer();
+  const [userInfo, setUserInfo] = useState<any>(null);
   const [name, setName] = useState('');
-  const [dob, setDob] = useState<Date | undefined>(undefined); // Date of Birth field
-  const [showDatePicker, setShowDatePicker] = useState(false); // Show calendar picker
-  const [loading, setLoading] = useState(true); // Loading state
+  const [dob, setDob] = useState<Date | undefined>(undefined);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Realtime listener for user data
   useEffect(() => {
+    if (!customerId) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = firestore()
       .collection('users')
       .doc(customerId)
@@ -46,15 +50,14 @@ const ProfileScreen: React.FC = () => {
         }
       );
 
-    return () => unsubscribe(); // Cleanup the listener on unmount
+    return () => unsubscribe();
   }, [customerId]);
 
-  // Save updated user info
   const saveUserInfo = async () => {
     try {
       await firestore().collection('users').doc(customerId).update({
         name,
-        dob: dob ? dob.toISOString().split('T')[0] : '', // Save DOB as YYYY-MM-DD
+        dob: dob ? dob.toISOString().split('T')[0] : '',
       });
       Alert.alert('Success', 'Profile updated successfully!');
     } catch (error) {
@@ -63,21 +66,20 @@ const ProfileScreen: React.FC = () => {
     }
   };
 
-  // Logout function
   const handleLogout = async () => {
     try {
       await firestore().collection('users').doc(customerId).update({
         isLoggedOut: true,
       });
       await auth().signOut();
-      setCustomerId(null); // Reset customerId
-      setUserInfo(null); // Clear profile data
-      setName(''); // Clear name
-      setDob(undefined); // Clear DOB
+      setCustomerId(null);
+      setUserInfo(null);
+      setName('');
+      setDob(undefined);
 
       navigation.reset({
         index: 0,
-        routes: [{ name: 'Login' }], // Navigate to Login screen
+        routes: [{ name: 'Login' }],
       });
 
       Alert.alert('Logged Out', 'You have successfully logged out.');
@@ -102,12 +104,31 @@ const ProfileScreen: React.FC = () => {
     );
   }
 
+  if (!customerId) {
+    return (
+      <View style={styles.loginPromptContainer}>
+        <Image
+          source={require('../assets/ninja-logo.jpg')}
+          style={styles.promptImage}
+        />
+        <Text style={styles.promptText}>
+          Login to view and manage your profile
+        </Text>
+        <Button
+          mode="contained"
+          onPress={() => navigation.navigate('Login')}
+          style={styles.loginButton}
+        >
+          Login
+        </Button>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* Profile Picture */}
       <Image source={require('../assets/ninja-logo.jpg')} style={styles.profileImage} />
 
-      {/* Name Field */}
       <TextInput
         label="Name"
         value={name}
@@ -116,10 +137,8 @@ const ProfileScreen: React.FC = () => {
         style={styles.input}
       />
 
-      {/* Date of Birth Label */}
       <Text style={styles.label}>Date of Birth</Text>
 
-      {/* Date of Birth Field */}
       <Button
         mode="outlined"
         onPress={() => setShowDatePicker(true)}
@@ -137,12 +156,10 @@ const ProfileScreen: React.FC = () => {
         />
       )}
 
-      {/* Save Button */}
       <Button mode="contained" onPress={saveUserInfo} style={styles.saveButton}>
         Save
       </Button>
 
-      {/* Logout Button */}
       <Button mode="text" onPress={handleLogout} style={styles.logoutButton}>
         Logout
       </Button>
@@ -191,6 +208,30 @@ const styles = StyleSheet.create({
   logoutButton: {
     width: '100%',
     marginVertical: 10,
+  },
+  loginPromptContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+  },
+  promptImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50, // Make the image circular
+    marginBottom: 20,
+  },
+  promptText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  loginButton: {
+    width: '80%',
+    backgroundColor: '#FF5722',
   },
 });
 

@@ -46,6 +46,7 @@
     "react-native-gesture-handler": "~2.16.1",
     "react-native-get-random-values": "^1.11.0",
     "react-native-google-places-autocomplete": "^2.5.7",
+    "react-native-linear-gradient": "^2.8.3",
     "react-native-maps": "1.14.0",
     "react-native-modal-datetime-picker": "^18.0.0",
     "react-native-paper": "^5.12.5",

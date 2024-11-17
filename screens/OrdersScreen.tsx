@@ -23,11 +23,44 @@ const OrdersScreen: React.FC = () => {
       Alert.alert('Login Required', 'Please log in to view your orders.');
       return;
     }
-    fetchOrders(); // Fetch orders on load or when date filters change
+    checkAndUpdatePendingOrders();
+    const unsubscribe = setupRealtimeListener();
+
+    // Cleanup on component unmount
+    return () => unsubscribe();
   }, [user, startDate, endDate]);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const checkAndUpdatePendingOrders = async () => {
+    try {
+      const currentTimestamp = Date.now();
+      const fiveMinutesInMillis = 5 * 60 * 1000;
+
+      const snapshot = await firestore()
+        .collection('orders')
+        .where('orderedBy', '==', user.uid)
+        .where('status', '==', 'pending')
+        .get();
+
+      const batch = firestore().batch();
+      snapshot.docs.forEach((doc) => {
+        const orderData = doc.data();
+        if (orderData.createdAt && currentTimestamp - orderData.createdAt.seconds * 1000 > fiveMinutesInMillis) {
+          const refundAmount = orderData.totalAmount ? orderData.cost.totalAmount - 25 : 0;
+          const orderRef = firestore().collection('orders').doc(doc.id);
+          batch.update(orderRef, { status: 'cancelled', refundAmount });
+        }
+      });
+
+      if (!snapshot.empty) {
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error checking and updating pending orders:', error);
+      Alert.alert('Error', 'Failed to update pending orders.');
+    }
+  };
+
+  const setupRealtimeListener = () => {
     let query = firestore()
       .collection('orders')
       .where('orderedBy', '==', user.uid)
@@ -36,42 +69,17 @@ const OrdersScreen: React.FC = () => {
     if (startDate) query = query.where('createdAt', '>=', firestore.Timestamp.fromDate(startDate));
     if (endDate) query = query.where('createdAt', '<=', firestore.Timestamp.fromDate(endDate));
 
-    try {
-      const ordersSnapshot = await query.get();
-      const currentTimestamp = Date.now();
-
-      const fetchedOrders = ordersSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return { id: doc.id, ...data };
-      });
-
-      // Check for stale 'waiting' orders older than 5 minutes and cancel them
-      const updatedOrders = await Promise.all(
-        fetchedOrders.map(async (order) => {
-          if (
-            order.status === 'waiting' &&
-            order.createdAt &&
-            currentTimestamp - order.createdAt.seconds * 1000 > 5 * 60 * 1000
-          ) {
-            // Order is stale, update status to 'cancelled' and set refundAmount
-            const refundAmount = order.totalAmount ? order.totalAmount - 25 : 0;
-            await firestore().collection('orders').doc(order.id).update({
-              status: 'cancelled',
-              refundAmount: refundAmount,
-            });
-            return { ...order, status: 'cancelled', refundAmount };
-          }
-          return order;
-        })
-      );
-
-      setOrders(updatedOrders);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      Alert.alert('Error', 'Failed to fetch orders.');
-    } finally {
-      setLoading(false);
-    }
+    return query.onSnapshot(
+      (snapshot) => {
+        const fetchedOrders = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setOrders(fetchedOrders);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error setting up real-time listener:', error);
+        Alert.alert('Error', 'Failed to listen for real-time updates.');
+      }
+    );
   };
 
   const handleOrderClick = (order) => {
@@ -106,11 +114,18 @@ const OrdersScreen: React.FC = () => {
     setDatePickerVisible(false);
   };
 
+  const applyFilter = () => {
+    setFilterModalVisible(false);
+    // setupRealtimeListener will automatically refetch with new date range
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Your Orders</Text>
 
-      {orders.length === 0 && !loading ? (
+      {loading ? (
+        <ActivityIndicator size="large" color="#4CAF50" style={styles.loadingIndicator} />
+      ) : orders.length === 0 ? (
         <Text style={styles.noOrdersText}>You have no orders at the moment.</Text>
       ) : (
         <FlatList
@@ -130,16 +145,14 @@ const OrdersScreen: React.FC = () => {
               </View>
             </TouchableOpacity>
           )}
-          ListFooterComponent={loading && <ActivityIndicator size="large" color="#4CAF50" />}
+          onEndReachedThreshold={0.5}
         />
       )}
 
-      {/* Floating Action Button */}
       <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={styles.fabButton}>
         <Ionicons name="filter" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Bottom Sheet Modal for Filters */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -159,7 +172,7 @@ const OrdersScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <Button title="Apply Filter" onPress={() => setFilterModalVisible(false)} />
+            <Button title="Apply Filter" onPress={applyFilter} />
           </View>
         </View>
       </Modal>
@@ -186,6 +199,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1C1C1E',
     marginBottom: 15,
+  },
+  loadingIndicator: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   noOrdersText: {
     fontSize: 16,

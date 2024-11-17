@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Alert, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth'; 
@@ -11,15 +11,37 @@ const OrderSummaryScreen: React.FC = () => {
   const navigation = useNavigation();
 
   const { pickupCoords, dropoffCoords, pickupDetails, dropoffDetails, parcelDetails = {} } = route.params || {};
-  const { senderPhoneNumber = '', recipientPhoneNumber = '', packageDescription = '' } = parcelDetails;
+  const { senderPhoneNumber = '', recipientPhoneNumber = '', packageDescription = '', promoCode, discountApplied, discountLabel, promoId, promoType, promoAmount } = parcelDetails;
 
   const distance = calculateDistance(pickupCoords || {}, dropoffCoords || {});
   const deliveryCharge = 50;
   const platformFee = 4;
   const additionalCost = distance > 2 ? (distance - 2) * 11 : 0;
-  const totalCost = deliveryCharge + platformFee + additionalCost;
-
+  const initialTotalCost = deliveryCharge + platformFee + additionalCost;
+  
   const [paymentMethod, setPaymentMethod] = useState(''); // For selecting payment method
+  const [discount, setDiscount] = useState(0); // Holds the discount amount
+  const [totalCost, setTotalCost] = useState(initialTotalCost); // Adjusted total after discount
+
+  // Get user ID
+  const userId = auth().currentUser?.uid;
+
+  // Calculate discount based on promo details and apply it
+  useEffect(() => {
+    if (discountApplied && promoType && promoAmount) {
+      let discountAmount = 0;
+
+      // Calculate discount based on type (flat or percent)
+      if (promoType === 'flat') {
+        discountAmount = promoAmount;
+      } else if (promoType === 'percent') {
+        discountAmount = (promoAmount / 100) * initialTotalCost;
+      }
+
+      setDiscount(discountAmount);
+      setTotalCost(initialTotalCost - discountAmount);
+    }
+  }, [promoType, promoAmount, initialTotalCost, discountApplied]);
 
   const handleConfirmOrder = async () => {
     if (!paymentMethod) {
@@ -41,31 +63,42 @@ const OrderSummaryScreen: React.FC = () => {
         dropoffCoords,
         pickupDetails,
         dropoffDetails,
-        parcelDetails,
+        parcelDetails: {
+          ...parcelDetails,
+          appliedDiscount: discount,
+          finalTotal: totalCost,
+        },
         cost: {
           deliveryCharge,
           platformFee,
           additionalCost,
+          initialTotal: initialTotalCost,
+          discount,
           totalCost,
         },
         distance,
-        orderedBy: user.uid, 
-        paymentMethod, // Save the selected payment method
-        status: 'pending', // Set the initial status to pending
+        orderedBy: user.uid,
+        paymentMethod,
+        status: 'pending',
         createdAt: firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log("Order created with ID: ", orderRef.id);
+      // Update the `usedBy` field for promo code
+      if (promoId) {
+        await firestore().collection('promoCodes').doc(promoId).update({
+          usedBy: firestore.FieldValue.arrayUnion(userId),
+        });
+      }
 
-      // Navigate to the OrderAllocatingScreen for tracking
+      // Navigate to OrderAllocatingScreen
       navigation.navigate('OrderAllocatingScreen', { 
         orderId: orderRef.id, 
         dropoffCoords, 
-        pickupCoords, // Pass these to center the map initially
+        pickupCoords, 
         totalCost
       });
 
-      Alert.alert('Order Confirmed', `Your order has been placed successfully. Total cost: ₹${totalCost}`);
+      Alert.alert('Order Confirmed', `Your order has been placed successfully. Total cost: ₹${totalCost.toFixed(2)}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to place the order. Please try again.');
       console.error('Firestore Error: ', error);
@@ -112,17 +145,21 @@ const OrderSummaryScreen: React.FC = () => {
             <Text style={styles.detailValue}>₹{additionalCost.toFixed(2)}</Text>
           </View>
 
-          {/* Divider Line */}
           <View style={styles.divider} />
 
-          {/* Total Row */}
+          {discountApplied && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Promo Discount:</Text>
+              <Text style={styles.detailValue}>- ₹{discount}</Text>
+            </View>
+          )}
+
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total:</Text>
             <Text style={styles.totalValue}>₹{totalCost.toFixed(2)}</Text>
           </View>
         </View>
 
-        {/* Payment Options */}
         <View style={styles.paymentContainer}>
           <Text style={styles.paymentLabel}>Select Payment Method:</Text>
           <Picker

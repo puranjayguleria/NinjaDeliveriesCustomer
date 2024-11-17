@@ -1,34 +1,84 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Switch, Button, ScrollView, StyleSheet, Alert, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 const AdditionalInfoScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { pickupCoords, dropoffCoords, pickupDetails, dropoffDetails } = route.params;
 
-  // State for the new field 'What are you sending?'
+  // State for package details
   const [packageDescription, setPackageDescription] = useState('');
-
-  // State for phone numbers
   const [senderPhoneNumber, setSenderPhoneNumber] = useState('');
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState('');
-
-  // Existing parcel information states
   const [packageWeight, setPackageWeight] = useState('Up to 1 kg');
-  const [notifyBySms, setNotifyBySms] = useState(true);
   const [promoCode, setPromoCode] = useState('');
+  const [discountApplied, setDiscountApplied] = useState(false);
+  const [discountLabel, setDiscountLabel] = useState('');
+  const [promoDescription, setPromoDescription] = useState('');
+  const [promoId, setPromoId] = useState('');
+  const [promoType, setPromoType] = useState(''); // New state for promo type
+  const [promoAmount, setPromoAmount] = useState(0); // New state for promo amount
 
-  // Function to proceed to the order summary
+  // Get user ID
+  const userId = auth().currentUser?.uid;
+
+  const handleApplyPromoCode = async () => {
+    if (!promoCode) {
+      Alert.alert('Promo Code Missing', 'Please enter a promo code to apply.');
+      return;
+    }
+
+    try {
+      const promoRef = firestore().collection('promoCodes');
+      const promoSnapshot = await promoRef.where('code', '==', promoCode).get();
+
+      if (promoSnapshot.empty) {
+        Alert.alert('Invalid Promo Code', 'The entered promo code does not exist.');
+        return;
+      }
+
+      const promoData = promoSnapshot.docs[0].data();
+      
+      // Validate promo code
+      if (!promoData.isActive) {
+        Alert.alert('Promo Code Inactive', 'This promo code is no longer active.');
+        return;
+      }
+      if (promoData.expirationDate && promoData.expirationDate.toDate() < new Date()) {
+        Alert.alert('Promo Code Expired', 'This promo code has expired.');
+        return;
+      }
+      if (promoData.usedBy && promoData.usedBy.includes(userId)) {
+        Alert.alert('Promo Code Used', 'You have already used this promo code.');
+        return;
+      }
+
+      // Set promo details for display
+      setDiscountLabel(promoData.promoLabel || 'Discount applied');
+      setPromoDescription(promoData.description || '');
+      setDiscountApplied(true);
+      setPromoId(promoSnapshot.docs[0].id); // Save promo ID to use in the next screen
+      setPromoType(promoData.discountType); // Set promo type (e.g., 'percent' or 'flat')
+      setPromoAmount(promoData.discountValue); // Set promo amount based on type
+
+      Alert.alert('Promo Code Applied', promoData.promoLabel || 'Discount applied successfully!');
+
+    } catch (error) {
+      console.error('Error applying promo code:', error);
+      Alert.alert('Error', 'Failed to apply promo code.');
+    }
+  };
+
   const handleProceedToSummary = () => {
-    // Check if required fields are filled
     if (!senderPhoneNumber || !recipientPhoneNumber || !packageDescription) {
       Alert.alert('Missing Information', 'Please fill in all required fields, including the package description.');
       return;
     }
 
-    // Proceed to the summary screen with all the order details
     navigation.navigate('OrderSummary', {
       pickupCoords,
       dropoffCoords,
@@ -37,10 +87,14 @@ const AdditionalInfoScreen: React.FC = () => {
       parcelDetails: {
         senderPhoneNumber,
         recipientPhoneNumber,
-        packageDescription, // Replaced the parcel value with the package description
+        packageDescription,
         packageWeight,
-        notifyBySms,
         promoCode,
+        discountApplied,
+        discountLabel,
+        promoId,
+        promoType,
+        promoAmount,
       },
     });
   };
@@ -90,11 +144,6 @@ const AdditionalInfoScreen: React.FC = () => {
             <Picker.Item label="Above 10 kg" value="Above 10 kg" />
           </Picker>
 
-          <View style={styles.switchContainer}>
-            <Text style={styles.switchLabel}>Notify Recipient by SMS</Text>
-            <Switch value={notifyBySms} onValueChange={setNotifyBySms} />
-          </View>
-
           <Text style={styles.label}>Promo Code</Text>
           <TextInput
             style={styles.input}
@@ -103,6 +152,16 @@ const AdditionalInfoScreen: React.FC = () => {
             placeholder="Enter promo code (if any)"
             placeholderTextColor="#888"
           />
+          <TouchableOpacity style={styles.applyButton} onPress={handleApplyPromoCode}>
+            <Text style={styles.buttonText}>Apply Promo Code</Text>
+          </TouchableOpacity>
+
+          {discountApplied && (
+            <View style={styles.promoDetailsContainer}>
+              <Text style={styles.discountLabel}>{discountLabel}</Text>
+              <Text style={styles.promoDescription}>{promoDescription}</Text>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.button} onPress={handleProceedToSummary}>
             <Text style={styles.buttonText}>Proceed to Summary</Text>
@@ -114,58 +173,18 @@ const AdditionalInfoScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-    backgroundColor: '#1C1C1E',
-  },
-  scrollContent: {
-    padding: 20,
-    justifyContent: 'center',
-  },
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  label: {
-    color: '#FFFFFF',
-    marginBottom: 5,
-    fontSize: 16,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 15,
-    fontSize: 16,
-    color: '#333',
-  },
-  picker: {
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingVertical: 5,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 15,
-  },
-  switchLabel: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#00C853',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-  },
+  scrollView: { flex: 1, backgroundColor: '#1C1C1E' },
+  scrollContent: { padding: 20, justifyContent: 'center' },
+  container: { flex: 1, justifyContent: 'center' },
+  label: { color: '#FFFFFF', marginBottom: 5, fontSize: 16 },
+  input: { backgroundColor: '#fff', borderRadius: 5, padding: 10, marginBottom: 15, fontSize: 16, color: '#333' },
+  picker: { backgroundColor: '#fff', borderRadius: 5, marginBottom: 15, paddingVertical: 5 },
+  button: { backgroundColor: '#00C853', padding: 15, borderRadius: 5, alignItems: 'center', marginTop: 20 },
+  applyButton: { backgroundColor: '#4A90E2', padding: 10, borderRadius: 5, alignItems: 'center', marginBottom: 15 },
+  buttonText: { color: '#fff', fontSize: 16 },
+  promoDetailsContainer: { marginTop: 10, paddingHorizontal: 10 },
+  discountLabel: { color: '#00C853', fontSize: 14, fontWeight: 'bold', marginBottom: 3, textAlign: 'center' },
+  promoDescription: { color: '#888', fontSize: 12, fontStyle: 'italic', textAlign: 'center' },
 });
 
 export default AdditionalInfoScreen;
