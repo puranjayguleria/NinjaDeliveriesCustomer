@@ -20,8 +20,8 @@ const AdditionalInfoScreen: React.FC = () => {
   const [discountLabel, setDiscountLabel] = useState('');
   const [promoDescription, setPromoDescription] = useState('');
   const [promoId, setPromoId] = useState('');
-  const [promoType, setPromoType] = useState(''); // New state for promo type
-  const [promoAmount, setPromoAmount] = useState(0); // New state for promo amount
+  const [promoType, setPromoType] = useState('');
+  const [promoAmount, setPromoAmount] = useState(0);
 
   // Get user ID
   const userId = auth().currentUser?.uid;
@@ -42,7 +42,7 @@ const AdditionalInfoScreen: React.FC = () => {
       }
 
       const promoData = promoSnapshot.docs[0].data();
-      
+
       // Validate promo code
       if (!promoData.isActive) {
         Alert.alert('Promo Code Inactive', 'This promo code is no longer active.');
@@ -61,9 +61,9 @@ const AdditionalInfoScreen: React.FC = () => {
       setDiscountLabel(promoData.promoLabel || 'Discount applied');
       setPromoDescription(promoData.description || '');
       setDiscountApplied(true);
-      setPromoId(promoSnapshot.docs[0].id); // Save promo ID to use in the next screen
-      setPromoType(promoData.discountType); // Set promo type (e.g., 'percent' or 'flat')
-      setPromoAmount(promoData.discountValue); // Set promo amount based on type
+      setPromoId(promoSnapshot.docs[0].id);
+      setPromoType(promoData.discountType);
+      setPromoAmount(promoData.discountValue);
 
       Alert.alert('Promo Code Applied', promoData.promoLabel || 'Discount applied successfully!');
 
@@ -74,8 +74,20 @@ const AdditionalInfoScreen: React.FC = () => {
   };
 
   const handleProceedToSummary = () => {
+    const phoneNumberRegex = /^[0-9]{10}$/; // Regex to validate 10-digit phone numbers
+
     if (!senderPhoneNumber || !recipientPhoneNumber || !packageDescription) {
       Alert.alert('Missing Information', 'Please fill in all required fields, including the package description.');
+      return;
+    }
+
+    if (!phoneNumberRegex.test(senderPhoneNumber)) {
+      Alert.alert('Invalid Sender Number', 'Please enter a valid 10-digit sender phone number.');
+      return;
+    }
+
+    if (!phoneNumberRegex.test(recipientPhoneNumber)) {
+      Alert.alert('Invalid Recipient Number', 'Please enter a valid 10-digit recipient phone number.');
       return;
     }
 
@@ -109,6 +121,7 @@ const AdditionalInfoScreen: React.FC = () => {
             value={senderPhoneNumber}
             onChangeText={setSenderPhoneNumber}
             keyboardType="phone-pad"
+            maxLength={10} // Restrict input to 10 digits
             placeholder="Enter sender's phone number"
             placeholderTextColor="#888"
           />
@@ -119,6 +132,7 @@ const AdditionalInfoScreen: React.FC = () => {
             value={recipientPhoneNumber}
             onChangeText={setRecipientPhoneNumber}
             keyboardType="phone-pad"
+            maxLength={10} // Restrict input to 10 digits
             placeholder="Enter recipient's phone number"
             placeholderTextColor="#888"
           />

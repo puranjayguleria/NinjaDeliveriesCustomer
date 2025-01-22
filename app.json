@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CustomerApp",
+    "name": "Ninja Deliveries",
     "slug": "CustomerApp",
     "version": "1.0.0",
     "platforms": [
@@ -8,7 +8,7 @@
       "ios"
     ],
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -25,15 +25,15 @@
       "package": "com.ninjadeliveries.customer",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
         "NOTIFICATIONS",
-        "WAKE_LOCK", 
+        "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "ACCESS_FINE_LOCATION", 
-        "ACCESS_COARSE_LOCATION", 
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION"
@@ -51,11 +51,14 @@
     },
     "plugins": [
       "expo-router",
-      "@react-native-firebase/app"   ],
+      "@react-native-firebase/app",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
+      "googlePlacesApiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg",
       "eas": {
         "projectId": "6b44378d-74c3-4698-bbfd-ab0b8b165bc7"
       }

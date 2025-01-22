@@ -1,3 +1,5 @@
+// BusinessDirectoryScreen.tsx
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -5,12 +7,12 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Linking,
   Alert,
   ActivityIndicator,
   TextInput,
   SafeAreaView,
   Platform,
+  Image,
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,9 +27,14 @@ interface Business {
   inTime: string;
   outTime: string;
   isAvailable: boolean;
+  image?: string;
 }
 
-const BusinessDirectoryScreen: React.FC = () => {
+interface BusinessDirectoryScreenProps {
+  navigation: any;
+}
+
+const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({ navigation }) => {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [filteredBusinesses, setFilteredBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +78,7 @@ const BusinessDirectoryScreen: React.FC = () => {
               inTime,
               outTime,
               isAvailable: isOpen,
+              image: data.image,
             });
           });
 
@@ -112,30 +120,53 @@ const BusinessDirectoryScreen: React.FC = () => {
     setFilteredBusinesses(filtered);
   }, [searchName, selectedType, showActiveOnly, businesses]);
 
-  const handleCall = (phoneNumber: string) => {
-    Linking.openURL(`tel:${phoneNumber}`).catch(() =>
-      Alert.alert("Error", "Unable to make the call.")
-    );
+  const handleNavigateToDetails = (businessId: string) => {
+    navigation.navigate("BusinessDetail", { businessId });
   };
 
   const renderBusiness = ({ item }: { item: Business }) => (
-    <View style={[styles.card, !item.isAvailable && styles.cardDisabled]}>
+    <TouchableOpacity
+      onPress={() => handleNavigateToDetails(item.id)}
+      style={[styles.card, !item.isAvailable && styles.cardDisabled]}
+      disabled={!item.isAvailable}
+      accessible={true}
+      accessibilityLabel={`${item.name} ${item.isAvailable ? "is open" : "is closed"}`}
+    >
+      {/* Business Image */}
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={styles.businessImage} />
+      ) : (
+        <View style={styles.placeholderImage}>
+          <Ionicons name="business" size={40} color="#ccc" />
+        </View>
+      )}
+
       <View style={styles.businessInfo}>
         <Text style={styles.name}>{item.name}</Text>
         <Text style={styles.type}>{item.type}</Text>
+        <View style={styles.statusRow}>
+          <Ionicons
+            name={item.isAvailable ? "checkmark-circle" : "close-circle"}
+            size={16}
+            color={item.isAvailable ? "green" : "red"}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              { color: item.isAvailable ? "green" : "red" },
+            ]}
+          >
+            {item.isAvailable ? "Open Now" : "Closed"}
+          </Text>
+        </View>
       </View>
-      <TouchableOpacity
-        style={styles.callButton}
-        onPress={() => handleCall(item.phoneNumber)}
-        disabled={!item.isAvailable}
-      >
-        <Ionicons
-          name="call"
-          size={24}
-          color={item.isAvailable ? "#4CAF50" : "#999"}
-        />
-      </TouchableOpacity>
-    </View>
+
+      <Ionicons
+        name="arrow-forward"
+        size={24}
+        color={item.isAvailable ? "#4CAF50" : "#ccc"}
+      />
+    </TouchableOpacity>
   );
 
   if (loading) {
@@ -148,6 +179,16 @@ const BusinessDirectoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Informational Message */}
+      <View style={styles.infoMessageContainer}>
+        <Text style={styles.infoMessage}>
+          Please call the business directly to place your order and make
+          payments. Ninja Deliveries will pick up your order and deliver it to
+          your drop-off location.
+        </Text>
+      </View>
+
+      {/* Search and Filters */}
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
@@ -171,6 +212,8 @@ const BusinessDirectoryScreen: React.FC = () => {
       <TouchableOpacity
         style={styles.filterButton}
         onPress={() => setShowActiveOnly((prev) => !prev)}
+        accessible={true}
+        accessibilityLabel={showActiveOnly ? "Show All Businesses" : "Show Active Only Businesses"}
       >
         <Text style={styles.filterButtonText}>
           {showActiveOnly ? "Show All" : "Show Active Only"}
@@ -193,9 +236,22 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === "android" ? Constants.statusBarHeight : 0,
     backgroundColor: "#fff",
   },
+  infoMessageContainer: {
+    padding: 16,
+    backgroundColor: "#FFF3CD",
+    borderRadius: 8,
+    margin: 16,
+    borderLeftWidth: 5,
+    borderLeftColor: "#FFCC00",
+  },
+  infoMessage: {
+    fontSize: 14,
+    color: "#856404",
+    lineHeight: 20,
+  },
   searchContainer: {
     marginHorizontal: 16,
-    marginTop: 20,
+    marginTop: 10,
   },
   searchInput: {
     height: 40,
@@ -205,7 +261,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   picker: {
-    height: 40,
+    height: 50,
     marginBottom: 10,
     marginHorizontal: 16,
   },
@@ -222,10 +278,10 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingTop: 10,
+    paddingBottom: 20,
   },
   card: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     padding: 15,
     marginVertical: 8,
@@ -242,6 +298,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
     opacity: 0.6,
   },
+  businessImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginRight: 15,
+  },
+  placeholderImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#e0e0e0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
   businessInfo: {
     flex: 1,
   },
@@ -254,8 +325,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#777",
   },
-  callButton: {
-    marginLeft: 10,
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  statusText: {
+    marginLeft: 5,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 

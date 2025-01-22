@@ -1,138 +1,226 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, ImageBackground } from 'react-native';
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
-import * as Notifications from 'expo-notifications';
-import { useCustomer } from '../context/CustomerContext'; // Import Customer Context
+// screens/LoginScreen.tsx
+
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  StyleSheet,
+  ActivityIndicator,
+  ImageBackground,
+} from "react-native";
+import auth from "@react-native-firebase/auth";
+import firestore from "@react-native-firebase/firestore";
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import Constants from "expo-constants";
+import { useCustomer } from "../context/CustomerContext";
+import ErrorModal from "../components/ErrorModal"; 
+import { useNavigation, CommonActions } from "@react-navigation/native";
 
 const LoginScreen: React.FC = () => {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [confirmation, setConfirmation] = useState<any>(null); // To store the confirmation result
-  const [otp, setOtp] = useState(''); // OTP entered by the user
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [confirmation, setConfirmation] = useState<any>(null);
+  const [otp, setOtp] = useState("");
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
-  const [isSendingOtp, setIsSendingOtp] = useState(false); // Loader and disable flag for sending OTP
-  const [isConfirmingOtp, setIsConfirmingOtp] = useState(false); // Loader and disable flag for confirming OTP
-  const { setCustomerId } = useCustomer(); // Access the global state to set customerId
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isConfirmingOtp, setIsConfirmingOtp] = useState(false);
 
-  // Ensure that the phone number has the +91 prefix
+  const { setCustomerId } = useCustomer();
+  const otpInputRef = useRef<TextInput>(null);
+  const navigation = useNavigation();
+
+  // ---- ErrorModal State ----
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState("");
+
+  const showErrorModal = (message: string) => {
+    setErrorModalMessage(message);
+    setErrorModalVisible(true);
+  };
+
+  const closeErrorModal = () => {
+    setErrorModalVisible(false);
+  };
+
+  // Format phone number with +91 prefix
   const formatPhoneNumber = (number: string) => {
-    if (!number.startsWith('+91')) {
+    if (!number.startsWith("+91")) {
       return `+91${number}`;
     }
     return number;
   };
 
+  // Register for push notifications
+  const registerForPushNotificationsAsync = async () => {
+    if (!Device.isDevice) {
+      showErrorModal("Push notifications only work on physical devices.");
+      return null;
+    }
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== "granted") {
+        showErrorModal("Push notifications permission not granted.");
+        return null;
+      }
+
+      const { data } = await Notifications.getExpoPushTokenAsync({
+        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+      });
+      console.log("Expo Push Token:", data);
+      return data;
+    } catch (error) {
+      console.error("Error registering for push notifications:", error);
+      showErrorModal("Failed to enable push notifications. Please try again.");
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const fetchPushToken = async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (token) {
+        setExpoPushToken(token);
+      }
+    };
+    fetchPushToken();
+  }, []);
+
   // Function to send OTP
   const sendOtp = async () => {
     if (!phoneNumber) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+      showErrorModal("Please enter a valid phone number.");
       return;
     }
 
     const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-
     try {
-      setIsSendingOtp(true); // Show loader and disable button
+      setIsSendingOtp(true);
       const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
-      setConfirmation(confirmationResult); // Store the confirmation result for later OTP verification
-      Alert.alert('OTP Sent', 'Please check your phone for the OTP.');
-    } catch (error) {
-      Alert.alert('Error', `Failed to send OTP: ${error.message}`);
+      setConfirmation(confirmationResult);
+
+      // Optionally show success toast "OTP Sent"
+      setTimeout(() => {
+        otpInputRef.current?.focus();
+      }, 500);
+    } catch (error: any) {
+      console.error("Failed to send OTP:", error);
+      showErrorModal("Something went wrong while sending OTP. Please try again.");
     } finally {
-      setIsSendingOtp(false); // Hide loader and re-enable button
+      setIsSendingOtp(false);
     }
   };
 
-  // Function to verify OTP
+  // Function to confirm OTP
   const confirmOtp = async () => {
     if (!otp) {
-      Alert.alert('Error', 'Please enter the OTP');
+      showErrorModal("Please enter the OTP.");
       return;
     }
-
+    if (!confirmation) {
+      showErrorModal("No OTP request found. Please send OTP again.");
+      return;
+    }
     try {
-      setIsConfirmingOtp(true); // Show loader and disable button
-      await confirmation.confirm(otp); // Confirm the OTP with Firebase
+      setIsConfirmingOtp(true);
+      await confirmation.confirm(otp);  // Actually sign in
+
       const user = auth().currentUser;
       if (user) {
-        setCustomerId(user.uid); // Set customerId in context
-        await saveUserInfo(); // Save user info after login
-        Alert.alert('Success', 'You have successfully logged in!');
+        setCustomerId(user.uid);
+        // Save user info (phone/ push token)
+        await saveUserInfo();
+        
+        // After we confirm OTP => check T&C acceptance
+        const userDoc = await firestore().collection("users").doc(user.uid).get();
+        if (!userDoc.exists) {
+          // If doc doesn't exist, create. 
+          // But typically at this point it does, due to 'saveUserInfo()' 
+          await firestore().collection("users").doc(user.uid).set({
+            phoneNumber: formatPhoneNumber(phoneNumber),
+            expoPushToken: expoPushToken,
+            hasAcceptedTerms: false,
+          });
+          // Navigate to Terms
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: "TermsAndConditions" }],
+            })
+          );
+          return;
+        }
+
+        const hasAccepted = userDoc.data()?.hasAcceptedTerms === true;
+        if (hasAccepted) {
+          // T&C accepted => go straight to AppTabs (Categories)
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: "AppTabs" }],
+            })
+          );
+        } else {
+          // T&C not accepted => go to TermsAndConditions
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: "TermsAndConditions" }],
+            })
+          );
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'Invalid OTP, please try again.');
+      console.error("Invalid OTP or confirmation error:", error);
+      showErrorModal("The OTP you entered is invalid. Please try again.");
     } finally {
-      setIsConfirmingOtp(false); // Hide loader and re-enable button
+      setIsConfirmingOtp(false);
     }
   };
 
-  // Function to save or update user info (expo push token and phone number)
+  // Save or update user info in Firestore (phone + expoPushToken)
   const saveUserInfo = async () => {
     try {
       const user = auth().currentUser;
       if (user) {
         const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-        
-        // Check if the phone number already exists in the 'users' collection
+        // Check if phone already exists
         const userSnapshot = await firestore()
-          .collection('users')
-          .where('phoneNumber', '==', formattedPhoneNumber)
+          .collection("users")
+          .where("phoneNumber", "==", formattedPhoneNumber)
           .get();
 
         if (!userSnapshot.empty) {
-          // If the phone number exists, just update the Expo Push Token for the existing user
           const existingUserDoc = userSnapshot.docs[0];
           await existingUserDoc.ref.update({
             expoPushToken: expoPushToken,
           });
-          Alert.alert('User info updated successfully.');
         } else {
-          // New user, save phone number and token
-          await firestore().collection('users').doc(user.uid).set({
+          // New user
+          await firestore().collection("users").doc(user.uid).set({
             phoneNumber: formattedPhoneNumber,
             expoPushToken: expoPushToken,
+            hasAcceptedTerms: false,
           });
-          Alert.alert('User info saved successfully.');
         }
       }
     } catch (error) {
-      console.error('Error saving user info:', error);
-      Alert.alert('Error', 'Failed to save user information');
+      console.error("Error saving user info:", error);
+      showErrorModal("Could not save your information. Please try again.");
     }
   };
-
-  // Function to register for push notifications
-  const registerForPushNotificationsAsync = async () => {
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
-        Alert.alert('Failed to get push token for push notifications!');
-        return;
-      }
-
-      const token = (await Notifications.getExpoPushTokenAsync()).data;
-      console.log('Expo Push Token:', token);
-      setExpoPushToken(token);
-    } catch (error) {
-      console.error('Error during push notification registration:', error);
-    }
-  };
-
-  // Call registerForPushNotifications when the component mounts
-  useEffect(() => {
-    registerForPushNotificationsAsync();
-  }, []);
 
   return (
     <ImageBackground
-      source={require('../assets/ninja-deliveries-bg.jpg')} // Custom background
+      source={require("../assets/ninja-deliveries-bg.jpg")}
       style={styles.background}
       resizeMode="cover"
     >
@@ -149,14 +237,17 @@ const LoginScreen: React.FC = () => {
           placeholderTextColor="#888"
         />
 
-        {/* Button to send OTP */}
         {isSendingOtp ? (
-          <ActivityIndicator size="large" color="#00C853" style={styles.loader} /> // Show loader while OTP is being sent
+          <ActivityIndicator size="large" color="#00C853" style={styles.loader} />
         ) : (
-          <Button title="Send OTP" onPress={sendOtp} color="#00C853" disabled={isSendingOtp} />
+          <Button
+            title="Send OTP"
+            onPress={sendOtp}
+            color="#00C853"
+            disabled={isSendingOtp}
+          />
         )}
 
-        {/* OTP Input (Visible only after OTP is sent) */}
         {confirmation && (
           <>
             <TextInput
@@ -166,49 +257,66 @@ const LoginScreen: React.FC = () => {
               value={otp}
               onChangeText={setOtp}
               placeholderTextColor="#888"
+              ref={otpInputRef}
             />
 
-            {/* Button to confirm OTP */}
             {isConfirmingOtp ? (
-              <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} /> // Show loader while confirming OTP
+              <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} />
             ) : (
-              <Button title="Confirm OTP" onPress={confirmOtp} color="#4A90E2" disabled={isConfirmingOtp} />
+              <Button
+                title="Confirm OTP"
+                onPress={confirmOtp}
+                color="#4A90E2"
+                disabled={isConfirmingOtp}
+              />
             )}
           </>
         )}
       </View>
+
+      {/* ERROR MODAL */}
+      <ErrorModal
+        visible={errorModalVisible}
+        message={errorModalMessage}
+        onClose={closeErrorModal}
+      />
     </ImageBackground>
   );
 };
 
+export default LoginScreen;
+
+/********************************************
+ *                 STYLES
+ ********************************************/
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   container: {
-    width: '90%',
+    width: "90%",
     padding: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)', // Transparent background for readability
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   title: {
     fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 20,
   },
   input: {
-    width: '100%',
+    width: "100%",
     height: 50,
-    borderColor: '#CCCCCC',
+    borderColor: "#CCCCCC",
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
-    color: '#333',
-    backgroundColor: '#fff',
+    color: "#333",
+    backgroundColor: "#fff",
     marginBottom: 20,
     marginTop: 20,
   },
@@ -216,5 +324,3 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
 });
-
-export default LoginScreen;

@@ -1,14 +1,47 @@
+// NewOrderCancelledScreen.tsx
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-type NewOrderCancelledRouteProp = RouteProp<{ params: { refundAmount: number } }, 'params'>;
+// Define navigation stack types
+type RootStackParamList = {
+  // ... other screens
+  OrderCancelled: { orderId: string; refundAmount: number };
+  ContactUs: undefined;
+  Orders: undefined;
+  Home: undefined; // Ensure 'Home' is defined if not already
+  // ... other screens
+};
+
+type NewOrderCancelledRouteProp = RouteProp<RootStackParamList, 'OrderCancelled'>;
 
 const NewOrderCancelledScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<NewOrderCancelledRouteProp>();
-  const { refundAmount } = route.params;
+  let { refundAmount } = route.params;
+
+  // Ensure refundAmount is a number
+  if (typeof refundAmount !== 'number') {
+    refundAmount = 0;
+    console.warn("refundAmount is not a number. Defaulting to 0.");
+  }
+
+  // Function to navigate back to Home (Categories) screen
+  const navigateToHome = () => {
+    // Option 1: Simple navigate to 'Home' tab
+    navigation.navigate('Home');
+
+    // Option 2: Reset navigation stack and navigate to 'Home'
+    /*
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Home' }],
+      })
+    );
+    */
+  };
 
   return (
     <View style={styles.container}>
@@ -27,13 +60,16 @@ const NewOrderCancelledScreen: React.FC = () => {
       </View>
 
       {/* Help Button */}
-      <TouchableOpacity style={styles.helpButton} onPress={() => Alert.alert('Help', 'Customer support will contact you.')}>
+      <TouchableOpacity
+        style={styles.helpButton}
+        onPress={() => navigation.navigate('ContactUs')} // Navigate to ContactUs screen
+      >
         <Ionicons name="help-circle-outline" size={24} color="#FFFFFF" />
         <Text style={styles.helpButtonText}>Get Help</Text>
       </TouchableOpacity>
 
       {/* Back to Home Button */}
-      <TouchableOpacity style={styles.homeButton} onPress={() => navigation.navigate('NewOrder')}>
+      <TouchableOpacity style={styles.homeButton} onPress={navigateToHome}>
         <Text style={styles.homeButtonText}>Back to Home</Text>
       </TouchableOpacity>
     </View>
