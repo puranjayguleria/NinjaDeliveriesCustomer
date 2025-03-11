@@ -46,7 +46,7 @@ type DeliveryZone = {
   name: string;
   latitude: number;
   longitude: number;
-  radius: number; // km
+  radius: number; 
 };
 
 type PlaceDetails = {

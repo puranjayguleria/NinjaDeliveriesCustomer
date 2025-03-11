@@ -1,5 +1,3 @@
-// screens/LoginScreen.tsx
-
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -9,14 +7,17 @@ import {
   StyleSheet,
   ActivityIndicator,
   ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
-import auth from "@react-native-firebase/auth";
+import auth, { getAuth } from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { useCustomer } from "../context/CustomerContext";
-import ErrorModal from "../components/ErrorModal"; 
+import ErrorModal from "../components/ErrorModal";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 
 const LoginScreen: React.FC = () => {
@@ -31,11 +32,11 @@ const LoginScreen: React.FC = () => {
   const otpInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
-  // ---- ErrorModal State ----
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
 
   const showErrorModal = (message: string) => {
+    console.log("Showing error modal:", message);
     setErrorModalMessage(message);
     setErrorModalVisible(true);
   };
@@ -54,6 +55,7 @@ const LoginScreen: React.FC = () => {
 
   // Register for push notifications
   const registerForPushNotificationsAsync = async () => {
+    console.log("Registering for push notifications...");
     if (!Device.isDevice) {
       showErrorModal("Push notifications only work on physical devices.");
       return null;
@@ -61,10 +63,12 @@ const LoginScreen: React.FC = () => {
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
+      console.log("Existing notification permission status:", existingStatus);
 
       if (existingStatus !== "granted") {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
+        console.log("Requested notification permission status:", status);
       }
 
       if (finalStatus !== "granted") {
@@ -75,7 +79,7 @@ const LoginScreen: React.FC = () => {
       const { data } = await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig?.extra?.eas?.projectId,
       });
-      console.log("Expo Push Token:", data);
+      console.log("Expo Push Token received:", data);
       return data;
     } catch (error) {
       console.error("Error registering for push notifications:", error);
@@ -96,23 +100,28 @@ const LoginScreen: React.FC = () => {
 
   // Function to send OTP
   const sendOtp = async () => {
+    console.log("sendOtp called with phoneNumber:", phoneNumber);
     if (!phoneNumber) {
       showErrorModal("Please enter a valid phone number.");
       return;
     }
 
     const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+    console.log("Formatted phone number:", formattedPhoneNumber);
+
     try {
       setIsSendingOtp(true);
-      const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
+      console.log("Sending OTP...");
+
+      const confirmationResult = await getAuth().signInWithPhoneNumber(formattedPhoneNumber);
+      console.log("OTP sent, confirmation result:", confirmationResult);
       setConfirmation(confirmationResult);
 
-      // Optionally show success toast "OTP Sent"
       setTimeout(() => {
         otpInputRef.current?.focus();
       }, 500);
     } catch (error: any) {
-      console.error("Failed to send OTP:", error);
+      console.error("Failed to send OTP:", error.message, error);
       showErrorModal("Something went wrong while sending OTP. Please try again.");
     } finally {
       setIsSendingOtp(false);
@@ -121,6 +130,7 @@ const LoginScreen: React.FC = () => {
 
   // Function to confirm OTP
   const confirmOtp = async () => {
+    console.log("confirmOtp called with OTP:", otp);
     if (!otp) {
       showErrorModal("Please enter the OTP.");
       return;
@@ -131,25 +141,24 @@ const LoginScreen: React.FC = () => {
     }
     try {
       setIsConfirmingOtp(true);
-      await confirmation.confirm(otp);  // Actually sign in
+      console.log("Confirming OTP...");
+      await confirmation.confirm(otp);
 
       const user = auth().currentUser;
+      console.log("User after OTP confirmation:", user);
       if (user) {
         setCustomerId(user.uid);
-        // Save user info (phone/ push token)
         await saveUserInfo();
-        
-        // After we confirm OTP => check T&C acceptance
+
         const userDoc = await firestore().collection("users").doc(user.uid).get();
+        console.log("User document fetched:", userDoc.exists, userDoc.data());
         if (!userDoc.exists) {
-          // If doc doesn't exist, create. 
-          // But typically at this point it does, due to 'saveUserInfo()' 
           await firestore().collection("users").doc(user.uid).set({
             phoneNumber: formatPhoneNumber(phoneNumber),
             expoPushToken: expoPushToken,
             hasAcceptedTerms: false,
           });
-          // Navigate to Terms
+          console.log("User document created, navigating to TermsAndConditions");
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -161,7 +170,7 @@ const LoginScreen: React.FC = () => {
 
         const hasAccepted = userDoc.data()?.hasAcceptedTerms === true;
         if (hasAccepted) {
-          // T&C accepted => go straight to AppTabs (Categories)
+          console.log("User has accepted terms, navigating to AppTabs");
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -169,7 +178,7 @@ const LoginScreen: React.FC = () => {
             })
           );
         } else {
-          // T&C not accepted => go to TermsAndConditions
+          console.log("User has not accepted terms, navigating to TermsAndConditions");
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -179,7 +188,7 @@ const LoginScreen: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error("Invalid OTP or confirmation error:", error);
+      console.error("Invalid OTP or confirmation error:", error.message, error);
       showErrorModal("The OTP you entered is invalid. Please try again.");
     } finally {
       setIsConfirmingOtp(false);
@@ -188,23 +197,27 @@ const LoginScreen: React.FC = () => {
 
   // Save or update user info in Firestore (phone + expoPushToken)
   const saveUserInfo = async () => {
+    console.log("Saving user info...");
     try {
       const user = auth().currentUser;
       if (user) {
         const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-        // Check if phone already exists
+        console.log("Formatted phone number for saving:", formattedPhoneNumber);
+
         const userSnapshot = await firestore()
           .collection("users")
           .where("phoneNumber", "==", formattedPhoneNumber)
           .get();
 
+        console.log("User snapshot size:", userSnapshot.size);
         if (!userSnapshot.empty) {
           const existingUserDoc = userSnapshot.docs[0];
+          console.log("Updating existing user document:", existingUserDoc.id);
           await existingUserDoc.ref.update({
             expoPushToken: expoPushToken,
           });
         } else {
-          // New user
+          console.log("Creating new user document for:", user.uid);
           await firestore().collection("users").doc(user.uid).set({
             phoneNumber: formattedPhoneNumber,
             expoPushToken: expoPushToken,
@@ -213,83 +226,105 @@ const LoginScreen: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error("Error saving user info:", error);
+      console.error("Error saving user info:", error.message, error);
       showErrorModal("Could not save your information. Please try again.");
     }
   };
 
   return (
-    <ImageBackground
-      source={require("../assets/ninja-deliveries-bg.jpg")}
-      style={styles.background}
-      resizeMode="cover"
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={styles.container}>
-        <Text style={styles.title}>Login</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <ImageBackground
+          source={require("../assets/ninja-deliveries-bg.jpg")}
+          style={styles.background}
+          resizeMode="cover"
+        >
+          <View style={styles.container}>
+            <Text style={styles.title}>Login</Text>
 
-        {/* Phone Number Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Enter phone number"
-          keyboardType="phone-pad"
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          placeholderTextColor="#888"
-        />
-
-        {isSendingOtp ? (
-          <ActivityIndicator size="large" color="#00C853" style={styles.loader} />
-        ) : (
-          <Button
-            title="Send OTP"
-            onPress={sendOtp}
-            color="#00C853"
-            disabled={isSendingOtp}
-          />
-        )}
-
-        {confirmation && (
-          <>
             <TextInput
               style={styles.input}
-              placeholder="Enter OTP"
-              keyboardType="numeric"
-              value={otp}
-              onChangeText={setOtp}
+              placeholder="Enter phone number"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={(text) => {
+                console.log("Phone number input changed:", text);
+                setPhoneNumber(text);
+              }}
               placeholderTextColor="#888"
-              ref={otpInputRef}
             />
 
-            {isConfirmingOtp ? (
-              <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} />
+            {isSendingOtp ? (
+              <ActivityIndicator
+                size="large"
+                color="#00C853"
+                style={styles.loader}
+              />
             ) : (
               <Button
-                title="Confirm OTP"
-                onPress={confirmOtp}
-                color="#4A90E2"
-                disabled={isConfirmingOtp}
+                title="Send OTP"
+                onPress={sendOtp}
+                color="#00C853"
+                disabled={isSendingOtp}
               />
             )}
-          </>
-        )}
-      </View>
 
-      {/* ERROR MODAL */}
-      <ErrorModal
-        visible={errorModalVisible}
-        message={errorModalMessage}
-        onClose={closeErrorModal}
-      />
-    </ImageBackground>
+            {confirmation && (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter OTP"
+                  keyboardType="numeric"
+                  value={otp}
+                  onChangeText={(text) => {
+                    console.log("OTP input changed:", text);
+                    setOtp(text);
+                  }}
+                  placeholderTextColor="#888"
+                  ref={otpInputRef}
+                />
+
+                {isConfirmingOtp ? (
+                  <ActivityIndicator
+                    size="large"
+                    color="#4A90E2"
+                    style={styles.loader}
+                  />
+                ) : (
+                  <Button
+                    title="Confirm OTP"
+                    onPress={confirmOtp}
+                    color="#4A90E2"
+                    disabled={isConfirmingOtp}
+                  />
+                )}
+              </>
+            )}
+          </View>
+
+          <ErrorModal
+            visible={errorModalVisible}
+            message={errorModalMessage}
+            onClose={closeErrorModal}
+          />
+        </ImageBackground>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 export default LoginScreen;
 
-/********************************************
- *                 STYLES
- ********************************************/
 const styles = StyleSheet.create({
+  scrollContainer: {
+    flexGrow: 1,
+  },
   background: {
     flex: 1,
     justifyContent: "center",
@@ -301,6 +336,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.85)",
     borderRadius: 10,
     alignItems: "center",
+    marginVertical: 20,
   },
   title: {
     fontSize: 26,

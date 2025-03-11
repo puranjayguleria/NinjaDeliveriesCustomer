@@ -1,4 +1,5 @@
 // OrderAllocatingScreen.tsx
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -154,7 +155,7 @@ const OrderAllocatingScreen: React.FC = () => {
         });
       }
 
-      // If the order was cancelled remotely (not by auto-timeout or user, but e.g. admin):
+      // If the order was cancelled remotely (e.g. by Lambda or admin):
       if (data.status === 'cancelled' && !orderAccepted) {
         navigation.navigate('OrderCancelled', {
           orderId,
@@ -174,38 +175,6 @@ const OrderAllocatingScreen: React.FC = () => {
         const ridersList = snapshot.docs.map((doc) => doc.data());
         setNearbyRiders(ridersList);
 
-        // Animate rider markers (pulse effect)
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(markerAnimation, {
-              toValue: 1.2,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-            Animated.timing(markerAnimation, {
-              toValue: 1,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-
-        // Animate map opacity
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(mapOpacity, {
-              toValue: 0.7,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-            Animated.timing(mapOpacity, {
-              toValue: 1,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-
         setIsLoading(false);
       } catch (err) {
         console.error('Error fetching riders:', err);
@@ -215,36 +184,12 @@ const OrderAllocatingScreen: React.FC = () => {
     };
     fetchNearbyRiders();
 
-    // Auto-cancel after 5 minutes (300,000 ms) if not accepted
-    const timeoutId = setTimeout(async () => {
-      if (!orderAccepted) {
-        try {
-          await orderRef.update({ status: 'cancelled' });
-          Alert.alert(
-            'No Rider Available',
-            'No rider accepted your order at this time. Please try again later.',
-            [
-              {
-                text: 'OK',
-                onPress: () =>
-                  navigation.navigate('OrderCancelled', {
-                    orderId,
-                    refundAmount: totalCost,
-                  }),
-              },
-            ]
-          );
-        } catch (error) {
-          console.error('Error updating order status:', error);
-          Alert.alert("Error", "Failed to update order status.");
-        }
-      }
-    }, 300000);
+    // ----- REMOVED AUTO-CANCEL LOGIC -----
+    // (We rely on the Lambda or other backend services to cancel the order if needed.)
 
     return () => {
       clearInterval(quoteInterval);
       unsubscribeOrder();
-      clearTimeout(timeoutId);
     };
   }, [
     orderId,
@@ -259,7 +204,7 @@ const OrderAllocatingScreen: React.FC = () => {
   ]);
 
   // --------------------------------------------------
-  // CANCEL ORDER LOGIC
+  // CANCEL ORDER LOGIC (if user manually cancels)
   // --------------------------------------------------
   const cancelOrder = async () => {
     try {
@@ -284,7 +229,7 @@ const OrderAllocatingScreen: React.FC = () => {
 
       Alert.alert(
         'Order Cancelled',
-        `Your order has been cancelled. A refund of ₹${refundAmount} will be processed.`,
+        `Your order has been cancelled.`,
         [
           {
             text: 'OK',
@@ -307,7 +252,7 @@ const OrderAllocatingScreen: React.FC = () => {
   };
 
   const handleClose = () => {
-    // Example: go back to CartFlow
+    // Example: go back to CartFlow or wherever you want
     navigation.dispatch(
       navigation.navigate({
         name: 'CartFlow',
@@ -368,7 +313,7 @@ const OrderAllocatingScreen: React.FC = () => {
               >
                 {/* Pickup Marker */}
                 <Marker coordinate={pickupCoords} title="Pickup Location">
-                  <Animated.Image
+                  <Image
                     source={pickupMarker}
                     style={{
                       width: 40,
@@ -380,7 +325,7 @@ const OrderAllocatingScreen: React.FC = () => {
 
                 {/* Dropoff Marker */}
                 <Marker coordinate={dropoffCoords} title="Dropoff Location">
-                  <Animated.Image
+                  <Image
                     source={dropoffMarker}
                     style={{
                       width: 40,
@@ -400,7 +345,7 @@ const OrderAllocatingScreen: React.FC = () => {
                     }}
                     description="Available Rider"
                   >
-                    <Animated.Image
+                    <Image
                       source={riderIcon}
                       style={{
                         width: 30,
@@ -461,12 +406,12 @@ const OrderAllocatingScreen: React.FC = () => {
                   <View style={styles.billRow}>
                     <Text style={styles.billLabel}>Subtotal</Text>
                     <Text style={styles.billValue}>
-                      ₹{orderData.subtotal?.toFixed(2) || "0.00"}
+                      ₹{orderData.subtotal?.toFixed(2) || '0.00'}
                     </Text>
                   </View>
 
                   {/* Delivery Charge */}
-                  {typeof orderData.deliveryCharge !== "undefined" && (
+                  {typeof orderData.deliveryCharge !== 'undefined' && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Delivery Charge</Text>
                       <Text style={styles.billValue}>
@@ -476,7 +421,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* CGST */}
-                  {typeof orderData.cgst !== "undefined" && (
+                  {typeof orderData.cgst !== 'undefined' && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>CGST</Text>
                       <Text style={styles.billValue}>
@@ -486,7 +431,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* SGST */}
-                  {typeof orderData.sgst !== "undefined" && (
+                  {typeof orderData.sgst !== 'undefined' && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>SGST</Text>
                       <Text style={styles.billValue}>
@@ -496,7 +441,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* Platform Fee */}
-                  {typeof orderData.platformFee !== "undefined" && (
+                  {typeof orderData.platformFee !== 'undefined' && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Platform Fee</Text>
                       <Text style={styles.billValue}>
@@ -506,7 +451,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* Discount */}
-                  {typeof orderData.discount !== "undefined" && (
+                  {typeof orderData.discount !== 'undefined' && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Discount</Text>
                       <Text style={styles.billValue}>
@@ -517,11 +462,11 @@ const OrderAllocatingScreen: React.FC = () => {
 
                   {/* Final Total */}
                   <View style={styles.billRow}>
-                    <Text style={[styles.billLabel, { fontWeight: "700" }]}>
+                    <Text style={[styles.billLabel, { fontWeight: '700' }]}>
                       Total
                     </Text>
-                    <Text style={[styles.billValue, { fontWeight: "700" }]}>
-                      ₹{orderData.finalTotal?.toFixed(2) || "0.00"}
+                    <Text style={[styles.billValue, { fontWeight: '700' }]}>
+                      ₹{orderData.finalTotal?.toFixed(2) || '0.00'}
                     </Text>
                   </View>
                 </View>

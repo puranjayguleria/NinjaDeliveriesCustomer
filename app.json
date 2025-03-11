@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ninja Deliveries",
     "slug": "CustomerApp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "platforms": [
       "android",
       "ios"
@@ -19,7 +19,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ninjadeliveries.customer",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "buildNumber": "5",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
+        "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts."
+      }
     },
     "android": {
       "package": "com.ninjadeliveries.customer",
@@ -35,14 +40,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
-      ],
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"
-        }
-      }
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -52,7 +51,8 @@
     "plugins": [
       "expo-router",
       "@react-native-firebase/app",
-      "expo-font"
+      "expo-font",
+      "./app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true
@@ -62,6 +62,12 @@
       "eas": {
         "projectId": "6b44378d-74c3-4698-bbfd-ab0b8b165bc7"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6b44378d-74c3-4698-bbfd-ab0b8b165bc7"
     }
   }
 }

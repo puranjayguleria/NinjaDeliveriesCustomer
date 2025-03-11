@@ -10,7 +10,6 @@ import {
   Alert,
   Linking,
   Modal as RNModal,
-  BackHandler,
 } from "react-native";
 import {
   NavigationContainer,
@@ -24,6 +23,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
+import Constants from "expo-constants";
 
 // Providers
 import { CustomerProvider } from "./context/CustomerContext";
@@ -43,9 +43,13 @@ import OrderTrackingScreen from "./screens/OrderTrackingScreen";
 import RatingScreen from "./screens/RatingScreen";
 import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
 import ContactUsScreen from "./screens/ContactUsScreen";
-import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen"; // <-- Import your T&C screen
+import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen"; // <-- Import T&C
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import FeaturedScreen from "./screens/FeaturedScreen";
 
+// ---------------------------------------------------
+// Create Navigators
+// ---------------------------------------------------
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -57,17 +61,12 @@ function AppTabs() {
   const totalItems = Object.values(cart).reduce((acc, qty) => acc + qty, 0);
   const { activeOrders } = useOrder();
 
-  // Only show blinking bar on these screens
-  const categoryScreens = ["Home"];
+  // Determine current focused route for the Home tab.
+  const routeName =
+    getFocusedRouteNameFromRoute({ routes: [{ name: "Home" }], index: 0 }) ||
+    "Home";
 
-  // Current route in the Tab
-  const routeName = getFocusedRouteNameFromRoute(
-    // useRoute() can be used within each navigator if needed.
-    // For simplicity, we assume "Home" if not defined.
-    { routes: [{ name: "Home" }], index: 0 }
-  ) || "Home";
-
-  // Filter orders
+  // Filter only "pending" / "active" orders.
   const inProgress = activeOrders.filter(
     (o) => o.status === "pending" || o.status === "active"
   );
@@ -75,15 +74,16 @@ function AppTabs() {
   return (
     <View style={{ flex: 1, position: "relative" }}>
       <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ color, size }) => {
-            let iconName = "home-outline";
-            if (route.name === "Home") iconName = "home-outline";
-            else if (route.name === "CartFlow") iconName = "cart-outline";
-            else if (route.name === "Profile") iconName = "person-outline";
-            else if (route.name === "ContactUsTab") iconName = "call-outline";
+        screenOptions={({ route }) => {
+          let iconName = "home-outline";
+          if (route.name === "Home") iconName = "home-outline";
+          else if (route.name === "Featured") iconName = "star-outline";
+          else if (route.name === "CartFlow") iconName = "cart-outline";
+          else if (route.name === "Profile") iconName = "person-outline";
+          else if (route.name === "ContactUsTab") iconName = "call-outline";
 
-            return (
+          return {
+            tabBarIcon: ({ color, size }) => (
               <View style={{ width: size, height: size }}>
                 <Ionicons name={iconName} size={size} color={color} />
                 {route.name === "CartFlow" && totalItems > 0 && (
@@ -92,14 +92,19 @@ function AppTabs() {
                   </View>
                 )}
               </View>
-            );
-          },
-          tabBarActiveTintColor: "blue",
-          tabBarInactiveTintColor: "gray",
-          headerShown: false,
-        })}
+            ),
+            tabBarActiveTintColor: "blue",
+            tabBarInactiveTintColor: "gray",
+            headerShown: false,
+          };
+        }}
       >
         <Tab.Screen name="Home" component={CategoriesStack} />
+        <Tab.Screen
+          name="Featured"
+          component={FeaturedStack}
+          options={{ title: "Featured" }}
+        />
         <Tab.Screen
           name="CartFlow"
           component={CartFlowStack}
@@ -115,9 +120,7 @@ function AppTabs() {
                       routes: [
                         {
                           name: "CartFlow",
-                          state: {
-                            routes: [{ name: "CartHome" }],
-                          },
+                          state: { routes: [{ name: "CartHome" }] },
                         },
                       ],
                     })
@@ -135,16 +138,16 @@ function AppTabs() {
         />
       </Tab.Navigator>
 
-      {/* Show blinking bar on "Home" only if there are in-progress orders */}
-      {categoryScreens.includes(routeName) && inProgress.length > 0 && (
-        <BlinkingInProgressBar orders={activeOrders} />
+      {/* Blinking bar for in-progress orders on the Home tab */}
+      {routeName === "Home" && inProgress.length > 0 && (
+        <BlinkingInProgressBar orders={inProgress} />
       )}
     </View>
   );
 }
 
 /* ------------------------------------------------------------------
-   2) CATEGORIES STACK
+   2) CATEGORIES STACK (Home Tab)
 ------------------------------------------------------------------ */
 function CategoriesStack() {
   return (
@@ -166,7 +169,29 @@ function CategoriesStack() {
 }
 
 /* ------------------------------------------------------------------
-   3) PROFILE STACK
+   3) FEATURED STACK (New Tab)
+------------------------------------------------------------------ */
+function FeaturedStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="Featured"
+        component={FeaturedScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ProductListing"
+        component={ProductListingScreen}
+        options={({ route }) => ({
+          title: route.params?.categoryName || "Products",
+        })}
+      />
+    </Stack.Navigator>
+  );
+}
+
+/* ------------------------------------------------------------------
+   4) PROFILE STACK
 ------------------------------------------------------------------ */
 function ProfileStack() {
   return (
@@ -181,7 +206,7 @@ function ProfileStack() {
 }
 
 /* ------------------------------------------------------------------
-   4) CART FLOW STACK
+   5) CART FLOW STACK
 ------------------------------------------------------------------ */
 function CartFlowStack() {
   return (
@@ -196,15 +221,16 @@ function CartFlowStack() {
 }
 
 /* ------------------------------------------------------------------
-   5) BLINKING BAR
+   6) BLINKING BAR with an "X" button
 ------------------------------------------------------------------ */
 const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
+  const navigation = useNavigation();
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [isVisible, setIsVisible] = useState(true);
+
   const inProgress = orders.filter(
     (o) => o.status === "pending" || o.status === "active"
   );
-  if (inProgress.length === 0) return null;
-  const navigation = useNavigation();
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -225,63 +251,68 @@ const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
     return () => animation.stop();
   }, [fadeAnim]);
 
+  if (inProgress.length === 0 || !isVisible) {
+    return null;
+  }
+
   return (
     <Animated.View style={[styles.inProgressBar, { opacity: fadeAnim }]}>
+      <View style={styles.messageContainer}>
+        <Text style={styles.messageText}>
+          You have {inProgress.length} order
+          {inProgress.length > 1 ? "s" : ""} in progress. Tap to view.
+        </Text>
+      </View>
       <TouchableOpacity
+        style={styles.profileNavButton}
         onPress={() => {
-          // Navigate to ProfileHome when pressed.
           navigation.navigate("Profile", { screen: "ProfileHome" });
         }}
-        style={styles.touchableArea}
       >
-        <View style={styles.messageContainer}>
-          <Text style={styles.messageText}>
-            You have {inProgress.length} order
-            {inProgress.length > 1 ? "s" : ""} in progress. Tap to view.
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#fff" />
+        <Ionicons name="person-circle-outline" size={20} color="#fff" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={() => setIsVisible(false)}
+      >
+        <Ionicons name="close" size={20} color="#fff" />
       </TouchableOpacity>
     </Animated.View>
   );
 };
 
 /* ------------------------------------------------------------------
-   6) ROOT APP COMPONENT
+   7) ROOT APP COMPONENT
 ------------------------------------------------------------------ */
 const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  // New state to track T&C acceptance:
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
-
   const navigationRef = useRef<any>(null);
   const routeNameRef = useRef<string | undefined>("");
-
-  // State to control our custom notification permission modal
   const [showNotificationModal, setShowNotificationModal] = useState(false);
 
-  // Function to register for push notifications.
+  // ---------------------------------------------------
+  // Register for Push Notifications
+  // ---------------------------------------------------
   const registerForPushNotificationsAsync = async () => {
     try {
-      const { status: existingStatus } =
-        await Notifications.getPermissionsAsync();
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
       if (finalStatus !== "granted") {
-        // Show our custom modal (the modal's enable button will call handleEnableNotifications)
         setShowNotificationModal(true);
         return null;
       }
 
       if (finalStatus === "granted") {
-        const { data } = await Notifications.getExpoPushTokenAsync({
-          projectId: (await import("expo-constants")).default.expoConfig?.extra?.eas?.projectId,
-        });
+        // Use static import of Constants & fallback:
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || "FALLBACK_ID";
+        const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
         console.log("Expo Push Token:", data);
-        // Optionally update the token in your backend/user record here.
         return data;
       }
+
       return null;
     } catch (error) {
       console.error("Error registering for push notifications:", error);
@@ -289,19 +320,15 @@ const App: React.FC = () => {
     }
   };
 
-  // When the user taps "Enable" in our modal.
   const handleEnableNotifications = async () => {
     setShowNotificationModal(false);
     try {
       const { status } = await Notifications.requestPermissionsAsync();
       if (status === "granted") {
-        const { data } = await Notifications.getExpoPushTokenAsync({
-          projectId: (await import("expo-constants")).default.expoConfig?.extra?.eas?.projectId,
-        });
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || "FALLBACK_ID";
+        const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
         console.log("Expo Push Token (after enable):", data);
-        // Optionally update the token in your backend/user record here.
       } else {
-        // If permission is still not granted, direct the user to Settings.
         Alert.alert(
           "Notifications Required",
           "To receive order updates and special offers, please enable notifications from your device settings.",
@@ -320,76 +347,73 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const fetchPushToken = async () => {
+    (async () => {
       await registerForPushNotificationsAsync();
-    };
-
-    fetchPushToken();
+    })();
   }, []);
 
-  // Listen for authentication state changes.
+  // ---------------------------------------------------
+  // Firebase Auth listener
+  // ---------------------------------------------------
   useEffect(() => {
-    console.log("[App] Mounting. Setting up auth listener...");
+    console.log("[App] Auth listener setup...");
     const unsubscribeAuth = auth().onAuthStateChanged(async (authUser) => {
       console.log("[App] Auth state changed. user:", authUser?.uid);
       setUser(authUser);
       if (authUser) {
-        // When a user is logged in, fetch their document to check the T&C flag.
         try {
           const userDoc = await firestore()
             .collection("users")
             .doc(authUser.uid)
             .get();
           if (userDoc.exists) {
-            const data = userDoc.data();
-            // Update our state with the accepted flag.
-            setTermsAccepted(data?.hasAcceptedTerms === true);
+            setTermsAccepted(userDoc.data()?.hasAcceptedTerms === true);
           } else {
-            // If the document does not exist, create it with hasAcceptedTerms false.
             await firestore().collection("users").doc(authUser.uid).set({
               phoneNumber: authUser.phoneNumber,
-              expoPushToken: null, // Handle expoPushToken appropriately
+              expoPushToken: null,
               hasAcceptedTerms: false,
             });
             setTermsAccepted(false);
           }
         } catch (err) {
-          console.error("[App] Error fetching user document:", err);
+          console.error("[App] Error fetching user doc:", err);
           setTermsAccepted(false);
         }
       }
       setLoading(false);
     });
     return () => {
-      console.log("[App] Unmounting. Cleanup auth listener...");
+      console.log("[App] Cleanup auth listener...");
       unsubscribeAuth();
     };
   }, []);
 
+  // ---------------------------------------------------
+  // Notifications: handle incoming/responses
+  // ---------------------------------------------------
   useEffect(() => {
-    console.log("[App] Setting up notification listeners...");
-    const handleNotificationResponse = (response: any) => {
-      console.log("[App] Notification response received:", response);
-      // (Notification response handling code omitted for brevity)
-    };
-
+    console.log("[App] Notification listeners setup...");
     const notificationListener = Notifications.addNotificationReceivedListener(
       (notification) => {
         console.log("[App] Notification Received:", notification);
       }
     );
     const responseListener =
-      Notifications.addNotificationResponseReceivedListener(
-        handleNotificationResponse
-      );
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("[App] Notification response:", response);
+      });
 
     return () => {
-      console.log("[App] Cleanup notification listeners...");
+      console.log("[App] Removing notification listeners...");
       Notifications.removeNotificationSubscription(notificationListener);
       Notifications.removeNotificationSubscription(responseListener);
     };
   }, []);
 
+  // ---------------------------------------------------
+  // Track route name changes (optional)
+  // ---------------------------------------------------
   function getActiveRouteName(state: any): string {
     if (!state || !state.routes) return "";
     const route = state.routes[state.index];
@@ -398,6 +422,7 @@ const App: React.FC = () => {
     }
     return route.name;
   }
+
   const handleStateChange = (state: any) => {
     const previousRouteName = routeNameRef.current;
     const currentRouteName = getActiveRouteName(state);
@@ -409,6 +434,9 @@ const App: React.FC = () => {
     routeNameRef.current = currentRouteName;
   };
 
+  // ---------------------------------------------------
+  // Loading indicator if not done checking user
+  // ---------------------------------------------------
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -417,153 +445,136 @@ const App: React.FC = () => {
     );
   }
 
+  // ---------------------------------------------------
+  // Main App
+  // ---------------------------------------------------
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <CustomerProvider>
-      <CartProvider>
-        <LocationProvider>
-          <OrderProvider>
-            <NavigationContainer
-              ref={navigationRef}
-              onStateChange={handleStateChange}
-            >
-              {/* ----------------------------------------
-                  1) Decide the initial route:
-                     - If not logged in -> "Login"
-                     - If logged in + T&C NOT accepted -> "TermsAndConditions"
-                     - Else -> "AppTabs"
-                 ---------------------------------------- */}
-              <Stack.Navigator
-                initialRouteName={
-                  !user
-                    ? "Login"
-                    : termsAccepted === false
-                    ? "TermsAndConditions"
-                    : "AppTabs"
-                }
-                screenOptions={{ headerShown: false }}
+      <CustomerProvider>
+        <CartProvider>
+          <LocationProvider>
+            <OrderProvider>
+              <NavigationContainer
+                ref={navigationRef}
+                onStateChange={handleStateChange}
               >
-                {/* ----------------------------------------
-                    2) Declare ALL routes in one stack
-                ---------------------------------------- */}
-                <Stack.Screen
-                  name="Login"
-                  component={LoginScreen}
-                  options={{ headerShown: false }}
-                />
-  
-                <Stack.Screen
-                  name="TermsAndConditions"
-                  component={TermsAndConditionsScreen}
-                  options={{ headerShown: false }}
-                />
-  
-                <Stack.Screen
-                  name="AppTabs"
-                  component={AppTabs}
-                  options={{ headerShown: false }}
-                />
-  
-                <Stack.Screen
-                  name="OrderAllocating"
-                  component={OrderAllocatingScreen}
-                  options={{ headerShown: false }}
-                />
-  
-                <Stack.Screen
-                  name="OrderTracking"
-                  component={OrderTrackingScreen}
-                  options={{
-                    headerShown: true,
-                    headerLeft: () => null,
-                    gestureEnabled: false,
-                    title: "Order Tracking",
-                  }}
-                />
-  
-                <Stack.Screen
-                  name="OrderCancelled"
-                  component={NewOrderCancelledScreen}
-                  options={{
-                    title: "Order Cancelled",
-                    headerLeft: () => null,
-                    gestureEnabled: false,
-                  }}
-                />
-  
-                <Stack.Screen
-                  name="LocationSelector"
-                  component={LocationSelectorScreen}
-                  options={{ title: "Select Location" }}
-                />
-  
-                <Stack.Screen
-                  name="RatingScreen"
-                  component={RatingScreen}
-                  options={{
-                    title: "Rate Your Rider",
-                    headerBackTitleVisible: false,
-                    headerLeft: () => null,
-                    gestureEnabled: false,
-                  }}
-                />
-  
-                <Stack.Screen
-                  name="ContactUs"
-                  component={ContactUsScreen}
-                  options={{
-                    title: "Contact Us",
-                    headerTintColor: "#1E824C",
-                    headerStyle: {
-                      backgroundColor: "#fff",
-                    },
-                  }}
-                />
-              </Stack.Navigator>
-            </NavigationContainer>
-          </OrderProvider>
-        </LocationProvider>
-      </CartProvider>
-    </CustomerProvider>
-  
-    {/* Custom Notification Permission Modal */}
-    <RNModal
-      visible={showNotificationModal}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setShowNotificationModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Enable Notifications</Text>
-          <Text style={styles.modalMessage}>
-            We use push notifications to keep you updated on your
-            orders and exclusive offers. Enabling notifications ensures
-            you never miss an important update.
-          </Text>
-          <View style={styles.modalButtonContainer}>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={handleEnableNotifications}
-            >
-              <Text style={styles.modalButtonText}>Enable Notifications</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalCancelButton]}
-              onPress={() => setShowNotificationModal(false)}
-            >
-              <Text
-                style={[styles.modalButtonText, styles.modalCancelButtonText]}
+                <Stack.Navigator
+                  initialRouteName={
+                    !user
+                      ? "Login"
+                      : termsAccepted === false
+                      ? "TermsAndConditions"
+                      : "AppTabs"
+                  }
+                  screenOptions={{ headerShown: false }}
+                >
+                  <Stack.Screen
+                    name="Login"
+                    component={LoginScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="TermsAndConditions"
+                    component={TermsAndConditionsScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="AppTabs"
+                    component={AppTabs}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="OrderAllocating"
+                    component={OrderAllocatingScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="OrderTracking"
+                    component={OrderTrackingScreen}
+                    options={{
+                      headerShown: true,
+                      headerLeft: () => null,
+                      gestureEnabled: false,
+                      title: "Order Tracking",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="OrderCancelled"
+                    component={NewOrderCancelledScreen}
+                    options={{
+                      title: "Order Cancelled",
+                      headerLeft: () => null,
+                      gestureEnabled: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="LocationSelector"
+                    component={LocationSelectorScreen}
+                    options={{ title: "Select Location" }}
+                  />
+                  <Stack.Screen
+                    name="RatingScreen"
+                    component={RatingScreen}
+                    options={{
+                      title: "Rate Your Rider",
+                      headerBackTitleVisible: false,
+                      headerLeft: () => null,
+                      gestureEnabled: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="ContactUs"
+                    component={ContactUsScreen}
+                    options={{
+                      title: "Contact Us",
+                      headerTintColor: "#1E824C",
+                      headerStyle: {
+                        backgroundColor: "#fff",
+                      },
+                    }}
+                  />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </OrderProvider>
+          </LocationProvider>
+        </CartProvider>
+      </CustomerProvider>
+
+      {/* Custom Notification Permission Modal */}
+      <RNModal
+        visible={showNotificationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotificationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Enable Notifications</Text>
+            <Text style={styles.modalMessage}>
+              We use push notifications to keep you updated on your orders and
+              exclusive offers. Enabling notifications ensures you never miss an
+              important update.
+            </Text>
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={handleEnableNotifications}
               >
-                Later
-              </Text>
-            </TouchableOpacity>
+                <Text style={styles.modalButtonText}>Enable Notifications</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => setShowNotificationModal(false)}
+              >
+                <Text style={[styles.modalButtonText, styles.modalCancelButtonText]}>
+                  Later
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </RNModal>
-  </GestureHandlerRootView>
-  
+      </RNModal>
+    </GestureHandlerRootView>
   );
 };
 
@@ -573,24 +584,23 @@ export default App;
  *                STYLES
  ****************************************/
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   inProgressBar: {
     position: "absolute",
-    height: 30,
     bottom: 50,
     left: 10,
     right: 10,
+    height: 20,
     backgroundColor: "#E55252",
-    paddingHorizontal: 15,
     borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     zIndex: 1000,
-  },
-  touchableArea: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    paddingHorizontal: 10,
   },
   messageContainer: {
     flex: 1,
@@ -601,11 +611,10 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+  profileNavButton: {
+    marginRight: 8,
   },
+  closeButton: {},
   badgeContainer: {
     position: "absolute",
     top: -3,
@@ -618,11 +627,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: {
-    color: "#ffffff",
+    color: "#fff",
     fontSize: 10,
     fontWeight: "600",
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -633,12 +641,12 @@ const styles = StyleSheet.create({
     width: "85%",
     backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 20,
+    padding: 10,
     alignItems: "center",
     elevation: 5,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 10,
     fontWeight: "700",
     marginBottom: 10,
     color: "#333",

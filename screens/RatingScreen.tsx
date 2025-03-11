@@ -16,8 +16,6 @@ import {
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-
-// We use Expo Print + Sharing
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
@@ -26,46 +24,77 @@ type RatingScreenRouteProp = RouteProp<{ RatingScreen: { orderId: string } }, "R
 interface OrderItem {
   productId: string;
   quantity: number;
-  price?: string;
-  discount?: string;
+  price?: number;
+  discount?: number;
   name?: string;
-  weight?: string; // e.g. "1 KG" or "500 GM"
+  weight?: string;
+  CGST?: number; // product-level CGST
+  SGST?: number; // product-level SGST
+  cess?: number; // product-level CESS
 }
 
-// COLOR CONSTANTS
-const BRAND_GREEN = "#00C853";
-const PRIMARY_TEXT = "#333";
-const SECONDARY_TEXT = "#666";
-const STAR_COLOR = "#FFD700"; // gold for stars
-const BACKGROUND_COLOR = "#F2F2F2";
-const CARD_BACKGROUND = "#FFF";
+interface CompanyInfo {
+  name: string;
+  FSSAI: string;
+  GSTIN: string;
+  businessAddress: string;
+}
 
-const RatingScreen: React.FC = () => {
+export default function RatingScreen() {
   const navigation = useNavigation();
   const route = useRoute<RatingScreenRouteProp>();
   const { orderId } = route.params;
 
+  // Loading states
   const [loading, setLoading] = useState(true);
+
+  // Fetched order doc
   const [orderDetails, setOrderDetails] = useState<any>(null);
+
+  // Rider
   const [riderName, setRiderName] = useState("Unknown Rider");
+
+  // Product items from order
   const [productItems, setProductItems] = useState<(OrderItem & { image?: string })[]>([]);
 
-  // RATING states
-  const [showRating, setShowRating] = useState<boolean>(true);
-  const [riderRating, setRiderRating] = useState<number>(0);
-  const [orderRating, setOrderRating] = useState<number>(0);
-  const [feedback, setFeedback] = useState<string>("");
+  // Company info from the "company" collection
+  const [companyData, setCompanyData] = useState<CompanyInfo | null>(null);
 
+  // Recalculated totals
+  const [productSubtotal, setProductSubtotal] = useState(0);
+  const [productCGST, setProductCGST] = useState(0);
+  const [productSGST, setProductSGST] = useState(0);
+  const [productCess, setProductCess] = useState(0);
+
+  const [discount, setDiscount] = useState(0);
+  const [distance, setDistance] = useState(0);
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
+  const [rideCGST, setRideCGST] = useState(0);    
+  const [rideSGST, setRideSGST] = useState(0);    
+  const [platformFee, setPlatformFee] = useState(0);
+  const [finalTotal, setFinalTotal] = useState(0);
+
+  // Rating states
+  const [showRating, setShowRating] = useState(true);
+  const [riderRating, setRiderRating] = useState(0);
+  const [orderRating, setOrderRating] = useState(0);
+  const [feedback, setFeedback] = useState("");
+
+  // ---------------------------------
+  // Fetch order, rider, company data
+  // ---------------------------------
   useEffect(() => {
     let isMounted = true;
-    const fetchOrderAndRider = async () => {
+
+    async function fetchOrderAndRider() {
       try {
         if (!orderId) {
           Alert.alert("Error", "No order ID was provided.");
           navigation.goBack();
           return;
         }
-        // 1) Fetch order
+
+        // 1) Fetch order doc
         const orderDoc = await firestore().collection("orders").doc(orderId).get();
         if (!orderDoc.exists) {
           Alert.alert("Error", "Order not found.");
@@ -75,60 +104,132 @@ const RatingScreen: React.FC = () => {
         const orderData = orderDoc.data();
         if (!orderData) throw new Error("Order data is empty.");
 
-        // If rating already submitted, hide rating UI
+        // If rating was already submitted, hide rating UI
         if (orderData.ratingSubmitted === true) {
           setShowRating(false);
         }
 
-        // Check rider
-        const riderId = orderData?.acceptedBy;
+        // 2) Check for assigned rider
+        const riderId = orderData.acceptedBy;
         let tempRiderName = "No rider assigned";
         if (riderId) {
-          const riderDoc = await firestore().collection("riderDetails").doc(riderId).get();
-          if (riderDoc.exists) {
-            const rd = riderDoc.data();
+          const riderSnap = await firestore().collection("riderDetails").doc(riderId).get();
+          if (riderSnap.exists) {
+            const rd = riderSnap.data();
             tempRiderName = rd?.name || "Unknown Rider";
           }
         }
 
-        // Items => fetch product images
-        const items: OrderItem[] = orderData.items || [];
-        const updatedItems: (OrderItem & { image?: string })[] = [];
-        for (const item of items) {
-          let productImage = "";
+        // 3) Build product items (fetch images if needed)
+        const rawItems: OrderItem[] = orderData.items || [];
+        const resolvedItems: (OrderItem & { image?: string })[] = [];
+        for (const it of rawItems) {
+          let imgUri = "";
           try {
-            const productDoc = await firestore()
-              .collection("products")
-              .doc(item.productId)
-              .get();
-            if (productDoc.exists) {
-              const pData = productDoc.data() || {};
-              productImage = pData.image || "";
+            const pSnap = await firestore().collection("products").doc(it.productId).get();
+            if (pSnap.exists) {
+              const pData = pSnap.data() || {};
+              imgUri = pData.image || "";
             }
-          } catch (err) {
-            console.warn("Could not fetch product doc:", item.productId, err);
-          }
-          updatedItems.push({ ...item, image: productImage });
+          } catch {}
+          resolvedItems.push({ ...it, image: imgUri });
         }
 
         if (isMounted) {
           setOrderDetails(orderData);
           setRiderName(tempRiderName);
-          setProductItems(updatedItems);
+          setProductItems(resolvedItems);
         }
       } catch (err) {
         console.error("RatingScreen fetch error:", err);
-        Alert.alert("Error", "Failed to load order.");
+        Alert.alert("Error", "Failed to load order details.");
       } finally {
         if (isMounted) setLoading(false);
       }
-    };
+    }
+
+    async function fetchCompanyDoc() {
+      try {
+        const snap = await firestore().collection("company").limit(1).get();
+        if (!snap.empty) {
+          const doc = snap.docs[0];
+          const cData = doc.data() as CompanyInfo;
+          setCompanyData(cData);
+        }
+      } catch (err) {
+        console.warn("Error fetching company doc:", err);
+      }
+    }
 
     fetchOrderAndRider();
+    fetchCompanyDoc();
+
     return () => {
       isMounted = false;
     };
   }, [orderId, navigation]);
+
+  // ---------------------------------
+  // Recompute totals once we have doc & items
+  // ---------------------------------
+  useEffect(() => {
+    if (!orderDetails || productItems.length === 0) return;
+    recalcTotals();
+  }, [orderDetails, productItems]);
+
+  function recalcTotals() {
+    // 1) Sum product-level values
+    let sub = 0;
+    let pCgst = 0;
+    let pSgst = 0;
+    let pCess = 0;
+
+    productItems.forEach((item) => {
+      const realPrice = (item.price ?? 0) - (item.discount ?? 0);
+      sub += realPrice * item.quantity;
+      pCgst += (item.CGST ?? 0) * item.quantity;
+      pSgst += (item.SGST ?? 0) * item.quantity;
+      pCess += (item.cess ?? 0) * item.quantity;
+    });
+
+    // 2) Document-level fields (do not round off)
+    const docDiscount = orderDetails.discount ?? 0;
+    const docDistance = orderDetails.distance ?? 0;
+    const docDelivery = orderDetails.deliveryCharge ?? 0;
+    const docRideCgst = orderDetails.rideCgst ?? 0;
+    const docRideSgst = orderDetails.rideSgst ?? 0;
+    const docPlatformFee = orderDetails.platformFee ?? 0;
+
+    // 3) Calculate item total and final total
+    let itemTotal = sub - docDiscount;
+    if (itemTotal < 0) itemTotal = 0; // prevent negative
+
+    let final =
+      itemTotal +
+      pCgst +
+      pSgst +
+      pCess +
+      docDelivery +
+      docRideCgst +
+      docRideSgst +
+      docPlatformFee;
+
+    // Update state with exact (decimal) values
+    setProductSubtotal(sub);
+    setProductCGST(pCgst);
+    setProductSGST(pSgst);
+    setProductCess(pCess);
+
+    setDiscount(docDiscount);
+    setDistance(docDistance);
+    setDeliveryCharge(docDelivery);
+
+    setRideCGST(docRideCgst);
+    setRideSGST(docRideSgst);
+    setPlatformFee(docPlatformFee);
+
+    setFinalTotal(final);
+  }
 
   if (loading) {
     return (
@@ -138,7 +239,6 @@ const RatingScreen: React.FC = () => {
       </View>
     );
   }
-
   if (!orderDetails) {
     return (
       <View style={styles.loadingContainer}>
@@ -147,50 +247,163 @@ const RatingScreen: React.FC = () => {
     );
   }
 
-  // COSTS
-  const deliveryCharge = orderDetails.deliveryCharge ?? 0;
-  const discount = orderDetails.discount ?? 0;
-  const cgst = orderDetails.cgst ?? 0;
-  const sgst = orderDetails.sgst ?? 0;
-  const platformFee = orderDetails.platformFee ?? 0;
-  const finalTotal = orderDetails.finalTotal ?? 0;
-
   let status = orderDetails.status ?? "N/A";
-  if (status === "tripEnded") {
-    status = "Delivery Completed";
-  }
+  if (status === "tripEnded") status = "Delivery Completed";
 
   const { createdAt } = orderDetails;
   const dateString = createdAt
     ? new Date(createdAt.seconds * 1000).toLocaleString()
     : "N/A";
 
-  // We'll generate some HTML for printing
-  const generatePDFContent = (): string => {
-    // Construct items table
-    let itemsTableRows = "";
-    productItems.forEach((item) => {
-      itemsTableRows += `
+  function generatePDFContent(): string {
+    // 1) Create a "Products Table" with more columns
+    let productTableRows = `
+      <tr>
+        <th style="width:25%">Item</th>
+        <th style="width:10%">Qty</th>
+        <th style="width:15%">Unit Price</th>
+        <th style="width:15%">Discount</th>
+        <th style="width:15%">Line Total</th>
+      </tr>
+    `;
+
+    productItems.forEach((it) => {
+      const unitPrice = (it.price ?? 0).toFixed(2);
+      const discountAmt = (it.discount ?? 0).toFixed(2);
+      const realPrice = (it.price ?? 0) - (it.discount ?? 0);
+      const lineTotal = realPrice * it.quantity;
+      productTableRows += `
         <tr>
-          <td>${item.name || item.productId}</td>
-          <td>${item.quantity}${item.weight ? " (" + item.weight + ")" : ""}</td>
+          <td>${it.name || it.productId}${it.weight ? " (" + it.weight + ")" : ""}</td>
+          <td>${it.quantity}</td>
+          <td>₹${unitPrice}</td>
+          <td>₹${discountAmt}</td>
+          <td>₹${lineTotal.toFixed(2)}</td>
         </tr>
       `;
     });
 
-    const discountRow = discount > 0 ? `<p>Discount: -₹${discount}</p>` : "";
-    const cgstRow = cgst > 0 ? `<p>CGST: ₹${cgst.toFixed(2)}</p>` : "";
-    const sgstRow = sgst > 0 ? `<p>SGST: ₹${sgst.toFixed(2)}</p>` : "";
+    // 2) "Cost Summary" table
+    let costSummaryRows = `
+      <tr>
+        <th style="text-align:left; width:50%">Description</th>
+        <th style="text-align:right; width:50%">Amount</th>
+      </tr>
+    `;
+    costSummaryRows += `
+      <tr>
+        <td>Product Subtotal</td>
+        <td style="text-align:right;">₹${productSubtotal.toFixed(2)}</td>
+      </tr>
+    `;
+    if (productCGST > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Product CGST</td>
+          <td style="text-align:right;">₹${productCGST.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (productSGST > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Product SGST</td>
+          <td style="text-align:right;">₹${productSGST.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (productCess > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Product CESS</td>
+          <td style="text-align:right;">₹${productCess.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (discount > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Discount</td>
+          <td style="text-align:right;">-₹${discount.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (distance > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Distance (km)</td>
+          <td style="text-align:right;">${distance.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (deliveryCharge > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Delivery Charge</td>
+          <td style="text-align:right;">₹${deliveryCharge.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (rideCGST > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Ride CGST</td>
+          <td style="text-align:right;">₹${rideCGST.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (rideSGST > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Ride SGST</td>
+          <td style="text-align:right;">₹${rideSGST.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    if (platformFee > 0) {
+      costSummaryRows += `
+        <tr>
+          <td>Platform Fee</td>
+          <td style="text-align:right;">₹${platformFee.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    costSummaryRows += `
+      <tr style="border-top:2px solid #555;">
+        <td style="font-weight:bold;">Grand Total</td>
+        <td style="text-align:right; font-weight:bold;">₹${finalTotal.toFixed(2)}</td>
+      </tr>
+    `;
 
+    // 3) Company info
+    let companyHTML = "";
+    if (companyData) {
+      const { name, FSSAI, GSTIN, businessAddress } = companyData;
+      companyHTML = `
+        <div style="margin-bottom:15px;">
+          <h2 style="color:#00C853; margin-bottom:5px;">${name}</h2>
+          <p><strong>FSSAI:</strong> ${FSSAI}</p>
+          <p><strong>GSTIN:</strong> ${GSTIN}</p>
+          <p><strong>Address:</strong> ${businessAddress}</p>
+        </div>
+      `;
+    }
+
+    // 4) Putting it all together
     return `
       <html>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
-          body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 20px; }
-          h2 { color: #00C853; margin-bottom: 10px; }
-          .header, .summary {
-            margin-bottom: 20px;
+          body {
+            font-family: Arial, sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+          }
+          h2 {
+            color: #00C853;
+            margin-bottom: 10px;
           }
           table {
             width: 100%;
@@ -201,68 +414,69 @@ const RatingScreen: React.FC = () => {
             border: 1px solid #ccc;
             padding: 6px;
             text-align: left;
-            white-space: nowrap;
           }
-          .summary p {
-            margin: 4px 0;
+          .header {
+            margin-bottom: 15px;
+          }
+          .billSection {
+            margin-bottom: 20px;
+          }
+          .summaryContainer {
+            margin-top: 10px;
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h2>Ninja Delivery Bill</h2>
-          <p><strong>Date:</strong> ${dateString}</p>
-          <p><strong>Rider:</strong> ${riderName}</p>
-          <p><strong>Status:</strong> ${status}</p>
-        </div>
 
+      ${companyHTML}
+
+      <div class="header">
+        <h2>Ninja Delivery Bill</h2>
+        <p><strong>Date:</strong> ${dateString}</p>
+        <p><strong>Rider:</strong> ${riderName}</p>
+        <p><strong>Status:</strong> ${status}</p>
+      </div>
+
+      <div class="billSection">
         <h3>Products</h3>
         <table>
-          <tr>
-            <th>Item</th>
-            <th>Qty</th>
-          </tr>
-          ${itemsTableRows}
+          ${productTableRows}
         </table>
+      </div>
 
-        <div class="summary">
-          <p><strong>Total:</strong> ₹${finalTotal.toFixed(2)}</p>
-          <p>Delivery: ₹${deliveryCharge.toFixed(2)}</p>
-          <p>Platform Fee: ₹${platformFee.toFixed(2)}</p>
-          ${discountRow}
-          ${cgstRow}
-          ${sgstRow}
-        </div>
+      <div class="billSection summaryContainer">
+        <h3>Cost Summary</h3>
+        <table>
+          ${costSummaryRows}
+        </table>
+      </div>
+
       </body>
       </html>
     `;
-  };
+  }
 
-  // We use expo-print + expo-sharing
-  const handleDownloadBill = async () => {
+  async function handleDownloadBill() {
     try {
       const htmlContent = generatePDFContent();
       if (!htmlContent) {
         Alert.alert("Error", "Unable to generate PDF content.");
         return;
       }
-      // Generate PDF
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      // Now share that PDF
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri);
       } else {
-        Alert.alert("Sharing not available", `PDF generated at: ${uri}`);
+        Alert.alert("Sharing not available", `PDF created at: ${uri}`);
       }
     } catch (err) {
-      console.error("Print or sharing error:", err);
+      console.error("Print/Share error:", err);
       Alert.alert("Error", "Failed to create or share PDF.");
     }
-  };
+  }
 
-  // Rating submission
-  const handleSubmitRating = async () => {
+  async function handleSubmitRating() {
     try {
       await firestore().collection("orders").doc(orderId).update({
         ratingSubmitted: true,
@@ -272,14 +486,13 @@ const RatingScreen: React.FC = () => {
       });
       setShowRating(false);
       Alert.alert("Thank You", "Your rating and feedback have been submitted.");
-    } catch (error) {
-      console.error("Error submitting rating:", error);
+    } catch (err) {
+      console.error("Error submitting rating:", err);
       Alert.alert("Error", "Failed to submit rating.");
     }
-  };
+  }
 
-  // Render star row
-  const renderStars = (currentValue: number, setValue: (val: number) => void) => {
+  function renderStars(value: number, setValue: (v: number) => void) {
     const stars = [];
     for (let i = 1; i <= 5; i++) {
       stars.push(
@@ -289,38 +502,44 @@ const RatingScreen: React.FC = () => {
           style={styles.starTouch}
         >
           <Ionicons
-            name={i <= currentValue ? "star" : "star-outline"}
+            name={i <= value ? "star" : "star-outline"}
             size={28}
-            color={STAR_COLOR}
+            color="#FFD700"
           />
         </TouchableOpacity>
       );
     }
     return <View style={styles.starsRow}>{stars}</View>;
-  };
+  }
 
-  // Single product row
-  const renderProductItem = ({ item }: { item: OrderItem & { image?: string } }) => (
-    <View style={styles.productRow}>
-      {item.image ? (
-        <Image source={{ uri: item.image }} style={styles.productImage} />
-      ) : (
-        <Ionicons name="image-outline" size={40} color="#ccc" style={styles.productImage} />
-      )}
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>
-          {item.name || item.productId}
-          {item.weight ? ` (${item.weight})` : ""}
-        </Text>
-        <Text style={styles.productQty}>Qty: {item.quantity}</Text>
+  function renderProductItem({ item }: { item: OrderItem & { image?: string } }) {
+    return (
+      <View style={styles.productRow}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.productImage} />
+        ) : (
+          <Ionicons
+            name="image-outline"
+            size={40}
+            color="#ccc"
+            style={styles.productImage}
+          />
+        )}
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>
+            {item.name || item.productId}
+            {item.weight ? ` (${item.weight})` : ""}
+          </Text>
+          <Text style={styles.productQty}>Qty: {item.quantity}</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  }
 
+  // UI
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
         {/* BILL CARD */}
         <View style={styles.card}>
           <View style={styles.headerRow}>
@@ -351,53 +570,91 @@ const RatingScreen: React.FC = () => {
           ) : (
             <FlatList
               data={productItems}
-              keyExtractor={(item, idx) => `${item.productId}-${idx}`}
+              keyExtractor={(it, idx) => `${it.productId}-${idx}`}
               renderItem={renderProductItem}
               style={styles.productList}
               scrollEnabled={false}
             />
           )}
 
-          {/* COSTS */}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>₹{finalTotal.toFixed(2)}</Text>
+          {/* SUMMARY of taxes & total */}
+          <View style={styles.summaryRowTop}>
+            <Text style={styles.summaryLabel}>Product Subtotal</Text>
+            <Text style={styles.summaryValue}>₹{productSubtotal.toFixed(2)}</Text>
           </View>
-          <View style={styles.costRow}>
-            <Text style={styles.costLabel}>Delivery</Text>
-            <Text style={styles.costValue}>₹{deliveryCharge.toFixed(2)}</Text>
-          </View>
-          <View style={styles.costRow}>
-            <Text style={styles.costLabel}>Platform Fee</Text>
-            <Text style={styles.costValue}>₹{platformFee.toFixed(2)}</Text>
-          </View>
-          {!!discount && discount > 0 && (
-            <View style={styles.costRow}>
-              <Text style={styles.costLabel}>Discount</Text>
-              <Text style={styles.costValue}>-₹{discount}</Text>
+
+          {productCGST > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Product CGST</Text>
+              <Text style={styles.summaryValue}>₹{productCGST.toFixed(2)}</Text>
             </View>
           )}
-          {!!cgst && cgst > 0 && (
-            <View style={styles.costRow}>
-              <Text style={styles.costLabel}>CGST</Text>
-              <Text style={styles.costValue}>₹{cgst.toFixed(2)}</Text>
+          {productSGST > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Product SGST</Text>
+              <Text style={styles.summaryValue}>₹{productSGST.toFixed(2)}</Text>
             </View>
           )}
-          {!!sgst && sgst > 0 && (
-            <View style={styles.costRow}>
-              <Text style={styles.costLabel}>SGST</Text>
-              <Text style={styles.costValue}>₹{sgst.toFixed(2)}</Text>
+          {productCess > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Product CESS</Text>
+              <Text style={styles.summaryValue}>₹{productCess.toFixed(2)}</Text>
             </View>
           )}
 
-          {/* Download Bill => Using expo-print + expo-sharing */}
+          {discount > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Discount</Text>
+              <Text style={styles.discountValue}>-₹{discount.toFixed(2)}</Text>
+            </View>
+          )}
+
+          {distance > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Distance (km)</Text>
+              <Text style={styles.summaryValue}>{distance.toFixed(2)}</Text>
+            </View>
+          )}
+
+          {deliveryCharge !== 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Delivery Charge</Text>
+              <Text style={styles.summaryValue}>₹{deliveryCharge.toFixed(2)}</Text>
+            </View>
+          )}
+
+          {rideCGST > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Ride CGST</Text>
+              <Text style={styles.summaryValue}>₹{rideCGST.toFixed(2)}</Text>
+            </View>
+          )}
+          {rideSGST > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Ride SGST</Text>
+              <Text style={styles.summaryValue}>₹{rideSGST.toFixed(2)}</Text>
+            </View>
+          )}
+
+          {platformFee !== 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Platform Fee</Text>
+              <Text style={styles.summaryValue}>₹{platformFee.toFixed(2)}</Text>
+            </View>
+          )}
+
+          <View style={styles.summaryRowTotal}>
+            <Text style={styles.summaryLabelTotal}>Grand Total</Text>
+            <Text style={styles.summaryValueTotal}>₹{finalTotal.toFixed(2)}</Text>
+          </View>
+
           <TouchableOpacity style={styles.downloadButton} onPress={handleDownloadBill}>
             <Ionicons name="download-outline" size={18} color="#fff" style={{ marginRight: 4 }} />
             <Text style={styles.downloadButtonText}>Download Bill (PDF)</Text>
           </TouchableOpacity>
         </View>
 
-        {/* RATING UI (stars) */}
+        {/* RATING UI */}
         {showRating && (
           <View style={styles.ratingCard}>
             <Text style={styles.ratingHeader}>Rate Your Experience</Text>
@@ -421,30 +678,31 @@ const RatingScreen: React.FC = () => {
               onChangeText={setFeedback}
             />
 
-            {/* Submit */}
             <TouchableOpacity style={styles.submitRatingButton} onPress={handleSubmitRating}>
               <Text style={styles.submitRatingText}>Submit Rating</Text>
             </TouchableOpacity>
           </View>
         )}
-
       </ScrollView>
 
       {/* HELP BUTTON */}
-      <TouchableOpacity
-        style={styles.helpButton}
-        onPress={() => navigation.navigate("ContactUs")}
-      >
+      <TouchableOpacity style={styles.helpButton} onPress={() => navigation.navigate("ContactUs")}>
         <Ionicons name="help-circle" size={26} color="#FFFFFF" style={{ marginRight: 4 }} />
         <Text style={styles.helpBtnText}>Need Help?</Text>
       </TouchableOpacity>
     </View>
   );
-};
+}
 
-export default RatingScreen;
+// ---------------------------------
+// STYLES
+// ---------------------------------
+const BRAND_GREEN = "#00C853";
+const PRIMARY_TEXT = "#333";
+const SECONDARY_TEXT = "#666";
+const BACKGROUND_COLOR = "#F2F2F2";
+const CARD_BACKGROUND = "#FFF";
 
-// ============================= STYLES ============================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -455,7 +713,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: "center",
   },
-
   loadingContainer: {
     flex: 1,
     backgroundColor: BACKGROUND_COLOR,
@@ -468,7 +725,6 @@ const styles = StyleSheet.create({
     color: PRIMARY_TEXT,
   },
 
-  // Bill Card
   card: {
     width: "95%",
     maxWidth: 700,
@@ -551,8 +807,8 @@ const styles = StyleSheet.create({
     color: SECONDARY_TEXT,
   },
 
-  // Costs
-  totalRow: {
+  // Summary Rows
+  summaryRowTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 16,
@@ -560,28 +816,43 @@ const styles = StyleSheet.create({
     borderTopColor: "#DDD",
     paddingTop: 10,
   },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: PRIMARY_TEXT,
-  },
-  totalValue: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: BRAND_GREEN,
-  },
-  costRow: {
+  summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 6,
   },
-  costLabel: {
-    fontSize: 14,
-    color: SECONDARY_TEXT,
+  summaryRowTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#ccc",
+    paddingTop: 8,
   },
-  costValue: {
-    fontSize: 14,
-    color: PRIMARY_TEXT,
+  summaryLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333",
+  },
+  summaryValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333",
+  },
+  summaryLabelTotal: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#000",
+  },
+  summaryValueTotal: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#000",
+  },
+  discountValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#e74c3c",
   },
 
   downloadButton: {
@@ -600,7 +871,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Rating UI
   ratingCard: {
     width: "95%",
     maxWidth: 700,
@@ -655,7 +925,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Help
+  // Help button
   helpButton: {
     flexDirection: "row",
     position: "absolute",
@@ -674,3 +944,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+

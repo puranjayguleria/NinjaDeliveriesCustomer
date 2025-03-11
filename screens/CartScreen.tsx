@@ -22,11 +22,12 @@ import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
-
 import { GOOGLE_PLACES_API_KEY } from "@env";
+import ErrorModal from "../components/ErrorModal"; // <-- NEW Import for error modal
 
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
-
+/**
+ * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
+ */
 type Product = {
   id: string;
   name: string;
@@ -35,6 +36,9 @@ type Product = {
   discount?: number;
   image: string;
   quantity: number;
+  CGST?: number;
+  SGST?: number;
+  cess?: number;
 };
 
 type PromoCode = {
@@ -52,7 +56,7 @@ type FareData = {
   additionalCostPerKm: number;
   baseDeliveryCharge: number;
   distanceThreshold: number;
-  gstPercentage: number;
+  gstPercentage: number; // ride-level GST
   platformFee: number;
   fixedPickupLocation?: {
     address: string;
@@ -64,40 +68,44 @@ type FareData = {
   };
 };
 
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
 
-  // From CartContext
   const { cart, increaseQuantity, decreaseQuantity, removeFromCart, clearCart } = useCart();
 
-  // -------------------------------------------------
-  // STATES
-  // -------------------------------------------------
+  // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Promo
+  // ----- PROMO -----
   const [promos, setPromos] = useState<PromoCode[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
 
-  // Price breakdown
-  const [subtotal, setSubtotal] = useState<number>(0);
+  // ----- PRICE BREAKDOWN -----
+  const [subtotal, setSubtotal] = useState<number>(0);  // <-- Renamed from productSubtotal
+  const [productCgst, setProductCgst] = useState<number>(0);
+  const [productSgst, setProductSgst] = useState<number>(0);
+  const [productCess, setProductCess] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
-  const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
+
   const [distance, setDistance] = useState<number>(0);
-  const [cgst, setCgst] = useState<number>(0);
-  const [sgst, setSgst] = useState<number>(0);
+  const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
+  const [rideCgst, setRideCgst] = useState<number>(0);
+  const [rideSgst, setRideSgst] = useState<number>(0);
+
   const [platformFee, setPlatformFee] = useState<number>(0);
   const [finalTotal, setFinalTotal] = useState<number>(0);
 
-  // Additional charges data from Firestore
+  // Fare data from Firestore
   const [fareData, setFareData] = useState<FareData | null>(null);
 
   // Confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
 
-  // User Locations
+  // Location
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
@@ -108,19 +116,26 @@ const CartScreen: React.FC = () => {
   // Navigation
   const [navigating, setNavigating] = useState<boolean>(false);
 
-  // -------------------------------------------------
-  // ANIMATION
-  // -------------------------------------------------
+  // Animations
   const colorAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
+  // --- NEW: Delivery Timing Error Modal State ---
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState("");
+
+  /***************************************
+   * Animate Checkout Button
+   ***************************************/
   useEffect(() => {
+    // Button color animation
     Animated.timing(colorAnim, {
       toValue: selectedLocation ? 1 : 0,
       duration: 600,
       useNativeDriver: false,
     }).start();
 
+    // Shake animation if location is selected
     if (selectedLocation) {
       Animated.sequence([
         Animated.timing(shakeAnim, { toValue: 1, duration: 70, useNativeDriver: false }),
@@ -136,37 +151,35 @@ const CartScreen: React.FC = () => {
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["rgb(231,76,60)", "rgb(40,167,69)"],
+    outputRange: ["rgb(231,76,60)", "rgb(40,167,69)"], // Red -> Green
   });
-
   const shakeTranslate = shakeAnim.interpolate({
     inputRange: [-1, 1],
     outputRange: [-10, 10],
   });
 
-  // -------------------------------------------------
-  // FETCHING DATA
-  // -------------------------------------------------
+  /***************************************
+   * Fetch Data On Mount
+   ***************************************/
   useEffect(() => {
     fetchFareData();
     fetchCartItems();
     watchPromos();
-    const unsubscribeLocations = watchUserLocations();
+    const unsubscribe = watchUserLocations();
     return () => {
-      if (unsubscribeLocations) unsubscribeLocations();
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 
-  // Re-fetch items when cart changes
+  // Re-fetch items whenever cart changes
   useEffect(() => {
     fetchCartItems();
   }, [cart]);
 
-  // If user just selected a location
+  // If user selected location
   useEffect(() => {
     if (route.params?.selectedLocation) {
       setSelectedLocation(route.params.selectedLocation);
-      // Clear param so it doesn't re-run:
       navigation.setParams({ selectedLocation: null });
     }
   }, [route.params?.selectedLocation]);
@@ -177,24 +190,9 @@ const CartScreen: React.FC = () => {
     else resetTotals();
   }, [cartItems, selectedPromo, selectedLocation, fareData]);
 
-  // Delete a location
-  const handleDeleteLocation = async (locToDelete: any) => {
-    try {
-      const currentUser = auth().currentUser;
-      if (!currentUser) return;
-
-      await firestore()
-        .collection("users")
-        .doc(currentUser.uid)
-        .update({
-          locations: firestore.FieldValue.arrayRemove(locToDelete),
-        });
-    } catch (err) {
-      console.error("Error deleting location:", err);
-      Alert.alert("Error", "Failed to delete this location. Please try again.");
-    }
-  };
-
+  /***************************************
+   * Firestore Data
+   ***************************************/
   const fetchFareData = async () => {
     try {
       const docRef = await firestore().collection("orderSetting").doc("fare").get();
@@ -206,38 +204,6 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  const watchPromos = async () => {
-    const currentUser = auth().currentUser;
-    if (!currentUser) return;
-
-    const unsubscribe = firestore()
-      .collection("promoCodes")
-      .where("isActive", "==", true)
-      .onSnapshot(
-        (snapshot) => {
-          const rawPromos = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...(doc.data() as Omit<PromoCode, "id">),
-          }));
-
-          const filteredPromos = rawPromos.filter((promo) => {
-            if (!promo.usedBy) return true;
-            return !promo.usedBy.includes(currentUser.uid);
-          });
-
-          setPromos(filteredPromos);
-        },
-        (error) => {
-          console.error("Error listening to promos: ", error);
-        }
-      );
-
-    return () => unsubscribe();
-  };
-
-  // -------------------------------
-  //  Fetch items in cart
-  // -------------------------------
   const fetchCartItems = async () => {
     try {
       setLoading(true);
@@ -247,11 +213,11 @@ const CartScreen: React.FC = () => {
         return;
       }
 
-      const batches: Promise<firebase.firestore.QuerySnapshot>[] = [];
+      const batchPromises: Promise<firebase.firestore.QuerySnapshot>[] = [];
       const tempIds = [...productIds];
       while (tempIds.length > 0) {
         const batchIds = tempIds.splice(0, 10);
-        batches.push(
+        batchPromises.push(
           firestore()
             .collection("products")
             .where(firestore.FieldPath.documentId(), "in", batchIds)
@@ -259,7 +225,7 @@ const CartScreen: React.FC = () => {
         );
       }
 
-      const snapshots = await Promise.all(batches);
+      const snapshots = await Promise.all(batchPromises);
       const productsData: Product[] = [];
       snapshots.forEach((snap) => {
         snap.forEach((doc) => {
@@ -275,32 +241,50 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  // Real-time user locations
   const watchUserLocations = () => {
     const currentUser = auth().currentUser;
-    if (!currentUser) return;
+    if (!currentUser) return null;
 
     const userDocRef = firestore().collection("users").doc(currentUser.uid);
     return userDocRef.onSnapshot(
       (docSnap) => {
         if (docSnap.exists) {
           const userData = docSnap.data();
-          if (userData?.locations) {
-            setUserLocations(userData.locations);
-          } else {
-            setUserLocations([]);
-          }
+          setUserLocations(userData?.locations || []);
         }
       },
-      (error) => {
-        console.error("Error watching user locations:", error);
-      }
+      (err) => console.error("Error watching user locations:", err)
     );
   };
 
-  // -------------------------------
-  //  GOOGLE DISTANCE CALC
-  // -------------------------------
+  const watchPromos = async () => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+
+    const unsub = firestore()
+      .collection("promoCodes")
+      .where("isActive", "==", true)
+      .onSnapshot(
+        (snapshot) => {
+          const raw = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...(doc.data() as Omit<PromoCode, "id">),
+          }));
+          // filter out used codes
+          const filtered = raw.filter((promo) => {
+            if (!promo.usedBy) return true;
+            return !promo.usedBy.includes(currentUser.uid);
+          });
+          setPromos(filtered);
+        },
+        (err) => console.error("Error listening to promos:", err)
+      );
+    return () => unsub();
+  };
+
+  /***************************************
+   * Distance from Google
+   ***************************************/
   const fetchDistanceFromGoogle = async (
     pickupLat: string,
     pickupLng: string,
@@ -308,22 +292,20 @@ const CartScreen: React.FC = () => {
     dropoffLng: string
   ): Promise<number> => {
     try {
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?units=metric
-      &origins=${pickupLat},${pickupLng}
-      &destinations=${dropoffLat},${dropoffLng}
-      &key=${GOOGLE_PLACES_API_KEY}`.replace(/\s+/g, "");
-
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?units=metric&origins=${pickupLat},${pickupLng}&destinations=${dropoffLat},${dropoffLng}&key=${GOOGLE_PLACES_API_KEY.replace(
+        /\s+/g,
+        ""
+      )}`;
       const response = await fetch(url);
       const data = await response.json();
       if (
         data.status === "OK" &&
-        data.rows &&
-        data.rows.length > 0 &&
-        data.rows[0].elements &&
-        data.rows[0].elements.length > 0
+        data.rows?.length > 0 &&
+        data.rows[0].elements?.length > 0 &&
+        data.rows[0].elements[0].distance
       ) {
         const distMeters = data.rows[0].elements[0].distance.value;
-        return distMeters / 1000.0; // convert meters -> km
+        return distMeters / 1000.0;
       }
       return 0;
     } catch (err) {
@@ -332,20 +314,27 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  // -------------------------------
-  //  PRICE & SUMMARY
-  // -------------------------------
+  /***************************************
+   * Calculate Totals
+   ***************************************/
   const calculateTotals = async () => {
     if (!fareData) return;
 
-    // 1) Subtotal
     let _subtotal = 0;
+    let _productCgst = 0;
+    let _productSgst = 0;
+    let _productCess = 0;
+
     cartItems.forEach((item) => {
-      const realPrice = item.discount ? item.price - item.discount : item.price;
       const qty = cart[item.id] || 0;
+      const realPrice = item.discount ? item.price - item.discount : item.price;
+
       _subtotal += realPrice * qty;
+
+      if (item.CGST) _productCgst += item.CGST * qty;
+      if (item.SGST) _productSgst += item.SGST * qty;
+      if (item.cess) _productCess += item.cess * qty;
     });
-    setSubtotal(_subtotal);
 
     // 2) Promo discount
     let _discount = 0;
@@ -357,7 +346,6 @@ const CartScreen: React.FC = () => {
       }
       if (_discount > _subtotal) _discount = _subtotal;
     }
-    setDiscount(_discount);
 
     const itemsTotal = _subtotal - _discount;
 
@@ -373,9 +361,8 @@ const CartScreen: React.FC = () => {
         String(selectedLocation.lng)
       );
     }
-    setDistance(distanceInKm);
 
-    // 4) Delivery charge
+    // 4) Delivery
     let _deliveryCharge = 0;
     if (distanceInKm <= fareData.distanceThreshold) {
       _deliveryCharge = fareData.baseDeliveryCharge;
@@ -384,38 +371,52 @@ const CartScreen: React.FC = () => {
       _deliveryCharge =
         fareData.baseDeliveryCharge + extraKms * fareData.additionalCostPerKm;
     }
-    setDeliveryCharge(_deliveryCharge);
 
-    // 5) CGST/SGST
+    // 5) Ride CGST/SGST
     const totalGstOnDelivery = (_deliveryCharge * fareData.gstPercentage) / 100;
-    const _cgst = totalGstOnDelivery / 2;
-    const _sgst = totalGstOnDelivery / 2;
-    setCgst(_cgst);
-    setSgst(_sgst);
+    const _rideCgst = totalGstOnDelivery / 2;
+    const _rideSgst = totalGstOnDelivery / 2;
 
-    // 6) Platform Fee
+    // 6) Platform fee
     const _platformFee = fareData.platformFee;
-    setPlatformFee(_platformFee);
 
     // 7) Final total
-    const _final = itemsTotal + _deliveryCharge + _cgst + _sgst + _platformFee;
+    const _final =
+      itemsTotal + _productCgst + _productSgst + _productCess + _deliveryCharge + _rideCgst + _rideSgst + _platformFee;
+
+    // Update states
+    setSubtotal(_subtotal);
+    setProductCgst(_productCgst);
+    setProductSgst(_productSgst);
+    setProductCess(_productCess);
+    setDiscount(_discount);
+
+    setDistance(distanceInKm);
+    setDeliveryCharge(_deliveryCharge);
+    setRideCgst(_rideCgst);
+    setRideSgst(_rideSgst);
+    setPlatformFee(_platformFee);
     setFinalTotal(_final);
   };
 
+  // Reset totals if cart is empty
   const resetTotals = () => {
     setSubtotal(0);
+    setProductCgst(0);
+    setProductSgst(0);
+    setProductCess(0);
     setDiscount(0);
-    setDeliveryCharge(0);
     setDistance(0);
-    setCgst(0);
-    setSgst(0);
+    setDeliveryCharge(0);
+    setRideCgst(0);
+    setRideSgst(0);
     setPlatformFee(0);
     setFinalTotal(0);
   };
 
-  // -------------------------------
-  //  PROMO
-  // -------------------------------
+  /***************************************
+   * PROMO
+   ***************************************/
   const selectPromo = (promo: PromoCode) => {
     setSelectedPromo(promo);
     setShowConfetti(true);
@@ -424,14 +425,33 @@ const CartScreen: React.FC = () => {
     setSelectedPromo(null);
   };
 
-  // -------------------------------
-  //  ACTIONS
-  // -------------------------------
-  const handleAddMoreItems = () => {
-    navigation.navigate("Home");
-  };
+  /***************************************
+   * CART ACTIONS
+   ***************************************/
+  const handleCheckout = async () => {
+    // NEW: Delivery timing check
+    try {
+      const timingDoc = await firestore()
+        .collection("delivery_timing")
+        .doc("timingData") // or whichever doc name you use
+        .get();
 
-  const handleCheckout = () => {
+      if (timingDoc.exists) {
+        const { fromTime, toTime } = timingDoc.data() as { fromTime: number; toTime: number };
+        const currentHour = new Date().getHours();
+        if (currentHour < fromTime || currentHour >= toTime) {
+          setErrorModalMessage("Sorry this is out of my delivering hours. How about you try tomorrow morning?");
+          setErrorModalVisible(true);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Error checking delivery timing:", err);
+      // If doc doesn't exist or any error, we won't block the user.
+      // Or handle as needed
+    }
+
+    // Existing flow
     if (cartItems.length === 0) {
       Alert.alert("Cart is Empty", "Please add some products to your cart.");
       return;
@@ -445,12 +465,11 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  // -------------------------------------------------
-  // PAYMENT
-  // -------------------------------------------------
+  /***************************************
+   * PAYMENT
+   ***************************************/
   const handlePaymentOption = async (option: "cod" | "online") => {
     setShowPaymentSheet(false);
-
     if (option === "cod") {
       try {
         setNavigating(true);
@@ -466,8 +485,8 @@ const CartScreen: React.FC = () => {
               longitude: Number(pickupCoords?.longitude) || 0,
             },
             dropoffCoords: {
-              latitude: Number(selectedLocation.lat) || 0,
-              longitude: Number(selectedLocation.lng) || 0,
+              latitude: Number(selectedLocation?.lat) || 0,
+              longitude: Number(selectedLocation?.lng) || 0,
             },
             totalCost: finalTotal,
           });
@@ -482,9 +501,9 @@ const CartScreen: React.FC = () => {
     // else if (option === "online") { ... }
   };
 
-  // -------------------------------------------------
-  // CREATE ORDER (with quantity update)
-  // -------------------------------------------------
+  /***************************************
+   * CREATE ORDER
+   ***************************************/
   const handleCreateOrder = async (paymentMethod: "cod" | "online") => {
     try {
       const user = auth().currentUser;
@@ -499,10 +518,13 @@ const CartScreen: React.FC = () => {
           price: item.price,
           discount: item.discount || 0,
           quantity: qty,
+          CGST: item.CGST || 0,
+          SGST: item.SGST || 0,
+          cess: item.cess || 0,
         };
       });
 
-      // 1) Check and update product quantity in Firestore using a batch
+      // Check & update product quantity via batch
       const batch = firestore().batch();
       for (let i = 0; i < items.length; i++) {
         const { productId, quantity } = items[i];
@@ -510,31 +532,19 @@ const CartScreen: React.FC = () => {
         const productSnap = await productRef.get();
 
         if (!productSnap.exists) {
-          // The product might have been deleted
           throw new Error("Some products are no longer available.");
         }
-
         const currentQty = productSnap.data()?.quantity || 0;
         if (currentQty < quantity) {
-          // Not enough stock
-          throw new Error(
-            `Not enough stock for product: ${productSnap.data()?.name}`
-          );
+          throw new Error(`Not enough stock for product: ${productSnap.data()?.name}`);
         } else {
           const newQty = currentQty - quantity;
-          // Instead of deleting if newQty <= 0, update to 0
-          if (newQty <= 0) {
-            batch.update(productRef, { quantity: 0 });
-          } else {
-            batch.update(productRef, { quantity: newQty });
-          }
+          batch.update(productRef, { quantity: newQty < 0 ? 0 : newQty });
         }
       }
-
-      // 2) Commit the batch
       await batch.commit();
 
-      // 3) Pickup location
+      // Build pickup coords from fareData
       let usedPickupCoords = null;
       if (fareData.fixedPickupLocation) {
         usedPickupCoords = {
@@ -543,7 +553,7 @@ const CartScreen: React.FC = () => {
         };
       }
 
-      // 4) Create order data
+      // Create order data in Firestore
       const orderData = {
         orderedBy: user.uid,
         pickupCoords: usedPickupCoords,
@@ -553,11 +563,14 @@ const CartScreen: React.FC = () => {
         },
         items,
         distance,
-        subtotal,
+        subtotal,          // <-- renamed from productSubtotal
+        productCgst,
+        productSgst,
+        productCess,
         discount,
         deliveryCharge,
-        cgst,
-        sgst,
+        rideCgst,
+        rideSgst,
         platformFee,
         finalTotal,
         paymentMethod,
@@ -569,7 +582,7 @@ const CartScreen: React.FC = () => {
       const orderRef = await firestore().collection("orders").add(orderData);
       console.log("Order created with ID:", orderRef.id);
 
-      // 5) Mark promo as used
+      // Mark promo as used if applicable
       if (selectedPromo) {
         await firestore()
           .collection("promoCodes")
@@ -587,9 +600,9 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  // -------------------------------------------------
-  // RENDER
-  // -------------------------------------------------
+  /***************************************
+   * RENDER
+   ***************************************/
   const renderCartItem = ({ item }: { item: Product }) => {
     const quantity = cart[item.id] || 0;
     const realPrice = item.discount ? item.price - item.discount : item.price;
@@ -600,7 +613,7 @@ const CartScreen: React.FC = () => {
         <Image source={{ uri: item.image }} style={styles.cartItemImage} />
         <View style={styles.cartItemDetails}>
           <Text style={styles.cartItemName}>{item.name}</Text>
-          <Text style={styles.cartItemPrice}>₹{realPrice}</Text>
+          <Text style={styles.cartItemPrice}>₹{realPrice.toFixed(2)}</Text>
           <View style={styles.quantityControl}>
             <TouchableOpacity
               onPress={() => decreaseQuantity(item.id)}
@@ -616,12 +629,9 @@ const CartScreen: React.FC = () => {
               <MaterialIcons name="add" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.cartItemTotal}>Item: ₹{totalPrice}</Text>
+          <Text style={styles.cartItemTotal}>Item: ₹{totalPrice.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => removeFromCart(item.id)}
-          style={styles.removeButton}
-        >
+        <TouchableOpacity onPress={() => removeFromCart(item.id)} style={styles.removeButton}>
           <MaterialIcons name="delete" size={22} color="#e74c3c" />
         </TouchableOpacity>
       </View>
@@ -629,13 +639,14 @@ const CartScreen: React.FC = () => {
   };
 
   const renderPromoItem = ({ item }: { item: PromoCode }) => {
-    const promoIcon =
-      item.discountType === "flat" ? "pricetag-outline" : "gift-outline";
+    const promoIcon = item.discountType === "flat" ? "pricetag-outline" : "gift-outline";
     return (
       <TouchableOpacity style={styles.promoCard} onPress={() => selectPromo(item)}>
         <View style={styles.promoHeader}>
           <Ionicons name={promoIcon} size={18} color="#2ecc71" style={styles.promoIcon} />
-          <Text style={styles.promoLabel}>{item.label || item.code}</Text>
+          <Text style={styles.promoLabel} numberOfLines={1}>
+            {item.label || item.code}
+          </Text>
         </View>
         {item.description && (
           <Text style={styles.promoDescription} numberOfLines={2}>
@@ -673,7 +684,26 @@ const CartScreen: React.FC = () => {
     </View>
   );
 
-  const { width } = Dimensions.get("window");
+  const handleDeleteLocation = async (locToDelete: any) => {
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) return;
+
+      await firestore()
+        .collection("users")
+        .doc(currentUser.uid)
+        .update({
+          locations: firestore.FieldValue.arrayRemove(locToDelete),
+        });
+    } catch (err) {
+      console.error("Error deleting location:", err);
+      Alert.alert("Error", "Failed to delete this location. Please try again.");
+    }
+  };
+
+  const handleAddMoreItems = () => {
+    navigation.navigate("Home");
+  };
 
   return (
     <View style={styles.container}>
@@ -692,6 +722,7 @@ const CartScreen: React.FC = () => {
         </View>
       )}
 
+      {/* Loader or empty cart check */}
       {loading || navigating ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color="#28a745" />
@@ -730,7 +761,7 @@ const CartScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* LOCATION SELECTION */}
+            {/* LOCATION SECTION */}
             {userLocations.length === 0 ? (
               <View style={styles.locationSection}>
                 <Text style={styles.locationTitle}>No saved addresses yet.</Text>
@@ -805,9 +836,10 @@ const CartScreen: React.FC = () => {
             {/* SUMMARY */}
             <View style={styles.summaryCard}>
               <Text style={styles.summaryTitle}>Summary</Text>
+
               {/* Subtotal */}
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryLabel}>Product Subtotal</Text>
                 <Text style={styles.summaryValue}>₹{subtotal.toFixed(2)}</Text>
               </View>
 
@@ -815,7 +847,29 @@ const CartScreen: React.FC = () => {
               {discount > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Discount</Text>
-                  <Text style={styles.discountValue}>{`-₹${discount}`}</Text>
+                  <Text style={styles.discountValue}>-₹{discount.toFixed(2)}</Text>
+                </View>
+              )}
+
+              {/* Product CGST/SGST */}
+              {(productCgst > 0 || productSgst > 0) && (
+                <>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Products CGST</Text>
+                    <Text style={styles.summaryValue}>₹{productCgst.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Products SGST</Text>
+                    <Text style={styles.summaryValue}>₹{productSgst.toFixed(2)}</Text>
+                  </View>
+                </>
+              )}
+
+              {/* Product CESS */}
+              {productCess > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Product CESS</Text>
+                  <Text style={styles.summaryValue}>₹{productCess.toFixed(2)}</Text>
                 </View>
               )}
 
@@ -831,20 +885,22 @@ const CartScreen: React.FC = () => {
               {deliveryCharge > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Delivery Charge</Text>
-                  <Text style={styles.summaryValue}>₹{deliveryCharge.toFixed(2)}</Text>
+                  <Text style={styles.summaryValue}>
+                    ₹{deliveryCharge.toFixed(2)}
+                  </Text>
                 </View>
               )}
 
-              {/* CGST + SGST */}
-              {(cgst > 0 || sgst > 0) && (
+              {/* Ride CGST/SGST */}
+              {(rideCgst > 0 || rideSgst > 0) && (
                 <>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>CGST (≈2.5%)</Text>
-                    <Text style={styles.summaryValue}>₹{cgst.toFixed(2)}</Text>
+                    <Text style={styles.summaryLabel}>Ride CGST</Text>
+                    <Text style={styles.summaryValue}>₹{rideCgst.toFixed(2)}</Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>SGST (≈2.5%)</Text>
-                    <Text style={styles.summaryValue}>₹{sgst.toFixed(2)}</Text>
+                    <Text style={styles.summaryLabel}>Ride SGST</Text>
+                    <Text style={styles.summaryValue}>₹{rideSgst.toFixed(2)}</Text>
                   </View>
                 </>
               )}
@@ -853,17 +909,31 @@ const CartScreen: React.FC = () => {
               {platformFee > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Platform Fee</Text>
-                  <Text style={styles.summaryValue}>₹{platformFee.toFixed(2)}</Text>
+                  <Text style={styles.summaryValue}>
+                    ₹{platformFee.toFixed(2)}
+                  </Text>
                 </View>
               )}
 
-              {/* Promo Type Info */}
+              {/* Promo Type */}
               {selectedPromo && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Promo Type</Text>
-                  <Text style={styles.summaryValue}>{selectedPromo.discountType.toUpperCase()}</Text>
+                  <Text style={styles.summaryValue}>
+                    {selectedPromo.discountType.toUpperCase()}
+                  </Text>
                 </View>
               )}
+
+              {/* GRAND TOTAL (highlighted) */}
+              <View style={[styles.summaryRow, styles.grandTotalRow]}>
+                <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>
+                  Grand Total
+                </Text>
+                <Text style={[styles.summaryValue, styles.grandTotalValue]}>
+                  ₹{finalTotal.toFixed(2)}
+                </Text>
+              </View>
             </View>
           </ScrollView>
 
@@ -871,7 +941,9 @@ const CartScreen: React.FC = () => {
           <View style={styles.footerBar}>
             <View style={styles.footerLeft}>
               <Text style={styles.footerTotalLabel}>Total:</Text>
-              <Text style={styles.footerTotalValue}>₹{finalTotal.toFixed(0)}</Text>
+              <Text style={styles.footerTotalValue}>
+                ₹{finalTotal.toFixed(2)}
+              </Text>
             </View>
 
             <AnimatedTouchable
@@ -908,7 +980,9 @@ const CartScreen: React.FC = () => {
               keyExtractor={(_, idx) => String(idx)}
               renderItem={renderSavedAddressItem}
               style={{ maxHeight: 200 }}
-              ListEmptyComponent={<Text style={{ textAlign: "center" }}>No addresses.</Text>}
+              ListEmptyComponent={
+                <Text style={{ textAlign: "center" }}>No addresses.</Text>
+              }
             />
             <TouchableOpacity
               style={styles.addNewLocationButton}
@@ -936,7 +1010,7 @@ const CartScreen: React.FC = () => {
           <View style={styles.bottomSheet}>
             <Text style={styles.bottomSheetTitle}>Payment Options</Text>
 
-            {/* COD only */}
+            {/* COD */}
             <TouchableOpacity
               style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
               onPress={() => handlePaymentOption("cod")}
@@ -944,7 +1018,7 @@ const CartScreen: React.FC = () => {
               <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
             </TouchableOpacity>
 
-            {/* If you want to enable "Pay Online", uncomment below:
+            {/* If you add online payment, uncomment this:
             <TouchableOpacity
               style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
               onPress={() => handlePaymentOption("online")}
@@ -962,13 +1036,20 @@ const CartScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* NEW: Delivery Timing Error Modal */}
+      <ErrorModal
+        visible={errorModalVisible}
+        message={errorModalMessage}
+        onClose={() => setErrorModalVisible(false)}
+      />
     </View>
   );
 };
 
-// -------------------------------------
-// STYLES
-// -------------------------------------
+/**********************************************
+ *                   STYLES
+ **********************************************/
 const pastelGreen = "#e7f8f6";
 const { width } = Dimensions.get("window");
 
@@ -1029,6 +1110,8 @@ const styles = StyleSheet.create({
   itemListContainer: {
     paddingBottom: 8,
   },
+
+  /** CART ITEM **/
   cartItemContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1090,6 +1173,8 @@ const styles = StyleSheet.create({
   removeButton: {
     padding: 5,
   },
+
+  /** DIVIDER **/
   dottedDivider: {
     marginVertical: 10,
     borderWidth: 1,
@@ -1097,6 +1182,7 @@ const styles = StyleSheet.create({
     borderStyle: "dotted",
     borderRadius: 1,
   },
+
   missedSomethingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1124,6 +1210,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#fff",
   },
+
+  /** LOCATION SECTION **/
   locationSection: {
     backgroundColor: "#fff",
     borderRadius: 6,
@@ -1167,6 +1255,8 @@ const styles = StyleSheet.create({
     borderColor: "#2ecc71",
     borderWidth: 1,
   },
+
+  /** PROMO SECTION **/
   promoSection: {
     backgroundColor: "#fff",
     borderRadius: 6,
@@ -1221,7 +1311,7 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   promoCard: {
-    width: 100,
+    width: 120,
     backgroundColor: "#fafafa",
     borderRadius: 6,
     borderWidth: 1,
@@ -1239,6 +1329,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 2,
+    width: "100%",
   },
   promoIcon: {
     marginRight: 4,
@@ -1247,16 +1338,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#2c3e50",
+    flexShrink: 1,
+    flexWrap: "wrap",
   },
   promoDescription: {
     fontSize: 10,
     color: "#555",
+    marginTop: 2,
+    flexWrap: "wrap",
   },
   noPromoText: {
     fontSize: 12,
     color: "#999",
     textAlign: "center",
   },
+
+  /** SUMMARY CARD **/
   summaryCard: {
     backgroundColor: "#fff",
     borderRadius: 6,
@@ -1296,6 +1393,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#e74c3c",
   },
+  grandTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopColor: "#ccc",
+    borderTopWidth: 1,
+  },
+  grandTotalLabel: {
+    fontSize: 14,
+    color: "#000",
+  },
+  grandTotalValue: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#000",
+  },
+
+  /** FOOTER BAR **/
   footerBar: {
     position: "absolute",
     bottom: 0,
@@ -1337,6 +1451,8 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
+
+  /** MODAL OVERLAYS **/
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

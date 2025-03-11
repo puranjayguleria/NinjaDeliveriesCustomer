@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import firestore from "@react-native-firebase/firestore";
 import axios from "axios"; // Ensure axios is installed
@@ -352,6 +353,7 @@ const CategoriesScreen: React.FC<Props> = () => {
   );
 
   return (
+    <SafeAreaView style={styles.safeArea}>
     <View style={styles.container}>
       {/* Loader Overlay */}
       {(isLoadingLocation || isCheckingDelivery) && (
@@ -459,6 +461,7 @@ const CategoriesScreen: React.FC<Props> = () => {
         }
       />
     </View>
+    </SafeAreaView>
   );
 };
 
@@ -469,6 +472,10 @@ const { width } = Dimensions.get("window");
 const cardWidth = (width - 48) / 3;
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f2f2f2", // or your preferred background color
+  },
   container: {
     flex: 1,
     backgroundColor: "#f2f2f2",

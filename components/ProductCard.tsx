@@ -11,7 +11,7 @@ import {
   ActivityIndicator 
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { Product } from "../types/Product"; // Import your Product type
+import { Product } from "../types/Product"; 
 
 type ProductCardProps = {
   item: Product;
@@ -25,7 +25,7 @@ const { width } = Dimensions.get("window");
 const SIDE_NAV_WIDTH = 100;
 const CARD_MARGIN = 6;
 const CARD_WIDTH = (width - SIDE_NAV_WIDTH - CARD_MARGIN * 6) / 2.05;
-const CARD_HEIGHT = 300;
+const CARD_HEIGHT = 270;
 
 const ProductCard: React.FC<ProductCardProps> = ({
   item,
@@ -34,10 +34,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onIncrease,
   onDecrease,
 }) => {
-  // Local state to manage image loading
   const [isImageLoading, setIsImageLoading] = useState<boolean>(true);
 
-  // Calculate discounted price
   const discountedPrice =
     typeof item.price === "number" && typeof item.discount === "number"
       ? item.price - item.discount
@@ -45,16 +43,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   return (
     <View style={styles.cardContainer}>
-      {/* Image Container */}
       <View style={styles.imageContainer}>
-        {/* The product image */}
         <Image
           source={{ uri: item.image }}
           style={styles.productImage}
-          onLoadEnd={() => setIsImageLoading(false)} // Hide loader when done
+          onLoadEnd={() => setIsImageLoading(false)} 
         />
 
-        {/* Loader overlay while image is loading */}
         {isImageLoading && (
           <View style={styles.loaderOverlay}>
             <ActivityIndicator size="small" color="#27ae60" />
@@ -214,13 +209,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productName: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "700",
     color: "#2c3e50",
     marginBottom: 4,
   },
   productDescription: {
-    fontSize: 12,
+    fontSize: 10,
     color: "#666666",
     marginBottom: 6,
     height: 36,

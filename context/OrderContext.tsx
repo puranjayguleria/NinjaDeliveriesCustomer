@@ -52,7 +52,6 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
           if (storedOrders) {
             const parsedOrders: Order[] = JSON.parse(storedOrders);
             setActiveOrders(parsedOrders);
-            console.log("Loaded orders from AsyncStorage:", parsedOrders);
           } else {
             console.log("No stored orders found in AsyncStorage.");
           }
@@ -82,7 +81,6 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
             orders.push({ id: doc.id, ...(doc.data() as Order) });
           });
           setActiveOrders(orders);
-          console.log("Fetched active orders from Firestore:", orders);
           // Save to AsyncStorage
           AsyncStorage.setItem(`activeOrders_${user.uid}`, JSON.stringify(orders)).catch((error) =>
             console.error("Failed to save orders to storage:", error)
