@@ -1,0 +1,119 @@
+// components/QuickTile.tsx
+import React from "react";
+import { View, Text, Image, Pressable, StyleSheet, Dimensions } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useCart } from "@/context/CartContext";
+
+const TILE_W = 120;
+const TILE_H = 210;
+
+export type QuickTileProps = { p: any };
+export const QuickTile: React.FC<QuickTileProps> = ({ p }) => {
+  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
+  const qty      = cart[p.id] ?? 0;
+  const price    = p.price ?? 0;
+  const discount = p.discount ?? 0;
+  const mrp      = price + discount;
+  const deal     = discount > 0;
+  const name     = p.name || p.title || "Product";
+
+  return (
+    <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
+      <Image
+        source={p.imageUrl || p.image ? { uri: p.imageUrl || p.image } : undefined}
+        style={styles.tileImg}
+        resizeMode="cover"
+      />
+      {deal && (
+        <View style={styles.discountTag}>
+          <Text style={styles.discountTagTxt}>₹{discount} OFF</Text>
+        </View>
+      )}
+      <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
+      <View style={styles.ribbon}>
+        <Text style={styles.priceNow}>₹{price}</Text>
+        {deal && <Text style={styles.priceMRP}>₹{mrp}</Text>}
+      </View>
+      {qty === 0 ? (
+        <Pressable
+          style={[styles.cartBar, { backgroundColor: "#009688", borderColor: "#009688" }]}
+          onPress={() => addToCart(p.id, 1)}
+        >
+          <Text style={styles.cartBarAdd}>ADD</Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.cartBar, { backgroundColor: "#fff", borderColor: "#009688", flexDirection: "row" }]}>
+          <Pressable onPress={() => decreaseQuantity(p.id)} hitSlop={12}>
+            <MaterialIcons name="remove" size={18} color="#009688" />
+          </Pressable>
+          <Text style={styles.qtyNum}>{qty}</Text>
+          <Pressable onPress={() => increaseQuantity(p.id, 1)} hitSlop={12}>
+            <MaterialIcons name="add" size={18} color="#009688" />
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  tile: {
+    marginRight: 8,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    padding: 6,
+  },
+  tileImg: {
+    width: TILE_W - 12,
+    height: TILE_W - 12,
+    borderRadius: 6,
+    alignSelf: "center",
+  },
+  discountTag: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    backgroundColor: "#d35400",
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  discountTagTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  tileName: { fontSize: 11, color: "#333", marginTop: 4, height: 28 },
+  ribbon: {
+    marginTop: 2,
+    marginBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#004d40",
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  priceNow: { fontSize: 12, fontWeight: "700", color: "#fff" },
+  priceMRP: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.8)",
+    textDecorationLine: "line-through",
+    marginLeft: 4,
+  },
+  cartBar: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    right: 6,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  qtyNum: { color: "#009688", fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+});

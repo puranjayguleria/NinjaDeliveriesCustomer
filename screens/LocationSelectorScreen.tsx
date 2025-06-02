@@ -1,3 +1,5 @@
+// LocationSelectorScreen.tsx
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -13,6 +15,7 @@ import {
   Image,
   Modal,
   KeyboardAvoidingView,
+  SafeAreaView,
 } from "react-native";
 import MapView, { Region } from "react-native-maps";
 import * as Location from "expo-location";
@@ -21,6 +24,7 @@ import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RouteProp } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { RootStackParamList, LocationData } from "../types/navigation";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal";
@@ -30,7 +34,6 @@ type LocationSelectorScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
   "LocationSelector"
 >;
-
 type LocationSelectorScreenRouteProp = RouteProp<
   RootStackParamList,
   "LocationSelector"
@@ -46,7 +49,7 @@ type DeliveryZone = {
   name: string;
   latitude: number;
   longitude: number;
-  radius: number; 
+  radius: number;
 };
 
 type PlaceDetails = {
@@ -65,17 +68,13 @@ type PlaceDetails = {
 };
 
 const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
-  /****************************************
-   * 1) LOCATION CONTEXT & MAP REF
-   ****************************************/
   const { location, updateLocation } = useLocationContext();
   const mapRef = useRef<MapView>(null);
 
-  // If from Cart, we’ll show the bottom sheet form
   const fromScreen = route.params?.fromScreen || "Category";
 
   /****************************************
-   * 2) DEFAULT REGION (CONTEXT FALLBACK)
+   * DEFAULT REGION
    ****************************************/
   const DEFAULT_REGION: Region = {
     latitude: location.lat ?? 31.1048,
@@ -85,34 +84,33 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 3) STATE
+   * STATE
    ****************************************/
   const [markerCoord, setMarkerCoord] = useState({
     latitude: DEFAULT_REGION.latitude,
     longitude: DEFAULT_REGION.longitude,
   });
-
   const [address, setAddress] = useState<string>(
     location.address || "Search or choose your location"
   );
-
   const [placeQuery, setPlaceQuery] = useState<string>("");
   const [autocompleteResults, setAutocompleteResults] = useState<PlaceDetails[]>([]);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
 
   // Error Modal
   const [isErrorModalVisible, setIsErrorModalVisible] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // BOTTOM SHEET FOR "houseNo" & "placeLabel"
+  // BOTTOM SHEET
   const [showSaveForm, setShowSaveForm] = useState<boolean>(false);
   const [houseNo, setHouseNo] = useState<string>("");
   const [placeLabel, setPlaceLabel] = useState<string>("");
 
   /****************************************
-   * 4) USEEFFECTS
+   * USEEFFECTS
    ****************************************/
   useEffect(() => {
     requestLocationPermission();
@@ -128,7 +126,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [placeQuery]);
 
   /****************************************
-   * 5) LOCATION PERMISSION
+   * LOCATION PERMISSION
    ****************************************/
   const requestLocationPermission = async () => {
     try {
@@ -138,10 +136,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         fetchCurrentLocation();
       } else {
         setLocationPermission(false);
-        showErrorModal(
-          "Permission Denied",
-          "Location permission is required to use this feature. Please enable it in settings."
-        );
+        // not forcing error modal so user can manually pick
       }
     } catch (err) {
       console.error("Permission error:", err);
@@ -158,49 +153,55 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 6) FETCH DELIVERY ZONES
+   * FETCH DELIVERY ZONES
    ****************************************/
   const fetchDeliveryZones = async () => {
     try {
-      const snapshot = await firestore().collection("delivery_zones").get();
-      const zones: DeliveryZone[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as DeliveryZone[];
+      const snap = await firestore().collection("delivery_zones").get();
+      const zones: DeliveryZone[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          storeId: d.id,                   
+          name: data.name,
+          latitude: Number(data.latitude),
+          longitude: Number(data.longitude),
+          radius: Number(data.radius),
+        };
+      });
       setDeliveryZones(zones);
     } catch (err) {
-      console.error("Error fetching delivery zones:", err);
-      showErrorModal("Error", "We are overloaded!! Please try after some time!");
+      console.error("fetchDeliveryZones:", err);
+      showErrorModal("Error", "Could not load service areas.");
     }
   };
-
+  
   /****************************************
-   * 7) PLACE AUTOCOMPLETE
+   * PLACE AUTOCOMPLETE
    ****************************************/
   const fetchPlaceSuggestions = async () => {
     setIsLoading(true);
     try {
-      // Prepend "Himachal Pradesh, " to the user's query
       const queryWithRegion = `Himachal Pradesh, ${placeQuery}`;
-      const resp = await axios.get("https://maps.googleapis.com/maps/api/place/autocomplete/json", {
-        params: {
-          input: queryWithRegion,
-          key: GOOGLE_PLACES_API_KEY,
-          // Bias the search toward Himachal Pradesh
-          location: "31.1048,77.1734",
-          radius: 50000,
-          components: "country:in",
-        },
-      });
+      const resp = await axios.get(
+        "https://maps.googleapis.com/maps/api/place/autocomplete/json",
+        {
+          params: {
+            input: queryWithRegion,
+            key: GOOGLE_PLACES_API_KEY,
+            location: "31.1048,77.1734",
+            radius: 50000,
+            components: "country:in",
+          },
+        }
+      );
 
       if (resp.data.status === "OK") {
-        // Filter predictions to include only those from Himachal Pradesh
-        const filteredResults = resp.data.predictions.filter((prediction: PlaceDetails) =>
-          prediction.description.toLowerCase().includes("himachal")
+        const filteredResults = resp.data.predictions.filter((p: PlaceDetails) =>
+          p.description.toLowerCase().includes("himachal")
         );
         setAutocompleteResults(filteredResults);
       } else if (resp.data.status === "ZERO_RESULTS") {
-        // No results found: clear autocomplete results without showing an error
         setAutocompleteResults([]);
       } else {
         console.warn("Autocomplete API Error:", resp.data.status);
@@ -218,27 +219,34 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const handlePlaceSelection = async (place: PlaceDetails) => {
     setIsLoading(true);
     try {
-      const detailsResp = await axios.get("https://maps.googleapis.com/maps/api/place/details/json", {
-        params: {
-          place_id: place.place_id,
-          key: GOOGLE_PLACES_API_KEY,
-          fields: "geometry,formatted_address",
-        },
-      });
+      const detailsResp = await axios.get(
+        "https://maps.googleapis.com/maps/api/place/details/json",
+        {
+          params: {
+            place_id: place.place_id,
+            key: GOOGLE_PLACES_API_KEY,
+            fields: "geometry,formatted_address",
+          },
+        }
+      );
 
       if (detailsResp.data.status === "OK") {
         const { lat, lng } = detailsResp.data.result.geometry.location;
         const newAddress = detailsResp.data.result.formatted_address;
 
+        // Move map to selected location
         mapRef.current?.animateToRegion(
-          { latitude: lat, longitude: lng, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+          {
+            latitude: lat,
+            longitude: lng,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          },
           1000
         );
         setMarkerCoord({ latitude: lat, longitude: lng });
         setAddress(newAddress);
-        // Update the search textbox with the selected address
         setPlaceQuery(newAddress);
-        // Close the dropdown by clearing autocomplete results
         setAutocompleteResults([]);
       } else {
         console.warn("Place Details API Error:", detailsResp.data.status);
@@ -252,13 +260,74 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  /**
+ * Examine the Distance Matrix response and return the nearest zone
+ * whose distance (in km) ≤ zone.radius.  If none match, returns null.
+ */
+const pickNearestZone = (
+  elements: any[],
+  zones: DeliveryZone[]
+): { storeId: string; zone: DeliveryZone } | null => {
+  let winner: { zone: DeliveryZone; distKm: number } | null = null;
+
+  elements.forEach((el, idx) => {
+    if (el.status !== "OK") return;
+
+    const km = el.distance.value / 1000; // metres ➜ km
+    const zone = zones[idx];
+    if (km <= (zone.radius as number)) {
+      if (!winner || km < winner.distKm) {
+        winner = { zone, distKm: km };
+      }
+    }
+  });
+
+  return winner ? { storeId: winner.zone.storeId, zone: winner.zone } : null;
+};
+
+
   /****************************************
-   * 8) FETCH CURRENT LOCATION
+   * MANUAL REVERSE GEOCODE (FALLBACK)
+   ****************************************/
+  async function reverseGeocodeLatLng(latitude: number, longitude: number) {
+    // Attempt iOS's expo-location reverseGeocodeAsync if:
+    // 1) On iOS, or
+    // 2) We have permission on Android (to avoid error)
+    if (Platform.OS === "ios" || locationPermission) {
+      try {
+        const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (places && places.length > 0) {
+          const { name, city } = places[0];
+          return `${name || ""}, ${city || ""}`;
+        }
+      } catch (err) {
+        console.warn("reverseGeocodeAsync failed:", err);
+        // fallback to Google
+      }
+    }
+
+    // Fallback: use Google Geocoding API for address
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}`;
+      const resp = await axios.get(url);
+      if (resp.data.status === "OK" && resp.data.results.length > 0) {
+        return resp.data.results[0].formatted_address;
+      }
+    } catch (error) {
+      console.warn("Google Geocoding error:", error);
+    }
+    return "Unnamed Location";
+  }
+
+  /****************************************
+   * FETCH CURRENT LOCATION
    ****************************************/
   const fetchCurrentLocation = async () => {
     setIsLoading(true);
     try {
-      const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const currentLoc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
       const { latitude, longitude } = currentLoc.coords;
       mapRef.current?.animateToRegion(
         { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
@@ -274,99 +343,90 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 9) CONFIRM LOCATION
+   * CONFIRM LOCATION
    ****************************************/
   const confirmLocation = async () => {
     setIsLoading(true);
     try {
-      // Reverse geocode
-      const revGeoResp = await Location.reverseGeocodeAsync({
-        latitude: markerCoord.latitude,
-        longitude: markerCoord.longitude,
-      });
-
-      if (revGeoResp.length === 0) {
-        showErrorModal("Error", "Failed to retrieve address for the selected location.");
-        return;
-      }
-
-      const formattedAddress = `${revGeoResp[0].name || ""}, ${revGeoResp[0].city || ""}`;
-      const newLocationData: LocationData = {
-        lat: markerCoord.latitude,
-        lng: markerCoord.longitude,
-        address: formattedAddress,
-      };
-
-      // Check deliverability
-      const destinations = deliveryZones.map((z) => `${z.latitude},${z.longitude}`).join("|");
-
-      const distResp = await axios.get("https://maps.googleapis.com/maps/api/distancematrix/json", {
-        params: {
-          origins: `${newLocationData.lat},${newLocationData.lng}`,
-          destinations,
-          key: GOOGLE_PLACES_API_KEY,
-          units: "metric",
-        },
-      });
-
-      if (distResp.data.status !== "OK") {
-        console.warn("Distance Matrix API Error:", distResp.data.status);
-        showErrorModal("Error", "Failed to calculate distances.");
-        return;
-      }
-
-      const elements = distResp.data.rows[0].elements;
-      const isDeliverable = elements.some((el: any, index: number) => {
-        if (el.status === "OK") {
-          const km = el.distance.value / 1000;
-          return km <= deliveryZones[index].radius;
+      const addr = await reverseGeocodeLatLng(
+        markerCoord.latitude,
+        markerCoord.longitude
+      );
+  
+      const destinations = deliveryZones
+        .map((z) => `${z.latitude},${z.longitude}`)
+        .join("|");
+  
+      const distResp = await axios.get(
+        "https://maps.googleapis.com/maps/api/distancematrix/json",
+        {
+          params: {
+            origins: `${markerCoord.latitude},${markerCoord.longitude}`,
+            destinations,
+            key: GOOGLE_PLACES_API_KEY,
+            units: "metric",
+          },
         }
-        return false;
-      });
-
-      if (!isDeliverable) {
+      );
+  
+      if (distResp.data.status !== "OK") {
+        showErrorModal("Error", "Failed to check deliverability.");
+        return;
+      }
+  
+      const nearest = pickNearestZone(
+        distResp.data.rows[0].elements,
+        deliveryZones
+      );
+  
+      if (!nearest) {
         showErrorModal(
           "Delivery Unavailable",
-          "Oops! We're not in your area yet. Please select a different location."
+          "Sorry, we don’t deliver to this location yet."
         );
         return;
       }
-
-      // If from Cart, show bottom sheet to ALWAYS save
+  
+      const newLocationData: LocationData & { storeId: string } = {
+        lat: markerCoord.latitude,
+        lng: markerCoord.longitude,
+        address: addr,
+        storeId: nearest.storeId,
+      };
+  
+      updateLocation(newLocationData);
+  
       if (fromScreen === "Cart") {
-        // we open the SaveForm now
-        updateLocation(newLocationData); // update context with the raw address
-        setHouseNo(""); // reset form
-        setPlaceLabel(""); // reset form
+        setHouseNo("");
+        setPlaceLabel("");
         setShowSaveForm(true);
       } else {
-        // fromCategory or anything else
-        // update context right away, no saving
-        updateLocation(newLocationData);
-        navigation.navigate("Categories", { selectedLocation: newLocationData });
+  navigation.navigate("AppTabs", { screen: "Home" });
       }
     } catch (err) {
-      console.error("Error checking delivery availability:", err);
-      showErrorModal("Error", "Failed to check delivery availability.");
+      console.error("confirmLocation:", err);
+      showErrorModal("Error", "Failed to confirm location. Please retry.");
     } finally {
       setIsLoading(false);
     }
   };
+  
 
   /****************************************
-   * 10) SAVE LOCATION (FIRESTORE)
+   * SAVE LOCATION (FIRESTORE)
    ****************************************/
-  const saveLocationForUser = async (loc: LocationData, houseNoVal: string, labelVal: string) => {
+  const saveLocationForUser = async (
+    loc: LocationData,
+    houseNoVal: string,
+    labelVal: string
+  ) => {
     try {
       const currentUser = auth().currentUser;
       if (!currentUser) {
         console.warn("No user is logged in");
         return;
       }
-
       const userDocRef = firestore().collection("users").doc(currentUser.uid);
-
-      // Instead of FieldValue.serverTimestamp(), we must use firestore.Timestamp.now()
       await userDocRef.update({
         locations: firestore.FieldValue.arrayUnion({
           lat: loc.lat,
@@ -374,7 +434,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           address: loc.address,
           houseNo: houseNoVal,
           placeLabel: labelVal,
-          createdAt: firestore.Timestamp.now(), // fix the serverTimestamp error
+          createdAt: firestore.Timestamp.now(),
         }),
       });
       console.log("Location saved successfully.");
@@ -385,7 +445,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 11) ERROR MODAL
+   * ERROR MODAL
    ****************************************/
   const showErrorModal = (_title: string, message: string) => {
     setErrorMessage(message);
@@ -394,13 +454,14 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const closeErrorModal = () => setIsErrorModalVisible(false);
 
   /****************************************
-   * 12) HANDLE "USE CURRENT LOCATION"
+   * HANDLE "USE CURRENT LOCATION"
    ****************************************/
   const handleUseCurrentLocation = async () => {
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== "granted") {
-        const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+        const { status: newStatus } =
+          await Location.requestForegroundPermissionsAsync();
         if (newStatus !== "granted") {
           showErrorModal(
             "Permission Denied",
@@ -417,7 +478,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 13) ON SAVE FORM
+   * ON SAVE FORM
    ****************************************/
   const handleSaveLocationForm = async () => {
     if (!houseNo.trim() || !placeLabel.trim()) {
@@ -427,31 +488,24 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
 
     setIsLoading(true);
     try {
-      // The context's location should already have lat/lng/address
       const newLoc = {
         lat: location.lat!,
         lng: location.lng!,
         address: location.address,
-        houseNo,           
-        placeLabel
+        houseNo,
+        placeLabel,
       };
-
-      // 1) Save in Firestore with houseNo & placeLabel
       await saveLocationForUser(newLoc, houseNo, placeLabel);
 
-      // 2) Optionally update local context with new name of place or house no if you want
-      // e.g. updateLocation({ ...newLoc, address: `${houseNo}, ${placeLabel}` });
-
-      // 3) Navigate to Categories
       setShowSaveForm(false);
       if (fromScreen === "Cart") {
         navigation.navigate("CartFlow", {
           screen: "CartHome",
           params: { selectedLocation: newLoc },
-        });           
+        });
       } else {
-        navigation.navigate("Categories", { selectedLocation: newLoc });
-      }   
+  navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
+      }
     } catch (err) {
       console.error("Error in handleSaveLocationForm:", err);
     } finally {
@@ -460,129 +514,146 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /****************************************
-   * 14) RENDER
+   * RENDER
    ****************************************/
   return (
-    <View style={styles.container}>
-      {/* Loader Overlay */}
-      {isLoading && (
-        <View style={styles.loaderOverlay}>
-          <ActivityIndicator size="large" color="#000" />
-        </View>
-      )}
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {/* LOADER OVERLAY */}
+        {isLoading && (
+          <View style={styles.loaderOverlay}>
+            <ActivityIndicator size="large" color="#000" />
+          </View>
+        )}
 
-      {/* Error Modal */}
-      <ErrorModal visible={isErrorModalVisible} message={errorMessage} onClose={closeErrorModal} />
-
-      {/* Search Container */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Search or enter your location"
-          style={styles.searchInput}
-          value={placeQuery}
-          onChangeText={setPlaceQuery}
+        {/* ERROR MODAL */}
+        <ErrorModal
+          visible={isErrorModalVisible}
+          message={errorMessage}
+          onClose={closeErrorModal}
         />
 
-        {/* "Use Current Location" Button */}
-        <TouchableOpacity style={styles.useCurrentLocationButton} onPress={handleUseCurrentLocation}>
-          <Text style={styles.useCurrentLocationText}>Use Current Location</Text>
-        </TouchableOpacity>
+        {/* SEARCH SECTION */}
+        <View style={styles.searchContainer}>
+          <View style={{ zIndex: 999 }}>
+            {/* Input row with icon + placeholder */}
+            <View style={styles.searchInputRow}>
+              <Ionicons name="search" size={18} color="#666" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                value={placeQuery}
+                onChangeText={setPlaceQuery}
+                placeholder="Search location..."
+                placeholderTextColor="#aaa"
+              />
+            </View>
 
-        {autocompleteResults.length > 0 && (
-          <FlatList
-            data={autocompleteResults}
-            keyExtractor={(item) => item.place_id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => handlePlaceSelection(item)}
-                style={styles.autocompleteItem}
-              >
-                <Text style={styles.autocompleteText}>{item.description}</Text>
-              </TouchableOpacity>
+            {/* AUTOCOMPLETE RESULTS */}
+            {autocompleteResults.length > 0 && (
+              <FlatList
+                data={autocompleteResults}
+                keyExtractor={(item) => item.place_id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() => handlePlaceSelection(item)}
+                    style={styles.autocompleteItem}
+                  >
+                    <Text style={styles.autocompleteText}>{item.description}</Text>
+                  </TouchableOpacity>
+                )}
+                style={styles.autocompleteContainer}
+              />
             )}
-            style={styles.autocompleteContainer}
-          />
-        )}
+          </View>
 
-        {/* Permission Handling */}
-        {!locationPermission && (
-          <TouchableOpacity style={styles.enableLocationButton} onPress={openAppSettings}>
-            <Text style={styles.enableLocationText}>Enable Location Permission</Text>
+          {/* If location not granted */}
+          {!locationPermission && (
+            <TouchableOpacity style={styles.enableLocationButton} onPress={openAppSettings}>
+              <Text style={styles.enableLocationText}>Enable Location Permission</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* "Use Current Location" Button */}
+          <TouchableOpacity
+            style={styles.useCurrentLocationButton}
+            onPress={handleUseCurrentLocation}
+          >
+            <Text style={styles.useCurrentLocationText}>Use Current Location</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
 
-      {/* Map Section */}
-      <View style={styles.mapContainer}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
-          initialRegion={DEFAULT_REGION}
-          showsPointsOfInterest={false}
-          showsTraffic={false}
-          onRegionChangeComplete={(newRegion) => {
-            setMarkerCoord({
-              latitude: newRegion.latitude,
-              longitude: newRegion.longitude,
-            });
-          }}
-        />
-        {/* Fixed Marker */}
-        <View pointerEvents="none" style={styles.markerFixed}>
-          <Image
-            style={styles.marker}
-            source={{
-              uri: "https://img.icons8.com/color/96/000000/map-pin.png",
+        {/* MAP SECTION */}
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFillObject}
+            initialRegion={DEFAULT_REGION}
+            showsPointsOfInterest={false}
+            showsTraffic={false}
+            onRegionChangeComplete={(newRegion) => {
+              setMarkerCoord({
+                latitude: newRegion.latitude,
+                longitude: newRegion.longitude,
+              });
             }}
           />
-        </View>
-      </View>
-
-      {/* Footer with Confirm Button */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.confirmButton} onPress={confirmLocation}>
-          <Text style={styles.confirmButtonText}>Confirm Location</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* BOTTOM SHEET for House No + Place Label (only if from Cart) */}
-      <Modal visible={showSaveForm} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalContainer} behavior="padding">
-          <View style={styles.bottomSheet}>
-            <Text style={styles.saveFormTitle}>Save Your Location</Text>
-            <Text style={styles.saveFormSubtitle}>
-              Enter your house/flat number and a label (like "Home", "Office", etc.)
-            </Text>
-
-            <TextInput
-              style={styles.inputField}
-              placeholder="House / Flat No."
-              placeholderTextColor="#999"
-              value={houseNo}
-              onChangeText={setHouseNo}
+          <View pointerEvents="none" style={styles.markerFixed}>
+            <Image
+              style={styles.marker}
+              source={{ uri: "https://img.icons8.com/color/96/000000/map-pin.png" }}
             />
-            <TextInput
-              style={styles.inputField}
-              placeholder="Name of Place (e.g. Home)"
-              placeholderTextColor="#999"
-              value={placeLabel}
-              onChangeText={setPlaceLabel}
-            />
-
-            <TouchableOpacity style={styles.saveLocationButton} onPress={handleSaveLocationForm}>
-              <Text style={styles.saveLocationButtonText}>Save Location</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowSaveForm(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+        </View>
+
+        {/* FOOTER BUTTON */}
+        <View style={styles.footer}>
+          <TouchableOpacity style={styles.confirmButton} onPress={confirmLocation}>
+            <Text style={styles.confirmButtonText}>Confirm Location</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* BOTTOM SHEET (SAVE FORM) */}
+        <Modal visible={showSaveForm} animationType="slide" transparent>
+          <KeyboardAvoidingView style={styles.modalContainer} behavior="padding">
+            <View style={styles.bottomSheet}>
+              <Text style={styles.saveFormTitle}>Save Your Location</Text>
+              <Text style={styles.saveFormSubtitle}>
+                Enter your house/flat number and a label (like "Home", "Office", etc.)
+              </Text>
+
+              <TextInput
+                style={styles.inputField}
+                placeholder="House / Flat No."
+                placeholderTextColor="#999"
+                value={houseNo}
+                onChangeText={setHouseNo}
+              />
+              <TextInput
+                style={styles.inputField}
+                placeholder="Name of Place (e.g. Home)"
+                placeholderTextColor="#999"
+                value={placeLabel}
+                onChangeText={setPlaceLabel}
+              />
+
+              <TouchableOpacity
+                style={styles.saveLocationButton}
+                onPress={handleSaveLocationForm}
+              >
+                <Text style={styles.saveLocationButtonText}>Save Location</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowSaveForm(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -592,6 +663,10 @@ export default LocationSelectorScreen;
  *          STYLES
  ****************************************/
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f2f2f2",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -603,6 +678,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 999,
   },
+
+  /*****************************************
+   * SEARCH + AUTOCOMPLETE
+   *****************************************/
   searchContainer: {
     backgroundColor: "#fff",
     paddingHorizontal: 16,
@@ -614,27 +693,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     zIndex: 10,
   },
-  searchInput: {
+  searchInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 16,
     backgroundColor: "#f9f9f9",
+    paddingHorizontal: 8,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 16,
     color: "#333",
-  },
-  useCurrentLocationButton: {
-    marginTop: 10,
-    backgroundColor: "#4CAF50", // green
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  useCurrentLocationText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
   },
   autocompleteContainer: {
     marginTop: 8,
@@ -643,6 +718,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     maxHeight: 160,
     backgroundColor: "#fff",
+    zIndex: 999,
   },
   autocompleteItem: {
     padding: 12,
@@ -653,6 +729,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
   },
+
   enableLocationButton: {
     marginTop: 10,
     backgroundColor: "#FF7043",
@@ -665,6 +742,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+  useCurrentLocationButton: {
+    marginTop: 10,
+    backgroundColor: "#4CAF50",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  useCurrentLocationText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+
+  /*****************************************
+   * MAP
+   *****************************************/
   mapContainer: {
     flex: 1,
     backgroundColor: "#ddd",
@@ -673,7 +766,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: "50%",
     left: "50%",
-    marginLeft: -24, 
+    marginLeft: -24,
     marginTop: -48,
   },
   marker: {
@@ -681,6 +774,10 @@ const styles = StyleSheet.create({
     height: 48,
     resizeMode: "contain",
   },
+
+  /*****************************************
+   * FOOTER
+   *****************************************/
   footer: {
     padding: 16,
     borderTopWidth: 1,
@@ -698,7 +795,10 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 17,
   },
-  /* BOTTOM SHEET STYLES */
+
+  /*****************************************
+   * BOTTOM SHEET
+   *****************************************/
   modalContainer: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

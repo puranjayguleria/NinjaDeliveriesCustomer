@@ -12,6 +12,7 @@ import {
   Animated,
   ScrollView,
 } from "react-native";
+
 import firestore from "@react-native-firebase/firestore";
 import MapView, { Marker, Polyline, LatLng } from "react-native-maps";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";

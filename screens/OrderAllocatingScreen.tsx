@@ -1,6 +1,6 @@
 // OrderAllocatingScreen.tsx
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -11,16 +11,17 @@ import {
   TouchableOpacity,
   FlatList,
   ScrollView,
-} from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import firestore from '@react-native-firebase/firestore';
+  Image,
+} from "react-native";
+import MapView, { Marker, Region } from "react-native-maps";
+import { useRoute, RouteProp, useNavigation, CommonActions } from "@react-navigation/native";
+import firestore from "@react-native-firebase/firestore";
 
-import riderIcon from '../assets/rider-icon-1.png';
-import pickupMarker from '../assets/pickup-marker.png';
-import dropoffMarker from '../assets/dropoff-marker.png';
-import { useOrder } from '@/context/OrderContext';
-import { Ionicons } from '@expo/vector-icons';
+import riderIcon from "../assets/rider-icon-1.png";
+import pickupMarker from "../assets/pickup-marker.png";
+import dropoffMarker from "../assets/dropoff-marker.png";
+import { useOrder } from "@/context/OrderContext";
+import { Ionicons } from "@expo/vector-icons";
 
 type StackParamList = {
   OrderAllocating: {
@@ -31,7 +32,7 @@ type StackParamList = {
   };
 };
 
-type OrderAllocatingScreenRouteProp = RouteProp<StackParamList, 'OrderAllocating'>;
+type OrderAllocatingScreenRouteProp = RouteProp<StackParamList, "OrderAllocating">;
 
 const quotes = [
   "Ninjas are fast, but we're faster with your delivery!",
@@ -118,7 +119,7 @@ const OrderAllocatingScreen: React.FC = () => {
     }, 3000);
 
     // Firestore ref for the order
-    const orderRef = firestore().collection('orders').doc(orderId);
+    const orderRef = firestore().collection("orders").doc(orderId);
 
     // Listen for changes to the order document in real-time
     const unsubscribeOrder = orderRef.onSnapshot((doc) => {
@@ -134,7 +135,7 @@ const OrderAllocatingScreen: React.FC = () => {
         // (Optional) Set an active order in context
         setActiveOrder?.({
           id: orderId,
-          status: 'active',
+          status: "active",
           pickupCoords: {
             latitude: data.pickupCoords.latitude,
             longitude: data.pickupCoords.longitude,
@@ -146,21 +147,27 @@ const OrderAllocatingScreen: React.FC = () => {
           totalCost,
         });
 
-        // Navigate to OrderTracking
-        navigation.navigate('OrderTracking', {
-          orderId,
-          pickupCoords,
-          dropoffCoords,
-          totalCost,
-        });
+        // Navigate to OrderTracking (inside HomeStack)
+        navigation.navigate("HomeTab" as never, {
+          screen: "OrderTracking",
+          params: {
+            orderId,
+            pickupCoords,
+            dropoffCoords,
+            totalCost,
+          },
+        } as never);
       }
 
       // If the order was cancelled remotely (e.g. by Lambda or admin):
-      if (data.status === 'cancelled' && !orderAccepted) {
-        navigation.navigate('OrderCancelled', {
-          orderId,
-          refundAmount: data.refundAmount ?? totalCost,
-        });
+      if (data.status === "cancelled" && !orderAccepted) {
+        navigation.navigate("HomeTab" as never, {
+          screen: "OrderCancelled",
+          params: {
+            orderId,
+            refundAmount: data.refundAmount ?? totalCost,
+          },
+        } as never);
       }
     });
 
@@ -168,8 +175,8 @@ const OrderAllocatingScreen: React.FC = () => {
     const fetchNearbyRiders = async () => {
       try {
         const snapshot = await firestore()
-          .collection('riderDetails')
-          .where('isAvailable', '==', true)
+          .collection("riderDetails")
+          .where("isAvailable", "==", true)
           .get();
 
         const ridersList = snapshot.docs.map((doc) => doc.data());
@@ -177,15 +184,12 @@ const OrderAllocatingScreen: React.FC = () => {
 
         setIsLoading(false);
       } catch (err) {
-        console.error('Error fetching riders:', err);
+        console.error("Error fetching riders:", err);
         Alert.alert("Error", "Failed to fetch nearby riders.");
         setIsLoading(false);
       }
     };
     fetchNearbyRiders();
-
-    // ----- REMOVED AUTO-CANCEL LOGIC -----
-    // (We rely on the Lambda or other backend services to cancel the order if needed.)
 
     return () => {
       clearInterval(quoteInterval);
@@ -208,10 +212,10 @@ const OrderAllocatingScreen: React.FC = () => {
   // --------------------------------------------------
   const cancelOrder = async () => {
     try {
-      const orderRef = firestore().collection('orders').doc(orderId);
+      const orderRef = firestore().collection("orders").doc(orderId);
       const snap = await orderRef.get();
       if (!snap.exists) {
-        Alert.alert('Error', 'Order not found. Please contact support.');
+        Alert.alert("Error", "Order not found. Please contact support.");
         return;
       }
       const data = snap.data();
@@ -220,26 +224,25 @@ const OrderAllocatingScreen: React.FC = () => {
 
       // Mark as cancelled
       await orderRef.update({
-        status: 'cancelled',
+        status: "cancelled",
         refundAmount,
       });
 
       // (Optional) Clear from context
       setActiveOrder?.(null);
 
-      Alert.alert(
-        'Order Cancelled',
-        `Your order has been cancelled.`,
-        [
-          {
-            text: 'OK',
-            onPress: () =>
-              navigation.navigate('OrderCancelled', { orderId, refundAmount }),
-          },
-        ]
-      );
+      Alert.alert("Order Cancelled", `Your order has been cancelled.`, [
+        {
+          text: "OK",
+          onPress: () =>
+            navigation.navigate("HomeTab" as never, {
+              screen: "OrderCancelled",
+              params: { orderId, refundAmount },
+            } as never),
+        },
+      ]);
     } catch (error) {
-      console.error('Error cancelling the order:', error);
+      console.error("Error cancelling the order:", error);
       Alert.alert("Error", "Failed to cancel the order.");
     }
   };
@@ -248,17 +251,17 @@ const OrderAllocatingScreen: React.FC = () => {
   // OTHER HANDLERS
   // --------------------------------------------------
   const handleForgotItemsLink = () => {
-    navigation.navigate('Home');
+    // Navigate to the "Home" tab, specifically "Categories" if desired
+    navigation.navigate("HomeTab" as never, {
+      screen: "Categories",
+    } as never);
   };
 
   const handleClose = () => {
-    // Example: go back to CartFlow or wherever you want
-    navigation.dispatch(
-      navigation.navigate({
-        name: 'CartFlow',
-        params: { screen: 'CartHome' },
-      })
-    );
+    // Example: jump to the CartFlow tab’s screen
+    navigation.navigate("CartFlow" as never, {
+      screen: "CartHome",
+    } as never);
   };
 
   // --------------------------------------------------
@@ -307,32 +310,22 @@ const OrderAllocatingScreen: React.FC = () => {
                 }}
                 onRegionChangeComplete={(newReg) => setRegion(newReg)}
                 onError={(error) => {
-                  console.error('MapView Error:', error);
+                  console.error("MapView Error:", error);
                   Alert.alert("Error", "Failed to load the map.");
                 }}
               >
                 {/* Pickup Marker */}
                 <Marker coordinate={pickupCoords} title="Pickup Location">
-                  <Image
-                    source={pickupMarker}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      transform: [{ scale: markerAnimation }],
-                    }}
-                  />
+                  <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
+                    <Image source={pickupMarker} style={{ width: 40, height: 40 }} />
+                  </Animated.View>
                 </Marker>
 
                 {/* Dropoff Marker */}
                 <Marker coordinate={dropoffCoords} title="Dropoff Location">
-                  <Image
-                    source={dropoffMarker}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      transform: [{ scale: markerAnimation }],
-                    }}
-                  />
+                  <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
+                    <Image source={dropoffMarker} style={{ width: 40, height: 40 }} />
+                  </Animated.View>
                 </Marker>
 
                 {/* Nearby Riders Markers */}
@@ -345,14 +338,9 @@ const OrderAllocatingScreen: React.FC = () => {
                     }}
                     description="Available Rider"
                   >
-                    <Image
-                      source={riderIcon}
-                      style={{
-                        width: 30,
-                        height: 40,
-                        transform: [{ scale: markerAnimation }],
-                      }}
-                    />
+                    <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
+                      <Image source={riderIcon} style={{ width: 30, height: 40 }} />
+                    </Animated.View>
                   </Marker>
                 ))}
               </MapView>
@@ -381,7 +369,7 @@ const OrderAllocatingScreen: React.FC = () => {
             </View>
 
             {/* Show "Cancel Order" only if status is still pending or accepted */}
-            {(orderData?.status === 'pending' || orderData?.status === 'accepted') &&
+            {(orderData?.status === "pending" || orderData?.status === "accepted") &&
               !orderAccepted && (
                 <TouchableOpacity style={styles.cancelButton} onPress={cancelOrder}>
                   <Text style={styles.cancelButtonText}>Cancel Order</Text>
@@ -406,12 +394,12 @@ const OrderAllocatingScreen: React.FC = () => {
                   <View style={styles.billRow}>
                     <Text style={styles.billLabel}>Subtotal</Text>
                     <Text style={styles.billValue}>
-                      ₹{orderData.subtotal?.toFixed(2) || '0.00'}
+                      ₹{orderData.subtotal?.toFixed(2) || "0.00"}
                     </Text>
                   </View>
 
                   {/* Delivery Charge */}
-                  {typeof orderData.deliveryCharge !== 'undefined' && (
+                  {typeof orderData.deliveryCharge !== "undefined" && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Delivery Charge</Text>
                       <Text style={styles.billValue}>
@@ -421,7 +409,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* CGST */}
-                  {typeof orderData.cgst !== 'undefined' && (
+                  {typeof orderData.cgst !== "undefined" && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>CGST</Text>
                       <Text style={styles.billValue}>
@@ -431,7 +419,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* SGST */}
-                  {typeof orderData.sgst !== 'undefined' && (
+                  {typeof orderData.sgst !== "undefined" && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>SGST</Text>
                       <Text style={styles.billValue}>
@@ -441,7 +429,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* Platform Fee */}
-                  {typeof orderData.platformFee !== 'undefined' && (
+                  {typeof orderData.platformFee !== "undefined" && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Platform Fee</Text>
                       <Text style={styles.billValue}>
@@ -451,7 +439,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   )}
 
                   {/* Discount */}
-                  {typeof orderData.discount !== 'undefined' && (
+                  {typeof orderData.discount !== "undefined" && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Discount</Text>
                       <Text style={styles.billValue}>
@@ -462,11 +450,11 @@ const OrderAllocatingScreen: React.FC = () => {
 
                   {/* Final Total */}
                   <View style={styles.billRow}>
-                    <Text style={[styles.billLabel, { fontWeight: '700' }]}>
+                    <Text style={[styles.billLabel, { fontWeight: "700" }]}>
                       Total
                     </Text>
-                    <Text style={[styles.billValue, { fontWeight: '700' }]}>
-                      ₹{orderData.finalTotal?.toFixed(2) || '0.00'}
+                    <Text style={[styles.billValue, { fontWeight: "700" }]}>
+                      ₹{orderData.finalTotal?.toFixed(2) || "0.00"}
                     </Text>
                   </View>
                 </View>
@@ -487,39 +475,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   closeButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 15,
     right: 20,
     zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: "rgba(255,255,255,0.8)",
     borderRadius: 20,
     padding: 6,
   },
   loaderContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 999,
   },
   mapContainer: {
     flex: 1,
-    backgroundColor: '#e1e1e1',
+    backgroundColor: "#e1e1e1",
   },
   map: {
     ...StyleSheet.absoluteFillObject,
   },
   bottomScroll: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    maxHeight: '60%',
-    backgroundColor: '#fff',
+    maxHeight: "60%",
+    backgroundColor: "#fff",
     borderTopRightRadius: 12,
     borderTopLeftRadius: 12,
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: -2 },
@@ -530,114 +518,114 @@ const styles = StyleSheet.create({
   },
   header: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 8,
-    textAlign: 'center',
-    color: '#333',
+    textAlign: "center",
+    color: "#333",
   },
   highlightText: {
-    color: '#e67e22',
+    color: "#e67e22",
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   quoteText: {
     fontSize: 14,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    color: '#666',
+    fontStyle: "italic",
+    textAlign: "center",
+    color: "#666",
     marginBottom: 12,
   },
   linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     marginBottom: 12,
   },
   linkLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#444',
+    fontWeight: "600",
+    color: "#444",
     marginRight: 5,
   },
   linkText: {
     fontSize: 14,
-    color: '#3498db',
-    textDecorationLine: 'underline',
+    color: "#3498db",
+    textDecorationLine: "underline",
   },
   cancelButton: {
-    alignSelf: 'center',
-    backgroundColor: '#e74c3c',
+    alignSelf: "center",
+    backgroundColor: "#e74c3c",
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
     marginTop: 5,
   },
   cancelButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
     fontSize: 14,
   },
   orderDetailsCard: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
     borderRadius: 12,
     padding: 16,
     marginTop: 20,
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
   orderDetailsHeader: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 10,
-    color: '#333',
-    textAlign: 'center',
+    color: "#333",
+    textAlign: "center",
   },
   orderItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   orderItemName: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
     flex: 2,
   },
   orderItemQuantity: {
     fontSize: 14,
-    color: '#555',
+    color: "#555",
     flex: 1,
-    textAlign: 'center',
+    textAlign: "center",
   },
   orderItemPrice: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
     flex: 1,
-    textAlign: 'right',
+    textAlign: "right",
   },
   separator: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: "#eee",
     marginVertical: 8,
   },
   billSummaryContainer: {
     marginTop: 20,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
   },
   billRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 6,
   },
   billLabel: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
   billValue: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
 });

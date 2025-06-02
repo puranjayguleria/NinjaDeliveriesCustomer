@@ -36,7 +36,6 @@ const LoginScreen: React.FC = () => {
   const [errorModalMessage, setErrorModalMessage] = useState("");
 
   const showErrorModal = (message: string) => {
-    console.log("Showing error modal:", message);
     setErrorModalMessage(message);
     setErrorModalVisible(true);
   };
@@ -72,18 +71,14 @@ const LoginScreen: React.FC = () => {
       }
 
       if (finalStatus !== "granted") {
-        showErrorModal("Push notifications permission not granted.");
         return null;
       }
 
       const { data } = await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig?.extra?.eas?.projectId,
       });
-      console.log("Expo Push Token received:", data);
       return data;
     } catch (error) {
-      console.error("Error registering for push notifications:", error);
-      showErrorModal("Failed to enable push notifications. Please try again.");
       return null;
     }
   };

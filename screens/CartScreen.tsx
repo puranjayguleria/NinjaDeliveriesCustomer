@@ -15,15 +15,20 @@ import {
   Modal,
   Animated,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { CommonActions, useNavigation, useRoute } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal"; // <-- NEW Import for error modal
+import { findNearestStore } from "../utils/findNearestStore";
+import { useLocationContext } from "@/context/LocationContext";
+import NotificationModal from "../components/NotificationModal";
+import RecommendCard from "@/components/RecommendedCard";
 
 /**
  * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
@@ -49,7 +54,10 @@ type PromoCode = {
   label?: string;
   description?: string;
   isActive: boolean;
-  usedBy?: string[];
+
+  usedBy?: string[];          
+  usedByIds?: string[];       
+  usedByPhones?: string[];    
 };
 
 type FareData = {
@@ -68,13 +76,19 @@ type FareData = {
   };
 };
 
+const RECO_CARD_WIDTH  = 140;   
+const RECO_GAP         = 12;    
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { cart, increaseQuantity, decreaseQuantity, removeFromCart, clearCart } = useCart();
+  const { location,updateLocation } = useLocationContext();      // already have this in Categories – add here too
+  const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
+  const [recommended, setRecommended] = useState<Product[]>([]);
+
+  const { cart, increaseQuantity, decreaseQuantity, removeFromCart, clearCart, addToCart } = useCart();
 
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
@@ -90,6 +104,7 @@ const CartScreen: React.FC = () => {
   const [productSgst, setProductSgst] = useState<number>(0);
   const [productCess, setProductCess] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
+  const [surgeLine, setSurgeLine] = useState<number>(0);
 
   const [distance, setDistance] = useState<number>(0);
   const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
@@ -108,6 +123,9 @@ const CartScreen: React.FC = () => {
   // Location
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
+
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [notificationModalMessage, setNotificationModalMessage] = useState("");
 
   // Modals
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
@@ -149,6 +167,27 @@ const CartScreen: React.FC = () => {
     }
   }, [selectedLocation]);
 
+  useEffect(() => {
+    const cur = location.storeId ?? null;
+  
+    if (prevStoreIdRef.current === null && cur !== null) {
+      prevStoreIdRef.current = cur;      // first time → just remember
+      return;
+    }
+  
+    if (cur && cur !== prevStoreIdRef.current) {
+      clearCart();                       // empty the old cart
+      setSelectedLocation(null);         // ← **reset the address**
+      prevStoreIdRef.current = cur;
+  
+      setNotificationModalMessage(
+        "Looks like you’ve switched to another store. " +
+        "Your cart has been emptied—please add items again."
+      );
+      setNotificationModalVisible(true);
+    }
+  }, [location.storeId]);
+
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["rgb(231,76,60)", "rgb(40,167,69)"], // Red -> Green
@@ -162,7 +201,7 @@ const CartScreen: React.FC = () => {
    * Fetch Data On Mount
    ***************************************/
   useEffect(() => {
-    fetchFareData();
+    fetchFareData(location.storeId ?? null);
     fetchCartItems();
     watchPromos();
     const unsubscribe = watchUserLocations();
@@ -190,19 +229,46 @@ const CartScreen: React.FC = () => {
     else resetTotals();
   }, [cartItems, selectedPromo, selectedLocation, fareData]);
 
+  useEffect(() => {
+    fetchFareData(location.storeId ?? null);
+  }, [location.storeId]);
+  
   /***************************************
    * Firestore Data
    ***************************************/
-  const fetchFareData = async () => {
-    try {
-      const docRef = await firestore().collection("orderSetting").doc("fare").get();
-      if (docRef.exists) {
-        setFareData(docRef.data() as FareData);
-      }
-    } catch (error) {
-      console.error("Error fetching fare data:", error);
+  const fetchFareData = async (storeId: string | null) => {
+  if (!storeId) {                      // if we don’t know the store yet
+    setFareData(null);
+    return;
+  }
+
+  try {
+    // ❶  *If doc-ID == storeId*   (simplest)
+    // const snap = await firestore()
+    //   .collection("orderSetting")
+    //   .doc(storeId)
+    //   .get();
+
+    // ❷  *If you kept a normal collection with a storeId field*:
+    const snap = await firestore()
+      .collection("orderSetting")
+      .where("storeId", "==", storeId)
+      .limit(1)
+      .get();
+
+    if (!snap.empty /* use branch ❷ */ && snap.docs[0].exists) {
+      setFareData(snap.docs[0].data() as FareData);
+    } else if (snap.exists /* use branch ❶ */) {
+      setFareData((snap.data() as unknown) as FareData);
+    } else {
+      console.warn("No orderSetting found for store", storeId);
+      setFareData(null);
     }
-  };
+  } catch (err) {
+    console.error("fetchFareData:", err);
+    setFareData(null);
+  }
+};
 
   const fetchCartItems = async () => {
     try {
@@ -232,7 +298,9 @@ const CartScreen: React.FC = () => {
           productsData.push({ id: doc.id, ...(doc.data() as Product) });
         });
       });
-      setCartItems(productsData);
+      const visible = productsData.filter(p => (cart[p.id] ?? 0) > 0);
+      setCartItems(visible);
+      await fetchRecommended(visible);
     } catch (error) {
       console.error("Error fetching cart items:", error);
       Alert.alert("Error", "Failed to fetch cart items.");
@@ -240,6 +308,73 @@ const CartScreen: React.FC = () => {
       setLoading(false);
     }
   };
+
+  /**
+ * Pull “people also bought” items into state.recommended
+ * – only if they’re in-stock for the current store.
+ */
+/**
+ * Pull up to 10 “people also ordered” products that are:
+ *   • referenced in the current cart items’ matchingProducts[]
+ *   • belong to the same store as the cart
+ *   • have quantity > 0   (filtered client-side to avoid composite-index errors)
+ */
+const fetchRecommended = async (baseItems: Product[]) => {
+  try {
+    /* ---------- 1. Collect candidate IDs, skip bad values ---------- */
+    const wanted = new Set<string>();
+
+    baseItems.forEach(p => {
+      (p.matchingProducts ?? []).forEach(id => wanted.add(id));
+      wanted.delete(p.id);                          // don’t recommend what’s already in the cart
+    });
+
+    const idList = Array.from(wanted).filter(
+      id => typeof id === "string" && id.trim() !== "" && !id.includes("/")
+    );
+
+    if (idList.length === 0 || !location.storeId) {
+      setRecommended([]);                           // nothing to fetch
+      return;
+    }
+
+    /* ---------- 2. Fetch in chunks of ≤10 IDs (Firestore limit) ----- */
+    const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
+
+    for (let i = 0; i < idList.length; i += 10) {
+      const chunk = idList.slice(i, i + 10);
+      console.log(chunk)
+      reads.push(
+        firestore()
+          .collection("products")
+          .where(firestore.FieldPath.documentId(), "in", chunk)
+          .where("storeId", "==", location.storeId) // stay inside the same store
+          /* 🔸 NO quantity filter here – avoid “range + in” restriction */
+          .get()
+      );
+    }
+
+    const snapshots = await Promise.all(reads);
+
+    /* ---------- 3. Merge & client-side filter for stock ------------ */
+    const recs: Product[] = [];
+
+    snapshots.forEach(snap =>
+      snap.forEach(doc => {
+        const data = doc.data() as Product;
+        if ((data.quantity ?? 0) > 0) {             // only keep in-stock items
+          recs.push({ id: doc.id, ...data });
+        }
+      })
+    );
+
+    setRecommended(recs.slice(0, 10));              // cap UI to 10 items
+  } catch (err) {
+    console.error("[fetchRecommended]", err);
+    setRecommended([]);                             // silent fallback
+  }
+};
+
 
   const watchUserLocations = () => {
     const currentUser = auth().currentUser;
@@ -257,11 +392,11 @@ const CartScreen: React.FC = () => {
     );
   };
 
-  const watchPromos = async () => {
+  const watchPromos = () => {
     const currentUser = auth().currentUser;
-    if (!currentUser) return;
-
-    const unsub = firestore()
+    if (!currentUser) return () => {};
+  
+    return firestore()
       .collection("promoCodes")
       .where("isActive", "==", true)
       .onSnapshot(
@@ -270,17 +405,22 @@ const CartScreen: React.FC = () => {
             id: doc.id,
             ...(doc.data() as Omit<PromoCode, "id">),
           }));
-          // filter out used codes
+  
+          const phone = currentUser.phoneNumber ?? "";
+          const uid   = currentUser.uid;
+  
           const filtered = raw.filter((promo) => {
-            if (!promo.usedBy) return true;
-            return !promo.usedBy.includes(currentUser.uid);
+            const byId    = promo.usedByIds   ?? promo.usedBy ?? [];
+            const byPhone = promo.usedByPhones ?? [];
+            return !byId.includes(uid) && !byPhone.includes(phone);
           });
+  
           setPromos(filtered);
         },
-        (err) => console.error("Error listening to promos:", err)
+        (err) => console.error("Error listening to promos:", err),
       );
-    return () => unsub();
   };
+  
 
   /***************************************
    * Distance from Google
@@ -381,9 +521,10 @@ const CartScreen: React.FC = () => {
     const _platformFee = fareData.platformFee;
 
     // 7) Final total
-    const _final =
-      itemsTotal + _productCgst + _productSgst + _productCess + _deliveryCharge + _rideCgst + _rideSgst + _platformFee;
-
+    const surgeFee    = location.surge?.active ? location.surge.fee : 0;
+ const _final =
+   itemsTotal + _productCgst + _productSgst + _productCess + _deliveryCharge +
+   _rideCgst + _rideSgst + _platformFee + surgeFee;
     // Update states
     setSubtotal(_subtotal);
     setProductCgst(_productCgst);
@@ -396,6 +537,7 @@ const CartScreen: React.FC = () => {
     setRideCgst(_rideCgst);
     setRideSgst(_rideSgst);
     setPlatformFee(_platformFee);
+    setSurgeLine(surgeFee)
     setFinalTotal(_final);
   };
 
@@ -411,6 +553,7 @@ const CartScreen: React.FC = () => {
     setRideCgst(0);
     setRideSgst(0);
     setPlatformFee(0);
+    setSurgeLine(0);
     setFinalTotal(0);
   };
 
@@ -475,6 +618,10 @@ const CartScreen: React.FC = () => {
         setNavigating(true);
         const result = await handleCreateOrder("cod");
         if (result) {
+          if (selectedPromo) {
+            setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
+            setSelectedPromo(null);
+          }
           const { orderId, pickupCoords } = result;
           clearCart();
           setSelectedLocation(null);
@@ -583,14 +730,23 @@ const CartScreen: React.FC = () => {
       console.log("Order created with ID:", orderRef.id);
 
       // Mark promo as used if applicable
-      if (selectedPromo) {
-        await firestore()
-          .collection("promoCodes")
-          .doc(selectedPromo.id)
-          .update({
-            usedBy: firestore.FieldValue.arrayUnion(user.uid),
-          });
-      }
+      // Mark promo as used if applicable
+if (selectedPromo) {
+  const updates: Record<string, any> = {
+    // keep legacy field so old docs still work
+    usedBy:      firestore.FieldValue.arrayUnion(user.uid),
+    // new explicit fields
+    usedByIds:   firestore.FieldValue.arrayUnion(user.uid),
+  };
+  if (user.phoneNumber) {
+    updates.usedByPhones = firestore.FieldValue.arrayUnion(user.phoneNumber);
+  }
+  await firestore()
+    .collection("promoCodes")
+    .doc(selectedPromo.id)
+    .set(updates, { merge: true });
+}
+
 
       return { orderId: orderRef.id, pickupCoords: usedPickupCoords };
     } catch (err: any) {
@@ -605,6 +761,9 @@ const CartScreen: React.FC = () => {
    ***************************************/
   const renderCartItem = ({ item }: { item: Product }) => {
     const quantity = cart[item.id] || 0;
+    if (quantity == 0) {
+      return;
+    }
     const realPrice = item.discount ? item.price - item.discount : item.price;
     const totalPrice = realPrice * quantity;
 
@@ -661,14 +820,33 @@ const CartScreen: React.FC = () => {
     <View style={styles.addressItemRow}>
       <TouchableOpacity
         style={styles.addressItemLeft}
-        onPress={() => {
-          setSelectedLocation({
-            ...item,
-            lat: item.lat,
-            lng: item.lng,
-          });
-          setShowLocationSheet(false);
-        }}
+        onPress={async () => {
+             try {
+               const nearest = await findNearestStore(item.lat, item.lng);
+               if (!nearest) {
+                 Alert.alert(
+                   "Unavailable",
+                   "We don’t deliver to that address yet – try another address."
+                 );
+                 return;
+               }
+          
+               const fullLocation = {
+                 ...item,
+                 lat: item.lat,
+                 lng: item.lng,
+                 storeId: nearest.id,         // attach the chosen store
+               };
+          
+               setSelectedLocation(fullLocation);
+               updateLocation(fullLocation)
+             } catch (e) {
+               console.error("[findNearestStore]", e);
+               Alert.alert("Error", "Couldn’t validate that address.");
+             } finally {
+               setShowLocationSheet(false);
+             }
+           }}
       >
         <Text style={styles.addressItemLabel}>
           {item.placeLabel} - {item.houseNo}
@@ -701,11 +879,12 @@ const CartScreen: React.FC = () => {
     }
   };
 
-  const handleAddMoreItems = () => {
-    navigation.navigate("Home");
-  };
+const handleAddMoreItems = () => {
+  navigation.navigate("HomeTab", { screen: "ProductsHome" });  
+};
 
   return (
+    <SafeAreaView style={styles.safeArea}> 
     <View style={styles.container}>
       {/* Confetti Cannon */}
       {showConfetti && (
@@ -727,7 +906,7 @@ const CartScreen: React.FC = () => {
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color="#28a745" />
         </View>
-      ) : cartItems.length === 0 ? (
+      ) : Object.keys(cart).length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>Your cart is empty.</Text>
         </View>
@@ -760,6 +939,41 @@ const CartScreen: React.FC = () => {
                 <Text style={styles.addMoreRowText}>Add More Items</Text>
               </TouchableOpacity>
             </View>
+{recommended.length > 0 && (
+  <>
+<View style={styles.recoHeader}>
+  <View style={styles.recoBadge}>
+    <MaterialIcons name="flash-on" size={12} color="#fff" />
+    <Text style={styles.recoBadgeTxt}>POPULAR</Text>
+  </View>
+
+  <Text style={styles.recoTitle}>Complements your cart</Text>
+</View>
+
+
+    <FlatList
+      data={recommended}
+      keyExtractor={(i) => i.id}
+      horizontal
+      snapToInterval={RECO_CARD_WIDTH + RECO_GAP}
+      decelerationRate="fast"
+      contentContainerStyle={styles.recoList}
+      showsHorizontalScrollIndicator={false}
+      renderItem={({ item }) => (
+        <RecommendCard
+          item={item}
+          qtyInCart={cart[item.id] ?? 0}
+          onAdd={() => addToCart(item.id, item.quantity)}
+          onInc={() => increaseQuantity(item.id, item.quantity)}
+          onDec={() => decreaseQuantity(item.id)}
+          width={RECO_CARD_WIDTH}
+        />
+      )}
+    />
+  </>
+)}
+
+
 
             {/* LOCATION SECTION */}
             {userLocations.length === 0 ? (
@@ -915,6 +1129,15 @@ const CartScreen: React.FC = () => {
                 </View>
               )}
 
+{/* Surge Fee */}
+{surgeLine > 0 && (
+  <View style={styles.summaryRow}>
+    <Text style={[styles.summaryLabel,{color:"#d32f2f"}]}>Weather Surge</Text>
+    <Text style={[styles.summaryValue,{color:"#d32f2f"}]}>
+      ₹{surgeLine.toFixed(2)}
+    </Text>
+  </View>
+)}
               {/* Promo Type */}
               {selectedPromo && (
                 <View style={styles.summaryRow}>
@@ -935,6 +1158,18 @@ const CartScreen: React.FC = () => {
                 </Text>
               </View>
             </View>
+            <View style={styles.infoBanner}>
+  <Ionicons
+    name="information-circle"
+    size={16}
+    color="#00695c"
+    style={styles.infoIcon}
+  />
+  <Text style={styles.infoText}>
+    No cash in hand? Our rider carries a QR code — pay instantly
+    with any UPI app at the doorstep.
+  </Text>
+</View>
           </ScrollView>
 
           {/* FOOTER */}
@@ -1017,7 +1252,7 @@ const CartScreen: React.FC = () => {
             >
               <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
             </TouchableOpacity>
-
+           
             {/* If you add online payment, uncomment this:
             <TouchableOpacity
               style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
@@ -1037,6 +1272,12 @@ const CartScreen: React.FC = () => {
         </View>
       </Modal>
 
+      <NotificationModal
+  visible={notificationModalVisible}
+  message={notificationModalMessage}
+  onClose={() => setNotificationModalVisible(false)}
+/>
+
       {/* NEW: Delivery Timing Error Modal */}
       <ErrorModal
         visible={errorModalVisible}
@@ -1044,6 +1285,7 @@ const CartScreen: React.FC = () => {
         onClose={() => setErrorModalVisible(false)}
       />
     </View>
+    </SafeAreaView>
   );
 };
 
@@ -1054,9 +1296,72 @@ const pastelGreen = "#e7f8f6";
 const { width } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f2f2f2",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fefefe",
+  },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+  
+    backgroundColor: "#e0f2f1", // light teal
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 14,
+    maxWidth: "90%",
+  },
+  infoIcon: {
+    marginRight: 6,
+  },
+  infoText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#00695c",
+  },
+recoHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: 8,
+},
+
+/* badge —  subtle Blinkit-green pill */
+recoBadge: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#00C853",      // Blinkit green
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 12,
+  marginRight: 6,
+},
+recoBadgeTxt: {
+  color: "#fff",
+  fontSize: 10,
+  fontWeight: "700",
+  marginLeft: 2,
+},
+
+/* title text that follows the badge */
+recoTitle: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#333",
+},
+
+  /* --- new: list container gives left padding & gap between cards --- */
+  recoList:{
+    paddingVertical:6,
+    paddingLeft:2,            // align with other content
+    columnGap: RECO_GAP
   },
   confettiContainer: {
     position: "absolute",
@@ -1097,6 +1402,16 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: "#666",
+  },
+  codNote: {
+    marginTop: 8,
+  marginBottom: 20,
+  fontSize: 14,
+  lineHeight: 20,
+  color: "#1f4f4f",
+  textAlign: "center",
+  alignSelf: "center",
+  maxWidth: "90%",
   },
   scrollView: {
     flex: 1,
@@ -1451,6 +1766,8 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
+recoTitleLight:  { fontWeight: "400" },
+
 
   /** MODAL OVERLAYS **/
   modalOverlay: {

@@ -1,681 +1,387 @@
-// screens/CategoriesScreen.tsx
-import React, { useState, useEffect } from "react";
+/* ------------------------------------------------------------------
+   CategoriesScreen.tsx — 2025-06 Pan Corner age-gate v3
+   • Age-gate now guards *adding* Pan Corner items too
+   • Remembers acceptance for the session (only ask once)
+------------------------------------------------------------------- */
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
   Image,
-  TextInput,
-  Modal,
-  Platform,
-  Linking,
   ActivityIndicator,
+  StyleSheet,
   Dimensions,
+  Modal,
+  Linking,
+  Pressable,
+  Vibration,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Location from "expo-location";
 import firestore from "@react-native-firebase/firestore";
-import axios from "axios"; // Ensure axios is installed
-import { useNavigation, useRoute, useIsFocused } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+
+import { RootStackParamList } from "../types/navigation";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { RouteProp } from "@react-navigation/native";
-import { RootStackParamList, LocationData } from "../types/navigation";
-import ErrorModal from "../components/ErrorModal"; // Ensure this component exists
-import { GOOGLE_PLACES_API_KEY } from "@env"; // Ensure this is set up correctly
 
-type CategoriesScreenNavigationProp = StackNavigationProp<
-  RootStackParamList,
-  "Categories"
->;
+import ProductCard from "../components/ProductCard";
+import ErrorModal   from "../components/ErrorModal";
+import { useCart }  from "../context/CartContext";
+import { useLocationContext } from "../context/LocationContext";
 
-type CategoriesScreenRouteProp = RouteProp<RootStackParamList, "Categories">;
+/* ────────── types & helpers ────────── */
+type CategoriesNav = StackNavigationProp<RootStackParamList, "CategoriesHome">;
 
-type Props = {
-  navigation: CategoriesScreenNavigationProp;
-  route: CategoriesScreenRouteProp;
-};
-
-type DeliveryZone = {
+type Category = { id: string; name: string; image: string; priority?: number };
+type Product  = {
   id: string;
   name: string;
-  latitude: number;
-  longitude: number;
-  radius: number; // in kilometers
+  image: string;
+  price: number;
+  quantity: number;
+  discount?: number;
+  categoryId?: string;
 };
 
-const CategoriesScreen: React.FC<Props> = () => {
-  const [categories, setCategories] = useState<Array<any>>([]);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [filteredCategories, setFilteredCategories] = useState<Array<any>>([]);
-  const [isBottomSheetVisible, setIsBottomSheetVisible] = useState<boolean>(false);
-  const [isLoadingLocation, setIsLoadingLocation] = useState<boolean>(true);
-  const [isCheckingDelivery, setIsCheckingDelivery] = useState<boolean>(false);
+type CategoryAlert = {
+  categoryId:   string;
+  title:        string;
+  message:      string;
+  acceptLabel:  string;
+  declineLabel: string;
+  linkLabel:    string;
+  linkUrl:      string;
+};
 
-  // Store user's chosen lat/lng and address
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [locationAddress, setLocationAddress] = useState<string>("Select Location");
+const { width } = Dimensions.get("window");
+const CARD_W   = (width - 48) / 3;
 
-  // Delivery Zones
-  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+/* quick helper */
+const isPanCorner = (p: { categoryId?: string; name: string }, catId: string) =>
+  p.categoryId === catId || p.name.toLowerCase().includes("pan corner");
 
-  // Error Modal State
-  const [isErrorModalVisible, setIsErrorModalVisible] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string>("");
+/* ────────── component ────────── */
+const CategoriesScreen: React.FC = () => {
+  const navigation = useNavigation<CategoriesNav>();
+  const { location } = useLocationContext();
+  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
 
-  const navigation = useNavigation<CategoriesScreenNavigationProp>();
-  const route = useRoute<CategoriesScreenRouteProp>();
-  const isFocused = useIsFocused();
+  /* catalogue state */
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products,   setProducts]   = useState<Product[]>([]);
+  const [search,     setSearch]     = useState("");
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
 
-  /***************************
-   * Fetch Categories on Mount
-   ***************************/
+  /* Pan Corner gate state */
+  const [catAlert,     setCatAlert]     = useState<CategoryAlert | null>(null);
+  const [showGate,     setShowGate]     = useState(false);
+  const [gateAction,   setGateAction]   = useState<() => void>(() => {});
+  const [panAccepted,  setPanAccepted]  = useState(false);          // remember acceptance
+
+  const visibleCategories = search.trim()
+  ? categories.filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()),
+    )
+  : categories;
+
+const visibleProducts = search.trim()
+  ? products.filter(p =>
+      (p.name + (p.description ?? "")).toLowerCase().includes(search.toLowerCase())
+    )
+  : [];
+  /* ────────── fetch alert doc once ────────── */
   useEffect(() => {
-    fetchCategories();
-    fetchDeliveryZones();
-    checkLocationPermission();
+    firestore()
+      .collection("category_alerts")
+      .where("categoryId", "==", "Pan Corner")
+      .limit(1)
+      .get()
+      .then((snap) => {
+        if (!snap.empty) setCatAlert(snap.docs[0].data() as CategoryAlert);
+      })
+      .catch((e) => console.warn("[category_alerts] fetch", e));
   }, []);
 
-  /***************************
-   * Handle Returned Location Data
-   ***************************/
+  /* ────────── fetch catalogue on store change ────────── */
   useEffect(() => {
-    if (isFocused && route.params?.selectedLocation) {
-      const { lat, lng, address } = route.params.selectedLocation;
-      setLatitude(lat);
-      setLongitude(lng);
-      setLocationAddress(address);
-      // Clear the params to avoid repeated updates
-      navigation.setParams({ selectedLocation: undefined });
-      // After setting location, check delivery availability
-      checkDeliveryAvailability(lat, lng);
-    }
-  }, [isFocused, route.params?.selectedLocation]);
+    if (!location.storeId) return;
 
-  /***************************
-   * Filter Categories
-   ***************************/
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredCategories(categories);
-    } else {
-      const lowerQuery = searchQuery.toLowerCase();
-      const filtered = categories.filter((category) =>
-        category.name.toLowerCase().includes(lowerQuery)
-      );
-      setFilteredCategories(filtered);
-    }
-  }, [searchQuery, categories]);
+    (async () => {
+      try {
+        setLoading(true);
 
-  /***************************
-   * Check Location Permission on Mount
-   ***************************/
-  const checkLocationPermission = async () => {
-    try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status === Location.PermissionStatus.GRANTED) {
-        // Permission already granted, fetch location
-        fetchCurrentLocation();
-      } else {
-        // Permission not granted, show bottom sheet
-        setIsBottomSheetVisible(true);
-        setIsLoadingLocation(false);
+        const [catSnap, prodSnap] = await Promise.all([
+          firestore()
+            .collection("categories")
+            .where("storeId", "==", location.storeId)
+            .orderBy("priority", "asc")
+            .get(),
+          firestore()
+            .collection("products")
+            .where("storeId", "==", location.storeId)
+            .where("quantity", ">", 0)
+            .get(),
+        ]);
+
+        setCategories(catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Category) })));
+        setProducts  (prodSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Product) })));
+        setError(null);
+      } catch (e) {
+        console.error("[Categories] fetch", e);
+        setError("Couldn’t load catalogue. Pull to retry.");
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error checking location permission:", error);
-      setIsBottomSheetVisible(true);
-      setIsLoadingLocation(false);
-    }
-  };
+    })();
+  }, [location.storeId]);
 
-  /***************************
-   * Fetch Categories
-   ***************************/
-  const fetchCategories = async () => {
-    try {
-      const categorySnapshot = await firestore().collection("categories").get();
-      const categoryData = categorySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setCategories(categoryData);
-      setFilteredCategories(categoryData);
-    } catch (error) {
-      Alert.alert("Error", "Failed to fetch categories.");
-    }
-  };
+  /* ────────── gate helper ────────── */
+  const askGate = useCallback(
+    (onAccept: () => void) => {
+      if (panAccepted || !catAlert) { onAccept(); return; }
 
-  /***************************
-   * Fetch Delivery Zones
-   ***************************/
-  const fetchDeliveryZones = async () => {
-    try {
-      const snapshot = await firestore().collection("delivery_zones").get();
-      const zones: DeliveryZone[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as DeliveryZone[];
-      setDeliveryZones(zones);
-    } catch (error) {
-      console.error("Error fetching delivery zones:", error);
-      showErrorModal("Error", "We are overloaded!! Please try after some time!");
-    }
-  };
+      setGateAction(() => () => {
+        setPanAccepted(true);
+        onAccept();
+      });
+      setShowGate(true);
+    },
+    [catAlert, panAccepted],
+  );
 
-  /***************************
-   * Fetch Current Location
-   ***************************/
-  const fetchCurrentLocation = async () => {
-    try {
-      setIsLoadingLocation(true);
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      const address = await Location.reverseGeocodeAsync({
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
+  /* category tap */
+  const handleCategoryPress = (item: Category) => {
+    const go = () =>
+      navigation.navigate("ProductListingFromCats", {
+        categoryId: item.id,
+        categoryName: item.name,
       });
 
-      const formattedAddress = `${address[0].name || ""}, ${address[0].city || ""}`;
-
-      setLatitude(currentLocation.coords.latitude);
-      setLongitude(currentLocation.coords.longitude);
-      setLocationAddress(formattedAddress);
-
-      // After setting location, check delivery availability
-      checkDeliveryAvailability(
-        currentLocation.coords.latitude,
-        currentLocation.coords.longitude
-      );
-    } catch (error) {
-      Alert.alert("Error", "Failed to fetch your location. Please try again.");
-    } finally {
-      setIsLoadingLocation(false);
-    }
+    catAlert && isPanCorner(item, catAlert.categoryId)
+      ? askGate(go)
+      : go();
   };
 
-  /***************************
-   * Check Delivery Availability
-   ***************************/
-  const checkDeliveryAvailability = async (lat: number, lng: number) => {
-    if (deliveryZones.length === 0) {
-      // Delivery zones not loaded yet
-      return;
-    }
+  /* product tap (search) */
+  const handleProductPress = (item: Product) => {
+    const go = () => navigation.navigate("ProductDetail", { productId: item.id });
 
-    setIsCheckingDelivery(true);
-
-    try {
-      // Prepare destinations as "lat,lng" strings
-      const destinations = deliveryZones
-        .map((zone) => `${zone.latitude},${zone.longitude}`)
-        .join("|");
-
-      const distanceResponse = await axios.get(
-        "https://maps.googleapis.com/maps/api/distancematrix/json",
-        {
-          params: {
-            origins: `${lat},${lng}`,
-            destinations: destinations,
-            key: GOOGLE_PLACES_API_KEY,
-            units: "metric",
-          },
-        }
-      );
-
-      if (distanceResponse.data.status !== "OK") {
-        console.warn("Distance Matrix API Error:", distanceResponse.data.status);
-        showErrorModal("Error", "Failed to calculate delivery availability.");
-        return;
-      }
-
-      const elements = distanceResponse.data.rows[0].elements;
-
-      // Check if any distance is within the zone's radius
-      const isDeliverable = elements.some((element: any, index: number) => {
-        if (element.status === "OK") {
-          const distanceInKm = element.distance.value / 1000; // Convert meters to kilometers
-          return distanceInKm <= deliveryZones[index].radius;
-        }
-        return false;
-      });
-
-      if (!isDeliverable) {
-        // Location is outside all delivery zones
-        showErrorModal(
-          "Delivery Unavailable",
-          "Oops! We're not in your area yet. Please select a different location within our delivery range to continue."
-        );
-      }
-    } catch (error) {
-      console.error("Error checking delivery availability:", error);
-      showErrorModal("Error", "Failed to check delivery availability.");
-    } finally {
-      setIsCheckingDelivery(false);
-    }
+    catAlert && isPanCorner(item, catAlert.categoryId)
+      ? askGate(go)
+      : go();
   };
 
-  /***************************
-   * Show Custom Error Modal
-   ***************************/
-  const showErrorModal = (title: string, message: string) => {
-    setErrorMessage(message);
-    setIsErrorModalVisible(true);
-  };
+  /* add / increase wrappers */
+  const attemptAdd = (item: Product, mode: "add" | "inc") => {
+    const doAdd = () =>
+      mode === "add"
+        ? addToCart(item.id, item.quantity)
+        : increaseQuantity(item.id, item.quantity);
 
-  /***************************
-   * Close Error Modal
-   ***************************/
-  const closeErrorModal = () => {
-    setIsErrorModalVisible(false);
-  };
-
-  /***************************
-   * Open App Settings
-   ***************************/
-  const openAppSettings = () => {
-    if (Platform.OS === "android") {
-      Linking.openSettings();
+    if (catAlert && isPanCorner(item, catAlert.categoryId) && !panAccepted) {
+      askGate(doAdd);
+      Vibration.vibrate(80);            // gentle feedback on reject path
     } else {
-      Linking.openURL("app-settings:");
+      doAdd();
     }
   };
 
-  /***************************
-   * Request / Handle Location
-   ***************************/
-  const handleAllowLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== Location.PermissionStatus.GRANTED) {
-        Alert.alert(
-          "Permission Denied",
-          "Please enable location permissions in your settings to continue.",
-          [
-            {
-              text: "Go to Settings",
-              onPress: () => {
-                if (Platform.OS === "android") {
-                  Linking.openSettings();
-                } else {
-                  Linking.openURL("app-settings:");
-                }
-              },
-            },
-            { text: "Cancel", style: "cancel" },
-          ]
-        );
-        return;
-      }
-
-      // Permission granted, fetch location
-      await fetchCurrentLocation();
-      setIsBottomSheetVisible(false);
-    } catch (error) {
-      Alert.alert("Error", "Failed to fetch your location. Please try again.");
-    }
-  };
-
-  /***************************
-   * Navigate to the Location Flow
-   ***************************/
-  const navigateToLocationFlow = () => {
-    setIsBottomSheetVisible(false);
-    navigation.navigate("LocationSelector", {
-      fromScreen: "Category",
-      initialLat: latitude,
-      initialLng: longitude,
-      initialAddress: locationAddress,
-    });
-  };
-
-  /***************************
-   * Navigate to Products
-   ***************************/
-  const navigateToProducts = (categoryId: string, categoryName: string) => {
-    navigation.navigate("ProductListing", { categoryId, categoryName });
-  };
-
-  const renderCategoryItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.categoryCard}
-      onPress={() => navigateToProducts(item.id, item.name)}
-      activeOpacity={0.8}
-      accessibilityLabel={`Category: ${item.name}`}
-    >
-      <View style={styles.imageContainer}>
-        <Image source={{ uri: item.image }} style={styles.categoryImage} />
-      </View>
-      <Text style={styles.categoryText}>{item.name}</Text>
+  /* ────────── renderers ────────── */
+  const renderCategory = ({ item }: { item: Category }) => (
+    <TouchableOpacity style={styles.catCard} onPress={() => handleCategoryPress(item)}>
+      <Image source={{ uri: item.image }} style={styles.catImg} />
+      <Text style={styles.catTxt}>{item.name}</Text>
     </TouchableOpacity>
   );
 
+  const renderProduct = ({ item }: { item: Product }) => (
+    <ProductCard
+      style={styles.prodCardOverride}
+      item={item}
+      onPress={() => handleProductPress(item)}
+      quantity={cart[item.id] ?? 0}
+      onAddToCart={() => attemptAdd(item, "add")}
+      onIncrease={() => attemptAdd(item, "inc")}
+      onDecrease={() => decreaseQuantity(item.id)}
+    />
+  );
+
+  const openSearch = () =>
+    navigation.getParent()?.navigate("HomeTab", { screen: "Search" });
+
+  /* ────────── UI ────────── */
   return (
-    <SafeAreaView style={styles.safeArea}>
-    <View style={styles.container}>
-      {/* Loader Overlay */}
-      {(isLoadingLocation || isCheckingDelivery) && (
-        <View style={styles.loaderOverlay}>
+    <SafeAreaView style={styles.safe}>
+      {/* search bar */}
+      <TouchableOpacity style={styles.searchRow} activeOpacity={0.7} onPress={openSearch}>
+        <MaterialIcons name="search" size={22} color="#555" style={styles.icn} />
+        <Text style={styles.searchPlaceholder}>Search categories or products</Text>
+      </TouchableOpacity>
+
+      {loading ? (
+        <View style={styles.centerBox}>
           <ActivityIndicator size="large" color="#28a745" />
         </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.errTxt}>{error}</Text>
+        </View>
+      ) : search.trim() === "" ? (
+        <FlatList
+          data={visibleCategories}
+          keyExtractor={c => c.id}
+          renderItem={renderCategory}
+          numColumns={3}
+          columnWrapperStyle={{ justifyContent: "flex-start" }}
+          contentContainerStyle={{ padding: 16 }}
+        />
+      ) : (
+        <FlatList
+          data={visibleProducts}
+          keyExtractor={p => p.id}
+          renderItem={renderProduct}
+          numColumns={3}
+          columnWrapperStyle={{ justifyContent: "flex-start" }}
+          contentContainerStyle={{ padding: 16 }}
+        />
       )}
 
-      {/* Error Modal */}
-      <ErrorModal
-        visible={isErrorModalVisible}
-        message={errorMessage}
-        onClose={closeErrorModal}
-        onRetry={navigateToLocationFlow} // Optional: Add a retry button
-      />
+      <ErrorModal visible={!!error} message={error ?? ""} onClose={() => setError(null)} />
 
-      {/* Header with Enhanced UI */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <MaterialIcons name="location-on" size={28} color="green" />
-          <View style={styles.locationTextContainer}>
-            <Text style={styles.deliveringText}>Delivering To</Text>
-            <TouchableOpacity onPress={navigateToLocationFlow} style={styles.locationButton}>
-              {isLoadingLocation ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.locationText} numberOfLines={1} ellipsizeMode="tail">
-                  {locationAddress}
-                </Text>
-              )}
-              <MaterialIcons name="keyboard-arrow-down" size={24} color="green" />
+      {/* ────────── Pan Corner modal ────────── */}
+      <Modal
+        visible={showGate}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGate(false)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setShowGate(false)}>
+          <Pressable style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{catAlert?.title}</Text>
+            <Text style={styles.modalMsg}>{catAlert?.message}</Text>
+
+            <TouchableOpacity
+              onPress={() => Linking.openURL(catAlert?.linkUrl ?? "")}
+              style={styles.linkBtn}
+            >
+              <Text style={styles.linkTxt}>{catAlert?.linkLabel}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </View>
 
-      {/* Bottom Sheet (Permission Request) */}
-      {isBottomSheetVisible && (
-        <Modal transparent animationType="slide">
-          <View style={styles.bottomSheetContainer}>
-            <View style={styles.bottomSheet}>
-              <Image
-                source={{
-                  uri: "https://img.icons8.com/color/96/000000/map-pin.png",
-                }}
-                style={styles.locationIcon}
-              />
-              <Text style={styles.locationTitle}>Location Permission is Off</Text>
-              <Text style={styles.locationDescription}>
-                Please enable location permission for a better delivery experience.
-              </Text>
+            <View style={styles.rowButtons}>
               <TouchableOpacity
-                style={styles.continueButton}
-                onPress={handleAllowLocation}
-                activeOpacity={0.8}
-                accessibilityLabel="Allow Location Permission"
+                style={[styles.modalBtn, styles.btnSecondary]}
+                onPress={() => setShowGate(false)}
               >
-                <Text style={styles.continueButtonText}>Allow Location</Text>
+                <Text style={styles.btnSecondaryTxt}>{catAlert?.declineLabel}</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={styles.searchButton}
-                onPress={navigateToLocationFlow}
-                activeOpacity={0.8}
-                accessibilityLabel="Search for Location"
+                style={[styles.modalBtn, styles.btnPrimary]}
+                onPress={() => {
+                  setShowGate(false);
+                  setPanAccepted(true);
+                  setTimeout(() => gateAction(), 150);   // after close anim
+                }}
               >
-                <Text style={styles.searchButtonText}>Search Location</Text>
+                <Text style={styles.btnPrimaryTxt}>{catAlert?.acceptLabel}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Search Bar for Categories */}
-      <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={24} color="#555" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search categories..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#999"
-          accessibilityLabel="Search Categories"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearIcon} accessibilityLabel="Clear Search">
-            <MaterialIcons name="clear" size={24} color="#555" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Categories List */}
-      <FlatList
-        data={filteredCategories}
-        keyExtractor={(item) => item.id}
-        renderItem={renderCategoryItem}
-        numColumns={3}
-        // Align items to flex-start so that if not full, they align to left
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No categories found.</Text>
-          </View>
-        }
-      />
-    </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
 
-export default CategoriesScreen;
-
-const { width } = Dimensions.get("window");
-// For 3 columns, calculate cardWidth considering padding and margins.
-const cardWidth = (width - 48) / 3;
+/* ────────── styles (unchanged) ────────── */
+const pastelGreen = "#e7f8f6";
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f2f2f2", // or your preferred background color
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#f2f2f2",
-  },
+  safe: { flex: 1, backgroundColor: "#f2f2f2" },
 
-  /***** HEADER *****/
-  header: {
-    backgroundColor: "#e7f8f6",
-    paddingTop: Platform.OS === "ios" ? 30 : 20,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  headerContent: {
+  /* search */
+  searchRow: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  locationTextContainer: {
-    marginLeft: 10,
-    flex: 1,
-  },
-  deliveringText: {
-    fontSize: 22,
-    color: "black",
-    fontWeight: "700",
-  },
-  locationButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  locationText: {
-    fontSize: 18,
-    fontWeight: "500",
-    color: "black",
-    flex: 1,
-    marginRight: 6,
-  },
-
-  /***** SEARCH *****/
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 12,
-    position: "relative",
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 16,
-    zIndex: 1,
-  },
-  searchBar: {
-    flex: 1,
+    margin: 16,
     backgroundColor: "#fff",
     borderRadius: 25,
-    paddingLeft: 48,
-    paddingRight: 48,
-    height: 50,
-    fontSize: 17,
-    color: "#333",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    paddingHorizontal: 14,
     elevation: 3,
   },
-  clearIcon: {
-    position: "absolute",
-    right: 16,
-  },
+  icn: { marginRight: 4 },
+  searchPlaceholder: { flex: 1, height: 44, lineHeight: 44, fontSize: 15, color: "#777" },
 
-  /***** LIST *****/
-  list: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-  },
-  // Use flex-start so that any row with fewer than 3 items starts at the left
-  row: {
-    flex: 1,
-    justifyContent: "flex-start",
-    marginBottom: 16,
-  },
-  categoryCard: {
-    width: cardWidth,
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    overflow: "hidden",
+  /* category */
+  catCard: {
+    width: CARD_W,
     marginRight: 8,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  imageContainer: {
-    width: "100%",
-    aspectRatio: 1, // Square container for image
-  },
-  categoryImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  categoryText: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    textAlign: "center",
+    borderRadius: 14,
     backgroundColor: "#fff",
+    elevation: 2,
+    overflow: "hidden",
   },
+  catImg: { width: "100%", aspectRatio: 1 },
+  catTxt: { paddingVertical: 8, textAlign: "center", fontWeight: "600", color: "#333" },
 
-  /***** EMPTY STATE *****/
-  emptyContainer: {
+  /* product override */
+  prodCardOverride: { width: CARD_W, marginRight: 8, marginBottom: 16 },
+
+  /* loading / error */
+  centerBox: { flex: 1, justifyContent: "center", alignItems: "center" },
+  errTxt: { color: "#e53935", fontSize: 16, textAlign: "center" },
+
+  /* modal */
+  overlay: {
     flex: 1,
-    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
-    marginTop: 50,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: "#999",
-  },
-
-  /***** BOTTOM SHEET *****/
-  bottomSheetContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  bottomSheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    padding: 25,
     alignItems: "center",
+    padding: 24,
   },
-  locationIcon: {
-    width: 100,
-    height: 100,
-    marginBottom: 20,
+  modalCard: {
+    width: "100%",
+    backgroundColor: pastelGreen,
+    borderRadius: 14,
+    padding: 20,
+    elevation: 6,
   },
-  locationTitle: {
-    fontSize: 22,
-    fontWeight: "600",
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
     marginBottom: 10,
-    color: "#333",
-    textAlign: "center",
   },
-  locationDescription: {
-    fontSize: 18,
+  modalMsg: {
+    fontSize: 14,
     color: "#555",
-    textAlign: "center",
-    marginBottom: 25,
+    lineHeight: 20,
+    marginBottom: 16,
   },
-  continueButton: {
-    backgroundColor: "#28a745",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 30,
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  continueButtonText: {
-    color: "#fff",
-    fontSize: 18,
+  linkBtn: { marginBottom: 16, alignSelf: "flex-start" },
+  linkTxt: {
+    fontSize: 13,
+    color: "#007aff",
+    textDecorationLine: "underline",
     fontWeight: "600",
   },
-  searchButton: {
-    backgroundColor: "#fff",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: "#28a745",
-    width: "100%",
+  rowButtons: { flexDirection: "row", justifyContent: "flex-end" },
+  modalBtn: {
+    minWidth: 100,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: "center",
+    marginLeft: 8,
   },
-  searchButtonText: {
-    color: "#28a745",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-
-  /***** LOADER OVERLAY *****/
-  loaderOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
-  },
+  btnPrimary: { backgroundColor: "#009688" },
+  btnPrimaryTxt: { color: "#fff", fontWeight: "700" },
+  btnSecondary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#bbb" },
+  btnSecondaryTxt: { color: "#333", fontWeight: "600" },
 });
+
+export default CategoriesScreen;

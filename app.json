@@ -20,7 +20,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ninjadeliveries.customer",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "5",
+      "buildNumber": "9",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
         "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts."
@@ -41,7 +41,13 @@
         "ACCESS_COARSE_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
-      ]
+      ],
+      "versionCode": 11,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -52,8 +58,14 @@
       "expo-router",
       "@react-native-firebase/app",
       "expo-font",
+      "expo-updates",
       "./app.plugin.js"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/6b44378d-74c3-4698-bbfd-ab0b8b165bc7",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0
+    },
     "experiments": {
       "typedRoutes": true
     },
@@ -65,9 +77,6 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/6b44378d-74c3-4698-bbfd-ab0b8b165bc7"
     }
   }
 }

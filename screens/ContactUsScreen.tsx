@@ -1,3 +1,4 @@
+// screens/ContactUsScreen.tsx
 import React from 'react';
 import {
   View,
@@ -6,111 +7,129 @@ import {
   StyleSheet,
   TouchableOpacity,
   Linking,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-const ContactUsScreen: React.FC = () => {
-  const handleCall = () => {
-    Linking.openURL('tel:8219105753');
-  };
+const PHONE = '8219105753';
+const EMAIL = 'admin@ninjadeliveries.com';
 
-  const handleEmail = () => {
-    Linking.openURL('mailto:admin@ninjadeliveries.com');
-  };
+const ContactUsScreen: React.FC = () => {
+  const handleCall  = () => Linking.openURL(`tel:${PHONE}`);
+  const handleEmail = () => Linking.openURL(`mailto:${EMAIL}`);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.imageContainer}>
-        <Image
-          source={require('../assets/ninja-phone.jpg')} // Use the generated ninja phone image
-          style={styles.ninjaImage}
-          resizeMode="cover"
-        />
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" />
 
-      <View style={styles.contentContainer}>
-        <Text style={styles.title}>Get in Touch</Text>
-        <Text style={styles.description}>
-          Have questions, feedback, or need help? We're here for you!
+      {/* ---------- Hero (logo / mascot) ---------- */}
+      <View style={styles.heroWrapper}>
+        <View style={styles.logoCircle}>
+          <Image
+            source={require('../assets/ninja-phone.jpg')}
+            style={styles.logoImg}
+            resizeMode="cover"
+          />
+        </View>
+        <Text style={styles.heading}>Need a hand?</Text>
+        <Text style={styles.subHeading}>
+          We’re always around to help with orders, feedback or questions.
         </Text>
+      </View>
 
-        <TouchableOpacity style={styles.contactButton} onPress={handleCall}>
-          <Icon name="phone" size={24} color="#FFFFFF" style={styles.icon} />
-          <Text style={styles.contactButtonText}>Call Us: 8219105753</Text>
+      {/* ---------- Action buttons ---------- */}
+      <View style={styles.actionsWrapper}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleCall}>
+          <Icon name="phone" size={24} color="#fff" style={styles.actionIcon} />
+          <Text style={styles.actionText}>Call Us</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.contactButton} onPress={handleEmail}>
-          <Icon name="email" size={24} color="#FFFFFF" style={styles.icon} />
-          <Text style={styles.contactButtonText}>
-            Email Us: admin@ninjadeliveries.com
-          </Text>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleEmail}>
+          <Icon name="email" size={24} color="#fff" style={styles.actionIcon} />
+          <Text style={styles.actionText}>Email Us</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
+export default ContactUsScreen;
+
+/* ------------------------------------------------------------------ */
+/*  STYLES                                                            */
+/* ------------------------------------------------------------------ */
+const PRIMARY   = '#00C853';
+const DARK_BG   = '#121212';
+const TEXT_GREY = '#E0E0E0';
+
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: DARK_BG,
+    justifyContent: 'space-between',
   },
-  imageContainer: {
-    marginBottom: 20,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+
+  /* ---------- hero ---------- */
+  heroWrapper: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 32,
+  },
+  logoCircle: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
+    marginBottom: 24,
+    // subtle elevation / shadow
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  ninjaImage: {
-    width: '100%',
-    height: '100%',
-  },
-  contentContainer: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#00C853',
+  logoImg: { width: '100%', height: '100%' },
+
+  heading: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: PRIMARY,
+    marginBottom: 8,
     textAlign: 'center',
-    marginBottom: 10,
   },
-  description: {
+  subHeading: {
     fontSize: 16,
-    color: '#FFFFFF',
+    color: TEXT_GREY,
     textAlign: 'center',
-    marginBottom: 20,
+    lineHeight: 22,
   },
-  contactButton: {
+
+  /* ---------- actions ---------- */
+  actionsWrapper: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#00C853',
-    paddingVertical: 15,
+    backgroundColor: PRIMARY,
+    borderRadius: 40,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    borderRadius: 30, // Increased border radius for a more curvy look
-    marginVertical: 10,
-    width: '90%',
-    shadowColor: '#000', // Optional shadow for depth
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    marginBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  icon: {
-    marginRight: 10, // Space between icon and text
-  },
-  contactButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  actionIcon: { marginRight: 14 },
+  actionText: {
+    flexShrink: 1,
+    color: '#fff',
+    fontSize: 17,
     fontWeight: '600',
   },
 });
-
-export default ContactUsScreen;

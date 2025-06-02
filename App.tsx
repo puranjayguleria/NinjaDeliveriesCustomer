@@ -1,5 +1,8 @@
-// App.tsx
-import React, { useEffect, useRef, useState } from "react";
+// **************************************************************
+//  App.tsx – consolidated & fixed  (May 2025)
+// **************************************************************
+
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   ActivityIndicator,
@@ -8,436 +11,388 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
-  Linking,
+  AppState,
   Modal as RNModal,
-} from "react-native";
+} from 'react-native';
 import {
   NavigationContainer,
   getFocusedRouteNameFromRoute,
   CommonActions,
   useNavigation,
-} from "@react-navigation/native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createStackNavigator } from "@react-navigation/stack";
-import { Ionicons } from "@expo/vector-icons";
-import * as Notifications from "expo-notifications";
-import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
-import Constants from "expo-constants";
+  useRoute,
+} from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
+import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// Providers
-import { CustomerProvider } from "./context/CustomerContext";
-import { CartProvider, useCart } from "./context/CartContext";
-import { LocationProvider } from "./context/LocationContext";
-import { useOrder, OrderProvider } from "./context/OrderContext";
+/* ──────────────────────────────────────────────────────────
+   Context Providers
+   ────────────────────────────────────────────────────────── */
+import { CustomerProvider } from './context/CustomerContext';
+import { CartProvider, useCart } from './context/CartContext';
+import { LocationProvider } from './context/LocationContext';
+import { OrderProvider, useOrder } from './context/OrderContext';
 
-// Screens
-import CategoriesScreen from "./screens/CategoriesScreen";
-import ProductListingScreen from "./screens/ProductListingScreen";
-import CartScreen from "./screens/CartScreen";
-import ProfileScreen from "./screens/ProfileScreen";
-import LoginScreen from "./screens/LoginScreen";
-import LocationSelectorScreen from "./screens/LocationSelectorScreen";
-import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
-import OrderTrackingScreen from "./screens/OrderTrackingScreen";
-import RatingScreen from "./screens/RatingScreen";
-import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import ContactUsScreen from "./screens/ContactUsScreen";
-import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen"; // <-- Import T&C
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import FeaturedScreen from "./screens/FeaturedScreen";
+/* ──────────────────────────────────────────────────────────
+   Screens
+   ────────────────────────────────────────────────────────── */
+import ProductsHomeScreen from './screens/ProductsHomeScreen';
+import CategoriesScreen from './screens/CategoriesScreen';
+import FeaturedScreen from './screens/FeaturedScreen';
+import ProductListingScreen from './screens/ProductListingScreen';
+import CartScreen from './screens/CartScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import LocationSelectorScreen from './screens/LocationSelectorScreen';
+import OrderAllocatingScreen from './screens/OrderAllocatingScreen';
+import OrderTrackingScreen from './screens/OrderTrackingScreen';
+import RatingScreen from './screens/RatingScreen';
+import NewOrderCancelledScreen from './screens/NewOrderCancelledScreen';
+import ContactUsScreen from './screens/ContactUsScreen';
+import TermsAndConditionsScreen from './screens/TermsAndConditionsScreen';
+import LoginScreen from './screens/LoginScreen';
+import SearchScreen from './screens/SearchScreen';
+import QuizScreen from './screens/QuizScreen';
+import CongratsScreen from './screens/CongratsScreen';
+import LeaderboardScreen from './screens/LeaderBoardScreen';
 
-// ---------------------------------------------------
-// Create Navigators
-// ---------------------------------------------------
+/* ──────────────────────────────────────────────────────────
+   Utilities
+   ────────────────────────────────────────────────────────── */
+import { ensurePushTokenSynced } from './utils/PushTokenManager';
+import { useOtaUpdate } from './utils/useOtaUpdate';
+
+/* ══════════════════════════════════════════════════════════
+   Auth Guard Helper
+   ══════════════════════════════════════════════════════════ */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const navigation = useNavigation<any>();
+  const user = auth().currentUser;
+
+  useEffect(() => {
+    if (!user) {
+      Alert.alert('Login Required', 'You must be logged in to access this screen.', [
+        { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
+        { text: 'Log In', onPress: () => navigation.navigate('HomeTab', { screen: 'LoginInHomeStack' }) },
+      ]);
+    }
+  }, [user, navigation]);
+
+  if (!user) return null;
+  return <>{children}</>;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Navigator Instances
+   ══════════════════════════════════════════════════════════ */
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+const RootStack = createStackNavigator();
 
-/* ------------------------------------------------------------------
-   1) MAIN TAB NAVIGATOR
------------------------------------------------------------------- */
+/* ==========================================================
+   STACK COMPOSITIONS
+   ========================================================== */
+function HomeStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ProductsHome" component={ProductsHomeScreen} />
+
+      {/* Quiz flow (gated) */}
+      <Stack.Screen name="Quiz" options={{ title: 'Quiz & Win' }}>
+        {() => (
+          <RequireAuth>
+            <QuizScreen />
+          </RequireAuth>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Congrats" options={{ title: 'Congratulations!', headerShown: true }}>
+        {() => (
+          <RequireAuth>
+            <CongratsScreen />
+          </RequireAuth>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Leaderboard" options={{ title: 'Leaderboard', headerShown: true }}>
+        {() => (
+          <RequireAuth>
+            <LeaderboardScreen />
+          </RequireAuth>
+        )}
+      </Stack.Screen>
+
+      {/* Search & listing */}
+      <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="ProductListingFromHome"
+        component={ProductListingScreen}
+        options={({ route }) => ({ title: route.params?.categoryName || 'Products', headerShown: true })}
+      />
+
+      {/* Order flow */}
+      <Stack.Screen name="OrderAllocating" component={OrderAllocatingScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="OrderTracking"
+        component={OrderTrackingScreen}
+        options={{ headerShown: true, headerLeft: () => null, gestureEnabled: false, title: 'Order Tracking' }}
+      />
+      <Stack.Screen
+        name="OrderCancelled"
+        component={NewOrderCancelledScreen}
+        options={{ title: 'Order Cancelled', headerLeft: () => null, gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="RatingScreen"
+        component={RatingScreen}
+        options={{ title: 'Rate Your Rider', headerLeft: () => null, gestureEnabled: false }}
+      />
+
+      {/* Login (inside Home stack so bottom tabs remain visible) */}
+      <Stack.Screen name="LoginInHomeStack" component={LoginScreen} options={{ headerShown: false }} />
+    </Stack.Navigator>
+  );
+}
+
+function CategoriesStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
+      <Stack.Screen
+        name="ProductListingFromCats"
+        component={ProductListingScreen}
+        options={({ route }) => ({ title: route.params?.categoryName || 'Products', headerShown: true })}
+      />
+    </Stack.Navigator>
+  );
+}
+
+function FeaturedStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="FeaturedHome" component={FeaturedScreen} />
+      <Stack.Screen
+        name="ProductListingFromFeatured"
+        component={ProductListingScreen}
+        options={({ route }) => ({ title: route.params?.categoryName || 'Products', headerShown: true })}
+      />
+    </Stack.Navigator>
+  );
+}
+
+const CartStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="CartHome" component={CartScreen} />
+  </Stack.Navigator>
+);
+
+const ProfileStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="ProfileHome" component={ProfileScreen} />
+  </Stack.Navigator>
+);
+
+/* ==========================================================
+   TAB NAVIGATOR
+   ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
-  const totalItems = Object.values(cart).reduce((acc, qty) => acc + qty, 0);
+  const totalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const { activeOrders } = useOrder();
+  const route = useRoute();
+  const currentTab = getFocusedRouteNameFromRoute(route) ?? 'HomeTab';
 
-  // Determine current focused route for the Home tab.
-  const routeName =
-    getFocusedRouteNameFromRoute({ routes: [{ name: "Home" }], index: 0 }) ||
-    "Home";
+  const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
+  useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
 
-  // Filter only "pending" / "active" orders.
-  const inProgress = activeOrders.filter(
-    (o) => o.status === "pending" || o.status === "active"
-  );
+  const inProgress = activeOrders.filter((o) => o.status === 'pending' || o.status === 'active');
+
+  const promptLogin = (navigation: any, tab: string) =>
+    Alert.alert('Login Required', `You must be logged in to access ${tab}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Continue', onPress: () => navigation.navigate('HomeTab', { screen: 'LoginInHomeStack' }) },
+    ]);
 
   return (
-    <View style={{ flex: 1, position: "relative" }}>
+    <View style={{ flex: 1 }}>
       <Tab.Navigator
+        initialRouteName="HomeTab"
         screenOptions={({ route }) => {
-          let iconName = "home-outline";
-          if (route.name === "Home") iconName = "home-outline";
-          else if (route.name === "Featured") iconName = "star-outline";
-          else if (route.name === "CartFlow") iconName = "cart-outline";
-          else if (route.name === "Profile") iconName = "person-outline";
-          else if (route.name === "ContactUsTab") iconName = "call-outline";
-
+          const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
+            HomeTab: 'home-outline',
+            CategoriesTab: 'apps-outline',
+            FeaturedTab: 'star-outline',
+            CartFlow: 'cart-outline',
+            Profile: 'person-outline',
+            ContactUsTab: 'call-outline',
+          };
           return {
+            headerShown: false,
+            tabBarActiveTintColor: 'blue',
+            tabBarInactiveTintColor: 'gray',
             tabBarIcon: ({ color, size }) => (
               <View style={{ width: size, height: size }}>
-                <Ionicons name={iconName} size={size} color={color} />
-                {route.name === "CartFlow" && totalItems > 0 && (
+                <Ionicons name={iconMap[route.name]} size={size} color={color} />
+                {route.name === 'CartFlow' && totalItems > 0 && (
                   <View style={styles.badgeContainer}>
                     <Text style={styles.badgeText}>{totalItems}</Text>
                   </View>
                 )}
               </View>
             ),
-            tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "gray",
-            headerShown: false,
           };
         }}
       >
-        <Tab.Screen name="Home" component={CategoriesStack} />
-        <Tab.Screen
-          name="Featured"
-          component={FeaturedStack}
-          options={{ title: "Featured" }}
-        />
+        {/* 1️⃣ Home */}
+        <Tab.Screen name="HomeTab" component={HomeStack} options={{ title: 'Home' }} />
+
+        {/* 2️⃣ Categories */}
+        <Tab.Screen name="CategoriesTab" component={CategoriesStack} options={{ title: 'Categories' }} />
+
+        {/* 3️⃣ Featured */}
+        <Tab.Screen name="FeaturedTab" component={FeaturedStack} options={{ title: 'Featured' }} />
+
+        {/* 4️⃣ Cart (login-gated) */}
         <Tab.Screen
           name="CartFlow"
-          component={CartFlowStack}
-          options={{
-            title: "Cart",
-            listeners: ({ navigation, route }) => ({
-              tabPress: (e) => {
-                if (route.state && route.state.index > 0) {
-                  e.preventDefault();
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: "CartFlow",
-                          state: { routes: [{ name: "CartHome" }] },
-                        },
-                      ],
-                    })
-                  );
-                }
-              },
-            }),
-          }}
+          component={CartStack}
+          options={{ title: 'Cart' }}
+          listeners={({ navigation, route }) => ({
+            tabPress: (e) => {
+              if (!currentUser) {
+                e.preventDefault();
+                promptLogin(navigation, 'Cart');
+              } else if (route.state && route.state['index'] > 0) {
+                e.preventDefault();
+                navigation.dispatch(
+                  CommonActions.reset({ index: 0, routes: [{ name: 'CartFlow', state: { routes: [{ name: 'CartHome' }] } }] }),
+                );
+              }
+            },
+          })}
         />
-        <Tab.Screen name="Profile" component={ProfileStack} />
+
+        {/* 5️⃣ Profile (login-gated) */}
         <Tab.Screen
-          name="ContactUsTab"
-          component={ContactUsScreen}
-          options={{ title: "Contact Us" }}
+          name="Profile"
+          component={ProfileStack}
+          options={{ title: 'Profile' }}
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              if (!currentUser) {
+                e.preventDefault();
+                promptLogin(navigation, 'Profile');
+              }
+            },
+          })}
         />
+
+        {/* 6️⃣ Contact Us */}
+        <Tab.Screen name="ContactUsTab" component={ContactUsScreen} options={{ title: 'Contact Us' }} />
       </Tab.Navigator>
 
-      {/* Blinking bar for in-progress orders on the Home tab */}
-      {routeName === "Home" && inProgress.length > 0 && (
-        <BlinkingInProgressBar orders={inProgress} />
-      )}
+      {/* blinking bar when order is in progress */}
+      {currentTab === 'HomeTab' && inProgress.length > 0 && <BlinkingInProgressBar orders={inProgress} />}
     </View>
   );
 }
 
-/* ------------------------------------------------------------------
-   2) CATEGORIES STACK (Home Tab)
------------------------------------------------------------------- */
-function CategoriesStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="Categories"
-        component={CategoriesScreen}
-        options={{ title: "Categories", headerShown: false }}
-      />
-      <Stack.Screen
-        name="ProductListing"
-        component={ProductListingScreen}
-        options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
-        })}
-      />
-    </Stack.Navigator>
-  );
-}
-
-/* ------------------------------------------------------------------
-   3) FEATURED STACK (New Tab)
------------------------------------------------------------------- */
-function FeaturedStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="Featured"
-        component={FeaturedScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ProductListing"
-        component={ProductListingScreen}
-        options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
-        })}
-      />
-    </Stack.Navigator>
-  );
-}
-
-/* ------------------------------------------------------------------
-   4) PROFILE STACK
------------------------------------------------------------------- */
-function ProfileStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="ProfileHome"
-        component={ProfileScreen}
-        options={{ headerShown: false }}
-      />
-    </Stack.Navigator>
-  );
-}
-
-/* ------------------------------------------------------------------
-   5) CART FLOW STACK
------------------------------------------------------------------- */
-function CartFlowStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="CartHome"
-        component={CartScreen}
-        options={{ headerShown: false }}
-      />
-    </Stack.Navigator>
-  );
-}
-
-/* ------------------------------------------------------------------
-   6) BLINKING BAR with an "X" button
------------------------------------------------------------------- */
+/* ==========================================================
+   BLINKING PROGRESS BAR
+   ========================================================== */
 const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
-  const navigation = useNavigation();
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const navigation = useNavigation<any>();
+  const fade = useRef(new Animated.Value(1)).current;
   const [isVisible, setIsVisible] = useState(true);
 
-  const inProgress = orders.filter(
-    (o) => o.status === "pending" || o.status === "active"
-  );
-
   useEffect(() => {
-    const animation = Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(fadeAnim, {
-          toValue: 0.85,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
+        Animated.timing(fade, { toValue: 0.7, duration: 1000, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ]),
     );
-    animation.start();
-    return () => animation.stop();
-  }, [fadeAnim]);
+    anim.start();
+    return () => anim.stop();
+  }, [fade]);
 
-  if (inProgress.length === 0 || !isVisible) {
-    return null;
-  }
+  if (!isVisible) return null;
 
   return (
-    <Animated.View style={[styles.inProgressBar, { opacity: fadeAnim }]}>
+    <Animated.View style={[styles.inProgressBar, { opacity: fade }]}>
       <View style={styles.messageContainer}>
         <Text style={styles.messageText}>
-          You have {inProgress.length} order
-          {inProgress.length > 1 ? "s" : ""} in progress. Tap to view.
+          You have {orders.length} order{orders.length > 1 ? 's' : ''} in progress. Tap to view.
         </Text>
       </View>
-      <TouchableOpacity
-        style={styles.profileNavButton}
-        onPress={() => {
-          navigation.navigate("Profile", { screen: "ProfileHome" });
-        }}
-      >
+      <TouchableOpacity style={styles.profileNavButton} onPress={() => navigation.navigate('Profile')}>
         <Ionicons name="person-circle-outline" size={20} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.closeButton}
-        onPress={() => setIsVisible(false)}
-      >
+      <TouchableOpacity style={styles.closeButton} onPress={() => setIsVisible(false)}>
         <Ionicons name="close" size={20} color="#fff" />
       </TouchableOpacity>
     </Animated.View>
   );
 };
 
-/* ------------------------------------------------------------------
-   7) ROOT APP COMPONENT
------------------------------------------------------------------- */
+/* ==========================================================
+   ROOT APP COMPONENT
+   ========================================================== */
 const App: React.FC = () => {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<null | any>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
-  const navigationRef = useRef<any>(null);
-  const routeNameRef = useRef<string | undefined>("");
-  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const checkingOta = useOtaUpdate();
 
-  // ---------------------------------------------------
-  // Register for Push Notifications
-  // ---------------------------------------------------
-  const registerForPushNotificationsAsync = async () => {
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
+  /* push-token permission modal */
+  const [showNotifModal, setShowNotifModal] = useState(false);
 
-      if (finalStatus !== "granted") {
-        setShowNotificationModal(true);
-        return null;
-      }
-
-      if (finalStatus === "granted") {
-        // Use static import of Constants & fallback:
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId || "FALLBACK_ID";
-        const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
-        console.log("Expo Push Token:", data);
-        return data;
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error registering for push notifications:", error);
-      return null;
-    }
-  };
-
-  const handleEnableNotifications = async () => {
-    setShowNotificationModal(false);
-    try {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status === "granted") {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId || "FALLBACK_ID";
-        const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
-        console.log("Expo Push Token (after enable):", data);
-      } else {
-        Alert.alert(
-          "Notifications Required",
-          "To receive order updates and special offers, please enable notifications from your device settings.",
-          [
-            {
-              text: "Open Settings",
-              onPress: () => Linking.openSettings(),
-            },
-            { text: "Cancel", style: "cancel" },
-          ]
-        );
-      }
-    } catch (error) {
-      console.error("Error enabling notifications:", error);
-    }
-  };
-
+  /* ask for push-permission on first mount */
   useEffect(() => {
     (async () => {
-      await registerForPushNotificationsAsync();
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        setShowNotifModal(true);
+      } else {
+        await ensurePushTokenSynced();
+      }
     })();
   }, []);
 
-  // ---------------------------------------------------
-  // Firebase Auth listener
-  // ---------------------------------------------------
+  /* listen for token rotation → store in Firestore */
   useEffect(() => {
-    console.log("[App] Auth listener setup...");
-    const unsubscribeAuth = auth().onAuthStateChanged(async (authUser) => {
-      console.log("[App] Auth state changed. user:", authUser?.uid);
-      setUser(authUser);
-      if (authUser) {
-        try {
-          const userDoc = await firestore()
-            .collection("users")
-            .doc(authUser.uid)
-            .get();
-          if (userDoc.exists) {
-            setTermsAccepted(userDoc.data()?.hasAcceptedTerms === true);
-          } else {
-            await firestore().collection("users").doc(authUser.uid).set({
-              phoneNumber: authUser.phoneNumber,
-              expoPushToken: null,
-              hasAcceptedTerms: false,
-            });
-            setTermsAccepted(false);
-          }
-        } catch (err) {
-          console.error("[App] Error fetching user doc:", err);
-          setTermsAccepted(false);
-        }
+    const sub = Notifications.addPushTokenListener(({ type, data }) => {
+      if (type === 'expo' && auth().currentUser) {
+        firestore().collection('users').doc(auth().currentUser.uid).set({ expoPushToken: data }, { merge: true });
       }
-      setLoading(false);
     });
-    return () => {
-      console.log("[App] Cleanup auth listener...");
-      unsubscribeAuth();
-    };
+    return () => sub.remove();
   }, []);
 
-  // ---------------------------------------------------
-  // Notifications: handle incoming/responses
-  // ---------------------------------------------------
+  /* keep token fresh when app returns to foreground */
   useEffect(() => {
-    console.log("[App] Notification listeners setup...");
-    const notificationListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        console.log("[App] Notification Received:", notification);
-      }
-    );
-    const responseListener =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log("[App] Notification response:", response);
-      });
-
-    return () => {
-      console.log("[App] Removing notification listeners...");
-      Notifications.removeNotificationSubscription(notificationListener);
-      Notifications.removeNotificationSubscription(responseListener);
-    };
+    const sub = AppState.addEventListener('change', async (s) => {
+      if (s === 'active') await ensurePushTokenSynced();
+    });
+    return () => sub.remove();
   }, []);
 
-  // ---------------------------------------------------
-  // Track route name changes (optional)
-  // ---------------------------------------------------
-  function getActiveRouteName(state: any): string {
-    if (!state || !state.routes) return "";
-    const route = state.routes[state.index];
-    if (route.state) {
-      return getActiveRouteName(route.state);
-    }
-    return route.name;
-  }
+  /* auth listener */
+  useEffect(() => {
+    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
+        setTermsAccepted(doc.exists ? doc.data()?.hasAcceptedTerms === true : false);
+      }
+      setLoadingAuth(false);
+    });
+    return () => unsub();
+  }, []);
 
-  const handleStateChange = (state: any) => {
-    const previousRouteName = routeNameRef.current;
-    const currentRouteName = getActiveRouteName(state);
-    if (previousRouteName !== currentRouteName) {
-      console.log(
-        `[App] Route changed from '${previousRouteName}' to '${currentRouteName}'`
-      );
-    }
-    routeNameRef.current = currentRouteName;
-  };
-
-  // ---------------------------------------------------
-  // Loading indicator if not done checking user
-  // ---------------------------------------------------
-  if (loading) {
+  if (loadingAuth || checkingOta) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00C853" />
@@ -445,130 +400,57 @@ const App: React.FC = () => {
     );
   }
 
-  // ---------------------------------------------------
-  // Main App
-  // ---------------------------------------------------
+  /* decide initial route */
+  const initialRoute =
+    !user ? 'AppTabs' : termsAccepted === false ? 'TermsAndConditions' : 'AppTabs';
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <CustomerProvider>
         <CartProvider>
           <LocationProvider>
             <OrderProvider>
-              <NavigationContainer
-                ref={navigationRef}
-                onStateChange={handleStateChange}
-              >
-                <Stack.Navigator
-                  initialRouteName={
-                    !user
-                      ? "Login"
-                      : termsAccepted === false
-                      ? "TermsAndConditions"
-                      : "AppTabs"
-                  }
-                  screenOptions={{ headerShown: false }}
-                >
-                  <Stack.Screen
-                    name="Login"
-                    component={LoginScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="TermsAndConditions"
-                    component={TermsAndConditionsScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="AppTabs"
-                    component={AppTabs}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="OrderAllocating"
-                    component={OrderAllocatingScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="OrderTracking"
-                    component={OrderTrackingScreen}
-                    options={{
-                      headerShown: true,
-                      headerLeft: () => null,
-                      gestureEnabled: false,
-                      title: "Order Tracking",
-                    }}
-                  />
-                  <Stack.Screen
-                    name="OrderCancelled"
-                    component={NewOrderCancelledScreen}
-                    options={{
-                      title: "Order Cancelled",
-                      headerLeft: () => null,
-                      gestureEnabled: false,
-                    }}
-                  />
-                  <Stack.Screen
+              <NavigationContainer>
+                <RootStack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+                  <RootStack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+                  <RootStack.Screen name="AppTabs" component={AppTabs} />
+                  <RootStack.Screen
                     name="LocationSelector"
                     component={LocationSelectorScreen}
-                    options={{ title: "Select Location" }}
+                    options={{ title: 'Select Location' }}
                   />
-                  <Stack.Screen
-                    name="RatingScreen"
-                    component={RatingScreen}
-                    options={{
-                      title: "Rate Your Rider",
-                      headerBackTitleVisible: false,
-                      headerLeft: () => null,
-                      gestureEnabled: false,
-                    }}
-                  />
-                  <Stack.Screen
+                  <RootStack.Screen
                     name="ContactUs"
                     component={ContactUsScreen}
-                    options={{
-                      title: "Contact Us",
-                      headerTintColor: "#1E824C",
-                      headerStyle: {
-                        backgroundColor: "#fff",
-                      },
-                    }}
+                    options={{ title: 'Contact Us', headerShown: true }}
                   />
-                </Stack.Navigator>
+                </RootStack.Navigator>
               </NavigationContainer>
             </OrderProvider>
           </LocationProvider>
         </CartProvider>
       </CustomerProvider>
 
-      {/* Custom Notification Permission Modal */}
-      <RNModal
-        visible={showNotificationModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotificationModal(false)}
-      >
+      {/* push-permission modal */}
+      <RNModal visible={showNotifModal} transparent animationType="slide" onRequestClose={() => setShowNotifModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>Enable Notifications</Text>
             <Text style={styles.modalMessage}>
-              We use push notifications to keep you updated on your orders and
-              exclusive offers. Enabling notifications ensures you never miss an
-              important update.
+              We use push notifications to keep you updated on your orders and exclusive offers.
             </Text>
             <View style={styles.modalButtonContainer}>
               <TouchableOpacity
                 style={styles.modalButton}
-                onPress={handleEnableNotifications}
+                onPress={async () => {
+                  setShowNotifModal(false);
+                  await ensurePushTokenSynced();
+                }}
               >
-                <Text style={styles.modalButtonText}>Enable Notifications</Text>
+                <Text style={styles.modalButtonText}>Enable</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => setShowNotificationModal(false)}
-              >
-                <Text style={[styles.modalButtonText, styles.modalCancelButtonText]}>
-                  Later
-                </Text>
+              <TouchableOpacity style={[styles.modalButton, styles.modalCancelButton]} onPress={() => setShowNotifModal(false)}>
+                <Text style={[styles.modalButtonText, styles.modalCancelButtonText]}>Later</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -578,109 +460,52 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
-
-/****************************************
- *                STYLES
- ****************************************/
+/* ==========================================================
+   STYLES
+   ========================================================== */
 const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  inProgressBar: {
-    position: "absolute",
-    bottom: 50,
-    left: 10,
-    right: 10,
-    height: 20,
-    backgroundColor: "#E55252",
-    borderRadius: 12,
-    zIndex: 1000,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-  },
-  messageContainer: {
-    flex: 1,
-    marginRight: 10,
-  },
-  messageText: {
-    fontSize: 12,
-    color: "#fff",
-    fontWeight: "600",
-  },
-  profileNavButton: {
-    marginRight: 8,
-  },
-  closeButton: {},
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
   badgeContainer: {
-    position: "absolute",
+    position: 'absolute',
     top: -3,
     right: -8,
-    backgroundColor: "#e74c3c",
+    backgroundColor: '#e74c3c',
     borderRadius: 8,
     width: 16,
     height: 16,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  badgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContainer: {
-    width: "85%",
-    backgroundColor: "#fff",
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '600' },
+
+  inProgressBar: {
+    position: 'absolute',
+    bottom: 50,
+    left: 10,
+    right: 10,
+    height: 22,
+    backgroundColor: '#E55252',
     borderRadius: 12,
-    padding: 10,
-    alignItems: "center",
-    elevation: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
   },
-  modalTitle: {
-    fontSize: 10,
-    fontWeight: "700",
-    marginBottom: 10,
-    color: "#333",
-    textAlign: "center",
-  },
-  modalMessage: {
-    fontSize: 16,
-    textAlign: "center",
-    color: "#555",
-    marginBottom: 20,
-  },
-  modalButtonContainer: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    width: "100%",
-  },
-  modalButton: {
-    backgroundColor: "#00C853",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  modalButtonText: {
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "600",
-  },
-  modalCancelButton: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#00C853",
-  },
-  modalCancelButtonText: {
-    color: "#00C853",
-  },
+  messageContainer: { flex: 1, marginRight: 10 },
+  messageText: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  profileNavButton: { marginRight: 8 },
+  closeButton: {},
+
+  /* modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContainer: { width: '85%', backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, color: '#333' },
+  modalMessage: { fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 18 },
+  modalButtonContainer: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
+  modalButton: { backgroundColor: '#00C853', paddingVertical: 10, paddingHorizontal: 22, borderRadius: 8, marginHorizontal: 4 },
+  modalButtonText: { color: '#fff', fontWeight: '600' },
+  modalCancelButton: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#00C853' },
+  modalCancelButtonText: { color: '#00C853' },
 });
+
+export default App;

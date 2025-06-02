@@ -13,6 +13,7 @@ import {
   ScrollView,
   TextInput,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -538,6 +539,8 @@ export default function RatingScreen() {
 
   // UI
   return (
+    <SafeAreaView style={styles.safeArea}>
+    
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* BILL CARD */}
@@ -691,6 +694,7 @@ export default function RatingScreen() {
         <Text style={styles.helpBtnText}>Need Help?</Text>
       </TouchableOpacity>
     </View>
+    </SafeAreaView>
   );
 }
 
@@ -704,6 +708,10 @@ const BACKGROUND_COLOR = "#F2F2F2";
 const CARD_BACKGROUND = "#FFF";
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f2f2f2",
+  },
   container: {
     flex: 1,
     backgroundColor: BACKGROUND_COLOR,

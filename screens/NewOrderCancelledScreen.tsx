@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp, CommonActions } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 
@@ -74,12 +74,31 @@ const NewOrderCancelledScreen: React.FC = () => {
     if (orderId) fetchOrder();
   }, [orderId]);
 
-  // Navigate back to Home screen
   const navigateToHome = () => {
-    navigation.navigate("Home");
-  };
+  navigation.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'AppTabs',
+          state: {
+            index: 0,           
+            routes: [
+              {
+                name: 'HomeTab',
+                state: {
+                  index: 0,     
+                  routes: [{ name: 'ProductsHome' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+};
 
-  // Decide the main message depending on paymentMethod
   const renderMessage = () => {
     if (paymentMethod === "cod") {
       return (

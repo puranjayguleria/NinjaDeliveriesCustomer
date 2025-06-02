@@ -19,6 +19,8 @@ type ProductCardProps = {
   onAddToCart: () => void;
   onIncrease: () => void;
   onDecrease: () => void;
+  displayPrice?: number;
+  style?: any;
 };
 
 const { width } = Dimensions.get("window");
@@ -33,16 +35,43 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onAddToCart,
   onIncrease,
   onDecrease,
+  displayPrice,
+  style
 }) => {
   const [isImageLoading, setIsImageLoading] = useState<boolean>(true);
 
-  const discountedPrice =
-    typeof item.price === "number" && typeof item.discount === "number"
-      ? item.price - item.discount
-      : item.price;
+  /** Safely coerce possible string/undefined tax values to numbers */
+const n = (v: unknown): number => {
+  const num = Number(v);
+  return isFinite(num) ? num : 0;
+};
 
+  // final price (base – discount + taxes)
+const finalPrice =
+typeof displayPrice === "number"
+  ? displayPrice
+  : (() => {
+      const base =
+        typeof item.price === "number" && typeof item.discount === "number"
+          ? item.price - item.discount
+          : item.price;
+
+      return (
+        base + n(item.CGST) + n(item.SGST) + n(item.cess)
+      );
+    })();
+
+// original strike-through price (price + taxes)
+const originalPriceIncl =
+typeof item.price === "number"
+  ? item.price + n(item.CGST) + n(item.SGST) + n(item.cess)
+  : item.price;
+
+// always floor & coerce to safe numbers
+const safeFinal    = Math.floor(Number(finalPrice  ?? 0));
+const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
   return (
-    <View style={styles.cardContainer}>
+    <View style={[styles.cardContainer, style]}>
       <View style={styles.imageContainer}>
         <Image
           source={{ uri: item.image }}
@@ -59,21 +88,20 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Discount Tag */}
         {typeof item.discount === "number" && item.discount > 0 && (
           <View style={styles.discountTag}>
-            <Text style={styles.discountTagText}>₹{item.discount} OFF</Text>
+            <Text style={styles.discountTagText}>
+              ₹{item.discount.toFixed(0)} OFF
+            </Text>
           </View>
         )}
-
         {/* Price Overlay */}
-        {typeof discountedPrice === "number" && (
-          <View style={styles.priceOverlay}>
-            <Text style={styles.discountedPrice}>₹{discountedPrice.toFixed(2)}</Text>
-            {typeof item.discount === "number" && item.discount > 0 && (
-              <Text style={styles.originalPrice}>
-                ₹{item.price.toFixed(2)}
-              </Text>
-            )}
-          </View>
-        )}
+        <View style={styles.priceOverlay}>
+          <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(0)}</Text>
+          {typeof item.discount === "number" && item.discount > 0 && (
+            <Text style={styles.originalPrice}>
+              ₹{safeOriginal.toFixed(0)}
+            </Text>
+          )}
+        </View>
       </View>
 
       {/* Product Info */}
@@ -108,15 +136,21 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity
-          style={styles.addToCartButton}
-          onPress={onAddToCart}
-          accessibilityLabel={`Add ${item.name} to cart`}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons name="shopping-cart" size={18} color="#FFFFFF" />
-          <Text style={styles.addToCartText}>Add to Cart</Text>
-        </TouchableOpacity>
+        item.outOfStock ? (
+              <View style={styles.oosButton}>
+                <Text style={styles.oosButtonText}>Out of Stock</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.addToCartButton}
+                onPress={onAddToCart}
+                accessibilityLabel={`Add ${item.name} to cart`}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="shopping-cart" size={18} color="#FFFFFF" />
+                <Text style={styles.addToCartText}>Add to Cart</Text>
+              </TouchableOpacity>
+            )
       )}
     </View>
   );
@@ -140,6 +174,33 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     justifyContent: "space-between",
     height: CARD_HEIGHT,
+  },
+
+  oosBanner: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "#7f8c8d",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 3,
+  },
+  oosText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  oosButton: {
+    backgroundColor: "#bdc3c7",
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+  },
+  oosButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
 
   // Image Container

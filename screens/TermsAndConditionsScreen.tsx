@@ -25,39 +25,42 @@ const TermsAndConditionsScreen: React.FC = () => {
     const checkAcceptance = async () => {
       try {
         const user = auth().currentUser;
-        if (user) {
-          const userDoc = await firestore().collection('users').doc(user.uid).get();
-          if (userDoc.exists) {
-            const data = userDoc.data();
-            if (data?.hasAcceptedTerms) {
-              // User has already accepted; navigate to main app flow.
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: 'AppTabs' }],
-                })
-              );
-            } else {
-              // User hasn't accepted, so show the T&C.
-              setIsLoading(false);
-            }
-          } else {
-            // If user document doesn't exist, create it with hasAcceptedTerms: false.
-            await firestore().collection('users').doc(user.uid).set({
-              phoneNumber: user.phoneNumber,
-              expoPushToken: null, // Handle expoPushToken appropriately
-              hasAcceptedTerms: false,
-            });
-            setIsLoading(false);
-          }
-        } else {
-          Alert.alert('Error', 'User not authenticated.');
+
+        // === Minimal Change: if there's no user at all, skip T&C and go to AppTabs ===
+        if (!user) {
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
-              routes: [{ name: 'Login' }],
+              routes: [{ name: 'AppTabs' }],
             })
           );
+          return;
+        }
+        // === End minimal change ===
+
+        const userDoc = await firestore().collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          const data = userDoc.data();
+          if (data?.hasAcceptedTerms) {
+            // User has already accepted; navigate to main app flow.
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'AppTabs' }],
+              })
+            );
+          } else {
+            // User hasn't accepted, so show the T&C.
+            setIsLoading(false);
+          }
+        } else {
+          // If user document doesn't exist, create it with hasAcceptedTerms: false.
+          await firestore().collection('users').doc(user.uid).set({
+            phoneNumber: user.phoneNumber,
+            expoPushToken: null, // Handle expoPushToken appropriately
+            hasAcceptedTerms: false,
+          });
+          setIsLoading(false);
         }
       } catch (error: any) {
         console.error('Error checking terms acceptance:', error);
@@ -282,7 +285,6 @@ ________________________________________
       ) : (
         // If not loading and not processing, show content
         <>
-          {/* Loader during processing */}
           {isProcessing ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color="#00C853" />
@@ -290,12 +292,9 @@ ________________________________________
             </View>
           ) : (
             <>
-              {/* Scrollable Terms and Conditions Content */}
               <ScrollView style={styles.content}>
                 <Markdown>{markdownContent}</Markdown>
               </ScrollView>
-
-              {/* Accept and Decline Buttons */}
               <TouchableOpacity onPress={handleAccept} style={styles.acceptButton}>
                 <Text style={styles.buttonText}>I Accept</Text>
               </TouchableOpacity>
@@ -310,6 +309,11 @@ ________________________________________
   );
 };
 
+export default TermsAndConditionsScreen;
+
+/****************************************
+ *                STYLES
+ ****************************************/
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -350,5 +354,3 @@ const styles = StyleSheet.create({
     color: '#555',
   },
 });
-
-export default TermsAndConditionsScreen;

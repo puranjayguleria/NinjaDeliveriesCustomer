@@ -1,4 +1,5 @@
 // ProfileScreen.tsx
+
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
@@ -12,9 +13,11 @@ import {
   FlatList,
   Platform,
   Modal,
+  TextInput as RNTextInput, // rename to avoid confusion
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import auth from "@react-native-firebase/auth";
+import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Button, TextInput } from "react-native-paper";
@@ -24,10 +27,10 @@ import { format } from "date-fns";
 const pastelGreen = "#e7f8f6";
 const primaryTextColor = "#333";
 
-/** Updated Order Interface */
+/** Order interface for your reference */
 interface Order {
   id: string;
-  status: string; // "pending", "cancelled", "active", etc.
+  status: string;
   createdAt: any; // Firestore Timestamp
   items?: Array<{
     name: string;
@@ -40,48 +43,54 @@ interface Order {
   finalTotal?: number;
   pickupCoords?: { latitude: number; longitude: number };
   dropoffCoords?: { latitude: number; longitude: number };
-  refundAmount?: number; // For cancelled orders
+  refundAmount?: number;
 }
 
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
+  const currentUser = auth().currentUser;
 
-  // Local states
+  // Profile UI state
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [userName, setUserName] = useState<string>("");
   const [dob, setDob] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState<boolean>(false);
 
-  // Modal
+  // For date pickers
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [showIosModal, setShowIosModal] = useState<boolean>(false);
+
+  // Order details modal
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState<boolean>(false);
 
-  const currentUser = auth().currentUser;
-
-  // Refs to prevent repeated state updates
+  // Keep old state for minimal re-renders
   const oldUserName = useRef<string>("");
   const oldDob = useRef<string>("");
   const oldOrders = useRef<string>("");
 
+  // Re-auth flow states
+  const [showReauthModal, setShowReauthModal] = useState(false);
+  const [reauthOTP, setReauthOTP] = useState("");
+  const [reauthConfirm, setReauthConfirm] = useState<any>(null);
+  const [reauthLoading, setReauthLoading] = useState(false);
+
   useEffect(() => {
-    console.log("[ProfileScreen] Mounted, currentUser:", currentUser?.uid);
+    console.log("[ProfileScreen] currentUser:", currentUser?.uid);
   }, [currentUser?.uid]);
 
   /** ----------------------------------------------
-   *  ON MOUNT => Fetch user profile + listen to orders
+   *  ON MOUNT => Listen to user doc + orders
    ---------------------------------------------- */
   useEffect(() => {
     let unsubscribeUser: any;
     let unsubscribeOrders: any;
 
     if (currentUser) {
-      console.log("[ProfileScreen] Subscribing to user doc + orders...");
-
       // 1) Listen to user doc
       unsubscribeUser = firestore()
         .collection("users")
@@ -90,20 +99,13 @@ const ProfileScreen: React.FC = () => {
           (doc) => {
             if (doc.exists) {
               const data = doc.data();
-              console.log("[User Snapshot] doc data:", data);
-
-              // Name
               const newName = data?.name || "";
               if (oldUserName.current !== newName) {
-                console.log("Updating userName from", oldUserName.current, "to", newName);
                 setUserName(newName);
                 oldUserName.current = newName;
               }
-
-              // DOB
               const rawDob = data?.dob || "";
               if (rawDob && oldDob.current !== rawDob) {
-                console.log("Updating DOB from", oldDob.current, "to", rawDob);
                 const newDate = new Date(rawDob);
                 setDob(newDate);
                 oldDob.current = rawDob;
@@ -112,7 +114,6 @@ const ProfileScreen: React.FC = () => {
             setLoading(false);
           },
           (error) => {
-            console.error("[User Snapshot] Error:", error);
             Alert.alert("Error", "Failed to fetch user info.");
             setLoading(false);
           }
@@ -126,8 +127,6 @@ const ProfileScreen: React.FC = () => {
         .orderBy("createdAt", "desc")
         .onSnapshot(
           (snapshot) => {
-            console.log("[Orders Snapshot] size:", snapshot.size);
-
             const fetched: Order[] = [];
             snapshot.forEach((doc) => {
               const data = doc.data();
@@ -157,164 +156,249 @@ const ProfileScreen: React.FC = () => {
 
             const newOrdersString = JSON.stringify(fetched);
             if (oldOrders.current !== newOrdersString) {
-              console.log("Orders changed. Updating state...");
               setOrders(fetched);
               oldOrders.current = newOrdersString;
-            } else {
-              console.log("Orders did not change. No setState call.");
             }
             setOrdersLoading(false);
           },
           (error) => {
-            console.error("[Orders Snapshot] Error:", error);
             Alert.alert("Error", "Failed to fetch your orders.");
             setOrdersLoading(false);
           }
         );
     } else {
-      console.log("[ProfileScreen] currentUser is null, skipping fetch...");
       setLoading(false);
     }
 
     return () => {
-      if (unsubscribeUser) {
-        console.log("[ProfileScreen] Unsubscribing user doc...");
-        unsubscribeUser();
-      }
-      if (unsubscribeOrders) {
-        console.log("[ProfileScreen] Unsubscribing orders...");
-        unsubscribeOrders();
-      }
+      if (unsubscribeUser) unsubscribeUser();
+      if (unsubscribeOrders) unsubscribeOrders();
     };
   }, [currentUser]);
 
-  /** ----------------------------------------------
-   *  HANDLE SAVE
-   ---------------------------------------------- */
+  /** Save user changes */
   const handleSave = async () => {
     if (!currentUser) return;
     try {
       setSaving(true);
       const dobStr = dob ? dob.toISOString().split("T")[0] : "";
-      await firestore().collection("users").doc(currentUser.uid).update({
-        name: userName.trim(),
-        dob: dobStr,
-      });
+      await firestore()
+        .collection("users")
+        .doc(currentUser.uid)
+        .update({
+          name: userName.trim(),
+          dob: dobStr,
+        });
       Alert.alert("Saved", "Profile updated successfully!");
     } catch (error) {
-      console.error("Error saving user info:", error);
       Alert.alert("Error", "Failed to save profile info.");
     } finally {
       setSaving(false);
     }
   };
 
-  /** ----------------------------------------------
-   *  HANDLE LOGOUT
-   ---------------------------------------------- */
-   const handleLogout = async () => {
+  /** Logout */
+  const handleLogout = async () => {
     try {
       if (currentUser) {
-        await firestore().collection("users").doc(currentUser.uid).update({
-          isLoggedOut: true,
-        });
+        await firestore()
+          .collection("users")
+          .doc(currentUser.uid)
+          .update({ isLoggedOut: true });
       }
       await auth().signOut();
-  
-      // Force immediate navigation to Login
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: "Login" }],
+          routes: [{ name: "AppTabs" }],
         })
       );
-  
-      // Optional: remove Alert or use a toast
-      // Alert.alert("Logged Out", "You have successfully logged out.");
     } catch (error) {
-      console.error("Error logging out:", error);
       Alert.alert("Error", "Failed to log out.");
     }
   };
-  
 
-  /** ----------------------------------------------
-   *  DATE PICKER
-   ---------------------------------------------- */
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDob(selectedDate);
-      oldDob.current = selectedDate.toISOString().split("T")[0];
+  /** Re-auth if needed => phone flow in a modal. */
+  const doPhoneReauth = async (phoneNumber: string) => {
+    let finalNumber = phoneNumber.startsWith("+91")
+      ? phoneNumber
+      : "+91" + phoneNumber.replace("+91", "");
+    setReauthLoading(true);
+    try {
+      const confirmationResult = await auth().signInWithPhoneNumber(finalNumber);
+      setReauthConfirm(confirmationResult);
+      setShowReauthModal(true);
+    } catch (err) {
+      Alert.alert("Error", "Failed to send OTP for re-auth. Try again.");
+      console.log("Error in doPhoneReauth:", err);
+    } finally {
+      setReauthLoading(false);
     }
   };
 
-  /** ----------------------------------------------
-   *  NAVIGATE TO ORDER STATUS SCREEN
-   ---------------------------------------------- */
+  const handleConfirmReauthOTP = async () => {
+    if (!reauthConfirm) {
+      Alert.alert("Error", "No re-auth flow in progress.");
+      return;
+    }
+    try {
+      setReauthLoading(true);
+      await reauthConfirm.confirm(reauthOTP);
+
+      // user re-authenticated => finalize delete
+      await finalizeDelete();
+      setShowReauthModal(false);
+    } catch (err) {
+      console.log("Error confirming reauth OTP:", err);
+      Alert.alert("Error", "Invalid OTP. Please try again.");
+    } finally {
+      setReauthLoading(false);
+    }
+  };
+
+  /** Finalizing the account delete once re-auth is successful */
+  const finalizeDelete = async () => {
+    if (!currentUser) return;
+    await firestore().collection("users").doc(currentUser.uid).delete();
+    await currentUser.delete();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: "AppTabs" }],
+      })
+    );
+  };
+
+  /** Attempt direct delete => if 'requires-recent-login', do phone reauth flow. */
+  const attemptDelete = async () => {
+    if (!currentUser) {
+      Alert.alert("Error", "No user is currently logged in.");
+      return;
+    }
+    try {
+      // If the user can be deleted => success => remove doc + navigate away
+      await currentUser.delete();
+      await firestore().collection("users").doc(currentUser.uid).delete();
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "AppTabs" }],
+        })
+      );
+    } catch (error: any) {
+      console.log("Error in attemptDelete user:", error);
+      if (error.code === "auth/requires-recent-login") {
+        // Must do phone re-auth => fetch phone from doc
+        try {
+          const userDoc = await firestore()
+            .collection("users")
+            .doc(currentUser.uid)
+            .get();
+          if (!userDoc.exists) {
+            Alert.alert("Error", "No user doc found to re-auth phone number.");
+            return;
+          }
+          const phone = userDoc.data()?.phoneNumber;
+          if (!phone) {
+            Alert.alert("Error", "Phone number missing, cannot re-auth.");
+            return;
+          }
+          await doPhoneReauth(phone);
+        } catch (err) {
+          Alert.alert("Error", "Failed to start re-auth flow. Please try again.");
+          console.log("Error reading phone from user doc:", err);
+        }
+      } else {
+        Alert.alert("Error", "Failed to delete account. Please try again.");
+      }
+    }
+  };
+
+  /** HANDLE DELETE ACCOUNT */
+  const handleDeleteAccount = async () => {
+    if (!currentUser) {
+      Alert.alert("Error", "No user is currently logged in.");
+      return;
+    }
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await attemptDelete();
+          },
+        },
+      ]
+    );
+  };
+
+  /** For date picking */
+  const openDatePicker = () => {
+    if (Platform.OS === "ios") {
+      setShowIosModal(true);
+    } else {
+      setShowDatePicker(true);
+    }
+  };
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === "android") setShowDatePicker(false);
+    if (selectedDate) setDob(selectedDate);
+  };
+  const handleIosDone = () => setShowIosModal(false);
+
+  /** Navigate to order screen based on status */
   const navigateToOrderScreen = useCallback(
     (order: Order) => {
-      console.log("[ProfileScreen] navigateToOrderScreen =>", order.id, order.status);
-
-      const { status, id, pickupCoords, dropoffCoords, finalTotal, refundAmount } = order;
+      const { status, id, pickupCoords, dropoffCoords, finalTotal, refundAmount } =
+        order;
       if (!id) {
         Alert.alert("Error", "Invalid order ID.");
         return;
       }
-      // If no coords, can't track or allocate
       if (!pickupCoords || !dropoffCoords) {
         Alert.alert("Error", "Order location details are missing.");
         return;
       }
 
-      // Decide which screen to go to based on order status
+      // Direct which screen to go to
       if (status === "pending") {
-        console.log("[ProfileScreen] Navigating to OrderAllocating");
-        navigation.navigate("OrderAllocating" as never, {
-          orderId: id,
-          pickupCoords,
-          dropoffCoords,
-          totalCost: finalTotal,
-        } as never);
+       navigation.navigate("HomeTab", {
+          screen: "OrderAllocating",
+          params: { orderId: id, pickupCoords, dropoffCoords, totalCost: finalTotal },
+        });
       } else if (status === "cancelled") {
-        console.log("[ProfileScreen] Navigating to OrderCancelled");
-        navigation.navigate("OrderCancelled" as never, {
-          orderId: id,
-          refundAmount: refundAmount || finalTotal,
-        } as never);
+        navigation.navigate("HomeTab", {
+          screen: "OrderCancelled",
+          params: { orderId: id, refundAmount: refundAmount || finalTotal },
+        });
       } else if (status === "tripEnded") {
-        // Directly go to RatingScreen
-        console.log("[ProfileScreen] Navigating directly to RatingScreen");
-        navigation.navigate("RatingScreen" as never, {
-          orderId: id,
-        } as never);
+        navigation.navigate("HomeTab", {
+          screen: "RatingScreen",
+          params: { orderId: id },
+        });
       } else {
-        // For other statuses => typically "active", "reachedPickup", etc.
-        console.log("[ProfileScreen] Navigating to OrderTracking");
-        navigation.navigate("OrderTracking" as never, {
-          orderId: id,
-          pickupCoords,
-          dropoffCoords,
-          totalCost: finalTotal,
-        } as never);
+        /* active / reachedPickup / etc. */
+        navigation.navigate("HomeTab", {
+          screen: "OrderTracking",
+          params: { orderId: id, pickupCoords, dropoffCoords, totalCost: finalTotal },
+        });
       }
     },
     [navigation]
   );
 
-  /** ----------------------------------------------
-   *  OPEN DETAILS SHEET
-   ---------------------------------------------- */
   const openDetailsModal = (order: Order) => {
     setSelectedOrder(order);
     setShowDetailsModal(true);
   };
 
-  /** ----------------------------------------------
-   *  RENDER ORDER ITEM
-   ---------------------------------------------- */
+  /** RENDER ORDER ITEM */
   const renderOrderItem = ({ item }: { item: Order }) => {
-    // Convert Firestore timestamp => JS Date
     const dateObj = item.createdAt?.toDate
       ? item.createdAt.toDate()
       : new Date(item.createdAt);
@@ -340,12 +424,19 @@ const ProfileScreen: React.FC = () => {
               onPress={() => navigateToOrderScreen(item)}
             >
               <Text style={styles.actionButtonText}>Go To Order</Text>
+              <Ionicons
+                name="arrow-forward"
+                size={16}
+                color="#fff"
+                style={{ marginLeft: 4 }}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: "#95a5a6" }]}
               onPress={() => openDetailsModal(item)}
             >
               <Text style={styles.actionButtonText}>View Details</Text>
+              <Ionicons name="list" size={16} color="#fff" style={{ marginLeft: 4 }} />
             </TouchableOpacity>
           </View>
         </View>
@@ -354,9 +445,6 @@ const ProfileScreen: React.FC = () => {
     );
   };
 
-  /** ----------------------------------------------
-   *  MAIN RENDER
-   ---------------------------------------------- */
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -372,9 +460,7 @@ const ProfileScreen: React.FC = () => {
           source={require("../assets/ninja-logo.jpg")}
           style={styles.promptImage}
         />
-        <Text style={styles.promptText}>
-          Login to view and manage your profile
-        </Text>
+        <Text style={styles.promptText}>Login to view and manage your profile</Text>
         <Button
           mode="contained"
           onPress={() => navigation.navigate("Login" as never)}
@@ -387,208 +473,301 @@ const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 40 }}
-    >
-      <View style={styles.headerBlock}>
-        <Text style={styles.mainTitle}>My Profile</Text>
-        <Text style={styles.subTitle}>
-          View and update your info, and see your recent orders
-        </Text>
-      </View>
-
-      <View style={styles.profileCard}>
-        <Image
-          source={require("../assets/ninja-logo.jpg")}
-          style={styles.profileImage}
-        />
-        <TextInput
-          label="Name"
-          value={userName}
-          onChangeText={setUserName}
-          mode="outlined"
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Date of Birth</Text>
-        <TouchableOpacity
-          onPress={() => setShowDatePicker(true)}
-          style={styles.dobSelect}
-        >
-          <Text style={{ color: dob ? "#333" : "#999" }}>
-            {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        <View style={styles.headerBlock}>
+          <Text style={styles.mainTitle}>My Profile</Text>
+          <Text style={styles.subTitle}>
           </Text>
-          <MaterialIcons name="calendar-today" size={16} color="#555" />
-        </TouchableOpacity>
-        {showDatePicker && (
-          <DateTimePicker
-            value={dob || new Date()}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "calendar"}
-            onChange={onDateChange}
-            maximumDate={new Date()}
-          />
-        )}
+        </View>
 
-        <View style={styles.btnRow}>
+        <View style={styles.profileCard}>
+          <Image
+            source={require("../assets/ninja-logo.jpg")}
+            style={styles.profileImage}
+          />
+
+          {/* Section header for user details */}
+          <Text style={styles.sectionHeader}>User Details</Text>
+
+          {/* Name Input (Paper's label used) */}
+          <TextInput
+            label="Name"
+            value={userName}
+            onChangeText={setUserName}
+            mode="outlined"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>Date of Birth</Text>
+          <TouchableOpacity onPress={openDatePicker} style={styles.dobSelect}>
+            <Text style={{ color: dob ? "#333" : "#999" }}>
+              {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
+            </Text>
+            <MaterialIcons name="calendar-today" size={16} color="#555" />
+          </TouchableOpacity>
+
+          {/* Android Date Picker */}
+          {showDatePicker && Platform.OS === "android" && (
+            <DateTimePicker
+              value={dob || new Date()}
+              mode="date"
+              display="calendar"
+              onChange={onDateChange}
+              maximumDate={new Date()}
+            />
+          )}
+
+          {/* iOS Date Picker in Modal */}
+          {Platform.OS === "ios" && (
+            <Modal
+              visible={showIosModal}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowIosModal(false)}
+            >
+              <View style={styles.modalOverlayDate}>
+                <View style={styles.modalContainerDate}>
+                  {/* iOS Done button */}
+                  <View style={styles.iosPickerHeader}>
+                    <TouchableOpacity onPress={() => setShowIosModal(false)}>
+                      <Text style={styles.doneButtonText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    themeVariant="light"
+                    value={dob || new Date()}
+                    mode="date"
+                    display="spinner"
+                    onChange={onDateChange}
+                    maximumDate={new Date()}
+                    style={{ backgroundColor: "#fff" }}
+                  />
+                </View>
+              </View>
+            </Modal>
+          )}
+
+          {/* Full-width "Save Changes" with icon */}
           <Button
+            icon={() => <Ionicons name="save" size={18} color="#fff" />}
             mode="contained"
             onPress={handleSave}
             loading={saving}
-            style={styles.saveButton}
+            style={styles.fullWidthButton}
             labelStyle={{ color: "#fff" }}
           >
             {saving ? "Saving..." : "Save Changes"}
           </Button>
+
+          {/* Full-width "Logout" with icon */}
           <Button
+            icon={() => <Ionicons name="log-out-outline" size={18} color="#e74c3c" />}
             mode="outlined"
             onPress={handleLogout}
-            style={styles.logoutButton}
+            style={styles.fullWidthButton}
             labelStyle={{ color: "#e74c3c" }}
           >
             Logout
           </Button>
+
+          {/* Full-width "Delete Account" with icon */}
+          <TouchableOpacity
+            style={[styles.fullWidthButtonTouchable, { backgroundColor: "#e74c3c" }]}
+            onPress={handleDeleteAccount}
+          >
+            <Ionicons name="trash" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+          </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.myOrdersHeader}>
-        <Text style={styles.myOrdersTitle}>My Orders</Text>
-        {ordersLoading && <ActivityIndicator size="small" color="#333" />}
-      </View>
-
-      {orders.length === 0 && !ordersLoading ? (
-        <View style={styles.noOrdersContainer}>
-          <Text style={styles.noOrdersText}>You have no orders yet.</Text>
+        {/* My Orders Header */}
+        <View style={styles.myOrdersHeader}>
+          <Text style={styles.myOrdersTitle}>My Orders</Text>
+          {ordersLoading && <ActivityIndicator size="small" color="#333" />}
         </View>
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => item.id}
-          renderItem={renderOrderItem}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
-          style={{ marginTop: 10 }}
-        />
-      )}
 
-      {/* Bottom Sheet Modal */}
-      <Modal
-        visible={showDetailsModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowDetailsModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.bottomSheet}>
-            <Text style={styles.bottomSheetTitle}>Order Details</Text>
+        {orders.length === 0 && !ordersLoading ? (
+          <View style={styles.noOrdersContainer}>
+            <Text style={styles.noOrdersText}>You have no orders yet.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={orders}
+            keyExtractor={(item) => item.id}
+            renderItem={renderOrderItem}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
+            style={{ marginTop: 10 }}
+          />
+        )}
 
-            {selectedOrder ? (
-              <View>
-                <Text style={styles.sheetSubtitle}>
-                  Order ID: {selectedOrder.id}
-                </Text>
-                {selectedOrder.createdAt && (
+        {/* Bottom Sheet Modal for Order Details */}
+        <Modal
+          visible={showDetailsModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDetailsModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.bottomSheet}>
+              <Text style={styles.bottomSheetTitle}>Order Details</Text>
+
+              {selectedOrder ? (
+                <View>
                   <Text style={styles.sheetSubtitle}>
-                    Date:{" "}
-                    {format(
-                      selectedOrder.createdAt.toDate
-                        ? selectedOrder.createdAt.toDate()
-                        : new Date(selectedOrder.createdAt),
-                      "dd MMM yyyy, hh:mm a"
-                    )}
+                    Order ID: {selectedOrder.id}
                   </Text>
-                )}
+                  {selectedOrder.createdAt && (
+                    <Text style={styles.sheetSubtitle}>
+                      Date:{" "}
+                      {format(
+                        selectedOrder.createdAt.toDate
+                          ? selectedOrder.createdAt.toDate()
+                          : new Date(selectedOrder.createdAt),
+                        "dd MMM yyyy, hh:mm a"
+                      )}
+                    </Text>
+                  )}
 
-                {Array.isArray(selectedOrder.items) &&
-                selectedOrder.items.length > 0 ? (
-                  <FlatList
-                    data={selectedOrder.items}
-                    keyExtractor={(it, idx) =>
-                      it?.name ? it.name + idx : `item-${idx}`
-                    }
-                    renderItem={({ item }) => {
-                      if (typeof item !== "object" || item === null) {
-                        console.warn("Invalid item data:", item);
-                        return null;
+                  {Array.isArray(selectedOrder.items) &&
+                  selectedOrder.items.length > 0 ? (
+                    <FlatList
+                      data={selectedOrder.items}
+                      keyExtractor={(it, idx) =>
+                        it?.name ? `${it.name}${idx}` : `item-${idx}`
                       }
-                      const realPrice = item.discount
-                        ? item.price - item.discount
-                        : item.price;
-                      return (
-                        <View style={styles.detailItemRow}>
-                          <Text style={styles.detailItemName}>{item.name}</Text>
-                          <Text style={styles.detailItemQty}>
-                            x{item.quantity}
-                          </Text>
-                          <Text style={styles.detailItemPrice}>
-                            ₹{realPrice.toFixed(2)}
-                          </Text>
-                        </View>
-                      );
-                    }}
-                    style={{ maxHeight: 150, marginVertical: 8 }}
-                    ListEmptyComponent={
-                      <Text style={{ marginVertical: 8, color: "#666" }}>
-                        No items found for this order.
+                      renderItem={({ item }) => {
+                        if (!item || typeof item !== "object") return null;
+                        const realPrice = item.discount
+                          ? item.price - item.discount
+                          : item.price;
+                        return (
+                          <View style={styles.detailItemRow}>
+                            <Text style={styles.detailItemName}>{item.name}</Text>
+                            <Text style={styles.detailItemQty}>x{item.quantity}</Text>
+                            <Text style={styles.detailItemPrice}>
+                              ₹{realPrice.toFixed(2)}
+                            </Text>
+                          </View>
+                        );
+                      }}
+                      style={{ maxHeight: 150, marginVertical: 8 }}
+                      ListEmptyComponent={
+                        <Text style={{ marginVertical: 8, color: "#666" }}>
+                          No items found for this order.
+                        </Text>
+                      }
+                    />
+                  ) : (
+                    <Text style={{ marginVertical: 8, color: "#666" }}>
+                      No items found for this order.
+                    </Text>
+                  )}
+
+                  <View style={styles.billSummaryContainer}>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Subtotal</Text>
+                      <Text style={styles.billValue}>
+                        ₹{selectedOrder.subtotal?.toFixed(2) || "0.00"}
                       </Text>
-                    }
-                  />
-                ) : (
-                  <Text style={{ marginVertical: 8, color: "#666" }}>
-                    No items found for this order.
-                  </Text>
-                )}
+                    </View>
 
-                <View style={styles.billSummaryContainer}>
-                  <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>Subtotal</Text>
-                    <Text style={styles.billValue}>
-                      ₹{selectedOrder.subtotal?.toFixed(2) || "0.00"}
-                    </Text>
-                  </View>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Discount</Text>
+                      <Text style={styles.billValue}>
+                        -₹{selectedOrder.discount}
+                      </Text>
+                    </View>
 
-                  <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>Discount</Text>
-                    <Text style={styles.billValue}>
-                      -₹{selectedOrder.discount}
-                    </Text>
-                  </View>
-
-                  <View style={styles.billRow}>
-                    <Text style={[styles.billLabel, { fontWeight: "700" }]}>
-                      Total
-                    </Text>
-                    <Text
-                      style={[styles.billValue, { fontWeight: "700" }]}
-                    >
-                      ₹{selectedOrder.finalTotal?.toFixed(2) || "0.00"}
-                    </Text>
+                    <View style={styles.billRow}>
+                      <Text style={[styles.billLabel, { fontWeight: "700" }]}>
+                        Total
+                      </Text>
+                      <Text style={[styles.billValue, { fontWeight: "700" }]}>
+                        ₹{selectedOrder.finalTotal?.toFixed(2) || "0.00"}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ) : (
-              <Text>No order selected</Text>
-            )}
+              ) : (
+                <Text>No order selected</Text>
+              )}
 
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowDetailsModal(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowDetailsModal(false)}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
+
+      {/* RE-AUTH MODAL FOR PHONE OTP */}
+      <Modal
+        visible={showReauthModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReauthModal(false)}
+      >
+        <View style={styles.reauthOverlay}>
+          <View style={styles.reauthContainer}>
+            <Text style={styles.reauthTitle}>Re-authenticate to Delete</Text>
+            <Text style={styles.reauthSubtitle}>
+              Enter the OTP sent to your phone to confirm account deletion.
+            </Text>
+
+            <RNTextInput
+              style={styles.reauthOTPInput}
+              placeholder="OTP"
+              keyboardType="number-pad"
+              value={reauthOTP}
+              onChangeText={setReauthOTP}
+              placeholderTextColor="#999"
+            />
+
+            {reauthLoading ? (
+              <ActivityIndicator size="large" color="#e74c3c" style={{ margin: 10 }} />
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.reauthConfirmButton}
+                  onPress={handleConfirmReauthOTP}
+                >
+                  <Text style={styles.reauthConfirmButtonText}>Confirm OTP</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.reauthCancelButton}
+                  onPress={() => {
+                    setShowReauthModal(false);
+                    setReauthOTP("");
+                  }}
+                >
+                  <Text style={styles.reauthCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </SafeAreaView>
   );
 };
 
 export default ProfileScreen;
 
 /****************************************
- *          STYLES
+ *               STYLES
  ****************************************/
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f2f2f2",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fefefe",
@@ -655,14 +834,21 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 16,
   },
-  input: {
-    marginBottom: 12,
+  sectionHeader: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 10,
+    textAlign: "left",
   },
   label: {
     fontSize: 14,
     fontWeight: "600",
     color: "#333",
     marginBottom: 6,
+  },
+  input: {
+    marginBottom: 12,
   },
   dobSelect: {
     flexDirection: "row",
@@ -674,20 +860,26 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
   },
-  btnRow: {
+
+  fullWidthButton: {
+    width: "100%",
+    marginVertical: 6,
+  },
+  fullWidthButtonTouchable: {
+    width: "100%",
+    marginVertical: 6,
+    borderRadius: 6,
+    paddingVertical: 12,
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  saveButton: {
-    flex: 1,
-    marginRight: 8,
-    backgroundColor: "#28a745",
+  deleteAccountButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
   },
-  logoutButton: {
-    flex: 1,
-    marginLeft: 8,
-    borderColor: "#e74c3c",
-  },
+
   myOrdersHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -753,11 +945,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginRight: 8,
+    flexDirection: "row",
+    alignItems: "center",
   },
   actionButtonText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "600",
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalOverlay: {
     flex: 1,
@@ -834,6 +1033,88 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     color: "#fff",
+    fontWeight: "600",
+  },
+  // iOS date modal
+  modalOverlayDate: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalContainerDate: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  iosPickerHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    padding: 12,
+    backgroundColor: "#fefefe",
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  doneButtonText: {
+    color: "#007BFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Re-auth flow modal
+  reauthOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reauthContainer: {
+    width: "85%",
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  reauthTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  reauthSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  reauthOTPInput: {
+    width: "80%",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 10,
+    textAlign: "center",
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  reauthConfirmButton: {
+    backgroundColor: "#e74c3c",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    marginBottom: 10,
+  },
+  reauthConfirmButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  reauthCancelButton: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e74c3c",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+  },
+  reauthCancelButtonText: {
+    color: "#e74c3c",
     fontWeight: "600",
   },
 });
