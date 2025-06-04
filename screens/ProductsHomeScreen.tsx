@@ -42,6 +42,7 @@ import * as Location from "expo-location";
 
 import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
+import Loader from "@/components/VideoLoader";
 
 /* ------------------------------------------------------------------ CONSTANTS */
 const { width } = Dimensions.get("window");
@@ -776,7 +777,7 @@ export default function ProductsHomeScreen() {
   if (hasPerm === null) {
     return (
       <View style={[styles.center, { flex: 1 }]}>
-        <ActivityIndicator size="large" color="#009688" />
+        <Loader />
       </View>
     );
   }
@@ -875,7 +876,7 @@ export default function ProductsHomeScreen() {
             onEndReachedThreshold={0.3}
             ListFooterComponent={() =>
               loadingMore ? (
-                <ActivityIndicator style={{ margin: 12 }} color="#009688" />
+                <Loader />
               ) : noMore ? (
                 <Text style={{ textAlign: "center", margin: 12 }}>
                   No more products

@@ -1,10 +1,22 @@
 // NewOrderCancelledScreen.tsx
 
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { useNavigation, useRoute, RouteProp, CommonActions } from "@react-navigation/native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import {
+  useNavigation,
+  useRoute,
+  RouteProp,
+  CommonActions,
+} from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
+import Loader from "@/components/VideoLoader";
 
 // Define navigation stack types
 type RootStackParamList = {
@@ -20,12 +32,15 @@ type RootStackParamList = {
   // ... other screens
 };
 
-type NewOrderCancelledRouteProp = RouteProp<RootStackParamList, "OrderCancelled">;
+type NewOrderCancelledRouteProp = RouteProp<
+  RootStackParamList,
+  "OrderCancelled"
+>;
 
 const NewOrderCancelledScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<NewOrderCancelledRouteProp>();
-  
+
   // Extract orderId and refundAmount from params
   let { orderId, refundAmount } = route.params;
 
@@ -47,14 +62,19 @@ const NewOrderCancelledScreen: React.FC = () => {
     const fetchOrder = async () => {
       try {
         setLoadingOrder(true);
-        const docSnap = await firestore().collection("orders").doc(orderId).get();
+        const docSnap = await firestore()
+          .collection("orders")
+          .doc(orderId)
+          .get();
         if (docSnap.exists) {
           const orderData = docSnap.data();
           // If the Firestore doc has a paymentMethod field, set it
           if (orderData?.paymentMethod) {
             setPaymentMethod(orderData.paymentMethod);
           } else {
-            console.warn("paymentMethod not found in order doc. Defaulting to 'online'.");
+            console.warn(
+              "paymentMethod not found in order doc. Defaulting to 'online'."
+            );
             setPaymentMethod("online");
           }
         } else {
@@ -75,35 +95,36 @@ const NewOrderCancelledScreen: React.FC = () => {
   }, [orderId]);
 
   const navigateToHome = () => {
-  navigation.dispatch(
-    CommonActions.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'AppTabs',
-          state: {
-            index: 0,           
-            routes: [
-              {
-                name: 'HomeTab',
-                state: {
-                  index: 0,     
-                  routes: [{ name: 'ProductsHome' }],
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: "AppTabs",
+            state: {
+              index: 0,
+              routes: [
+                {
+                  name: "HomeTab",
+                  state: {
+                    index: 0,
+                    routes: [{ name: "ProductsHome" }],
+                  },
                 },
-              },
-            ],
+              ],
+            },
           },
-        },
-      ],
-    }),
-  );
-};
+        ],
+      })
+    );
+  };
 
   const renderMessage = () => {
     if (paymentMethod === "cod") {
       return (
         <Text style={styles.message}>
-          Your Cash on Delivery order has been cancelled. You can place a new order any time.
+          Your Cash on Delivery order has been cancelled. You can place a new
+          order any time.
         </Text>
       );
     } else {
@@ -121,7 +142,7 @@ const NewOrderCancelledScreen: React.FC = () => {
   if (loadingOrder) {
     return (
       <View style={[styles.container, { justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color="red" />
+        <Loader />
       </View>
     );
   }

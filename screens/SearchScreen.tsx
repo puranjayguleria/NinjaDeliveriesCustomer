@@ -1,6 +1,12 @@
 // screens/SearchScreen.tsx
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -25,17 +31,18 @@ import firestore from "@react-native-firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCart } from "@/context/CartContext";
 import { useLocationContext } from "@/context/LocationContext";
+import Loader from "@/components/VideoLoader";
 
-const RECENT_KEY   = "RECENT_SEARCHES";
-const GUTTER       = 8;
+const RECENT_KEY = "RECENT_SEARCHES";
+const GUTTER = 8;
 const COLUMN_COUNT = 4;
-const H            = 10;
+const H = 10;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SEARCH_SCALE = 0.8;
-const TILE_W       = 120;
-const TILE_H       = 210; // match ProductsHomeScreen tile height
-const TILE_WIDTH   = (SCREEN_WIDTH - GUTTER * (COLUMN_COUNT + 1)) / COLUMN_COUNT;
-const pastelGreen  = "#e7f8f6";
+const TILE_W = 120;
+const TILE_H = 210; // match ProductsHomeScreen tile height
+const TILE_WIDTH = (SCREEN_WIDTH - GUTTER * (COLUMN_COUNT + 1)) / COLUMN_COUNT;
+const pastelGreen = "#e7f8f6";
 
 /* Helper: pick an image URL field from a product object */
 const firstImg = (p: any) =>
@@ -46,13 +53,13 @@ const firstImg = (p: any) =>
   "";
 
 type CategoryAlert = {
-  categoryId:   string;
-  title:        string;
-  message:      string;
-  acceptLabel:  string;
+  categoryId: string;
+  title: string;
+  message: string;
+  acceptLabel: string;
   declineLabel: string;
-  linkLabel:    string;
-  linkUrl:      string;
+  linkLabel: string;
+  linkUrl: string;
 };
 
 export default function SearchScreen() {
@@ -62,15 +69,15 @@ export default function SearchScreen() {
 
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [subsMap, setSubsMap]       = useState<Record<string, any[]>>({});
-  const [search, setSearch]         = useState("");
-  const [recent, setRecent]         = useState<string[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [subsMap, setSubsMap] = useState<Record<string, any[]>>({});
+  const [search, setSearch] = useState("");
+  const [recent, setRecent] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
   /* Pan Corner age-gate */
-  const [catAlert, setCatAlert]             = useState<CategoryAlert | null>(null);
-  const [acceptedPan, setAcceptedPan]       = useState(false);
-  const [showGate, setShowGate]             = useState(false);
+  const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
+  const [acceptedPan, setAcceptedPan] = useState(false);
+  const [showGate, setShowGate] = useState(false);
   const onAcceptRef = useRef<() => void>(() => {});
   const vibrateCancel = () => Vibration.vibrate(70);
 
@@ -80,17 +87,17 @@ export default function SearchScreen() {
       .where("categoryId", "==", "Pan Corner")
       .limit(1)
       .get()
-      .then(snap => {
+      .then((snap) => {
         if (!snap.empty) setCatAlert(snap.docs[0].data() as CategoryAlert);
       })
-      .catch(e => console.warn("[category_alerts]", e));
+      .catch((e) => console.warn("[category_alerts]", e));
   }, []);
 
   const isPanProduct = useCallback(
     (p: any) =>
       !!catAlert &&
       (p.categoryId === catAlert.categoryId ||
-       (p.name || "").toLowerCase().includes("pan corner")),
+        (p.name || "").toLowerCase().includes("pan corner")),
     [catAlert]
   );
 
@@ -98,7 +105,7 @@ export default function SearchScreen() {
     (c: any) =>
       !!catAlert &&
       (c.id === catAlert.categoryId ||
-       (c.name || "").toLowerCase().includes("pan corner")),
+        (c.name || "").toLowerCase().includes("pan corner")),
     [catAlert]
   );
 
@@ -142,12 +149,12 @@ export default function SearchScreen() {
           .get(),
       ]);
 
-      setAllProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      const cats = catSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAllProducts(prodSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const cats = catSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setCategories(cats);
 
       const m: Record<string, any[]> = {};
-      subSnap.docs.forEach(d => {
+      subSnap.docs.forEach((d) => {
         const s = { id: d.id, ...d.data() } as any;
         (m[s.categoryId] ||= []).push(s);
       });
@@ -161,7 +168,7 @@ export default function SearchScreen() {
   const onSubmit = useCallback(async () => {
     const term = search.trim();
     if (!term) return;
-    const next = [term, ...recent.filter(r => r !== term)].slice(0, 10);
+    const next = [term, ...recent.filter((r) => r !== term)].slice(0, 10);
     setRecent(next);
     await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next));
   }, [search, recent]);
@@ -171,20 +178,20 @@ export default function SearchScreen() {
     const q = search.trim().toLowerCase();
     if (!q) return [];
 
-    const matches = allProducts.filter(p => {
+    const matches = allProducts.filter((p) => {
       const name = (p.name || p.title || "").toLowerCase();
       const desc = (p.description || "").toLowerCase();
       return name.includes(q) || desc.includes(q);
     });
 
     const byCat: Record<string, any[]> = {};
-    matches.forEach(p => {
+    matches.forEach((p) => {
       (byCat[p.categoryId] ||= []).push(p);
     });
 
     return categories
-      .filter(c => byCat[c.id]?.length > 0)
-      .map(c => ({ category: c, data: byCat[c.id] }));
+      .filter((c) => byCat[c.id]?.length > 0)
+      .map((c) => ({ category: c, data: byCat[c.id] }));
   }, [search, allProducts, categories]);
 
   /* ────────── local QuickTile (using same styling as ProductsHomeScreen) ────────── */
@@ -196,7 +203,8 @@ export default function SearchScreen() {
     const imgUri = firstImg(p);
 
     const handleAdd = () => maybeGate(() => addToCart(p.id, p.quantity), pan);
-    const handleInc = () => maybeGate(() => increaseQuantity(p.id, p.quantity), pan);
+    const handleInc = () =>
+      maybeGate(() => increaseQuantity(p.id, p.quantity), pan);
     const handleDec = () => decreaseQuantity(p.id);
 
     return (
@@ -224,19 +232,35 @@ export default function SearchScreen() {
 
         {qty === 0 ? (
           <Pressable
-            style={[styles.cartBar, { backgroundColor: "#009688", borderColor: "#009688" }]}
+            style={[
+              styles.cartBar,
+              { backgroundColor: "#009688", borderColor: "#009688" },
+            ]}
             onPress={handleAdd}
             android_ripple={{ color: "rgba(0,0,0,0.1)" }}
           >
             <Text style={styles.cartBarAdd}>ADD</Text>
           </Pressable>
         ) : (
-          <View style={[styles.cartBar, { flexDirection: "row", borderColor: "#009688" }]}>
-            <Pressable onPress={handleDec} hitSlop={8} android_ripple={{ color: "rgba(0,0,0,0.1)" }}>
+          <View
+            style={[
+              styles.cartBar,
+              { flexDirection: "row", borderColor: "#009688" },
+            ]}
+          >
+            <Pressable
+              onPress={handleDec}
+              hitSlop={8}
+              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+            >
               <MaterialIcons name="remove" size={18} color="#009688" />
             </Pressable>
             <Text style={styles.qtyNum}>{qty}</Text>
-            <Pressable onPress={handleInc} hitSlop={8} android_ripple={{ color: "rgba(0,0,0,0.1)" }}>
+            <Pressable
+              onPress={handleInc}
+              hitSlop={8}
+              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+            >
               <MaterialIcons name="add" size={18} color="#009688" />
             </Pressable>
           </View>
@@ -249,7 +273,7 @@ export default function SearchScreen() {
   if (loading) {
     return (
       <View style={styles.centerBox}>
-        <ActivityIndicator size="large" color="#009688" />
+        <Loader />
       </View>
     );
   }
@@ -307,7 +331,7 @@ export default function SearchScreen() {
             <Text style={styles.sectionTitle}>Recent searches</Text>
             <View style={styles.recentWrap}>
               {recent.length > 0 ? (
-                recent.map(term => (
+                recent.map((term) => (
                   <Pressable
                     key={term}
                     style={styles.recentChip}
@@ -324,13 +348,15 @@ export default function SearchScreen() {
           </ScrollView>
         ) : sections.length === 0 ? (
           <View style={styles.centerBox}>
-            <Text style={{ color: "#777", fontSize: 14 }}>No products found.</Text>
+            <Text style={{ color: "#777", fontSize: 14 }}>
+              No products found.
+            </Text>
           </View>
         ) : (
           // Results
           <SectionList
             sections={sections}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             renderSectionHeader={({ section }) => (
               <View>
                 <View style={styles.rowHeader}>
@@ -358,7 +384,7 @@ export default function SearchScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ paddingLeft: H, marginBottom: 6 }}
                 >
-                  {(subsMap[section.category.id] || []).map(sub => (
+                  {(subsMap[section.category.id] || []).map((sub) => (
                     <Pressable
                       key={sub.id}
                       style={styles.chip}
@@ -384,7 +410,7 @@ export default function SearchScreen() {
                 <FlatList
                   horizontal
                   data={section.data}
-                  keyExtractor={p => p.id}
+                  keyExtractor={(p) => p.id}
                   renderItem={({ item }) => (
                     <View
                       style={{
@@ -438,7 +464,9 @@ export default function SearchScreen() {
                 }}
                 android_ripple={{ color: "rgba(0,0,0,0.1)" }}
               >
-                <Text style={styles.btnSecondaryTxt}>{catAlert?.declineLabel}</Text>
+                <Text style={styles.btnSecondaryTxt}>
+                  {catAlert?.declineLabel}
+                </Text>
               </Pressable>
 
               <Pressable
@@ -450,7 +478,9 @@ export default function SearchScreen() {
                 }}
                 android_ripple={{ color: "rgba(0,0,0,0.1)" }}
               >
-                <Text style={styles.btnPrimaryTxt}>{catAlert?.acceptLabel}</Text>
+                <Text style={styles.btnPrimaryTxt}>
+                  {catAlert?.acceptLabel}
+                </Text>
               </Pressable>
             </View>
           </Pressable>
@@ -477,7 +507,12 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 40, fontSize: 14, color: "#222" },
 
   /* recent searches */
-  sectionTitle: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 6 },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 6,
+  },
   recentWrap: { flexDirection: "row", flexWrap: "wrap" },
   recentChip: {
     backgroundColor: "#e0f2f1",
@@ -520,7 +555,12 @@ const styles = StyleSheet.create({
     elevation: 2,
     padding: 6,
   },
-  tileImg: { width: TILE_W - 12, height: TILE_W - 12, borderRadius: 6, alignSelf: "center" },
+  tileImg: {
+    width: TILE_W - 12,
+    height: TILE_W - 12,
+    borderRadius: 6,
+    alignSelf: "center",
+  },
   discountTag: {
     position: "absolute",
     top: 6,
@@ -562,7 +602,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  qtyNum: { color: "#009688", fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+  qtyNum: {
+    color: "#009688",
+    fontWeight: "700",
+    fontSize: 14,
+    marginHorizontal: 10,
+  },
 
   /* modal overlay */
   overlay: {
@@ -579,7 +624,12 @@ const styles = StyleSheet.create({
     padding: 20,
     elevation: 6,
   },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: "#333", marginBottom: 10 },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 10,
+  },
   modalMsg: { fontSize: 14, color: "#555", lineHeight: 20, marginBottom: 16 },
   linkBtn: { marginBottom: 16, alignSelf: "flex-start" },
   linkTxt: {
@@ -599,6 +649,10 @@ const styles = StyleSheet.create({
   },
   btnPrimary: { backgroundColor: "#009688" },
   btnPrimaryTxt: { color: "#fff", fontWeight: "700" },
-  btnSecondary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#bbb" },
+  btnSecondary: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#bbb",
+  },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
 });

@@ -29,6 +29,7 @@ import { RootStackParamList, LocationData } from "../types/navigation";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal";
 import { useLocationContext } from "../context/LocationContext"; // location context hook
+import Loader from "@/components/VideoLoader";
 
 type LocationSelectorScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -94,14 +95,17 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
     location.address || "Search or choose your location"
   );
   const [placeQuery, setPlaceQuery] = useState<string>("");
-  const [autocompleteResults, setAutocompleteResults] = useState<PlaceDetails[]>([]);
+  const [autocompleteResults, setAutocompleteResults] = useState<
+    PlaceDetails[]
+  >([]);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
 
   // Error Modal
-  const [isErrorModalVisible, setIsErrorModalVisible] = useState<boolean>(false);
+  const [isErrorModalVisible, setIsErrorModalVisible] =
+    useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   // BOTTOM SHEET
@@ -162,7 +166,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         const data = d.data() as any;
         return {
           id: d.id,
-          storeId: d.id,                   
+          storeId: d.id,
           name: data.name,
           latitude: Number(data.latitude),
           longitude: Number(data.longitude),
@@ -175,7 +179,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       showErrorModal("Error", "Could not load service areas.");
     }
   };
-  
+
   /****************************************
    * PLACE AUTOCOMPLETE
    ****************************************/
@@ -197,8 +201,8 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       );
 
       if (resp.data.status === "OK") {
-        const filteredResults = resp.data.predictions.filter((p: PlaceDetails) =>
-          p.description.toLowerCase().includes("himachal")
+        const filteredResults = resp.data.predictions.filter(
+          (p: PlaceDetails) => p.description.toLowerCase().includes("himachal")
         );
         setAutocompleteResults(filteredResults);
       } else if (resp.data.status === "ZERO_RESULTS") {
@@ -261,30 +265,29 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   /**
- * Examine the Distance Matrix response and return the nearest zone
- * whose distance (in km) ≤ zone.radius.  If none match, returns null.
- */
-const pickNearestZone = (
-  elements: any[],
-  zones: DeliveryZone[]
-): { storeId: string; zone: DeliveryZone } | null => {
-  let winner: { zone: DeliveryZone; distKm: number } | null = null;
+   * Examine the Distance Matrix response and return the nearest zone
+   * whose distance (in km) ≤ zone.radius.  If none match, returns null.
+   */
+  const pickNearestZone = (
+    elements: any[],
+    zones: DeliveryZone[]
+  ): { storeId: string; zone: DeliveryZone } | null => {
+    let winner: { zone: DeliveryZone; distKm: number } | null = null;
 
-  elements.forEach((el, idx) => {
-    if (el.status !== "OK") return;
+    elements.forEach((el, idx) => {
+      if (el.status !== "OK") return;
 
-    const km = el.distance.value / 1000; // metres ➜ km
-    const zone = zones[idx];
-    if (km <= (zone.radius as number)) {
-      if (!winner || km < winner.distKm) {
-        winner = { zone, distKm: km };
+      const km = el.distance.value / 1000; // metres ➜ km
+      const zone = zones[idx];
+      if (km <= (zone.radius as number)) {
+        if (!winner || km < winner.distKm) {
+          winner = { zone, distKm: km };
+        }
       }
-    }
-  });
+    });
 
-  return winner ? { storeId: winner.zone.storeId, zone: winner.zone } : null;
-};
-
+    return winner ? { storeId: winner.zone.storeId, zone: winner.zone } : null;
+  };
 
   /****************************************
    * MANUAL REVERSE GEOCODE (FALLBACK)
@@ -295,7 +298,10 @@ const pickNearestZone = (
     // 2) We have permission on Android (to avoid error)
     if (Platform.OS === "ios" || locationPermission) {
       try {
-        const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+        const places = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
         if (places && places.length > 0) {
           const { name, city } = places[0];
           return `${name || ""}, ${city || ""}`;
@@ -352,11 +358,11 @@ const pickNearestZone = (
         markerCoord.latitude,
         markerCoord.longitude
       );
-  
+
       const destinations = deliveryZones
         .map((z) => `${z.latitude},${z.longitude}`)
         .join("|");
-  
+
       const distResp = await axios.get(
         "https://maps.googleapis.com/maps/api/distancematrix/json",
         {
@@ -368,17 +374,17 @@ const pickNearestZone = (
           },
         }
       );
-  
+
       if (distResp.data.status !== "OK") {
         showErrorModal("Error", "Failed to check deliverability.");
         return;
       }
-  
+
       const nearest = pickNearestZone(
         distResp.data.rows[0].elements,
         deliveryZones
       );
-  
+
       if (!nearest) {
         showErrorModal(
           "Delivery Unavailable",
@@ -386,22 +392,22 @@ const pickNearestZone = (
         );
         return;
       }
-  
+
       const newLocationData: LocationData & { storeId: string } = {
         lat: markerCoord.latitude,
         lng: markerCoord.longitude,
         address: addr,
         storeId: nearest.storeId,
       };
-  
+
       updateLocation(newLocationData);
-  
+
       if (fromScreen === "Cart") {
         setHouseNo("");
         setPlaceLabel("");
         setShowSaveForm(true);
       } else {
-  navigation.navigate("AppTabs", { screen: "Home" });
+        navigation.navigate("AppTabs", { screen: "Home" });
       }
     } catch (err) {
       console.error("confirmLocation:", err);
@@ -410,7 +416,6 @@ const pickNearestZone = (
       setIsLoading(false);
     }
   };
-  
 
   /****************************************
    * SAVE LOCATION (FIRESTORE)
@@ -440,7 +445,10 @@ const pickNearestZone = (
       console.log("Location saved successfully.");
     } catch (err) {
       console.error("Error saving location:", err);
-      Alert.alert("Error", "Could not save your location. Please try again later.");
+      Alert.alert(
+        "Error",
+        "Could not save your location. Please try again later."
+      );
     }
   };
 
@@ -504,7 +512,7 @@ const pickNearestZone = (
           params: { selectedLocation: newLoc },
         });
       } else {
-  navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
+        navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
       }
     } catch (err) {
       console.error("Error in handleSaveLocationForm:", err);
@@ -522,7 +530,7 @@ const pickNearestZone = (
         {/* LOADER OVERLAY */}
         {isLoading && (
           <View style={styles.loaderOverlay}>
-            <ActivityIndicator size="large" color="#000" />
+            <Loader />
           </View>
         )}
 
@@ -538,7 +546,12 @@ const pickNearestZone = (
           <View style={{ zIndex: 999 }}>
             {/* Input row with icon + placeholder */}
             <View style={styles.searchInputRow}>
-              <Ionicons name="search" size={18} color="#666" style={styles.searchIcon} />
+              <Ionicons
+                name="search"
+                size={18}
+                color="#666"
+                style={styles.searchIcon}
+              />
               <TextInput
                 style={styles.searchInput}
                 value={placeQuery}
@@ -558,7 +571,9 @@ const pickNearestZone = (
                     onPress={() => handlePlaceSelection(item)}
                     style={styles.autocompleteItem}
                   >
-                    <Text style={styles.autocompleteText}>{item.description}</Text>
+                    <Text style={styles.autocompleteText}>
+                      {item.description}
+                    </Text>
                   </TouchableOpacity>
                 )}
                 style={styles.autocompleteContainer}
@@ -568,8 +583,13 @@ const pickNearestZone = (
 
           {/* If location not granted */}
           {!locationPermission && (
-            <TouchableOpacity style={styles.enableLocationButton} onPress={openAppSettings}>
-              <Text style={styles.enableLocationText}>Enable Location Permission</Text>
+            <TouchableOpacity
+              style={styles.enableLocationButton}
+              onPress={openAppSettings}
+            >
+              <Text style={styles.enableLocationText}>
+                Enable Location Permission
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -578,7 +598,9 @@ const pickNearestZone = (
             style={styles.useCurrentLocationButton}
             onPress={handleUseCurrentLocation}
           >
-            <Text style={styles.useCurrentLocationText}>Use Current Location</Text>
+            <Text style={styles.useCurrentLocationText}>
+              Use Current Location
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -600,25 +622,34 @@ const pickNearestZone = (
           <View pointerEvents="none" style={styles.markerFixed}>
             <Image
               style={styles.marker}
-              source={{ uri: "https://img.icons8.com/color/96/000000/map-pin.png" }}
+              source={{
+                uri: "https://img.icons8.com/color/96/000000/map-pin.png",
+              }}
             />
           </View>
         </View>
 
         {/* FOOTER BUTTON */}
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.confirmButton} onPress={confirmLocation}>
+          <TouchableOpacity
+            style={styles.confirmButton}
+            onPress={confirmLocation}
+          >
             <Text style={styles.confirmButtonText}>Confirm Location</Text>
           </TouchableOpacity>
         </View>
 
         {/* BOTTOM SHEET (SAVE FORM) */}
         <Modal visible={showSaveForm} animationType="slide" transparent>
-          <KeyboardAvoidingView style={styles.modalContainer} behavior="padding">
+          <KeyboardAvoidingView
+            style={styles.modalContainer}
+            behavior="padding"
+          >
             <View style={styles.bottomSheet}>
               <Text style={styles.saveFormTitle}>Save Your Location</Text>
               <Text style={styles.saveFormSubtitle}>
-                Enter your house/flat number and a label (like "Home", "Office", etc.)
+                Enter your house/flat number and a label (like "Home", "Office",
+                etc.)
               </Text>
 
               <TextInput

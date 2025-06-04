@@ -14,7 +14,12 @@ import {
   Image,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
-import { useRoute, RouteProp, useNavigation, CommonActions } from "@react-navigation/native";
+import {
+  useRoute,
+  RouteProp,
+  useNavigation,
+  CommonActions,
+} from "@react-navigation/native";
 import firestore from "@react-native-firebase/firestore";
 
 import riderIcon from "../assets/rider-icon-1.png";
@@ -22,6 +27,7 @@ import pickupMarker from "../assets/pickup-marker.png";
 import dropoffMarker from "../assets/dropoff-marker.png";
 import { useOrder } from "@/context/OrderContext";
 import { Ionicons } from "@expo/vector-icons";
+import Loader from "@/components/VideoLoader";
 
 type StackParamList = {
   OrderAllocating: {
@@ -32,7 +38,10 @@ type StackParamList = {
   };
 };
 
-type OrderAllocatingScreenRouteProp = RouteProp<StackParamList, "OrderAllocating">;
+type OrderAllocatingScreenRouteProp = RouteProp<
+  StackParamList,
+  "OrderAllocating"
+>;
 
 const quotes = [
   "Ninjas are fast, but we're faster with your delivery!",
@@ -148,26 +157,32 @@ const OrderAllocatingScreen: React.FC = () => {
         });
 
         // Navigate to OrderTracking (inside HomeStack)
-        navigation.navigate("HomeTab" as never, {
-          screen: "OrderTracking",
-          params: {
-            orderId,
-            pickupCoords,
-            dropoffCoords,
-            totalCost,
-          },
-        } as never);
+        navigation.navigate(
+          "HomeTab" as never,
+          {
+            screen: "OrderTracking",
+            params: {
+              orderId,
+              pickupCoords,
+              dropoffCoords,
+              totalCost,
+            },
+          } as never
+        );
       }
 
       // If the order was cancelled remotely (e.g. by Lambda or admin):
       if (data.status === "cancelled" && !orderAccepted) {
-        navigation.navigate("HomeTab" as never, {
-          screen: "OrderCancelled",
-          params: {
-            orderId,
-            refundAmount: data.refundAmount ?? totalCost,
-          },
-        } as never);
+        navigation.navigate(
+          "HomeTab" as never,
+          {
+            screen: "OrderCancelled",
+            params: {
+              orderId,
+              refundAmount: data.refundAmount ?? totalCost,
+            },
+          } as never
+        );
       }
     });
 
@@ -235,10 +250,13 @@ const OrderAllocatingScreen: React.FC = () => {
         {
           text: "OK",
           onPress: () =>
-            navigation.navigate("HomeTab" as never, {
-              screen: "OrderCancelled",
-              params: { orderId, refundAmount },
-            } as never),
+            navigation.navigate(
+              "HomeTab" as never,
+              {
+                screen: "OrderCancelled",
+                params: { orderId, refundAmount },
+              } as never
+            ),
         },
       ]);
     } catch (error) {
@@ -252,16 +270,22 @@ const OrderAllocatingScreen: React.FC = () => {
   // --------------------------------------------------
   const handleForgotItemsLink = () => {
     // Navigate to the "Home" tab, specifically "Categories" if desired
-    navigation.navigate("HomeTab" as never, {
-      screen: "Categories",
-    } as never);
+    navigation.navigate(
+      "HomeTab" as never,
+      {
+        screen: "Categories",
+      } as never
+    );
   };
 
   const handleClose = () => {
     // Example: jump to the CartFlow tab’s screen
-    navigation.navigate("CartFlow" as never, {
-      screen: "CartHome",
-    } as never);
+    navigation.navigate(
+      "CartFlow" as never,
+      {
+        screen: "CartHome",
+      } as never
+    );
   };
 
   // --------------------------------------------------
@@ -290,7 +314,7 @@ const OrderAllocatingScreen: React.FC = () => {
 
       {isLoading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#28a745" />
+          <Loader />
         </View>
       ) : (
         <>
@@ -303,10 +327,18 @@ const OrderAllocatingScreen: React.FC = () => {
                 initialRegion={region}
                 onMapReady={() => {
                   setMapReady(true);
-                  mapRef.current?.fitToCoordinates([pickupCoords, dropoffCoords], {
-                    edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
-                    animated: true,
-                  });
+                  mapRef.current?.fitToCoordinates(
+                    [pickupCoords, dropoffCoords],
+                    {
+                      edgePadding: {
+                        top: 100,
+                        right: 100,
+                        bottom: 100,
+                        left: 100,
+                      },
+                      animated: true,
+                    }
+                  );
                 }}
                 onRegionChangeComplete={(newReg) => setRegion(newReg)}
                 onError={(error) => {
@@ -316,15 +348,25 @@ const OrderAllocatingScreen: React.FC = () => {
               >
                 {/* Pickup Marker */}
                 <Marker coordinate={pickupCoords} title="Pickup Location">
-                  <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
-                    <Image source={pickupMarker} style={{ width: 40, height: 40 }} />
+                  <Animated.View
+                    style={{ transform: [{ scale: markerAnimation }] }}
+                  >
+                    <Image
+                      source={pickupMarker}
+                      style={{ width: 40, height: 40 }}
+                    />
                   </Animated.View>
                 </Marker>
 
                 {/* Dropoff Marker */}
                 <Marker coordinate={dropoffCoords} title="Dropoff Location">
-                  <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
-                    <Image source={dropoffMarker} style={{ width: 40, height: 40 }} />
+                  <Animated.View
+                    style={{ transform: [{ scale: markerAnimation }] }}
+                  >
+                    <Image
+                      source={dropoffMarker}
+                      style={{ width: 40, height: 40 }}
+                    />
                   </Animated.View>
                 </Marker>
 
@@ -338,8 +380,13 @@ const OrderAllocatingScreen: React.FC = () => {
                     }}
                     description="Available Rider"
                   >
-                    <Animated.View style={{ transform: [{ scale: markerAnimation }] }}>
-                      <Image source={riderIcon} style={{ width: 30, height: 40 }} />
+                    <Animated.View
+                      style={{ transform: [{ scale: markerAnimation }] }}
+                    >
+                      <Image
+                        source={riderIcon}
+                        style={{ width: 30, height: 40 }}
+                      />
                     </Animated.View>
                   </Marker>
                 ))}
@@ -369,9 +416,13 @@ const OrderAllocatingScreen: React.FC = () => {
             </View>
 
             {/* Show "Cancel Order" only if status is still pending or accepted */}
-            {(orderData?.status === "pending" || orderData?.status === "accepted") &&
+            {(orderData?.status === "pending" ||
+              orderData?.status === "accepted") &&
               !orderAccepted && (
-                <TouchableOpacity style={styles.cancelButton} onPress={cancelOrder}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={cancelOrder}
+                >
                   <Text style={styles.cancelButtonText}>Cancel Order</Text>
                 </TouchableOpacity>
               )}
@@ -385,7 +436,9 @@ const OrderAllocatingScreen: React.FC = () => {
                   data={orderData.items}
                   keyExtractor={(item, index) => `${item.name}-${index}`}
                   renderItem={renderOrderItem}
-                  ItemSeparatorComponent={() => <View style={styles.separator} />}
+                  ItemSeparatorComponent={() => (
+                    <View style={styles.separator} />
+                  )}
                 />
 
                 {/* PRICE BREAKDOWN */}

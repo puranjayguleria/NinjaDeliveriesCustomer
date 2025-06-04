@@ -1,19 +1,20 @@
 // screens/TermsAndConditionsScreen.tsx
 
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  ScrollView, 
-  ActivityIndicator 
-} from 'react-native';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
-import Markdown from 'react-native-markdown-display';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
+import Markdown from "react-native-markdown-display";
+import { CommonActions, useNavigation } from "@react-navigation/native";
+import Loader from "@/components/VideoLoader";
 
 const TermsAndConditionsScreen: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -31,14 +32,17 @@ const TermsAndConditionsScreen: React.FC = () => {
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
-              routes: [{ name: 'AppTabs' }],
+              routes: [{ name: "AppTabs" }],
             })
           );
           return;
         }
         // === End minimal change ===
 
-        const userDoc = await firestore().collection('users').doc(user.uid).get();
+        const userDoc = await firestore()
+          .collection("users")
+          .doc(user.uid)
+          .get();
         if (userDoc.exists) {
           const data = userDoc.data();
           if (data?.hasAcceptedTerms) {
@@ -46,7 +50,7 @@ const TermsAndConditionsScreen: React.FC = () => {
             navigation.dispatch(
               CommonActions.reset({
                 index: 0,
-                routes: [{ name: 'AppTabs' }],
+                routes: [{ name: "AppTabs" }],
               })
             );
           } else {
@@ -55,7 +59,7 @@ const TermsAndConditionsScreen: React.FC = () => {
           }
         } else {
           // If user document doesn't exist, create it with hasAcceptedTerms: false.
-          await firestore().collection('users').doc(user.uid).set({
+          await firestore().collection("users").doc(user.uid).set({
             phoneNumber: user.phoneNumber,
             expoPushToken: null, // Handle expoPushToken appropriately
             hasAcceptedTerms: false,
@@ -63,12 +67,15 @@ const TermsAndConditionsScreen: React.FC = () => {
           setIsLoading(false);
         }
       } catch (error: any) {
-        console.error('Error checking terms acceptance:', error);
-        Alert.alert('Error', 'Failed to verify terms acceptance. Please try again.');
+        console.error("Error checking terms acceptance:", error);
+        Alert.alert(
+          "Error",
+          "Failed to verify terms acceptance. Please try again."
+        );
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'Login' }],
+            routes: [{ name: "Login" }],
           })
         );
       }
@@ -83,48 +90,54 @@ const TermsAndConditionsScreen: React.FC = () => {
       const user = auth().currentUser;
       if (user) {
         // Update hasAcceptedTerms to true in Firestore
-        await firestore().collection('users').doc(user.uid).update({
+        await firestore().collection("users").doc(user.uid).update({
           hasAcceptedTerms: true,
         });
-        Alert.alert('Success', 'You have successfully accepted the Terms and Conditions!');
-        
+        Alert.alert(
+          "Success",
+          "You have successfully accepted the Terms and Conditions!"
+        );
+
         // Reset navigation to the main app flow.
         // "AppTabs" is registered in your root navigator.
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'AppTabs' }],
+            routes: [{ name: "AppTabs" }],
           })
         );
       } else {
-        Alert.alert('Error', 'User not authenticated.');
+        Alert.alert("Error", "User not authenticated.");
       }
     } catch (error: any) {
-      console.error('Error accepting terms:', error);
-      Alert.alert('Error', 'Failed to accept terms. Please try again.');
+      console.error("Error accepting terms:", error);
+      Alert.alert("Error", "Failed to accept terms. Please try again.");
     } finally {
       setIsProcessing(false); // Stop loader
     }
   };
-  
+
   const handleDecline = async () => {
     setIsProcessing(true); // Start loader
     try {
-      Alert.alert('Notice', 'You must accept the Terms and Conditions to proceed.');
-      
+      Alert.alert(
+        "Notice",
+        "You must accept the Terms and Conditions to proceed."
+      );
+
       // Sign the user out
       await auth().signOut();
-      
+
       // Navigate to Login screen and reset navigation stack
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: 'Login' }],
+          routes: [{ name: "Login" }],
         })
       );
     } catch (error: any) {
-      console.error('Error signing out:', error);
-      Alert.alert('Error', 'Failed to sign out.');
+      console.error("Error signing out:", error);
+      Alert.alert("Error", "Failed to sign out.");
     } finally {
       setIsProcessing(false); // Stop loader
     }
@@ -279,8 +292,7 @@ ________________________________________
       {/* Loader during initial check */}
       {isLoading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#00C853" />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Loader />
         </View>
       ) : (
         // If not loading and not processing, show content
@@ -295,10 +307,16 @@ ________________________________________
               <ScrollView style={styles.content}>
                 <Markdown>{markdownContent}</Markdown>
               </ScrollView>
-              <TouchableOpacity onPress={handleAccept} style={styles.acceptButton}>
+              <TouchableOpacity
+                onPress={handleAccept}
+                style={styles.acceptButton}
+              >
                 <Text style={styles.buttonText}>I Accept</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDecline} style={styles.declineButton}>
+              <TouchableOpacity
+                onPress={handleDecline}
+                style={styles.declineButton}
+              >
                 <Text style={styles.buttonText}>I Do Not Accept</Text>
               </TouchableOpacity>
             </>
@@ -318,39 +336,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   content: {
     flex: 1,
     marginBottom: 20,
   },
   acceptButton: {
-    backgroundColor: '#4A90E2',
+    backgroundColor: "#4A90E2",
     padding: 15,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 10,
   },
   declineButton: {
-    backgroundColor: '#c62828',
+    backgroundColor: "#c62828",
     padding: 15,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 10,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   loaderContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#555',
+    color: "#555",
   },
 });

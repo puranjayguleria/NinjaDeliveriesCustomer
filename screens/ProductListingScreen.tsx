@@ -23,7 +23,8 @@ import ErrorModal from "../components/ErrorModal";
 import ProductCard from "../components/ProductCard";
 import Toast from "react-native-toast-message";
 import { useCart } from "../context/CartContext";
-import { useLocationContext } from "../context/LocationContext";   // ⬅️ NEW
+import { useLocationContext } from "../context/LocationContext"; // ⬅️ NEW
+import Loader from "@/components/VideoLoader";
 
 /********** NAV TYPES **********/
 type ProductListingScreenNavigationProp = StackNavigationProp<
@@ -60,7 +61,9 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
+    null
+  );
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -68,7 +71,7 @@ const ProductListingScreen: React.FC<Props> = () => {
   const navigation = useNavigation<ProductListingScreenNavigationProp>();
   const route = useRoute<ProductListingScreenRouteProp>();
   const { categoryId } = route.params || {};
-  const { location } = useLocationContext();                       // ⬅️ NEW (storeId)
+  const { location } = useLocationContext(); // ⬅️ NEW (storeId)
 
   /***** CART HOOKS *****/
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
@@ -79,7 +82,7 @@ const ProductListingScreen: React.FC<Props> = () => {
   useEffect(() => {
     if (!categoryId || !location.storeId) return;
 
-    fetchSubcategories(categoryId,location.storeId);
+    fetchSubcategories(categoryId, location.storeId);
     fetchProducts(categoryId, selectedSubcategory, location.storeId);
   }, [categoryId, selectedSubcategory, location.storeId]);
 
@@ -109,7 +112,7 @@ const ProductListingScreen: React.FC<Props> = () => {
       const snap = await firestore()
         .collection("subcategories")
         .where("categoryId", "==", catId)
-        .where("storeId", "==", storeId) 
+        .where("storeId", "==", storeId)
         .get();
 
       setSubcategories(
@@ -129,7 +132,7 @@ const ProductListingScreen: React.FC<Props> = () => {
     try {
       let q = firestore()
         .collection("products")
-        .where("storeId", "==", storeId)             // ⬅️ store filter
+        .where("storeId", "==", storeId) // ⬅️ store filter
         .where("categoryId", "==", catId);
 
       if (subId) q = q.where("subcategoryId", "==", subId);
@@ -265,7 +268,7 @@ const ProductListingScreen: React.FC<Props> = () => {
         {/* List */}
         {loading ? (
           <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#28a745" />
+            <Loader />
           </View>
         ) : (
           <FlatList

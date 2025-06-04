@@ -27,15 +27,16 @@ import { RootStackParamList } from "../types/navigation";
 import { StackNavigationProp } from "@react-navigation/stack";
 
 import ProductCard from "../components/ProductCard";
-import ErrorModal   from "../components/ErrorModal";
-import { useCart }  from "../context/CartContext";
+import ErrorModal from "../components/ErrorModal";
+import { useCart } from "../context/CartContext";
 import { useLocationContext } from "../context/LocationContext";
+import Loader from "@/components/VideoLoader";
 
 /* ────────── types & helpers ────────── */
 type CategoriesNav = StackNavigationProp<RootStackParamList, "CategoriesHome">;
 
 type Category = { id: string; name: string; image: string; priority?: number };
-type Product  = {
+type Product = {
   id: string;
   name: string;
   image: string;
@@ -46,17 +47,17 @@ type Product  = {
 };
 
 type CategoryAlert = {
-  categoryId:   string;
-  title:        string;
-  message:      string;
-  acceptLabel:  string;
+  categoryId: string;
+  title: string;
+  message: string;
+  acceptLabel: string;
   declineLabel: string;
-  linkLabel:    string;
-  linkUrl:      string;
+  linkLabel: string;
+  linkUrl: string;
 };
 
 const { width } = Dimensions.get("window");
-const CARD_W   = (width - 48) / 3;
+const CARD_W = (width - 48) / 3;
 
 /* quick helper */
 const isPanCorner = (p: { categoryId?: string; name: string }, catId: string) =>
@@ -70,28 +71,30 @@ const CategoriesScreen: React.FC = () => {
 
   /* catalogue state */
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products,   setProducts]   = useState<Product[]>([]);
-  const [search,     setSearch]     = useState("");
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   /* Pan Corner gate state */
-  const [catAlert,     setCatAlert]     = useState<CategoryAlert | null>(null);
-  const [showGate,     setShowGate]     = useState(false);
-  const [gateAction,   setGateAction]   = useState<() => void>(() => {});
-  const [panAccepted,  setPanAccepted]  = useState(false);          // remember acceptance
+  const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
+  const [showGate, setShowGate] = useState(false);
+  const [gateAction, setGateAction] = useState<() => void>(() => {});
+  const [panAccepted, setPanAccepted] = useState(false); // remember acceptance
 
   const visibleCategories = search.trim()
-  ? categories.filter(c =>
-      c.name.toLowerCase().includes(search.toLowerCase()),
-    )
-  : categories;
+    ? categories.filter((c) =>
+        c.name.toLowerCase().includes(search.toLowerCase())
+      )
+    : categories;
 
-const visibleProducts = search.trim()
-  ? products.filter(p =>
-      (p.name + (p.description ?? "")).toLowerCase().includes(search.toLowerCase())
-    )
-  : [];
+  const visibleProducts = search.trim()
+    ? products.filter((p) =>
+        (p.name + (p.description ?? ""))
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      )
+    : [];
   /* ────────── fetch alert doc once ────────── */
   useEffect(() => {
     firestore()
@@ -126,8 +129,12 @@ const visibleProducts = search.trim()
             .get(),
         ]);
 
-        setCategories(catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Category) })));
-        setProducts  (prodSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Product) })));
+        setCategories(
+          catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Category) }))
+        );
+        setProducts(
+          prodSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Product) }))
+        );
         setError(null);
       } catch (e) {
         console.error("[Categories] fetch", e);
@@ -141,7 +148,10 @@ const visibleProducts = search.trim()
   /* ────────── gate helper ────────── */
   const askGate = useCallback(
     (onAccept: () => void) => {
-      if (panAccepted || !catAlert) { onAccept(); return; }
+      if (panAccepted || !catAlert) {
+        onAccept();
+        return;
+      }
 
       setGateAction(() => () => {
         setPanAccepted(true);
@@ -149,7 +159,7 @@ const visibleProducts = search.trim()
       });
       setShowGate(true);
     },
-    [catAlert, panAccepted],
+    [catAlert, panAccepted]
   );
 
   /* category tap */
@@ -160,18 +170,15 @@ const visibleProducts = search.trim()
         categoryName: item.name,
       });
 
-    catAlert && isPanCorner(item, catAlert.categoryId)
-      ? askGate(go)
-      : go();
+    catAlert && isPanCorner(item, catAlert.categoryId) ? askGate(go) : go();
   };
 
   /* product tap (search) */
   const handleProductPress = (item: Product) => {
-    const go = () => navigation.navigate("ProductDetail", { productId: item.id });
+    const go = () =>
+      navigation.navigate("ProductDetail", { productId: item.id });
 
-    catAlert && isPanCorner(item, catAlert.categoryId)
-      ? askGate(go)
-      : go();
+    catAlert && isPanCorner(item, catAlert.categoryId) ? askGate(go) : go();
   };
 
   /* add / increase wrappers */
@@ -183,7 +190,7 @@ const visibleProducts = search.trim()
 
     if (catAlert && isPanCorner(item, catAlert.categoryId) && !panAccepted) {
       askGate(doAdd);
-      Vibration.vibrate(80);            // gentle feedback on reject path
+      Vibration.vibrate(80); // gentle feedback on reject path
     } else {
       doAdd();
     }
@@ -191,7 +198,10 @@ const visibleProducts = search.trim()
 
   /* ────────── renderers ────────── */
   const renderCategory = ({ item }: { item: Category }) => (
-    <TouchableOpacity style={styles.catCard} onPress={() => handleCategoryPress(item)}>
+    <TouchableOpacity
+      style={styles.catCard}
+      onPress={() => handleCategoryPress(item)}
+    >
       <Image source={{ uri: item.image }} style={styles.catImg} />
       <Text style={styles.catTxt}>{item.name}</Text>
     </TouchableOpacity>
@@ -216,14 +226,25 @@ const visibleProducts = search.trim()
   return (
     <SafeAreaView style={styles.safe}>
       {/* search bar */}
-      <TouchableOpacity style={styles.searchRow} activeOpacity={0.7} onPress={openSearch}>
-        <MaterialIcons name="search" size={22} color="#555" style={styles.icn} />
-        <Text style={styles.searchPlaceholder}>Search categories or products</Text>
+      <TouchableOpacity
+        style={styles.searchRow}
+        activeOpacity={0.7}
+        onPress={openSearch}
+      >
+        <MaterialIcons
+          name="search"
+          size={22}
+          color="#555"
+          style={styles.icn}
+        />
+        <Text style={styles.searchPlaceholder}>
+          Search categories or products
+        </Text>
       </TouchableOpacity>
 
       {loading ? (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#28a745" />
+          <Loader />
         </View>
       ) : error ? (
         <View style={styles.centerBox}>
@@ -232,7 +253,7 @@ const visibleProducts = search.trim()
       ) : search.trim() === "" ? (
         <FlatList
           data={visibleCategories}
-          keyExtractor={c => c.id}
+          keyExtractor={(c) => c.id}
           renderItem={renderCategory}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
@@ -241,7 +262,7 @@ const visibleProducts = search.trim()
       ) : (
         <FlatList
           data={visibleProducts}
-          keyExtractor={p => p.id}
+          keyExtractor={(p) => p.id}
           renderItem={renderProduct}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
@@ -249,7 +270,11 @@ const visibleProducts = search.trim()
         />
       )}
 
-      <ErrorModal visible={!!error} message={error ?? ""} onClose={() => setError(null)} />
+      <ErrorModal
+        visible={!!error}
+        message={error ?? ""}
+        onClose={() => setError(null)}
+      />
 
       {/* ────────── Pan Corner modal ────────── */}
       <Modal
@@ -275,7 +300,9 @@ const visibleProducts = search.trim()
                 style={[styles.modalBtn, styles.btnSecondary]}
                 onPress={() => setShowGate(false)}
               >
-                <Text style={styles.btnSecondaryTxt}>{catAlert?.declineLabel}</Text>
+                <Text style={styles.btnSecondaryTxt}>
+                  {catAlert?.declineLabel}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -283,10 +310,12 @@ const visibleProducts = search.trim()
                 onPress={() => {
                   setShowGate(false);
                   setPanAccepted(true);
-                  setTimeout(() => gateAction(), 150);   // after close anim
+                  setTimeout(() => gateAction(), 150); // after close anim
                 }}
               >
-                <Text style={styles.btnPrimaryTxt}>{catAlert?.acceptLabel}</Text>
+                <Text style={styles.btnPrimaryTxt}>
+                  {catAlert?.acceptLabel}
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -313,7 +342,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   icn: { marginRight: 4 },
-  searchPlaceholder: { flex: 1, height: 44, lineHeight: 44, fontSize: 15, color: "#777" },
+  searchPlaceholder: {
+    flex: 1,
+    height: 44,
+    lineHeight: 44,
+    fontSize: 15,
+    color: "#777",
+  },
 
   /* category */
   catCard: {
@@ -326,7 +361,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   catImg: { width: "100%", aspectRatio: 1 },
-  catTxt: { paddingVertical: 8, textAlign: "center", fontWeight: "600", color: "#333" },
+  catTxt: {
+    paddingVertical: 8,
+    textAlign: "center",
+    fontWeight: "600",
+    color: "#333",
+  },
 
   /* product override */
   prodCardOverride: { width: CARD_W, marginRight: 8, marginBottom: 16 },
@@ -380,7 +420,11 @@ const styles = StyleSheet.create({
   },
   btnPrimary: { backgroundColor: "#009688" },
   btnPrimaryTxt: { color: "#fff", fontWeight: "700" },
-  btnSecondary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#bbb" },
+  btnSecondary: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#bbb",
+  },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
 });
 

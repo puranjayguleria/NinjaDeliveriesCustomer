@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
+import Loader from "@/components/VideoLoader";
 
 interface Business {
   id: string;
@@ -51,7 +52,9 @@ const formatTime = (time: string): string => {
   return `${hour}:${minute} ${ampm}`;
 };
 
-const BusinessDetailScreen: React.FC<BusinessDetailScreenProps> = ({ route }) => {
+const BusinessDetailScreen: React.FC<BusinessDetailScreenProps> = ({
+  route,
+}) => {
   const { businessId } = route.params;
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +123,9 @@ const BusinessDetailScreen: React.FC<BusinessDetailScreenProps> = ({ route }) =>
 
     Alert.alert(
       business.isAvailable ? "Business is Open" : "Business is Closed",
-      `Working Hours: ${formatTime(business.inTime)} - ${formatTime(business.outTime)}`,
+      `Working Hours: ${formatTime(business.inTime)} - ${formatTime(
+        business.outTime
+      )}`,
       [{ text: "OK" }]
     );
   };
@@ -128,8 +133,7 @@ const BusinessDetailScreen: React.FC<BusinessDetailScreenProps> = ({ route }) =>
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading...</Text>
+        <Loader />
       </View>
     );
   }
@@ -177,7 +181,8 @@ const BusinessDetailScreen: React.FC<BusinessDetailScreenProps> = ({ route }) =>
           </Text>
         </TouchableOpacity>
         <Text style={styles.workingHours}>
-          Working Hours: {formatTime(business.inTime)} - {formatTime(business.outTime)}
+          Working Hours: {formatTime(business.inTime)} -{" "}
+          {formatTime(business.outTime)}
         </Text>
       </View>
 

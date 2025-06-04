@@ -18,6 +18,7 @@ import firestore from "@react-native-firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import Constants from "expo-constants";
+import Loader from "@/components/VideoLoader";
 
 interface Business {
   id: string;
@@ -34,7 +35,9 @@ interface BusinessDirectoryScreenProps {
   navigation: any;
 }
 
-const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({ navigation }) => {
+const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({
+  navigation,
+}) => {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [filteredBusinesses, setFilteredBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +133,9 @@ const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({ navig
       style={[styles.card, !item.isAvailable && styles.cardDisabled]}
       disabled={!item.isAvailable}
       accessible={true}
-      accessibilityLabel={`${item.name} ${item.isAvailable ? "is open" : "is closed"}`}
+      accessibilityLabel={`${item.name} ${
+        item.isAvailable ? "is open" : "is closed"
+      }`}
     >
       {/* Business Image */}
       {item.image ? (
@@ -172,7 +177,7 @@ const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({ navig
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <Loader />
       </View>
     );
   }
@@ -213,7 +218,9 @@ const BusinessDirectoryScreen: React.FC<BusinessDirectoryScreenProps> = ({ navig
         style={styles.filterButton}
         onPress={() => setShowActiveOnly((prev) => !prev)}
         accessible={true}
-        accessibilityLabel={showActiveOnly ? "Show All Businesses" : "Show Active Only Businesses"}
+        accessibilityLabel={
+          showActiveOnly ? "Show All Businesses" : "Show Active Only Businesses"
+        }
       >
         <Text style={styles.filterButtonText}>
           {showActiveOnly ? "Show All" : "Show Active Only"}

@@ -23,6 +23,7 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Button, TextInput } from "react-native-paper";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
+import Loader from "@/components/VideoLoader";
 
 const pastelGreen = "#e7f8f6";
 const primaryTextColor = "#333";
@@ -182,13 +183,10 @@ const ProfileScreen: React.FC = () => {
     try {
       setSaving(true);
       const dobStr = dob ? dob.toISOString().split("T")[0] : "";
-      await firestore()
-        .collection("users")
-        .doc(currentUser.uid)
-        .update({
-          name: userName.trim(),
-          dob: dobStr,
-        });
+      await firestore().collection("users").doc(currentUser.uid).update({
+        name: userName.trim(),
+        dob: dobStr,
+      });
       Alert.alert("Saved", "Profile updated successfully!");
     } catch (error) {
       Alert.alert("Error", "Failed to save profile info.");
@@ -225,7 +223,9 @@ const ProfileScreen: React.FC = () => {
       : "+91" + phoneNumber.replace("+91", "");
     setReauthLoading(true);
     try {
-      const confirmationResult = await auth().signInWithPhoneNumber(finalNumber);
+      const confirmationResult = await auth().signInWithPhoneNumber(
+        finalNumber
+      );
       setReauthConfirm(confirmationResult);
       setShowReauthModal(true);
     } catch (err) {
@@ -306,7 +306,10 @@ const ProfileScreen: React.FC = () => {
           }
           await doPhoneReauth(phone);
         } catch (err) {
-          Alert.alert("Error", "Failed to start re-auth flow. Please try again.");
+          Alert.alert(
+            "Error",
+            "Failed to start re-auth flow. Please try again."
+          );
           console.log("Error reading phone from user doc:", err);
         }
       } else {
@@ -354,8 +357,14 @@ const ProfileScreen: React.FC = () => {
   /** Navigate to order screen based on status */
   const navigateToOrderScreen = useCallback(
     (order: Order) => {
-      const { status, id, pickupCoords, dropoffCoords, finalTotal, refundAmount } =
-        order;
+      const {
+        status,
+        id,
+        pickupCoords,
+        dropoffCoords,
+        finalTotal,
+        refundAmount,
+      } = order;
       if (!id) {
         Alert.alert("Error", "Invalid order ID.");
         return;
@@ -367,9 +376,14 @@ const ProfileScreen: React.FC = () => {
 
       // Direct which screen to go to
       if (status === "pending") {
-       navigation.navigate("HomeTab", {
+        navigation.navigate("HomeTab", {
           screen: "OrderAllocating",
-          params: { orderId: id, pickupCoords, dropoffCoords, totalCost: finalTotal },
+          params: {
+            orderId: id,
+            pickupCoords,
+            dropoffCoords,
+            totalCost: finalTotal,
+          },
         });
       } else if (status === "cancelled") {
         navigation.navigate("HomeTab", {
@@ -385,7 +399,12 @@ const ProfileScreen: React.FC = () => {
         /* active / reachedPickup / etc. */
         navigation.navigate("HomeTab", {
           screen: "OrderTracking",
-          params: { orderId: id, pickupCoords, dropoffCoords, totalCost: finalTotal },
+          params: {
+            orderId: id,
+            pickupCoords,
+            dropoffCoords,
+            totalCost: finalTotal,
+          },
         });
       }
     },
@@ -436,7 +455,12 @@ const ProfileScreen: React.FC = () => {
               onPress={() => openDetailsModal(item)}
             >
               <Text style={styles.actionButtonText}>View Details</Text>
-              <Ionicons name="list" size={16} color="#fff" style={{ marginLeft: 4 }} />
+              <Ionicons
+                name="list"
+                size={16}
+                color="#fff"
+                style={{ marginLeft: 4 }}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -448,7 +472,7 @@ const ProfileScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#28a745" />
+        <Loader />
       </View>
     );
   }
@@ -460,7 +484,9 @@ const ProfileScreen: React.FC = () => {
           source={require("../assets/ninja-logo.jpg")}
           style={styles.promptImage}
         />
-        <Text style={styles.promptText}>Login to view and manage your profile</Text>
+        <Text style={styles.promptText}>
+          Login to view and manage your profile
+        </Text>
         <Button
           mode="contained"
           onPress={() => navigation.navigate("Login" as never)}
@@ -480,8 +506,7 @@ const ProfileScreen: React.FC = () => {
       >
         <View style={styles.headerBlock}>
           <Text style={styles.mainTitle}>My Profile</Text>
-          <Text style={styles.subTitle}>
-          </Text>
+          <Text style={styles.subTitle}></Text>
         </View>
 
         <View style={styles.profileCard}>
@@ -565,7 +590,9 @@ const ProfileScreen: React.FC = () => {
 
           {/* Full-width "Logout" with icon */}
           <Button
-            icon={() => <Ionicons name="log-out-outline" size={18} color="#e74c3c" />}
+            icon={() => (
+              <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
+            )}
             mode="outlined"
             onPress={handleLogout}
             style={styles.fullWidthButton}
@@ -576,10 +603,18 @@ const ProfileScreen: React.FC = () => {
 
           {/* Full-width "Delete Account" with icon */}
           <TouchableOpacity
-            style={[styles.fullWidthButtonTouchable, { backgroundColor: "#e74c3c" }]}
+            style={[
+              styles.fullWidthButtonTouchable,
+              { backgroundColor: "#e74c3c" },
+            ]}
             onPress={handleDeleteAccount}
           >
-            <Ionicons name="trash" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Ionicons
+              name="trash"
+              size={16}
+              color="#fff"
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
           </TouchableOpacity>
         </View>
@@ -587,7 +622,7 @@ const ProfileScreen: React.FC = () => {
         {/* My Orders Header */}
         <View style={styles.myOrdersHeader}>
           <Text style={styles.myOrdersTitle}>My Orders</Text>
-          {ordersLoading && <ActivityIndicator size="small" color="#333" />}
+          {ordersLoading && <Loader />}
         </View>
 
         {orders.length === 0 && !ordersLoading ? (
@@ -646,8 +681,12 @@ const ProfileScreen: React.FC = () => {
                           : item.price;
                         return (
                           <View style={styles.detailItemRow}>
-                            <Text style={styles.detailItemName}>{item.name}</Text>
-                            <Text style={styles.detailItemQty}>x{item.quantity}</Text>
+                            <Text style={styles.detailItemName}>
+                              {item.name}
+                            </Text>
+                            <Text style={styles.detailItemQty}>
+                              x{item.quantity}
+                            </Text>
                             <Text style={styles.detailItemPrice}>
                               ₹{realPrice.toFixed(2)}
                             </Text>
@@ -731,14 +770,16 @@ const ProfileScreen: React.FC = () => {
             />
 
             {reauthLoading ? (
-              <ActivityIndicator size="large" color="#e74c3c" style={{ margin: 10 }} />
+              <Loader />
             ) : (
               <>
                 <TouchableOpacity
                   style={styles.reauthConfirmButton}
                   onPress={handleConfirmReauthOTP}
                 >
-                  <Text style={styles.reauthConfirmButtonText}>Confirm OTP</Text>
+                  <Text style={styles.reauthConfirmButtonText}>
+                    Confirm OTP
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.reauthCancelButton}
@@ -953,11 +994,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",

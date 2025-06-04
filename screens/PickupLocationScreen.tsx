@@ -1,6 +1,6 @@
 // PickupLocationScreen.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -16,17 +16,18 @@ import {
   Keyboard,
   Platform,
   TouchableWithoutFeedback,
-} from 'react-native';
-import MapView, { Region } from 'react-native-maps';
-import * as Location from 'expo-location';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import firestore from '@react-native-firebase/firestore';
-import { useCustomer } from '../context/CustomerContext';
-import { debounce } from 'lodash';
-import { GOOGLE_PLACES_API_KEY } from '@env'; // Ensure this is correctly set up
+} from "react-native";
+import MapView, { Region } from "react-native-maps";
+import * as Location from "expo-location";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import firestore from "@react-native-firebase/firestore";
+import { useCustomer } from "../context/CustomerContext";
+import { debounce } from "lodash";
+import { GOOGLE_PLACES_API_KEY } from "@env"; // Ensure this is correctly set up
+import Loader from "@/components/VideoLoader";
 
-const screenWidth = Dimensions.get('window').width;
-const screenHeight = Dimensions.get('window').height;
+const screenWidth = Dimensions.get("window").width;
+const screenHeight = Dimensions.get("window").height;
 
 // TypeScript Interfaces
 interface SavedLocation {
@@ -47,15 +48,16 @@ const PickupLocationScreen: React.FC = () => {
   // State Variables
   const [region, setRegion] = useState<Region | null>(null);
   const [initialRegion, setInitialRegion] = useState<Region | null>(null);
-  const [buildingName, setBuildingName] = useState<string>('');
+  const [buildingName, setBuildingName] = useState<string>("");
   const [hasPanned, setHasPanned] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
-  const [placeQuery, setPlaceQuery] = useState<string>('');
+  const [placeQuery, setPlaceQuery] = useState<string>("");
   const [places, setPlaces] = useState<PlacePrediction[]>([]);
-  const [showSavedLocationsModal, setShowSavedLocationsModal] = useState<boolean>(false);
+  const [showSavedLocationsModal, setShowSavedLocationsModal] =
+    useState<boolean>(false);
   const [showSaveModal, setShowSaveModal] = useState<boolean>(false);
-  const [locationName, setLocationName] = useState<string>('');
+  const [locationName, setLocationName] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [loadingPlaces, setLoadingPlaces] = useState<boolean>(false);
   const [hasSelectedPlace, setHasSelectedPlace] = useState<boolean>(false); // New State Variable
@@ -68,10 +70,10 @@ const PickupLocationScreen: React.FC = () => {
     const fetchUserLocation = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
+        if (status !== "granted") {
           Alert.alert(
-            'Permission Denied',
-            'Location permission is required to fetch your current location.'
+            "Permission Denied",
+            "Location permission is required to fetch your current location."
           );
           setLoading(false);
           return;
@@ -87,8 +89,8 @@ const PickupLocationScreen: React.FC = () => {
         setRegion(initial);
         setInitialRegion(initial);
       } catch (err) {
-        console.error('Error fetching location:', err);
-        Alert.alert('Error', 'Failed to fetch your current location.');
+        console.error("Error fetching location:", err);
+        Alert.alert("Error", "Failed to fetch your current location.");
       } finally {
         setLoading(false);
       }
@@ -103,7 +105,10 @@ const PickupLocationScreen: React.FC = () => {
       const fetchSavedLocations = async () => {
         try {
           if (customerId) {
-            const userDoc = await firestore().collection('users').doc(customerId).get();
+            const userDoc = await firestore()
+              .collection("users")
+              .doc(customerId)
+              .get();
             const userData = userDoc.data();
             if (userData && userData.savedLocations) {
               setSavedLocations(userData.savedLocations);
@@ -112,8 +117,8 @@ const PickupLocationScreen: React.FC = () => {
             }
           }
         } catch (err) {
-          console.error('Error fetching saved locations:', err);
-          setError('Failed to load saved locations.');
+          console.error("Error fetching saved locations:", err);
+          setError("Failed to load saved locations.");
         }
       };
 
@@ -140,16 +145,16 @@ const PickupLocationScreen: React.FC = () => {
       );
 
       const data = await response.json();
-      if (data.status === 'OK') {
+      if (data.status === "OK") {
         setPlaces(data.predictions);
       } else {
-        console.error('Error fetching places:', data.status);
-        setError('Failed to fetch place suggestions.');
+        console.error("Error fetching places:", data.status);
+        setError("Failed to fetch place suggestions.");
         setPlaces([]);
       }
     } catch (err) {
-      console.error('Error fetching places:', err);
-      setError('An unexpected error occurred while fetching places.');
+      console.error("Error fetching places:", err);
+      setError("An unexpected error occurred while fetching places.");
       setPlaces([]);
     } finally {
       setLoadingPlaces(false);
@@ -185,7 +190,7 @@ const PickupLocationScreen: React.FC = () => {
         `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&key=${GOOGLE_PLACES_API_KEY}`
       );
       const data = await response.json();
-      if (data.status === 'OK') {
+      if (data.status === "OK") {
         const { lat, lng } = data.result.geometry.location;
         const newRegion: Region = {
           latitude: lat,
@@ -195,33 +200,36 @@ const PickupLocationScreen: React.FC = () => {
         };
         setRegion(newRegion);
         setPlaces([]);
-        setPlaceQuery(data.result.formatted_address || data.result.name || '');
+        setPlaceQuery(data.result.formatted_address || data.result.name || "");
         setHasPanned(true);
         setHasSelectedPlace(true); // Set to true when a place is selected
       } else {
-        console.error('Error fetching place details:', data.status);
-        setError('Failed to fetch place details.');
+        console.error("Error fetching place details:", data.status);
+        setError("Failed to fetch place details.");
       }
     } catch (err) {
-      console.error('Error fetching place details:', err);
-      setError('An unexpected error occurred while fetching place details.');
+      console.error("Error fetching place details:", err);
+      setError("An unexpected error occurred while fetching place details.");
     }
   };
 
   // Handle Confirm Location
   const handleConfirmLocation = () => {
     if (!region) {
-      Alert.alert('Error', 'Unable to retrieve location. Please try again.');
+      Alert.alert("Error", "Unable to retrieve location. Please try again.");
       return;
     }
 
     if (!hasPanned) {
-      Alert.alert('Location Required', 'Please move the map to pinpoint your pickup location.');
+      Alert.alert(
+        "Location Required",
+        "Please move the map to pinpoint your pickup location."
+      );
       return;
     }
 
     if (!buildingName.trim()) {
-      Alert.alert('Building Name Required', 'Please enter a building name.');
+      Alert.alert("Building Name Required", "Please enter a building name.");
       return;
     }
 
@@ -231,7 +239,7 @@ const PickupLocationScreen: React.FC = () => {
   // Handle Save Location
   const handleSaveLocation = async () => {
     if (!locationName.trim()) {
-      Alert.alert('Error', 'Please provide a name for the location.');
+      Alert.alert("Error", "Please provide a name for the location.");
       return;
     }
 
@@ -246,17 +254,17 @@ const PickupLocationScreen: React.FC = () => {
           buildingName: buildingName.trim(),
         };
         await firestore()
-          .collection('users')
+          .collection("users")
           .doc(customerId)
           .update({
             savedLocations: firestore.FieldValue.arrayUnion(newLocation),
           });
-        Alert.alert('Success', 'Location saved successfully.');
-        setLocationName('');
+        Alert.alert("Success", "Location saved successfully.");
+        setLocationName("");
       }
     } catch (err) {
-      console.error('Error saving location:', err);
-      Alert.alert('Error', 'Failed to save location.');
+      console.error("Error saving location:", err);
+      Alert.alert("Error", "Failed to save location.");
     }
     setShowSaveModal(false);
     navigateToDropoff();
@@ -265,12 +273,12 @@ const PickupLocationScreen: React.FC = () => {
   // Navigate to Dropoff Location Screen
   const navigateToDropoff = () => {
     if (region) {
-      navigation.navigate('DropoffLocation', {
+      navigation.navigate("DropoffLocation", {
         pickupCoords: region,
         pickupDetails: { buildingName: buildingName.trim() },
       });
     } else {
-      Alert.alert('Error', 'Unable to retrieve location. Please try again.');
+      Alert.alert("Error", "Unable to retrieve location. Please try again.");
     }
   };
 
@@ -282,13 +290,13 @@ const PickupLocationScreen: React.FC = () => {
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     });
-    setBuildingName(location.buildingName || '');
+    setBuildingName(location.buildingName || "");
     setHasPanned(true);
     setShowSavedLocationsModal(false);
 
-    navigation.navigate('DropoffLocation', {
+    navigation.navigate("DropoffLocation", {
       pickupCoords: location.coords,
-      pickupDetails: { buildingName: location.buildingName || '' },
+      pickupDetails: { buildingName: location.buildingName || "" },
     });
   };
 
@@ -326,8 +334,10 @@ const PickupLocationScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={styles.loadingText}>Fetching your current location...</Text>
+        <Loader />
+        <Text style={styles.loadingText}>
+          Fetching your current location...
+        </Text>
       </View>
     );
   }
@@ -353,9 +363,7 @@ const PickupLocationScreen: React.FC = () => {
             />
 
             {/* Search Results Dropdown */}
-            {loadingPlaces && (
-              <ActivityIndicator style={styles.loadingPlaces} size="small" color="#0000ff" />
-            )}
+            {loadingPlaces && <Loader />}
             {placeQuery.trim() && places.length > 0 && (
               <FlatList
                 data={places}
@@ -368,9 +376,12 @@ const PickupLocationScreen: React.FC = () => {
                 windowSize={21}
               />
             )}
-            {placeQuery.trim() && !loadingPlaces && places.length === 0 && !hasSelectedPlace && (
-              <Text style={styles.noResultsText}>No places found.</Text>
-            )}
+            {placeQuery.trim() &&
+              !loadingPlaces &&
+              places.length === 0 &&
+              !hasSelectedPlace && (
+                <Text style={styles.noResultsText}>No places found.</Text>
+              )}
             {error && <Text style={styles.errorText}>{error}</Text>}
           </View>
         </View>
@@ -385,7 +396,10 @@ const PickupLocationScreen: React.FC = () => {
           showsMyLocationButton={false}
         />
         <View style={styles.markerFixed}>
-          <Image source={require('../assets/pickup-marker.png')} style={styles.marker} />
+          <Image
+            source={require("../assets/pickup-marker.png")}
+            style={styles.marker}
+          />
         </View>
 
         {/* Building Name Input and Buttons */}
@@ -456,7 +470,11 @@ const PickupLocationScreen: React.FC = () => {
         </Modal>
 
         {/* Saved Locations Modal */}
-        <Modal visible={showSavedLocationsModal} animationType="slide" transparent>
+        <Modal
+          visible={showSavedLocationsModal}
+          animationType="slide"
+          transparent
+        >
           <View style={styles.modalContainer}>
             <View style={styles.savedLocationsModal}>
               <TouchableOpacity
@@ -480,7 +498,9 @@ const PickupLocationScreen: React.FC = () => {
                   windowSize={21}
                 />
               ) : (
-                <Text style={styles.noResultsText}>No saved locations found.</Text>
+                <Text style={styles.noResultsText}>
+                  No saved locations found.
+                </Text>
               )}
             </View>
           </View>
@@ -494,77 +514,77 @@ const PickupLocationScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   headerContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40, // Adjust for status bar
+    position: "absolute",
+    top: Platform.OS === "ios" ? 60 : 40, // Adjust for status bar
     left: 10,
     right: 10,
     zIndex: 2,
   },
   headerBackground: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)', // Opaque background
+    backgroundColor: "rgba(255, 255, 255, 0.95)", // Opaque background
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 10,
     elevation: 3, // For Android shadow
-    shadowColor: '#000', // For iOS shadow
+    shadowColor: "#000", // For iOS shadow
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333', // Dark text for better contrast
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#333", // Dark text for better contrast
+    textAlign: "center",
     marginBottom: 10,
   },
   searchInput: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 5,
     paddingVertical: 10,
     paddingHorizontal: 15,
     fontSize: 16,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderWidth: 1,
   },
   map: { flex: 1 },
   markerFixed: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
+    position: "absolute",
+    top: "50%",
+    left: "50%",
     marginLeft: -24, // Half of marker width
     marginTop: -48, // Half of marker height
     zIndex: 1,
   },
   marker: { width: 48, height: 48 },
   placesList: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 5,
     maxHeight: 200,
     marginTop: 5,
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
   },
-  placeItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#ddd' },
-  placeText: { fontSize: 16, color: '#333' },
+  placeItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: "#ddd" },
+  placeText: { fontSize: 16, color: "#333" },
   formContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
-    width: '100%',
+    width: "100%",
     padding: 20,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 10,
   },
   button: {
@@ -572,135 +592,135 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginHorizontal: 5,
     borderRadius: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  confirmButton: { backgroundColor: '#00C853' },
-  savedLocationsButton: { backgroundColor: '#4A90E2' },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  confirmButton: { backgroundColor: "#00C853" },
+  savedLocationsButton: { backgroundColor: "#4A90E2" },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 5,
     paddingVertical: 10,
     paddingHorizontal: 15,
     marginBottom: 10,
     fontSize: 16,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderWidth: 1,
-    width: '100%',
+    width: "100%",
     elevation: 1,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   saveLocationModal: {
-    width: '80%',
+    width: "80%",
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
   savedLocationsModal: {
-    width: '100%',
+    width: "100%",
     height: screenHeight * 0.5,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     paddingTop: 40,
     paddingHorizontal: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    alignItems: "center",
+    justifyContent: "flex-start",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
   crossButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 10,
     right: 20,
-    backgroundColor: 'red',
+    backgroundColor: "red",
     width: 30,
     height: 30,
     borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 1,
   },
   crossText: {
     fontSize: 18,
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   modalText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
     marginBottom: 20,
   },
   locationCard: {
     width: screenWidth * 0.85,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
     padding: 15,
     marginVertical: 5,
     borderRadius: 8,
-    alignSelf: 'center',
+    alignSelf: "center",
     elevation: 1,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
   },
   locationName: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
     fontSize: 16,
   },
   locationDetails: {
     fontSize: 14,
-    color: '#555',
+    color: "#555",
     marginTop: 5,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: { marginTop: 10, fontSize: 16 },
   loadingPlaces: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 120 : 100, // Adjust based on header position
-    left: '50%',
+    position: "absolute",
+    top: Platform.OS === "ios" ? 120 : 100, // Adjust based on header position
+    left: "50%",
     marginLeft: -10,
     zIndex: 3,
   },
   noResultsText: {
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 10,
-    color: '#555',
+    color: "#555",
     fontSize: 16,
   },
   errorText: {
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 10,
-    color: 'red',
+    color: "red",
     fontSize: 14,
   },
   savedLocationsList: {
-    width: '100%',
+    width: "100%",
     paddingBottom: 10,
   },
 });

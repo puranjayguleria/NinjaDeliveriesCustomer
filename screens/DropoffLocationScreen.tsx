@@ -28,6 +28,7 @@ import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons'; // Import Ionicons
 import { GOOGLE_PLACES_API_KEY } from '@env'; // Imported from environment variables
 import { DHARAMSHALA_CENTER, isWithin10KmOfDharamshala } from '../utils/locationUtils';
+import Loader from '@/components/VideoLoader';
 
 // TypeScript Interfaces
 interface SavedLocation {
@@ -415,8 +416,7 @@ const DropoffLocationScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={styles.loadingText}>Loading...</Text>
+          <Loader />
       </View>
     );
   }
@@ -449,7 +449,9 @@ const DropoffLocationScreen: React.FC = () => {
 
                 {/* Search Results Dropdown */}
                 {loadingPlaces && (
-                  <ActivityIndicator style={styles.loadingPlaces} size="small" color="#0000ff" />
+                  
+                   <Loader />
+                
                 )}
                 {placeQuery.trim() && places.length > 0 && (
                   <FlatList

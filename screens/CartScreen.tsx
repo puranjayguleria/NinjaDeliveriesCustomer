@@ -21,7 +21,11 @@ import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
-import { CommonActions, useNavigation, useRoute } from "@react-navigation/native";
+import {
+  CommonActions,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal"; // <-- NEW Import for error modal
@@ -29,6 +33,7 @@ import { findNearestStore } from "../utils/findNearestStore";
 import { useLocationContext } from "@/context/LocationContext";
 import NotificationModal from "../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
+import Loader from "@/components/VideoLoader";
 
 /**
  * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
@@ -55,9 +60,9 @@ type PromoCode = {
   description?: string;
   isActive: boolean;
 
-  usedBy?: string[];          
-  usedByIds?: string[];       
-  usedByPhones?: string[];    
+  usedBy?: string[];
+  usedByIds?: string[];
+  usedByPhones?: string[];
 };
 
 type FareData = {
@@ -76,19 +81,26 @@ type FareData = {
   };
 };
 
-const RECO_CARD_WIDTH  = 140;   
-const RECO_GAP         = 12;    
+const RECO_CARD_WIDTH = 140;
+const RECO_GAP = 12;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { location,updateLocation } = useLocationContext();      // already have this in Categories – add here too
+  const { location, updateLocation } = useLocationContext(); // already have this in Categories – add here too
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
   const [recommended, setRecommended] = useState<Product[]>([]);
 
-  const { cart, increaseQuantity, decreaseQuantity, removeFromCart, clearCart, addToCart } = useCart();
+  const {
+    cart,
+    increaseQuantity,
+    decreaseQuantity,
+    removeFromCart,
+    clearCart,
+    addToCart,
+  } = useCart();
 
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
@@ -99,7 +111,7 @@ const CartScreen: React.FC = () => {
   const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
 
   // ----- PRICE BREAKDOWN -----
-  const [subtotal, setSubtotal] = useState<number>(0);  // <-- Renamed from productSubtotal
+  const [subtotal, setSubtotal] = useState<number>(0); // <-- Renamed from productSubtotal
   const [productCgst, setProductCgst] = useState<number>(0);
   const [productSgst, setProductSgst] = useState<number>(0);
   const [productCess, setProductCess] = useState<number>(0);
@@ -124,7 +136,8 @@ const CartScreen: React.FC = () => {
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
-  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [notificationModalVisible, setNotificationModalVisible] =
+    useState(false);
   const [notificationModalMessage, setNotificationModalMessage] = useState("");
 
   // Modals
@@ -156,11 +169,31 @@ const CartScreen: React.FC = () => {
     // Shake animation if location is selected
     if (selectedLocation) {
       Animated.sequence([
-        Animated.timing(shakeAnim, { toValue: 1, duration: 70, useNativeDriver: false }),
-        Animated.timing(shakeAnim, { toValue: -1, duration: 70, useNativeDriver: false }),
-        Animated.timing(shakeAnim, { toValue: 1, duration: 70, useNativeDriver: false }),
-        Animated.timing(shakeAnim, { toValue: -1, duration: 70, useNativeDriver: false }),
-        Animated.timing(shakeAnim, { toValue: 0, duration: 70, useNativeDriver: false }),
+        Animated.timing(shakeAnim, {
+          toValue: 1,
+          duration: 70,
+          useNativeDriver: false,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: -1,
+          duration: 70,
+          useNativeDriver: false,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 1,
+          duration: 70,
+          useNativeDriver: false,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: -1,
+          duration: 70,
+          useNativeDriver: false,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 0,
+          duration: 70,
+          useNativeDriver: false,
+        }),
       ]).start();
     } else {
       shakeAnim.setValue(0);
@@ -169,20 +202,20 @@ const CartScreen: React.FC = () => {
 
   useEffect(() => {
     const cur = location.storeId ?? null;
-  
+
     if (prevStoreIdRef.current === null && cur !== null) {
-      prevStoreIdRef.current = cur;      // first time → just remember
+      prevStoreIdRef.current = cur; // first time → just remember
       return;
     }
-  
+
     if (cur && cur !== prevStoreIdRef.current) {
-      clearCart();                       // empty the old cart
-      setSelectedLocation(null);         // ← **reset the address**
+      clearCart(); // empty the old cart
+      setSelectedLocation(null); // ← **reset the address**
       prevStoreIdRef.current = cur;
-  
+
       setNotificationModalMessage(
         "Looks like you’ve switched to another store. " +
-        "Your cart has been emptied—please add items again."
+          "Your cart has been emptied—please add items again."
       );
       setNotificationModalVisible(true);
     }
@@ -232,43 +265,44 @@ const CartScreen: React.FC = () => {
   useEffect(() => {
     fetchFareData(location.storeId ?? null);
   }, [location.storeId]);
-  
+
   /***************************************
    * Firestore Data
    ***************************************/
   const fetchFareData = async (storeId: string | null) => {
-  if (!storeId) {                      // if we don’t know the store yet
-    setFareData(null);
-    return;
-  }
+    if (!storeId) {
+      // if we don’t know the store yet
+      setFareData(null);
+      return;
+    }
 
-  try {
-    // ❶  *If doc-ID == storeId*   (simplest)
-    // const snap = await firestore()
-    //   .collection("orderSetting")
-    //   .doc(storeId)
-    //   .get();
+    try {
+      // ❶  *If doc-ID == storeId*   (simplest)
+      // const snap = await firestore()
+      //   .collection("orderSetting")
+      //   .doc(storeId)
+      //   .get();
 
-    // ❷  *If you kept a normal collection with a storeId field*:
-    const snap = await firestore()
-      .collection("orderSetting")
-      .where("storeId", "==", storeId)
-      .limit(1)
-      .get();
+      // ❷  *If you kept a normal collection with a storeId field*:
+      const snap = await firestore()
+        .collection("orderSetting")
+        .where("storeId", "==", storeId)
+        .limit(1)
+        .get();
 
-    if (!snap.empty /* use branch ❷ */ && snap.docs[0].exists) {
-      setFareData(snap.docs[0].data() as FareData);
-    } else if (snap.exists /* use branch ❶ */) {
-      setFareData((snap.data() as unknown) as FareData);
-    } else {
-      console.warn("No orderSetting found for store", storeId);
+      if (!snap.empty /* use branch ❷ */ && snap.docs[0].exists) {
+        setFareData(snap.docs[0].data() as FareData);
+      } else if (snap.exists /* use branch ❶ */) {
+        setFareData(snap.data() as unknown as FareData);
+      } else {
+        console.warn("No orderSetting found for store", storeId);
+        setFareData(null);
+      }
+    } catch (err) {
+      console.error("fetchFareData:", err);
       setFareData(null);
     }
-  } catch (err) {
-    console.error("fetchFareData:", err);
-    setFareData(null);
-  }
-};
+  };
 
   const fetchCartItems = async () => {
     try {
@@ -298,7 +332,7 @@ const CartScreen: React.FC = () => {
           productsData.push({ id: doc.id, ...(doc.data() as Product) });
         });
       });
-      const visible = productsData.filter(p => (cart[p.id] ?? 0) > 0);
+      const visible = productsData.filter((p) => (cart[p.id] ?? 0) > 0);
       setCartItems(visible);
       await fetchRecommended(visible);
     } catch (error) {
@@ -310,71 +344,71 @@ const CartScreen: React.FC = () => {
   };
 
   /**
- * Pull “people also bought” items into state.recommended
- * – only if they’re in-stock for the current store.
- */
-/**
- * Pull up to 10 “people also ordered” products that are:
- *   • referenced in the current cart items’ matchingProducts[]
- *   • belong to the same store as the cart
- *   • have quantity > 0   (filtered client-side to avoid composite-index errors)
- */
-const fetchRecommended = async (baseItems: Product[]) => {
-  try {
-    /* ---------- 1. Collect candidate IDs, skip bad values ---------- */
-    const wanted = new Set<string>();
+   * Pull “people also bought” items into state.recommended
+   * – only if they’re in-stock for the current store.
+   */
+  /**
+   * Pull up to 10 “people also ordered” products that are:
+   *   • referenced in the current cart items’ matchingProducts[]
+   *   • belong to the same store as the cart
+   *   • have quantity > 0   (filtered client-side to avoid composite-index errors)
+   */
+  const fetchRecommended = async (baseItems: Product[]) => {
+    try {
+      /* ---------- 1. Collect candidate IDs, skip bad values ---------- */
+      const wanted = new Set<string>();
 
-    baseItems.forEach(p => {
-      (p.matchingProducts ?? []).forEach(id => wanted.add(id));
-      wanted.delete(p.id);                          // don’t recommend what’s already in the cart
-    });
+      baseItems.forEach((p) => {
+        (p.matchingProducts ?? []).forEach((id) => wanted.add(id));
+        wanted.delete(p.id); // don’t recommend what’s already in the cart
+      });
 
-    const idList = Array.from(wanted).filter(
-      id => typeof id === "string" && id.trim() !== "" && !id.includes("/")
-    );
-
-    if (idList.length === 0 || !location.storeId) {
-      setRecommended([]);                           // nothing to fetch
-      return;
-    }
-
-    /* ---------- 2. Fetch in chunks of ≤10 IDs (Firestore limit) ----- */
-    const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
-
-    for (let i = 0; i < idList.length; i += 10) {
-      const chunk = idList.slice(i, i + 10);
-      console.log(chunk)
-      reads.push(
-        firestore()
-          .collection("products")
-          .where(firestore.FieldPath.documentId(), "in", chunk)
-          .where("storeId", "==", location.storeId) // stay inside the same store
-          /* 🔸 NO quantity filter here – avoid “range + in” restriction */
-          .get()
+      const idList = Array.from(wanted).filter(
+        (id) => typeof id === "string" && id.trim() !== "" && !id.includes("/")
       );
+
+      if (idList.length === 0 || !location.storeId) {
+        setRecommended([]); // nothing to fetch
+        return;
+      }
+
+      /* ---------- 2. Fetch in chunks of ≤10 IDs (Firestore limit) ----- */
+      const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
+
+      for (let i = 0; i < idList.length; i += 10) {
+        const chunk = idList.slice(i, i + 10);
+        console.log(chunk);
+        reads.push(
+          firestore()
+            .collection("products")
+            .where(firestore.FieldPath.documentId(), "in", chunk)
+            .where("storeId", "==", location.storeId) // stay inside the same store
+            /* 🔸 NO quantity filter here – avoid “range + in” restriction */
+            .get()
+        );
+      }
+
+      const snapshots = await Promise.all(reads);
+
+      /* ---------- 3. Merge & client-side filter for stock ------------ */
+      const recs: Product[] = [];
+
+      snapshots.forEach((snap) =>
+        snap.forEach((doc) => {
+          const data = doc.data() as Product;
+          if ((data.quantity ?? 0) > 0) {
+            // only keep in-stock items
+            recs.push({ id: doc.id, ...data });
+          }
+        })
+      );
+
+      setRecommended(recs.slice(0, 10)); // cap UI to 10 items
+    } catch (err) {
+      console.error("[fetchRecommended]", err);
+      setRecommended([]); // silent fallback
     }
-
-    const snapshots = await Promise.all(reads);
-
-    /* ---------- 3. Merge & client-side filter for stock ------------ */
-    const recs: Product[] = [];
-
-    snapshots.forEach(snap =>
-      snap.forEach(doc => {
-        const data = doc.data() as Product;
-        if ((data.quantity ?? 0) > 0) {             // only keep in-stock items
-          recs.push({ id: doc.id, ...data });
-        }
-      })
-    );
-
-    setRecommended(recs.slice(0, 10));              // cap UI to 10 items
-  } catch (err) {
-    console.error("[fetchRecommended]", err);
-    setRecommended([]);                             // silent fallback
-  }
-};
-
+  };
 
   const watchUserLocations = () => {
     const currentUser = auth().currentUser;
@@ -395,7 +429,7 @@ const fetchRecommended = async (baseItems: Product[]) => {
   const watchPromos = () => {
     const currentUser = auth().currentUser;
     if (!currentUser) return () => {};
-  
+
     return firestore()
       .collection("promoCodes")
       .where("isActive", "==", true)
@@ -405,22 +439,21 @@ const fetchRecommended = async (baseItems: Product[]) => {
             id: doc.id,
             ...(doc.data() as Omit<PromoCode, "id">),
           }));
-  
+
           const phone = currentUser.phoneNumber ?? "";
-          const uid   = currentUser.uid;
-  
+          const uid = currentUser.uid;
+
           const filtered = raw.filter((promo) => {
-            const byId    = promo.usedByIds   ?? promo.usedBy ?? [];
+            const byId = promo.usedByIds ?? promo.usedBy ?? [];
             const byPhone = promo.usedByPhones ?? [];
             return !byId.includes(uid) && !byPhone.includes(phone);
           });
-  
+
           setPromos(filtered);
         },
-        (err) => console.error("Error listening to promos:", err),
+        (err) => console.error("Error listening to promos:", err)
       );
   };
-  
 
   /***************************************
    * Distance from Google
@@ -492,8 +525,10 @@ const fetchRecommended = async (baseItems: Product[]) => {
     // 3) Distance
     let distanceInKm = 0;
     if (selectedLocation?.lat && selectedLocation?.lng) {
-      const pickupLat = fareData.fixedPickupLocation?.coordinates.latitude || "0";
-      const pickupLng = fareData.fixedPickupLocation?.coordinates.longitude || "0";
+      const pickupLat =
+        fareData.fixedPickupLocation?.coordinates.latitude || "0";
+      const pickupLng =
+        fareData.fixedPickupLocation?.coordinates.longitude || "0";
       distanceInKm = await fetchDistanceFromGoogle(
         pickupLat,
         pickupLng,
@@ -521,10 +556,17 @@ const fetchRecommended = async (baseItems: Product[]) => {
     const _platformFee = fareData.platformFee;
 
     // 7) Final total
-    const surgeFee    = location.surge?.active ? location.surge.fee : 0;
- const _final =
-   itemsTotal + _productCgst + _productSgst + _productCess + _deliveryCharge +
-   _rideCgst + _rideSgst + _platformFee + surgeFee;
+    const surgeFee = location.surge?.active ? location.surge.fee : 0;
+    const _final =
+      itemsTotal +
+      _productCgst +
+      _productSgst +
+      _productCess +
+      _deliveryCharge +
+      _rideCgst +
+      _rideSgst +
+      _platformFee +
+      surgeFee;
     // Update states
     setSubtotal(_subtotal);
     setProductCgst(_productCgst);
@@ -537,7 +579,7 @@ const fetchRecommended = async (baseItems: Product[]) => {
     setRideCgst(_rideCgst);
     setRideSgst(_rideSgst);
     setPlatformFee(_platformFee);
-    setSurgeLine(surgeFee)
+    setSurgeLine(surgeFee);
     setFinalTotal(_final);
   };
 
@@ -580,10 +622,15 @@ const fetchRecommended = async (baseItems: Product[]) => {
         .get();
 
       if (timingDoc.exists) {
-        const { fromTime, toTime } = timingDoc.data() as { fromTime: number; toTime: number };
+        const { fromTime, toTime } = timingDoc.data() as {
+          fromTime: number;
+          toTime: number;
+        };
         const currentHour = new Date().getHours();
         if (currentHour < fromTime || currentHour >= toTime) {
-          setErrorModalMessage("Sorry this is out of my delivering hours. How about you try tomorrow morning?");
+          setErrorModalMessage(
+            "Sorry this is out of my delivering hours. How about you try tomorrow morning?"
+          );
           setErrorModalVisible(true);
           return;
         }
@@ -683,7 +730,9 @@ const fetchRecommended = async (baseItems: Product[]) => {
         }
         const currentQty = productSnap.data()?.quantity || 0;
         if (currentQty < quantity) {
-          throw new Error(`Not enough stock for product: ${productSnap.data()?.name}`);
+          throw new Error(
+            `Not enough stock for product: ${productSnap.data()?.name}`
+          );
         } else {
           const newQty = currentQty - quantity;
           batch.update(productRef, { quantity: newQty < 0 ? 0 : newQty });
@@ -710,7 +759,7 @@ const fetchRecommended = async (baseItems: Product[]) => {
         },
         items,
         distance,
-        subtotal,          // <-- renamed from productSubtotal
+        subtotal, // <-- renamed from productSubtotal
         productCgst,
         productSgst,
         productCess,
@@ -731,22 +780,23 @@ const fetchRecommended = async (baseItems: Product[]) => {
 
       // Mark promo as used if applicable
       // Mark promo as used if applicable
-if (selectedPromo) {
-  const updates: Record<string, any> = {
-    // keep legacy field so old docs still work
-    usedBy:      firestore.FieldValue.arrayUnion(user.uid),
-    // new explicit fields
-    usedByIds:   firestore.FieldValue.arrayUnion(user.uid),
-  };
-  if (user.phoneNumber) {
-    updates.usedByPhones = firestore.FieldValue.arrayUnion(user.phoneNumber);
-  }
-  await firestore()
-    .collection("promoCodes")
-    .doc(selectedPromo.id)
-    .set(updates, { merge: true });
-}
-
+      if (selectedPromo) {
+        const updates: Record<string, any> = {
+          // keep legacy field so old docs still work
+          usedBy: firestore.FieldValue.arrayUnion(user.uid),
+          // new explicit fields
+          usedByIds: firestore.FieldValue.arrayUnion(user.uid),
+        };
+        if (user.phoneNumber) {
+          updates.usedByPhones = firestore.FieldValue.arrayUnion(
+            user.phoneNumber
+          );
+        }
+        await firestore()
+          .collection("promoCodes")
+          .doc(selectedPromo.id)
+          .set(updates, { merge: true });
+      }
 
       return { orderId: orderRef.id, pickupCoords: usedPickupCoords };
     } catch (err: any) {
@@ -788,9 +838,14 @@ if (selectedPromo) {
               <MaterialIcons name="add" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.cartItemTotal}>Item: ₹{totalPrice.toFixed(2)}</Text>
+          <Text style={styles.cartItemTotal}>
+            Item: ₹{totalPrice.toFixed(2)}
+          </Text>
         </View>
-        <TouchableOpacity onPress={() => removeFromCart(item.id)} style={styles.removeButton}>
+        <TouchableOpacity
+          onPress={() => removeFromCart(item.id)}
+          style={styles.removeButton}
+        >
           <MaterialIcons name="delete" size={22} color="#e74c3c" />
         </TouchableOpacity>
       </View>
@@ -798,11 +853,20 @@ if (selectedPromo) {
   };
 
   const renderPromoItem = ({ item }: { item: PromoCode }) => {
-    const promoIcon = item.discountType === "flat" ? "pricetag-outline" : "gift-outline";
+    const promoIcon =
+      item.discountType === "flat" ? "pricetag-outline" : "gift-outline";
     return (
-      <TouchableOpacity style={styles.promoCard} onPress={() => selectPromo(item)}>
+      <TouchableOpacity
+        style={styles.promoCard}
+        onPress={() => selectPromo(item)}
+      >
         <View style={styles.promoHeader}>
-          <Ionicons name={promoIcon} size={18} color="#2ecc71" style={styles.promoIcon} />
+          <Ionicons
+            name={promoIcon}
+            size={18}
+            color="#2ecc71"
+            style={styles.promoIcon}
+          />
           <Text style={styles.promoLabel} numberOfLines={1}>
             {item.label || item.code}
           </Text>
@@ -821,32 +885,32 @@ if (selectedPromo) {
       <TouchableOpacity
         style={styles.addressItemLeft}
         onPress={async () => {
-             try {
-               const nearest = await findNearestStore(item.lat, item.lng);
-               if (!nearest) {
-                 Alert.alert(
-                   "Unavailable",
-                   "We don’t deliver to that address yet – try another address."
-                 );
-                 return;
-               }
-          
-               const fullLocation = {
-                 ...item,
-                 lat: item.lat,
-                 lng: item.lng,
-                 storeId: nearest.id,         // attach the chosen store
-               };
-          
-               setSelectedLocation(fullLocation);
-               updateLocation(fullLocation)
-             } catch (e) {
-               console.error("[findNearestStore]", e);
-               Alert.alert("Error", "Couldn’t validate that address.");
-             } finally {
-               setShowLocationSheet(false);
-             }
-           }}
+          try {
+            const nearest = await findNearestStore(item.lat, item.lng);
+            if (!nearest) {
+              Alert.alert(
+                "Unavailable",
+                "We don’t deliver to that address yet – try another address."
+              );
+              return;
+            }
+
+            const fullLocation = {
+              ...item,
+              lat: item.lat,
+              lng: item.lng,
+              storeId: nearest.id, // attach the chosen store
+            };
+
+            setSelectedLocation(fullLocation);
+            updateLocation(fullLocation);
+          } catch (e) {
+            console.error("[findNearestStore]", e);
+            Alert.alert("Error", "Couldn’t validate that address.");
+          } finally {
+            setShowLocationSheet(false);
+          }
+        }}
       >
         <Text style={styles.addressItemLabel}>
           {item.placeLabel} - {item.houseNo}
@@ -879,381 +943,424 @@ if (selectedPromo) {
     }
   };
 
-const handleAddMoreItems = () => {
-  navigation.navigate("HomeTab", { screen: "ProductsHome" });  
-};
+  const handleAddMoreItems = () => {
+    navigation.navigate("HomeTab", { screen: "ProductsHome" });
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}> 
-    <View style={styles.container}>
-      {/* Confetti Cannon */}
-      {showConfetti && (
-        <View style={styles.confettiContainer}>
-          <ConfettiCannon
-            count={100}
-            origin={{ x: width / 2, y: 0 }}
-            fadeOut
-            autoStart
-            explosionSpeed={1000}
-            fallSpeed={1500}
-            onAnimationEnd={() => setShowConfetti(false)}
-          />
-        </View>
-      )}
-
-      {/* Loader or empty cart check */}
-      {loading || navigating ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#28a745" />
-        </View>
-      ) : Object.keys(cart).length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Your cart is empty.</Text>
-        </View>
-      ) : (
-        <>
-          {/* HEADER */}
-          <View style={styles.headerBlock}>
-            <Text style={styles.cartItemsHeader}>Your Cart</Text>
-            <Text style={styles.headerSubtitle}>
-              All items you've selected are shown below
-            </Text>
-          </View>
-
-          {/* MAIN CONTENT */}
-          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            <FlatList
-              data={cartItems}
-              keyExtractor={(item) => item.id}
-              renderItem={renderCartItem}
-              scrollEnabled={false}
-              contentContainerStyle={styles.itemListContainer}
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {/* Confetti Cannon */}
+        {showConfetti && (
+          <View style={styles.confettiContainer}>
+            <ConfettiCannon
+              count={100}
+              origin={{ x: width / 2, y: 0 }}
+              fadeOut
+              autoStart
+              explosionSpeed={1000}
+              fallSpeed={1500}
+              onAnimationEnd={() => setShowConfetti(false)}
             />
+          </View>
+        )}
 
-            <View style={styles.dottedDivider} />
-
-            <View style={styles.missedSomethingRow}>
-              <Text style={styles.missedText}>Missed something?</Text>
-              <TouchableOpacity style={styles.addMoreRowButton} onPress={handleAddMoreItems}>
-                <Ionicons name="add" size={16} color="#fff" style={styles.addIcon} />
-                <Text style={styles.addMoreRowText}>Add More Items</Text>
-              </TouchableOpacity>
+        {/* Loader or empty cart check */}
+        {loading || navigating ? (
+          <View style={styles.loaderContainer}>
+            <Loader />
+          </View>
+        ) : Object.keys(cart).length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Your cart is empty.</Text>
+          </View>
+        ) : (
+          <>
+            {/* HEADER */}
+            <View style={styles.headerBlock}>
+              <Text style={styles.cartItemsHeader}>Your Cart</Text>
+              <Text style={styles.headerSubtitle}>
+                All items you've selected are shown below
+              </Text>
             </View>
-{recommended.length > 0 && (
-  <>
-<View style={styles.recoHeader}>
-  <View style={styles.recoBadge}>
-    <MaterialIcons name="flash-on" size={12} color="#fff" />
-    <Text style={styles.recoBadgeTxt}>POPULAR</Text>
-  </View>
 
-  <Text style={styles.recoTitle}>Complements your cart</Text>
-</View>
+            {/* MAIN CONTENT */}
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+            >
+              <FlatList
+                data={cartItems}
+                keyExtractor={(item) => item.id}
+                renderItem={renderCartItem}
+                scrollEnabled={false}
+                contentContainerStyle={styles.itemListContainer}
+              />
 
+              <View style={styles.dottedDivider} />
 
-    <FlatList
-      data={recommended}
-      keyExtractor={(i) => i.id}
-      horizontal
-      snapToInterval={RECO_CARD_WIDTH + RECO_GAP}
-      decelerationRate="fast"
-      contentContainerStyle={styles.recoList}
-      showsHorizontalScrollIndicator={false}
-      renderItem={({ item }) => (
-        <RecommendCard
-          item={item}
-          qtyInCart={cart[item.id] ?? 0}
-          onAdd={() => addToCart(item.id, item.quantity)}
-          onInc={() => increaseQuantity(item.id, item.quantity)}
-          onDec={() => decreaseQuantity(item.id)}
-          width={RECO_CARD_WIDTH}
-        />
-      )}
-    />
-  </>
-)}
-
-
-
-            {/* LOCATION SECTION */}
-            {userLocations.length === 0 ? (
-              <View style={styles.locationSection}>
-                <Text style={styles.locationTitle}>No saved addresses yet.</Text>
+              <View style={styles.missedSomethingRow}>
+                <Text style={styles.missedText}>Missed something?</Text>
                 <TouchableOpacity
-                  style={styles.selectAddressButton}
-                  onPress={() =>
-                    navigation.navigate("LocationSelector", { fromScreen: "Cart" })
-                  }
+                  style={styles.addMoreRowButton}
+                  onPress={handleAddMoreItems}
                 >
-                  <Text style={styles.selectAddressButtonText}>Select Address</Text>
+                  <Ionicons
+                    name="add"
+                    size={16}
+                    color="#fff"
+                    style={styles.addIcon}
+                  />
+                  <Text style={styles.addMoreRowText}>Add More Items</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View
-                style={[
-                  styles.locationSection,
-                  selectedLocation ? styles.selectedLocationHighlight : null,
-                ]}
-              >
-                <Text style={styles.locationTitle}>
-                  Delivering to:{" "}
-                  {selectedLocation
-                    ? `${selectedLocation.placeLabel} - ${selectedLocation.houseNo}`
-                    : "Tap 'Change' to pick an address"}
-                </Text>
-                <TouchableOpacity
-                  style={styles.changeLocationButton}
-                  onPress={() => setShowLocationSheet(true)}
-                >
-                  <Text style={styles.changeLocationText}>Change Location</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              {recommended.length > 0 && (
+                <>
+                  <View style={styles.recoHeader}>
+                    <View style={styles.recoBadge}>
+                      <MaterialIcons name="flash-on" size={12} color="#fff" />
+                      <Text style={styles.recoBadgeTxt}>POPULAR</Text>
+                    </View>
 
-            {/* PROMO SECTION */}
-            <View style={styles.promoSection}>
-              <Text style={styles.sectionTitle}>Promotions & Offers</Text>
-              {selectedPromo ? (
-                <View style={styles.selectedPromoContainer}>
-                  <View>
-                    <Text style={styles.selectedPromoLabel}>
-                      {selectedPromo.label || selectedPromo.code}
-                    </Text>
-                    {selectedPromo.description && (
-                      <Text style={styles.selectedPromoDescription}>
-                        {selectedPromo.description}
-                      </Text>
-                    )}
-                    <Text style={styles.promoTypeText}>
-                      Type: {selectedPromo.discountType.toUpperCase()}
-                    </Text>
+                    <Text style={styles.recoTitle}>Complements your cart</Text>
                   </View>
-                  <TouchableOpacity onPress={clearPromo}>
-                    <Text style={styles.clearPromoText}>Remove</Text>
+
+                  <FlatList
+                    data={recommended}
+                    keyExtractor={(i) => i.id}
+                    horizontal
+                    snapToInterval={RECO_CARD_WIDTH + RECO_GAP}
+                    decelerationRate="fast"
+                    contentContainerStyle={styles.recoList}
+                    showsHorizontalScrollIndicator={false}
+                    renderItem={({ item }) => (
+                      <RecommendCard
+                        item={item}
+                        qtyInCart={cart[item.id] ?? 0}
+                        onAdd={() => addToCart(item.id, item.quantity)}
+                        onInc={() => increaseQuantity(item.id, item.quantity)}
+                        onDec={() => decreaseQuantity(item.id)}
+                        width={RECO_CARD_WIDTH}
+                      />
+                    )}
+                  />
+                </>
+              )}
+
+              {/* LOCATION SECTION */}
+              {userLocations.length === 0 ? (
+                <View style={styles.locationSection}>
+                  <Text style={styles.locationTitle}>
+                    No saved addresses yet.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.selectAddressButton}
+                    onPress={() =>
+                      navigation.navigate("LocationSelector", {
+                        fromScreen: "Cart",
+                      })
+                    }
+                  >
+                    <Text style={styles.selectAddressButtonText}>
+                      Select Address
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <View style={styles.promoListWrapper}>
-                  <FlatList
-                    data={promos}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderPromoItem}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.promoHorizontalList}
-                    ListEmptyComponent={<Text style={styles.noPromoText}>No promos.</Text>}
-                  />
+                <View
+                  style={[
+                    styles.locationSection,
+                    selectedLocation ? styles.selectedLocationHighlight : null,
+                  ]}
+                >
+                  <Text style={styles.locationTitle}>
+                    Delivering to:{" "}
+                    {selectedLocation
+                      ? `${selectedLocation.placeLabel} - ${selectedLocation.houseNo}`
+                      : "Tap 'Change' to pick an address"}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.changeLocationButton}
+                    onPress={() => setShowLocationSheet(true)}
+                  >
+                    <Text style={styles.changeLocationText}>
+                      Change Location
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
-            </View>
 
-            {/* SUMMARY */}
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Summary</Text>
-
-              {/* Subtotal */}
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Product Subtotal</Text>
-                <Text style={styles.summaryValue}>₹{subtotal.toFixed(2)}</Text>
+              {/* PROMO SECTION */}
+              <View style={styles.promoSection}>
+                <Text style={styles.sectionTitle}>Promotions & Offers</Text>
+                {selectedPromo ? (
+                  <View style={styles.selectedPromoContainer}>
+                    <View>
+                      <Text style={styles.selectedPromoLabel}>
+                        {selectedPromo.label || selectedPromo.code}
+                      </Text>
+                      {selectedPromo.description && (
+                        <Text style={styles.selectedPromoDescription}>
+                          {selectedPromo.description}
+                        </Text>
+                      )}
+                      <Text style={styles.promoTypeText}>
+                        Type: {selectedPromo.discountType.toUpperCase()}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={clearPromo}>
+                      <Text style={styles.clearPromoText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.promoListWrapper}>
+                    <FlatList
+                      data={promos}
+                      keyExtractor={(item) => item.id}
+                      renderItem={renderPromoItem}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.promoHorizontalList}
+                      ListEmptyComponent={
+                        <Text style={styles.noPromoText}>No promos.</Text>
+                      }
+                    />
+                  </View>
+                )}
               </View>
 
-              {/* Discount */}
-              {discount > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Discount</Text>
-                  <Text style={styles.discountValue}>-₹{discount.toFixed(2)}</Text>
-                </View>
-              )}
+              {/* SUMMARY */}
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Summary</Text>
 
-              {/* Product CGST/SGST */}
-              {(productCgst > 0 || productSgst > 0) && (
-                <>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Products CGST</Text>
-                    <Text style={styles.summaryValue}>₹{productCgst.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Products SGST</Text>
-                    <Text style={styles.summaryValue}>₹{productSgst.toFixed(2)}</Text>
-                  </View>
-                </>
-              )}
-
-              {/* Product CESS */}
-              {productCess > 0 && (
+                {/* Subtotal */}
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Product CESS</Text>
-                  <Text style={styles.summaryValue}>₹{productCess.toFixed(2)}</Text>
-                </View>
-              )}
-
-              {/* Distance */}
-              {distance > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Distance (KM)</Text>
-                  <Text style={styles.summaryValue}>{distance.toFixed(2)}</Text>
-                </View>
-              )}
-
-              {/* Delivery Charge */}
-              {deliveryCharge > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Delivery Charge</Text>
+                  <Text style={styles.summaryLabel}>Product Subtotal</Text>
                   <Text style={styles.summaryValue}>
-                    ₹{deliveryCharge.toFixed(2)}
+                    ₹{subtotal.toFixed(2)}
                   </Text>
                 </View>
-              )}
 
-              {/* Ride CGST/SGST */}
-              {(rideCgst > 0 || rideSgst > 0) && (
-                <>
+                {/* Discount */}
+                {discount > 0 && (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Ride CGST</Text>
-                    <Text style={styles.summaryValue}>₹{rideCgst.toFixed(2)}</Text>
+                    <Text style={styles.summaryLabel}>Discount</Text>
+                    <Text style={styles.discountValue}>
+                      -₹{discount.toFixed(2)}
+                    </Text>
                   </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Ride SGST</Text>
-                    <Text style={styles.summaryValue}>₹{rideSgst.toFixed(2)}</Text>
-                  </View>
-                </>
-              )}
+                )}
 
-              {/* Platform Fee */}
-              {platformFee > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Platform Fee</Text>
-                  <Text style={styles.summaryValue}>
-                    ₹{platformFee.toFixed(2)}
+                {/* Product CGST/SGST */}
+                {(productCgst > 0 || productSgst > 0) && (
+                  <>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Products CGST</Text>
+                      <Text style={styles.summaryValue}>
+                        ₹{productCgst.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Products SGST</Text>
+                      <Text style={styles.summaryValue}>
+                        ₹{productSgst.toFixed(2)}
+                      </Text>
+                    </View>
+                  </>
+                )}
+
+                {/* Product CESS */}
+                {productCess > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Product CESS</Text>
+                    <Text style={styles.summaryValue}>
+                      ₹{productCess.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Distance */}
+                {distance > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Distance (KM)</Text>
+                    <Text style={styles.summaryValue}>
+                      {distance.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Delivery Charge */}
+                {deliveryCharge > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Delivery Charge</Text>
+                    <Text style={styles.summaryValue}>
+                      ₹{deliveryCharge.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Ride CGST/SGST */}
+                {(rideCgst > 0 || rideSgst > 0) && (
+                  <>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Ride CGST</Text>
+                      <Text style={styles.summaryValue}>
+                        ₹{rideCgst.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Ride SGST</Text>
+                      <Text style={styles.summaryValue}>
+                        ₹{rideSgst.toFixed(2)}
+                      </Text>
+                    </View>
+                  </>
+                )}
+
+                {/* Platform Fee */}
+                {platformFee > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Platform Fee</Text>
+                    <Text style={styles.summaryValue}>
+                      ₹{platformFee.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Surge Fee */}
+                {surgeLine > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { color: "#d32f2f" }]}>
+                      Weather Surge
+                    </Text>
+                    <Text style={[styles.summaryValue, { color: "#d32f2f" }]}>
+                      ₹{surgeLine.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+                {/* Promo Type */}
+                {selectedPromo && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Promo Type</Text>
+                    <Text style={styles.summaryValue}>
+                      {selectedPromo.discountType.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+
+                {/* GRAND TOTAL (highlighted) */}
+                <View style={[styles.summaryRow, styles.grandTotalRow]}>
+                  <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>
+                    Grand Total
+                  </Text>
+                  <Text style={[styles.summaryValue, styles.grandTotalValue]}>
+                    ₹{finalTotal.toFixed(2)}
                   </Text>
                 </View>
-              )}
-
-{/* Surge Fee */}
-{surgeLine > 0 && (
-  <View style={styles.summaryRow}>
-    <Text style={[styles.summaryLabel,{color:"#d32f2f"}]}>Weather Surge</Text>
-    <Text style={[styles.summaryValue,{color:"#d32f2f"}]}>
-      ₹{surgeLine.toFixed(2)}
-    </Text>
-  </View>
-)}
-              {/* Promo Type */}
-              {selectedPromo && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Promo Type</Text>
-                  <Text style={styles.summaryValue}>
-                    {selectedPromo.discountType.toUpperCase()}
-                  </Text>
-                </View>
-              )}
-
-              {/* GRAND TOTAL (highlighted) */}
-              <View style={[styles.summaryRow, styles.grandTotalRow]}>
-                <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>
-                  Grand Total
+              </View>
+              <View style={styles.infoBanner}>
+                <Ionicons
+                  name="information-circle"
+                  size={16}
+                  color="#00695c"
+                  style={styles.infoIcon}
+                />
+                <Text style={styles.infoText}>
+                  No cash in hand? Our rider carries a QR code — pay instantly
+                  with any UPI app at the doorstep.
                 </Text>
-                <Text style={[styles.summaryValue, styles.grandTotalValue]}>
+              </View>
+            </ScrollView>
+
+            {/* FOOTER */}
+            <View style={styles.footerBar}>
+              <View style={styles.footerLeft}>
+                <Text style={styles.footerTotalLabel}>Total:</Text>
+                <Text style={styles.footerTotalValue}>
                   ₹{finalTotal.toFixed(2)}
                 </Text>
               </View>
-            </View>
-            <View style={styles.infoBanner}>
-  <Ionicons
-    name="information-circle"
-    size={16}
-    color="#00695c"
-    style={styles.infoIcon}
-  />
-  <Text style={styles.infoText}>
-    No cash in hand? Our rider carries a QR code — pay instantly
-    with any UPI app at the doorstep.
-  </Text>
-</View>
-          </ScrollView>
 
-          {/* FOOTER */}
-          <View style={styles.footerBar}>
-            <View style={styles.footerLeft}>
-              <Text style={styles.footerTotalLabel}>Total:</Text>
-              <Text style={styles.footerTotalValue}>
-                ₹{finalTotal.toFixed(2)}
-              </Text>
+              <AnimatedTouchable
+                style={[
+                  styles.footerCheckoutButton,
+                  {
+                    backgroundColor: animatedButtonColor,
+                    transform: [{ translateX: shakeTranslate }],
+                  },
+                ]}
+                onPress={handleCheckout}
+              >
+                <Ionicons
+                  name={selectedLocation ? "cash-outline" : "cart-outline"}
+                  size={16}
+                  color="#fff"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.footerCheckoutText}>
+                  {selectedLocation ? "Pay Now" : "Checkout"}
+                </Text>
+              </AnimatedTouchable>
             </View>
+          </>
+        )}
 
-            <AnimatedTouchable
-              style={[
-                styles.footerCheckoutButton,
-                {
-                  backgroundColor: animatedButtonColor,
-                  transform: [{ translateX: shakeTranslate }],
-                },
-              ]}
-              onPress={handleCheckout}
-            >
-              <Ionicons
-                name={selectedLocation ? "cash-outline" : "cart-outline"}
-                size={16}
-                color="#fff"
-                style={{ marginRight: 6 }}
+        {/* LOCATION PICKER MODAL */}
+        <Modal visible={showLocationSheet} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.bottomSheet}>
+              <Text style={styles.bottomSheetTitle}>Choose Address</Text>
+              <FlatList
+                data={userLocations}
+                keyExtractor={(_, idx) => String(idx)}
+                renderItem={renderSavedAddressItem}
+                style={{ maxHeight: 200 }}
+                ListEmptyComponent={
+                  <Text style={{ textAlign: "center" }}>No addresses.</Text>
+                }
               />
-              <Text style={styles.footerCheckoutText}>
-                {selectedLocation ? "Pay Now" : "Checkout"}
-              </Text>
-            </AnimatedTouchable>
+              <TouchableOpacity
+                style={styles.addNewLocationButton}
+                onPress={() => {
+                  setShowLocationSheet(false);
+                  navigation.navigate("LocationSelector", {
+                    fromScreen: "Cart",
+                  });
+                }}
+              >
+                <Text style={styles.addNewLocationText}>
+                  + Add New Location
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowLocationSheet(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </>
-      )}
+        </Modal>
 
-      {/* LOCATION PICKER MODAL */}
-      <Modal visible={showLocationSheet} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.bottomSheet}>
-            <Text style={styles.bottomSheetTitle}>Choose Address</Text>
-            <FlatList
-              data={userLocations}
-              keyExtractor={(_, idx) => String(idx)}
-              renderItem={renderSavedAddressItem}
-              style={{ maxHeight: 200 }}
-              ListEmptyComponent={
-                <Text style={{ textAlign: "center" }}>No addresses.</Text>
-              }
-            />
-            <TouchableOpacity
-              style={styles.addNewLocationButton}
-              onPress={() => {
-                setShowLocationSheet(false);
-                navigation.navigate("LocationSelector", { fromScreen: "Cart" });
-              }}
-            >
-              <Text style={styles.addNewLocationText}>+ Add New Location</Text>
-            </TouchableOpacity>
+        {/* PAYMENT OPTIONS MODAL */}
+        <Modal visible={showPaymentSheet} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.bottomSheet}>
+              <Text style={styles.bottomSheetTitle}>Payment Options</Text>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowLocationSheet(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+              {/* COD */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentOptionButton,
+                  { backgroundColor: "#6fdccf" },
+                ]}
+                onPress={() => handlePaymentOption("cod")}
+              >
+                <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
+              </TouchableOpacity>
 
-      {/* PAYMENT OPTIONS MODAL */}
-      <Modal visible={showPaymentSheet} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.bottomSheet}>
-            <Text style={styles.bottomSheetTitle}>Payment Options</Text>
-
-            {/* COD */}
-            <TouchableOpacity
-              style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
-              onPress={() => handlePaymentOption("cod")}
-            >
-              <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
-            </TouchableOpacity>
-           
-            {/* If you add online payment, uncomment this:
+              {/* If you add online payment, uncomment this:
             <TouchableOpacity
               style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
               onPress={() => handlePaymentOption("online")}
@@ -1262,29 +1369,29 @@ const handleAddMoreItems = () => {
             </TouchableOpacity>
             */}
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowPaymentSheet(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowPaymentSheet(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      <NotificationModal
-  visible={notificationModalVisible}
-  message={notificationModalMessage}
-  onClose={() => setNotificationModalVisible(false)}
-/>
+        <NotificationModal
+          visible={notificationModalVisible}
+          message={notificationModalMessage}
+          onClose={() => setNotificationModalVisible(false)}
+        />
 
-      {/* NEW: Delivery Timing Error Modal */}
-      <ErrorModal
-        visible={errorModalVisible}
-        message={errorModalMessage}
-        onClose={() => setErrorModalVisible(false)}
-      />
-    </View>
+        {/* NEW: Delivery Timing Error Modal */}
+        <ErrorModal
+          visible={errorModalVisible}
+          message={errorModalMessage}
+          onClose={() => setErrorModalVisible(false)}
+        />
+      </View>
     </SafeAreaView>
   );
 };
@@ -1307,12 +1414,12 @@ const styles = StyleSheet.create({
   infoBanner: {
     flexDirection: "row",
     alignItems: "center",
-  
+
     backgroundColor: "#e0f2f1", // light teal
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-  
+
     alignSelf: "center",
     marginTop: 8,
     marginBottom: 14,
@@ -1327,41 +1434,41 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: "#00695c",
   },
-recoHeader: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: 8,
-},
+  recoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
 
-/* badge —  subtle Blinkit-green pill */
-recoBadge: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#00C853",      // Blinkit green
-  paddingHorizontal: 6,
-  paddingVertical: 2,
-  borderRadius: 12,
-  marginRight: 6,
-},
-recoBadgeTxt: {
-  color: "#fff",
-  fontSize: 10,
-  fontWeight: "700",
-  marginLeft: 2,
-},
+  /* badge —  subtle Blinkit-green pill */
+  recoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#00C853", // Blinkit green
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginRight: 6,
+  },
+  recoBadgeTxt: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    marginLeft: 2,
+  },
 
-/* title text that follows the badge */
-recoTitle: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#333",
-},
+  /* title text that follows the badge */
+  recoTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+  },
 
   /* --- new: list container gives left padding & gap between cards --- */
-  recoList:{
-    paddingVertical:6,
-    paddingLeft:2,            // align with other content
-    columnGap: RECO_GAP
+  recoList: {
+    paddingVertical: 6,
+    paddingLeft: 2, // align with other content
+    columnGap: RECO_GAP,
   },
   confettiContainer: {
     position: "absolute",
@@ -1405,13 +1512,13 @@ recoTitle: {
   },
   codNote: {
     marginTop: 8,
-  marginBottom: 20,
-  fontSize: 14,
-  lineHeight: 20,
-  color: "#1f4f4f",
-  textAlign: "center",
-  alignSelf: "center",
-  maxWidth: "90%",
+    marginBottom: 20,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#1f4f4f",
+    textAlign: "center",
+    alignSelf: "center",
+    maxWidth: "90%",
   },
   scrollView: {
     flex: 1,
@@ -1766,8 +1873,7 @@ recoTitle: {
     color: "#fff",
     fontWeight: "600",
   },
-recoTitleLight:  { fontWeight: "400" },
-
+  recoTitleLight: { fontWeight: "400" },
 
   /** MODAL OVERLAYS **/
   modalOverlay: {

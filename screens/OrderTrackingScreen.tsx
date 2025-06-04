@@ -22,6 +22,7 @@ import { useOrder } from "../context/OrderContext";
 import riderIcon from "../assets/rider-icon-1.png";
 import pickupMarker from "../assets/pickup-marker.png";
 import dropoffMarker from "../assets/dropoff-marker.png";
+import Loader from "@/components/VideoLoader";
 
 // ------------------ TYPES ------------------
 type OrderTrackingScreenRouteProp = RouteProp<
@@ -52,7 +53,10 @@ const OrderTrackingScreen: React.FC = () => {
 
   // Rider + Order
   const [riderLocation, setRiderLocation] = useState<LatLng | null>(null);
-  const [riderInfo, setRiderInfo] = useState({ riderName: "", contactNumber: "" });
+  const [riderInfo, setRiderInfo] = useState({
+    riderName: "",
+    contactNumber: "",
+  });
   const [riderId, setRiderId] = useState<string | null>(null);
   const [orderDoc, setOrderDoc] = useState<any>(null); // entire doc (items, finalTotal, etc.)
 
@@ -128,7 +132,9 @@ const OrderTrackingScreen: React.FC = () => {
       // If there's a rider
       if (data.acceptedBy) {
         setRiderId(data.acceptedBy);
-        const riderRef = firestore().collection("riderDetails").doc(data.acceptedBy);
+        const riderRef = firestore()
+          .collection("riderDetails")
+          .doc(data.acceptedBy);
 
         const unsubscribeRider = riderRef.onSnapshot((riderSnap) => {
           const rData = riderSnap.data();
@@ -179,7 +185,11 @@ const OrderTrackingScreen: React.FC = () => {
 
   // Check if ended => go Rating
   useEffect(() => {
-    if (orderStatus === "tripEnded" && !hasNavigatedToRatingRef.current && riderId) {
+    if (
+      orderStatus === "tripEnded" &&
+      !hasNavigatedToRatingRef.current &&
+      riderId
+    ) {
       hasNavigatedToRatingRef.current = true;
       setActiveOrder(null);
 
@@ -229,8 +239,7 @@ const OrderTrackingScreen: React.FC = () => {
   if (isLoading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#00C853" />
-        <Text style={styles.loaderText}>Loading order and rider details...</Text>
+        <Loader />
       </View>
     );
   }
@@ -279,7 +288,10 @@ const OrderTrackingScreen: React.FC = () => {
         </MapView>
 
         {/* "Center on Rider" button at top-right */}
-        <TouchableOpacity style={styles.centerButton} onPress={handleCenterOnRider}>
+        <TouchableOpacity
+          style={styles.centerButton}
+          onPress={handleCenterOnRider}
+        >
           <Ionicons name="locate" size={24} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
@@ -338,7 +350,9 @@ const OrderTrackingScreen: React.FC = () => {
             {/* Make the list scrollable within the container */}
             <ScrollView style={styles.itemsScrollContainer}>
               {orderDoc.items.map((item: OrderItem, idx: number) => {
-                const finalPrice = item.discount ? item.price - item.discount : item.price;
+                const finalPrice = item.discount
+                  ? item.price - item.discount
+                  : item.price;
                 return (
                   <View style={styles.orderItemRow} key={`item-${idx}`}>
                     <Text style={styles.orderItemName}>{item.name}</Text>

@@ -19,8 +19,12 @@ import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import Loader from "@/components/VideoLoader";
 
-type RatingScreenRouteProp = RouteProp<{ RatingScreen: { orderId: string } }, "RatingScreen">;
+type RatingScreenRouteProp = RouteProp<
+  { RatingScreen: { orderId: string } },
+  "RatingScreen"
+>;
 
 interface OrderItem {
   productId: string;
@@ -56,7 +60,9 @@ export default function RatingScreen() {
   const [riderName, setRiderName] = useState("Unknown Rider");
 
   // Product items from order
-  const [productItems, setProductItems] = useState<(OrderItem & { image?: string })[]>([]);
+  const [productItems, setProductItems] = useState<
+    (OrderItem & { image?: string })[]
+  >([]);
 
   // Company info from the "company" collection
   const [companyData, setCompanyData] = useState<CompanyInfo | null>(null);
@@ -70,8 +76,8 @@ export default function RatingScreen() {
   const [discount, setDiscount] = useState(0);
   const [distance, setDistance] = useState(0);
   const [deliveryCharge, setDeliveryCharge] = useState(0);
-  const [rideCGST, setRideCGST] = useState(0);    
-  const [rideSGST, setRideSGST] = useState(0);    
+  const [rideCGST, setRideCGST] = useState(0);
+  const [rideSGST, setRideSGST] = useState(0);
   const [platformFee, setPlatformFee] = useState(0);
   const [finalTotal, setFinalTotal] = useState(0);
 
@@ -96,7 +102,10 @@ export default function RatingScreen() {
         }
 
         // 1) Fetch order doc
-        const orderDoc = await firestore().collection("orders").doc(orderId).get();
+        const orderDoc = await firestore()
+          .collection("orders")
+          .doc(orderId)
+          .get();
         if (!orderDoc.exists) {
           Alert.alert("Error", "Order not found.");
           navigation.goBack();
@@ -114,7 +123,10 @@ export default function RatingScreen() {
         const riderId = orderData.acceptedBy;
         let tempRiderName = "No rider assigned";
         if (riderId) {
-          const riderSnap = await firestore().collection("riderDetails").doc(riderId).get();
+          const riderSnap = await firestore()
+            .collection("riderDetails")
+            .doc(riderId)
+            .get();
           if (riderSnap.exists) {
             const rd = riderSnap.data();
             tempRiderName = rd?.name || "Unknown Rider";
@@ -127,7 +139,10 @@ export default function RatingScreen() {
         for (const it of rawItems) {
           let imgUri = "";
           try {
-            const pSnap = await firestore().collection("products").doc(it.productId).get();
+            const pSnap = await firestore()
+              .collection("products")
+              .doc(it.productId)
+              .get();
             if (pSnap.exists) {
               const pData = pSnap.data() || {};
               imgUri = pData.image || "";
@@ -235,8 +250,7 @@ export default function RatingScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={BRAND_GREEN} />
-        <Text style={styles.loadingText}>Loading order details...</Text>
+        <Loader />
       </View>
     );
   }
@@ -275,7 +289,9 @@ export default function RatingScreen() {
       const lineTotal = realPrice * it.quantity;
       productTableRows += `
         <tr>
-          <td>${it.name || it.productId}${it.weight ? " (" + it.weight + ")" : ""}</td>
+          <td>${it.name || it.productId}${
+        it.weight ? " (" + it.weight + ")" : ""
+      }</td>
           <td>${it.quantity}</td>
           <td>₹${unitPrice}</td>
           <td>₹${discountAmt}</td>
@@ -372,7 +388,9 @@ export default function RatingScreen() {
     costSummaryRows += `
       <tr style="border-top:2px solid #555;">
         <td style="font-weight:bold;">Grand Total</td>
-        <td style="text-align:right; font-weight:bold;">₹${finalTotal.toFixed(2)}</td>
+        <td style="text-align:right; font-weight:bold;">₹${finalTotal.toFixed(
+          2
+        )}</td>
       </tr>
     `;
 
@@ -513,7 +531,11 @@ export default function RatingScreen() {
     return <View style={styles.starsRow}>{stars}</View>;
   }
 
-  function renderProductItem({ item }: { item: OrderItem & { image?: string } }) {
+  function renderProductItem({
+    item,
+  }: {
+    item: OrderItem & { image?: string };
+  }) {
     return (
       <View style={styles.productRow}>
         {item.image ? (
@@ -540,160 +562,202 @@ export default function RatingScreen() {
   // UI
   return (
     <SafeAreaView style={styles.safeArea}>
-    
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* BILL CARD */}
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>Order Bill</Text>
-            {orderDetails.status === "tripEnded" && (
-              <Ionicons name="checkmark-circle" size={36} color={BRAND_GREEN} />
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* BILL CARD */}
+          <View style={styles.card}>
+            <View style={styles.headerRow}>
+              <Text style={styles.headerTitle}>Order Bill</Text>
+              {orderDetails.status === "tripEnded" && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={36}
+                  color={BRAND_GREEN}
+                />
+              )}
+            </View>
+
+            {/* Rider / Status / Date */}
+            <View style={styles.billInfoRow}>
+              <Text style={styles.billInfoLabel}>Rider:</Text>
+              <Text style={styles.billInfoValue}>{riderName}</Text>
+            </View>
+            <View style={styles.billInfoRow}>
+              <Text style={styles.billInfoLabel}>Status:</Text>
+              <Text style={styles.billInfoValue}>{status}</Text>
+            </View>
+            <View style={[styles.billInfoRow, { marginBottom: 12 }]}>
+              <Text style={styles.billInfoLabel}>Date:</Text>
+              <Text style={styles.billInfoValue}>{dateString}</Text>
+            </View>
+
+            {/* Products */}
+            <Text style={styles.sectionTitle}>Products</Text>
+            {productItems.length === 0 ? (
+              <Text style={styles.emptyProducts}>No products found.</Text>
+            ) : (
+              <FlatList
+                data={productItems}
+                keyExtractor={(it, idx) => `${it.productId}-${idx}`}
+                renderItem={renderProductItem}
+                style={styles.productList}
+                scrollEnabled={false}
+              />
             )}
-          </View>
 
-          {/* Rider / Status / Date */}
-          <View style={styles.billInfoRow}>
-            <Text style={styles.billInfoLabel}>Rider:</Text>
-            <Text style={styles.billInfoValue}>{riderName}</Text>
-          </View>
-          <View style={styles.billInfoRow}>
-            <Text style={styles.billInfoLabel}>Status:</Text>
-            <Text style={styles.billInfoValue}>{status}</Text>
-          </View>
-          <View style={[styles.billInfoRow, { marginBottom: 12 }]}>
-            <Text style={styles.billInfoLabel}>Date:</Text>
-            <Text style={styles.billInfoValue}>{dateString}</Text>
-          </View>
-
-          {/* Products */}
-          <Text style={styles.sectionTitle}>Products</Text>
-          {productItems.length === 0 ? (
-            <Text style={styles.emptyProducts}>No products found.</Text>
-          ) : (
-            <FlatList
-              data={productItems}
-              keyExtractor={(it, idx) => `${it.productId}-${idx}`}
-              renderItem={renderProductItem}
-              style={styles.productList}
-              scrollEnabled={false}
-            />
-          )}
-
-          {/* SUMMARY of taxes & total */}
-          <View style={styles.summaryRowTop}>
-            <Text style={styles.summaryLabel}>Product Subtotal</Text>
-            <Text style={styles.summaryValue}>₹{productSubtotal.toFixed(2)}</Text>
-          </View>
-
-          {productCGST > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Product CGST</Text>
-              <Text style={styles.summaryValue}>₹{productCGST.toFixed(2)}</Text>
+            {/* SUMMARY of taxes & total */}
+            <View style={styles.summaryRowTop}>
+              <Text style={styles.summaryLabel}>Product Subtotal</Text>
+              <Text style={styles.summaryValue}>
+                ₹{productSubtotal.toFixed(2)}
+              </Text>
             </View>
-          )}
-          {productSGST > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Product SGST</Text>
-              <Text style={styles.summaryValue}>₹{productSGST.toFixed(2)}</Text>
+
+            {productCGST > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Product CGST</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{productCGST.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {productSGST > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Product SGST</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{productSGST.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {productCess > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Product CESS</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{productCess.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            {discount > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Discount</Text>
+                <Text style={styles.discountValue}>
+                  -₹{discount.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            {distance > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Distance (km)</Text>
+                <Text style={styles.summaryValue}>{distance.toFixed(2)}</Text>
+              </View>
+            )}
+
+            {deliveryCharge !== 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Delivery Charge</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{deliveryCharge.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            {rideCGST > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Ride CGST</Text>
+                <Text style={styles.summaryValue}>₹{rideCGST.toFixed(2)}</Text>
+              </View>
+            )}
+            {rideSGST > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Ride SGST</Text>
+                <Text style={styles.summaryValue}>₹{rideSGST.toFixed(2)}</Text>
+              </View>
+            )}
+
+            {platformFee !== 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Platform Fee</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{platformFee.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.summaryRowTotal}>
+              <Text style={styles.summaryLabelTotal}>Grand Total</Text>
+              <Text style={styles.summaryValueTotal}>
+                ₹{finalTotal.toFixed(2)}
+              </Text>
             </View>
-          )}
-          {productCess > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Product CESS</Text>
-              <Text style={styles.summaryValue}>₹{productCess.toFixed(2)}</Text>
-            </View>
-          )}
 
-          {discount > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Discount</Text>
-              <Text style={styles.discountValue}>-₹{discount.toFixed(2)}</Text>
-            </View>
-          )}
-
-          {distance > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Distance (km)</Text>
-              <Text style={styles.summaryValue}>{distance.toFixed(2)}</Text>
-            </View>
-          )}
-
-          {deliveryCharge !== 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery Charge</Text>
-              <Text style={styles.summaryValue}>₹{deliveryCharge.toFixed(2)}</Text>
-            </View>
-          )}
-
-          {rideCGST > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Ride CGST</Text>
-              <Text style={styles.summaryValue}>₹{rideCGST.toFixed(2)}</Text>
-            </View>
-          )}
-          {rideSGST > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Ride SGST</Text>
-              <Text style={styles.summaryValue}>₹{rideSGST.toFixed(2)}</Text>
-            </View>
-          )}
-
-          {platformFee !== 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Platform Fee</Text>
-              <Text style={styles.summaryValue}>₹{platformFee.toFixed(2)}</Text>
-            </View>
-          )}
-
-          <View style={styles.summaryRowTotal}>
-            <Text style={styles.summaryLabelTotal}>Grand Total</Text>
-            <Text style={styles.summaryValueTotal}>₹{finalTotal.toFixed(2)}</Text>
-          </View>
-
-          <TouchableOpacity style={styles.downloadButton} onPress={handleDownloadBill}>
-            <Ionicons name="download-outline" size={18} color="#fff" style={{ marginRight: 4 }} />
-            <Text style={styles.downloadButtonText}>Download Bill (PDF)</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* RATING UI */}
-        {showRating && (
-          <View style={styles.ratingCard}>
-            <Text style={styles.ratingHeader}>Rate Your Experience</Text>
-
-            {/* Rider Rating */}
-            <Text style={styles.starsLabel}>Rider Rating</Text>
-            {renderStars(riderRating, setRiderRating)}
-
-            {/* Order Rating */}
-            <Text style={[styles.starsLabel, { marginTop: 14 }]}>Order Rating</Text>
-            {renderStars(orderRating, setOrderRating)}
-
-            {/* Feedback */}
-            <Text style={[styles.starsLabel, { marginTop: 14 }]}>Your Feedback</Text>
-            <TextInput
-              style={styles.feedbackInput}
-              placeholder="Share your thoughts..."
-              multiline
-              numberOfLines={4}
-              value={feedback}
-              onChangeText={setFeedback}
-            />
-
-            <TouchableOpacity style={styles.submitRatingButton} onPress={handleSubmitRating}>
-              <Text style={styles.submitRatingText}>Submit Rating</Text>
+            <TouchableOpacity
+              style={styles.downloadButton}
+              onPress={handleDownloadBill}
+            >
+              <Ionicons
+                name="download-outline"
+                size={18}
+                color="#fff"
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.downloadButtonText}>Download Bill (PDF)</Text>
             </TouchableOpacity>
           </View>
-        )}
-      </ScrollView>
 
-      {/* HELP BUTTON */}
-      <TouchableOpacity style={styles.helpButton} onPress={() => navigation.navigate("ContactUs")}>
-        <Ionicons name="help-circle" size={26} color="#FFFFFF" style={{ marginRight: 4 }} />
-        <Text style={styles.helpBtnText}>Need Help?</Text>
-      </TouchableOpacity>
-    </View>
+          {/* RATING UI */}
+          {showRating && (
+            <View style={styles.ratingCard}>
+              <Text style={styles.ratingHeader}>Rate Your Experience</Text>
+
+              {/* Rider Rating */}
+              <Text style={styles.starsLabel}>Rider Rating</Text>
+              {renderStars(riderRating, setRiderRating)}
+
+              {/* Order Rating */}
+              <Text style={[styles.starsLabel, { marginTop: 14 }]}>
+                Order Rating
+              </Text>
+              {renderStars(orderRating, setOrderRating)}
+
+              {/* Feedback */}
+              <Text style={[styles.starsLabel, { marginTop: 14 }]}>
+                Your Feedback
+              </Text>
+              <TextInput
+                style={styles.feedbackInput}
+                placeholder="Share your thoughts..."
+                multiline
+                numberOfLines={4}
+                value={feedback}
+                onChangeText={setFeedback}
+              />
+
+              <TouchableOpacity
+                style={styles.submitRatingButton}
+                onPress={handleSubmitRating}
+              >
+                <Text style={styles.submitRatingText}>Submit Rating</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* HELP BUTTON */}
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => navigation.navigate("ContactUs")}
+        >
+          <Ionicons
+            name="help-circle"
+            size={26}
+            color="#FFFFFF"
+            style={{ marginRight: 4 }}
+          />
+          <Text style={styles.helpBtnText}>Need Help?</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -952,4 +1016,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
