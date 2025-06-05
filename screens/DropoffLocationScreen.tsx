@@ -494,8 +494,7 @@ const DropoffLocationScreen: React.FC = () => {
                 accessibilityLabel="Use current location"
               >
                 {fetchingLocation ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
+<Loader/>                ) : (
                   <Ionicons name="location-sharp" size={24} color="#fff" />
                 )}
               </TouchableOpacity>

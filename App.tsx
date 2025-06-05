@@ -65,7 +65,6 @@ import LeaderboardScreen from "./screens/LeaderBoardScreen";
    ────────────────────────────────────────────────────────── */
 import { ensurePushTokenSynced } from "./utils/PushTokenManager";
 import { useOtaUpdate } from "./utils/useOtaUpdate";
-import { VideoLoaderProvider } from "./context/VideoLoader";
 
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
@@ -521,80 +520,75 @@ const App: React.FC = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <VideoLoaderProvider>
-        <CustomerProvider>
-          <CartProvider>
-            <LocationProvider>
-              <OrderProvider>
-                <NavigationContainer>
-                  <RootStack.Navigator
-                    initialRouteName={initialRoute}
-                    screenOptions={{ headerShown: false }}
-                  >
-                    <RootStack.Screen
-                      name="TermsAndConditions"
-                      component={TermsAndConditionsScreen}
-                    />
-                    <RootStack.Screen name="AppTabs" component={AppTabs} />
-                    <RootStack.Screen
-                      name="LocationSelector"
-                      component={LocationSelectorScreen}
-                      options={{ title: "Select Location" }}
-                    />
-                    <RootStack.Screen
-                      name="ContactUs"
-                      component={ContactUsScreen}
-                      options={{ title: "Contact Us", headerShown: true }}
-                    />
-                  </RootStack.Navigator>
-                </NavigationContainer>
-              </OrderProvider>
-            </LocationProvider>
-          </CartProvider>
-        </CustomerProvider>
+      <CustomerProvider>
+        <CartProvider>
+          <LocationProvider>
+            <OrderProvider>
+              <NavigationContainer>
+                <RootStack.Navigator
+                  initialRouteName={initialRoute}
+                  screenOptions={{ headerShown: false }}
+                >
+                  <RootStack.Screen
+                    name="TermsAndConditions"
+                    component={TermsAndConditionsScreen}
+                  />
+                  <RootStack.Screen name="AppTabs" component={AppTabs} />
+                  <RootStack.Screen
+                    name="LocationSelector"
+                    component={LocationSelectorScreen}
+                    options={{ title: "Select Location" }}
+                  />
+                  <RootStack.Screen
+                    name="ContactUs"
+                    component={ContactUsScreen}
+                    options={{ title: "Contact Us", headerShown: true }}
+                  />
+                </RootStack.Navigator>
+              </NavigationContainer>
+            </OrderProvider>
+          </LocationProvider>
+        </CartProvider>
+      </CustomerProvider>
 
-        {/* push-permission modal */}
-        <RNModal
-          visible={showNotifModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowNotifModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <Text style={styles.modalTitle}>Enable Notifications</Text>
-              <Text style={styles.modalMessage}>
-                We use push notifications to keep you updated on your orders and
-                exclusive offers.
-              </Text>
-              <View style={styles.modalButtonContainer}>
-                <TouchableOpacity
-                  style={styles.modalButton}
-                  onPress={async () => {
-                    setShowNotifModal(false);
-                    await ensurePushTokenSynced();
-                  }}
+      {/* push-permission modal */}
+      <RNModal
+        visible={showNotifModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotifModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Enable Notifications</Text>
+            <Text style={styles.modalMessage}>
+              We use push notifications to keep you updated on your orders and
+              exclusive offers.
+            </Text>
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={async () => {
+                  setShowNotifModal(false);
+                  await ensurePushTokenSynced();
+                }}
+              >
+                <Text style={styles.modalButtonText}>Enable</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => setShowNotifModal(false)}
+              >
+                <Text
+                  style={[styles.modalButtonText, styles.modalCancelButtonText]}
                 >
-                  <Text style={styles.modalButtonText}>Enable</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalCancelButton]}
-                  onPress={() => setShowNotifModal(false)}
-                >
-                  <Text
-                    style={[
-                      styles.modalButtonText,
-                      styles.modalCancelButtonText,
-                    ]}
-                  >
-                    Later
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                  Later
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </RNModal>
-      </VideoLoaderProvider>
+        </View>
+      </RNModal>
     </GestureHandlerRootView>
   );
 };

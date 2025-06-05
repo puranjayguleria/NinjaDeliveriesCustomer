@@ -12,6 +12,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  BackHandler,
 } from "react-native";
 import { getApp } from "@react-native-firebase/app";
 import {
@@ -29,6 +30,8 @@ import {
   serverTimestamp,
   Timestamp,
 } from "@react-native-firebase/firestore";
+import { useFocusEffect } from "@react-navigation/native";
+
 import { getAuth } from "@react-native-firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import { useLocationContext } from "@/context/LocationContext";
@@ -254,13 +257,23 @@ export default function QuizScreen() {
     async (finalScore: number) => {
       if (finishedRef.current) return;
       finishedRef.current = true;
-      await addDoc(collection(db, "leaderboard"), {
-        score: finalScore,
-        storeId,
-        timestamp: serverTimestamp(),
-        userId: user.uid,
-        userName: displayName,
-      });
+
+      try {
+        await addDoc(collection(db, "leaderboard"), {
+          score: finalScore,
+          correctCount: finalScore,
+          totalQuestions: questions.length,
+          storeId,
+          timestamp: serverTimestamp(),
+          userId: user.uid ?? "guest",
+          userName: displayName,
+          scorePercentage: Math.round((finalScore / questions.length) * 100),
+        });
+      } catch (error) {
+        console.error("Failed to save leaderboard:", error);
+        // Optional: pass an error flag to Congrats screen
+      }
+
       nav.replace("Congrats", {
         correctCount: finalScore,
         totalQuestions: questions.length,
@@ -306,7 +319,24 @@ export default function QuizScreen() {
     },
     [current, finishQuiz, questions, score, optionScale]
   );
-
+  //quit Midway
+  const quitQuizMidway = useCallback(async () => {
+    try {
+      await addDoc(collection(db, "leaderboard"), {
+        score: 0,
+        correctCount: 0,
+        totalQuestions: questions.length,
+        storeId,
+        timestamp: serverTimestamp(),
+        userId: user.uid ?? "guest",
+        userName: displayName,
+        scorePercentage: 0,
+        quitMidway: true, // special flag to mark quit mid quiz
+      });
+    } catch (error) {
+      console.error("Failed to save quit midway attempt:", error);
+    }
+  }, [db, displayName, questions.length, storeId, user.uid]);
   // Per-question timer
   useEffect(() => {
     if (!isQuizTime || finishedRef.current || !questions.length) return;
@@ -332,6 +362,53 @@ export default function QuizScreen() {
 
     return () => clearInterval(iv);
   }, [isQuizTime, current, onAnswer, questions.length, timerAnim]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (
+        isQuizTime &&
+        !loading &&
+        !lockModalVisible &&
+        questions.length > 0 &&
+        !nameModalVisible
+      ) {
+        const onBackPress = () => {
+          Alert.alert(
+            "Exit Quiz?",
+            "If you exit now, you won’t be able to attempt again.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Exit",
+                style: "destructive",
+                onPress: async () => {
+                  await quitQuizMidway();
+                  nav.goBack();
+                },
+              },
+            ]
+          );
+          return true; // prevent default back behavior
+        };
+
+        BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+        return () =>
+          BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+      }
+
+      // If conditions not met, do nothing, so back works normally
+      return undefined;
+    }, [
+      isQuizTime,
+      loading,
+      lockModalVisible,
+      questions.length,
+      nameModalVisible,
+      quitQuizMidway,
+      nav,
+    ])
+  );
 
   if (loading) {
     return (

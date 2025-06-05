@@ -150,7 +150,7 @@ const LocationPromptCard: React.FC = () => {
         disabled={busy}
       >
         {busy ? (
-          <ActivityIndicator color="#fff" />
+          <Loader />
         ) : (
           <Text style={styles.locBtnTxtPrimary}>Enable Location</Text>
         )}
@@ -226,7 +226,7 @@ const IntroCard: React.FC<IntroProps> = ({ url, title }) => {
   if (!url) {
     return (
       <View style={[styles.mediaBox, styles.center]}>
-        <ActivityIndicator size="small" color="#009688" />
+        <Loader />
       </View>
     );
   }
@@ -254,7 +254,7 @@ const IntroCard: React.FC<IntroProps> = ({ url, title }) => {
 
           {spin && (
             <View style={[styles.mediaBox, styles.loaderOverlay]}>
-              <ActivityIndicator size="small" color="#009688" />
+              <Loader />
             </View>
           )}
         </>
@@ -551,7 +551,14 @@ export default function ProductsHomeScreen() {
       if (!picked) {
         Alert.alert(
           "Delivery unavailable",
-          "Sorry, we don’t deliver to your current location."
+          "Sorry, we don't deliver to your current location.",
+          [
+            {
+              text: "Change Location",
+              onPress: () =>
+                nav.navigate("LocationSelector", { fromScreen: "Products" }),
+            },
+          ]
         );
         return;
       }
@@ -786,13 +793,21 @@ export default function ProductsHomeScreen() {
     <>
       <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
         {hasPerm && (
-          <LinearGradient
-            colors={["#00b4a0", "#00d2c7", "#ffffff"]}
-            style={styles.topBg}
-          >
-            <Header />
-            <StableSearchBar />
-          </LinearGradient>
+          <View style={styles.videoContainer}>
+            <Video
+              source={require("../assets/deliveryBackground.mp4")}
+              style={styles.backgroundVideo}
+              muted={true}
+              repeat={true}
+              resizeMode="cover"
+              rate={1.0}
+              ignoreSilentSwitch={"obey"}
+            />
+            <View style={styles.topBg}>
+              <Header />
+              <StableSearchBar />
+            </View>
+          </View>
         )}
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -886,7 +901,7 @@ export default function ProductsHomeScreen() {
           />
         ) : hasPerm ? (
           <View style={[styles.center, { flex: 1 }]}>
-            <ActivityIndicator size="large" color="#009688" />
+            <Loader />
           </View>
         ) : (
           <View style={{ flex: 1 }} />
@@ -956,10 +971,30 @@ const styles = StyleSheet.create({
   /* generic */
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   /* header */
+  videoContainer: {
+    position: "relative",
+  },
+  backgroundVideo: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%", // Adjust based on your content height
+    zIndex: 0,
+  },
   topBg: {
     paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingHorizontal: H,
     paddingBottom: 16,
+    position: "relative",
+    zIndex: 1,
+    backgroundColor: "transparent",
+  },
+
+  videoOverlay: {
+    position: "relative",
+    backgroundColor: "transparent",
+    flex: 1,
   },
   locationRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
   locationTxt: { flex: 1, fontSize: 14, fontWeight: "600", color: "#fff" },
@@ -1243,4 +1278,29 @@ const styles = StyleSheet.create({
     borderColor: "#bbb",
   },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
+  locationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#f5f5f5",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  locationText: {
+    fontSize: 16,
+    color: "#333",
+    flex: 1,
+  },
+  changeLocationButton: {
+    backgroundColor: "#4a90e2",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+  },
+  changeLocationText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "500",
+  },
 });

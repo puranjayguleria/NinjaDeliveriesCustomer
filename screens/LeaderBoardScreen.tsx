@@ -6,23 +6,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocationContext } from "@/context/LocationContext";
 import Loader from "@/components/VideoLoader";
-
-type Entry = {
-  userId: string;
-  userName: string;
-  score: number;
-  timestamp: Date;
-};
-
-type Reward = {
-  position: number;
-  description: string;
-};
 
 const { width } = Dimensions.get("window");
 
@@ -30,12 +19,13 @@ export default function LeaderboardScreen() {
   const { location } = useLocationContext();
   const storeId = location.storeId;
 
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [rewards, setRewards] = useState<Record<number, string>>({});
+  const [entries, setEntries] = useState([]);
+  const [rewards, setRewards] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!storeId) return;
+
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date();
@@ -48,10 +38,10 @@ export default function LeaderboardScreen() {
       .where("timestamp", "<=", end)
       .get()
       .then((snap) => {
-        const bestByUser = new Map<string, Entry>();
+        const bestByUser = new Map();
         snap.docs.forEach((d) => {
-          const { userId, userName, score, timestamp } = d.data() as any;
-          const ts = (timestamp as any).toDate();
+          const { userId, userName, score, timestamp } = d.data();
+          const ts = timestamp.toDate();
           const prev = bestByUser.get(userId);
           if (
             !prev ||
@@ -62,31 +52,26 @@ export default function LeaderboardScreen() {
           }
         });
         const arr = Array.from(bestByUser.values());
-        arr.sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          return a.timestamp.getTime() - b.timestamp.getTime();
-        });
+        arr.sort((a, b) =>
+          b.score !== a.score ? b.score - a.score : a.timestamp - b.timestamp
+        );
         setEntries(arr.slice(0, 20));
       })
-      .catch((err) => console.error("Leaderboard load error", err))
+      .catch(console.error)
       .finally(() => setLoading(false));
 
     firestore()
       .collection("rewards")
       .get()
       .then((snap) => {
-        const map: Record<number, string> = {};
+        const map = {};
         snap.docs.forEach((d) => {
-          const data = d.data();
-          console.log("Reward doc:", data); // 👈
-          const { position, description } = d.data() as Reward;
-          map[Number(position)] = description;
+          const { position, image } = d.data();
+          map[Number(position)] = image;
         });
-        console.log("Mapped rewards:", map); // 👈
-
         setRewards(map);
       })
-      .catch((err) => console.warn("Rewards load error", err));
+      .catch(console.warn);
   }, [storeId]);
 
   if (loading) {
@@ -103,46 +88,24 @@ export default function LeaderboardScreen() {
       style={styles.container}
     >
       <Text style={styles.header}>🏆 Today's Leaderboard</Text>
-      <View style={styles.podiumContainer}>
-        {/* 2nd Place (Left) */}
-        {rewards[2] && (
-          <View
-            style={[
-              styles.prizeContainer,
-              { left: width * 0.1, bottom: 60 }, // Positioned left and slightly raised
-            ]}
-          >
-            <Text style={styles.prizeEmoji}>🥈</Text>
-            <Text style={styles.prizeLabel}>2nd</Text>
-            <Text style={styles.prizeDesc}>{rewards[2]}</Text>
-          </View>
-        )}
 
-        {/* 1st Place (Center) */}
+      <View style={styles.treeContainer}>
         {rewards[1] && (
-          <View
-            style={[
-              styles.prizeContainer,
-              { left: width / 2 - width / 3.5 / 2, bottom: 0 }, // Centered at bottom
-            ]}
-          >
-            <Text style={styles.prizeEmoji}>🥇</Text>
-            <Text style={styles.prizeLabel}>1st</Text>
-            <Text style={styles.prizeDesc}>{rewards[1]}</Text>
+          <View style={[styles.rewardNode, styles.centerNode]}>
+            <Text style={styles.rankEmoji}>🥇</Text>
+            <Image source={{ uri: rewards[1] }} style={styles.rewardImage} />
           </View>
         )}
-
-        {/* 3rd Place (Right) */}
+        {rewards[2] && (
+          <View style={[styles.rewardNode, styles.leftNode]}>
+            <Text style={styles.rankEmoji}>🥈</Text>
+            <Image source={{ uri: rewards[2] }} style={styles.rewardImage} />
+          </View>
+        )}
         {rewards[3] && (
-          <View
-            style={[
-              styles.prizeContainer,
-              { right: width * 0.1, bottom: 90 }, // Positioned right and raised more
-            ]}
-          >
-            <Text style={styles.prizeEmoji}>🥉</Text>
-            <Text style={styles.prizeLabel}>3rd</Text>
-            <Text style={styles.prizeDesc}>{rewards[3]}</Text>
+          <View style={[styles.rewardNode, styles.rightNode]}>
+            <Text style={styles.rankEmoji}>🥉</Text>
+            <Image source={{ uri: rewards[3] }} style={styles.rewardImage} />
           </View>
         )}
       </View>
@@ -214,36 +177,42 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
   },
-  podiumContainer: {
-    flexDirection: "row",
-    justifyContent: "center", // Changed from "space-around"
-    marginBottom: 30,
-    height: 200, // Increased height
-    position: "relative",
-    width: "100%",
-  },
-  prizeContainer: {
+  treeContainer: {
+    height: 180,
+    marginBottom: 24,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  rewardNode: {
     position: "absolute",
-    width: width / 3.5,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 10,
-    padding: 10,
-    bottom: 0,
+    width: 80,
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    padding: 8,
   },
-  prizeEmoji: {
-    fontSize: 30,
-    marginBottom: 4,
+  centerNode: {
+    top: 0,
+    left: width / 2 - 40,
   },
-  prizeLabel: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#fff",
+  leftNode: {
+    top: 80,
+    left: width / 4 - 40,
   },
-  prizeDesc: {
-    fontSize: 14,
-    color: "#fff",
-    textAlign: "center",
+  rightNode: {
+    top: 80,
+    right: width / 5 - 40,
+  },
+  rankEmoji: {
+    fontSize: 24,
+    marginBottom: 6,
+  },
+  rewardImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
   },
   tableHeader: {
     flexDirection: "row",
