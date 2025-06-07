@@ -17,6 +17,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   Dimensions,
   FlatList,
@@ -42,9 +43,15 @@ import * as Location from "expo-location";
 
 import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
+import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
 
 /* ------------------------------------------------------------------ CONSTANTS */
+const INITIAL_VIDEO_HEIGHT = 180;
+const COLLAPSED_VIDEO_HEIGHT = 100;
+const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 80 : 80;
+const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 60 : 40;
+
 const { width } = Dimensions.get("window");
 const H = 16;
 const G = 20;
@@ -456,6 +463,9 @@ export default function ProductsHomeScreen() {
   const [showGate, setShowGate] = useState(false);
   const onAcceptRef = useRef<() => void>(() => {});
   const vibrateCancel = () => Vibration.vibrate(70);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
+  const [onErrorConfirm, setOnErrorConfirm] = useState<() => void>(() => {});
 
   useEffect(() => {
     firestore()
@@ -548,20 +558,21 @@ export default function ProductsHomeScreen() {
           picked = z;
         }
       });
+      const showErrorModal = (message: string, onConfirm?: () => void) => {
+        setErrorMessage(message);
+        if (onConfirm) setOnErrorConfirm(() => onConfirm);
+        else setOnErrorConfirm(() => () => {});
+        setIsErrorModalVisible(true);
+      };
+
       if (!picked) {
-        Alert.alert(
-          "Delivery unavailable",
-          "Sorry, we don't deliver to your current location.",
-          [
-            {
-              text: "Change Location",
-              onPress: () =>
-                nav.navigate("LocationSelector", { fromScreen: "Products" }),
-            },
-          ]
+        showErrorModal(
+          "Sorry, we don’t deliver to your current location.",
+          () => nav.navigate("LocationSelector", { fromScreen: "Products" })
         );
         return;
       }
+
       let addr = "";
       try {
         const g = await Location.reverseGeocodeAsync({
@@ -779,6 +790,34 @@ export default function ProductsHomeScreen() {
     () => groupByCat(freshProducts),
     [freshProducts, groupByCat]
   );
+  // Animate on slide
+  const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
+
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const videoHeight = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [INITIAL_VIDEO_HEIGHT, COLLAPSED_VIDEO_HEIGHT],
+    extrapolate: "clamp",
+  });
+
+  const videoOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+
+  const gradientOpacity = scrollY.interpolate({
+    inputRange: [50, 100],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  const topPadding = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [INITIAL_PADDING_TOP, COLLAPSED_PADDING_TOP],
+    extrapolate: "clamp",
+  });
 
   /* -------------------------------------------------- render guard for loading-permission */
   if (hasPerm === null) {
@@ -793,29 +832,57 @@ export default function ProductsHomeScreen() {
     <>
       <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
         {hasPerm && (
-          <View style={styles.videoContainer}>
-            <Video
-              source={require("../assets/deliveryBackground.mp4")}
-              style={styles.backgroundVideo}
-              muted={true}
-              repeat={true}
-              resizeMode="cover"
-              rate={1.0}
-              ignoreSilentSwitch={"obey"}
-            />
-            <View style={styles.topBg}>
-              <Header />
-              <StableSearchBar />
-            </View>
-          </View>
+          <>
+            {/* Shrinking Video */}
+            <Animated.View
+              style={[
+                styles.videoContainer,
+                { height: videoHeight, opacity: videoOpacity },
+              ]}
+            >
+              <Video
+                source={require("../assets/deliveryBackground.mp4")}
+                style={styles.backgroundVideo}
+                muted
+                repeat
+                resizeMode="cover"
+                rate={1.0}
+                ignoreSilentSwitch="obey"
+              />
+              <Animated.View style={[styles.topBg, { paddingTop: topPadding }]}>
+                <Header />
+                <StableSearchBar />
+              </Animated.View>
+            </Animated.View>
+
+            {/* Gradient Header appears on scroll */}
+            <Animated.View
+              style={[styles.gradientHeader, { opacity: gradientOpacity }]}
+            >
+              <LinearGradient
+                colors={["#00b4a0", "#00d2c7", "#ffffff"]}
+                style={[styles.topBg, { paddingTop: COLLAPSED_PADDING_TOP }]}
+              >
+                <Header />
+                <StableSearchBar />
+              </LinearGradient>
+            </Animated.View>
+          </>
         )}
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
         {location.storeId ? (
-          <SectionList
+          <AnimatedSectionList
+            showsVerticalScrollIndicator={false}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
             sections={[{ data: cats.slice(0, page * PAGE_SIZE) }]}
-            keyExtractor={(c) => c.id}
+            keyExtractor={(item) => item.id}
             extraData={{ introUrl, prodMap, cart }}
             ListHeaderComponent={() =>
               introUrl && <IntroCard url={introUrl} title={quizTitle} />
@@ -855,7 +922,7 @@ export default function ProductsHomeScreen() {
               </>
             )}
             renderItem={({ item }) => (
-              <View style={{ marginBottom: 32 }}>
+              <View style={{ marginTop: 32 }}>
                 <View style={styles.rowHeader}>
                   <Text style={styles.rowTitle}>{item.name}</Text>
                   <Pressable onPress={() => maybeNavigateCat(item)}>
@@ -876,6 +943,7 @@ export default function ProductsHomeScreen() {
                 />
 
                 <FlatList
+                  style={{ marginTop: 8 }}
                   horizontal
                   data={prodMap[item.id]?.rows || []}
                   keyExtractor={(p) => p.id}
@@ -960,10 +1028,18 @@ export default function ProductsHomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <NotificationModal
+        visible={isErrorModalVisible}
+        message={errorMessage}
+        confirmText="Change Location"
+        onClose={() => {
+          setIsErrorModalVisible(false);
+          onErrorConfirm(); // run the stored callback
+        }}
+      />
     </>
   );
 }
-
 /* ------------------------------------------------------------------ STYLES (same + modal) */
 const pastelGreen = "#e7f8f6";
 const styles = StyleSheet.create({
@@ -972,23 +1048,33 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   /* header */
   videoContainer: {
-    position: "relative",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+    overflow: "hidden",
   },
   backgroundVideo: {
     position: "absolute",
     top: 0,
     left: 0,
     width: "100%",
-    height: "100%", // Adjust based on your content height
-    zIndex: 0,
+    height: "100%",
   },
   topBg: {
-    paddingTop: Platform.OS === "ios" ? 60 : 40,
     paddingHorizontal: H,
     paddingBottom: 16,
     position: "relative",
     zIndex: 1,
     backgroundColor: "transparent",
+  },
+  gradientHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
 
   videoOverlay: {
@@ -1051,7 +1137,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: H,
-    marginBottom: 4,
+    marginTop: 10,
+    marginBottom: 8,
   },
   rowTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: "#333" },
   seeAllTxt: { fontSize: 12, color: "#009688", fontWeight: "600" },
@@ -1131,11 +1218,12 @@ const styles = StyleSheet.create({
   },
   /* lane title */
   laneTitle: {
+    marginTop: 25,
+    marginBottom: 10,
     fontSize: 17,
     fontWeight: "700",
     color: "#333",
     marginHorizontal: H,
-    marginVertical: 8,
   },
   /* mosaic card */
   mosaicCard: {
