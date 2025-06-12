@@ -45,6 +45,7 @@ import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
+import { QuickTile } from "@/components/QuickTile";
 
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_VIDEO_HEIGHT = 180;
@@ -103,9 +104,11 @@ type CategoryAlert = {
   linkLabel: string;
   linkUrl: string;
 };
-
+type Props = {
+  setHasPerm: (value: boolean) => void;
+};
 /* ------------------------------------------------------------------ location-prompt bottom-sheet (unchanged) */
-const LocationPromptCard: React.FC = () => {
+const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
   const nav = useNavigation<any>();
   const { updateLocation } = useLocationContext();
   const [busy, setBusy] = useState(false);
@@ -133,12 +136,13 @@ const LocationPromptCard: React.FC = () => {
         address: "",
         storeId: null,
       });
+      setHasPerm(true);
     } catch (e) {
       Alert.alert("Error", "Unable to fetch location. Please try again.");
     } finally {
       setBusy(false);
     }
-  }, [updateLocation]);
+  }, [updateLocation, setHasPerm]);
 
   return (
     <View style={styles.locSheet}>
@@ -157,7 +161,7 @@ const LocationPromptCard: React.FC = () => {
         disabled={busy}
       >
         {busy ? (
-          <Loader />
+          <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.locBtnTxtPrimary}>Enable Location</Text>
         )}
@@ -233,7 +237,7 @@ const IntroCard: React.FC<IntroProps> = ({ url, title }) => {
   if (!url) {
     return (
       <View style={[styles.mediaBox, styles.center]}>
-        <Loader />
+        <ActivityIndicator color="#ffffff" size="large" />
       </View>
     );
   }
@@ -261,7 +265,7 @@ const IntroCard: React.FC<IntroProps> = ({ url, title }) => {
 
           {spin && (
             <View style={[styles.mediaBox, styles.loaderOverlay]}>
-              <Loader />
+              <ActivityIndicator color="#ffffff" size="large" />
             </View>
           )}
         </>
@@ -299,72 +303,6 @@ const ChipsRow: React.FC<{ subs: any[]; onPress: (s: any) => void }> = ({
       ))}
     </ScrollView>
   ) : null;
-
-/* ------------------------------------------------------------------ quick tile */
-const QuickTile: React.FC<{
-  p: any;
-  guard: (cb: () => void, isPan: boolean) => void;
-  isPan: boolean;
-}> = ({ p, guard, isPan }) => {
-  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
-  const qty = cart[p.id] ?? 0;
-  const price = p.price ?? 0;
-  const deal = (p.discount ?? 0) > 0;
-
-  const tryAdd = () => guard(() => addToCart(p.id, p.quantity), isPan);
-  const tryInc = () => guard(() => increaseQuantity(p.id, p.quantity), isPan);
-
-  return (
-    <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
-      <Image
-        source={firstImg(p) ? { uri: firstImg(p) } : undefined}
-        style={styles.tileImg}
-      />
-
-      {deal && (
-        <View style={styles.discountTag}>
-          <Text style={styles.discountTagTxt}>₹{p.discount} OFF</Text>
-        </View>
-      )}
-
-      <Text style={styles.tileName} numberOfLines={2}>
-        {p.name || p.title}
-      </Text>
-
-      <View style={styles.ribbon}>
-        <Text style={styles.priceNow}>₹{price}</Text>
-        {deal && <Text style={styles.priceMRP}>₹{price + p.discount}</Text>}
-      </View>
-
-      {qty === 0 ? (
-        <Pressable
-          style={[
-            styles.cartBar,
-            { backgroundColor: "#009688", borderColor: "#009688" },
-          ]}
-          onPress={tryAdd}
-        >
-          <Text style={styles.cartBarAdd}>ADD</Text>
-        </Pressable>
-      ) : (
-        <View
-          style={[
-            styles.cartBar,
-            { flexDirection: "row", borderColor: "#009688" },
-          ]}
-        >
-          <Pressable onPress={() => decreaseQuantity(p.id)} hitSlop={8}>
-            <MaterialIcons name="remove" size={18} color="#009688" />
-          </Pressable>
-          <Text style={styles.qtyNum}>{qty}</Text>
-          <Pressable onPress={tryInc} hitSlop={8}>
-            <MaterialIcons name="add" size={18} color="#009688" />
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-};
 
 /* ------------------------------------------------------------------ mosaic card */
 const MosaicCard: React.FC<{
@@ -659,9 +597,24 @@ export default function ProductsHomeScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [noMore, setNoMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const prevStoreIdRef = useRef<string | null>(null);
 
   const initFetch = useCallback(async () => {
     if (!location.storeId) return;
+
+    // Reset states when storeId changes
+    if (prevStoreIdRef.current !== location.storeId) {
+      setCats([]);
+      setSubMap({});
+      setProdMap({});
+      setPage(0);
+      setNoMore(false);
+      setError(null);
+      setBestProducts([]);
+      setFreshProducts([]);
+    }
+    prevStoreIdRef.current = location.storeId;
+    // continue init
     try {
       const [catSnap, subSnap] = await Promise.all([
         firestore()
@@ -729,6 +682,7 @@ export default function ProductsHomeScreen() {
       setProdMap((prev) => ({ ...prev, ...up }));
       setPage((p) => p + 1);
     } catch {
+      pending.current = false; // Ensure reset on error
     } finally {
       pending.current = false;
       setLoadingMore(false);
@@ -818,6 +772,8 @@ export default function ProductsHomeScreen() {
     outputRange: [INITIAL_PADDING_TOP, COLLAPSED_PADDING_TOP],
     extrapolate: "clamp",
   });
+  const memoizedGuard = useCallback(maybeGate, []);
+  const memoizedIsPan = useCallback((p) => isPanProd?.(p), [isPanProd]);
 
   /* -------------------------------------------------- render guard for loading-permission */
   if (hasPerm === null) {
@@ -883,7 +839,7 @@ export default function ProductsHomeScreen() {
             contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
             sections={[{ data: cats.slice(0, page * PAGE_SIZE) }]}
             keyExtractor={(item) => item.id}
-            extraData={{ introUrl, prodMap, cart }}
+            extraData={introUrl}
             ListHeaderComponent={() =>
               introUrl && <IntroCard url={introUrl} title={quizTitle} />
             }
@@ -947,9 +903,18 @@ export default function ProductsHomeScreen() {
                   horizontal
                   data={prodMap[item.id]?.rows || []}
                   keyExtractor={(p) => p.id}
+                  removeClippedSubviews
+                  initialNumToRender={10}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
                   renderItem={({ item: p }) => (
-                    <QuickTile p={p} guard={maybeGate} isPan={isPanProd(p)} />
+                    <QuickTile
+                      p={p}
+                      guard={memoizedGuard}
+                      isPan={memoizedIsPan(p)}
+                    />
                   )}
+                  extraData={cart}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ paddingLeft: H }}
                 />
@@ -975,7 +940,7 @@ export default function ProductsHomeScreen() {
           <View style={{ flex: 1 }} />
         )}
 
-        {hasPerm === false && <LocationPromptCard />}
+        {hasPerm === false && <LocationPromptCard setHasPerm={setHasPerm} />}
       </View>
 
       {/* ---------------- Pan Corner modal ---------------- */}
