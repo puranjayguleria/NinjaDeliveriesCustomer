@@ -20,7 +20,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ninjadeliveries.customer",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "9",
+      "buildNumber": "11",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
         "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts."

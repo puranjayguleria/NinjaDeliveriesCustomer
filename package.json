@@ -55,7 +55,7 @@
     "expo-updates": "~0.27.1",
     "expo-web-browser": "~14.0.2",
     "geolib": "^3.3.4",
-    "lottie-ios": "^4.5.1",
+    "lottie-ios": "4.5.0",
     "lottie-react-native": "^7.2.2",
     "lucide-react-native": "^0.513.0",
     "react": "18.3.1",

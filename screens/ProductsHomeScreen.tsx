@@ -695,6 +695,10 @@ export default function ProductsHomeScreen() {
     initFetch();
   }, [initFetch]);
 
+   const extra = React.useMemo(
+    () => ({ introUrl, prodMap, cart }),
+    [introUrl, prodMap, cart]
+  );
   const pending = useRef(false);
   const loadMoreRows = useCallback(async () => {
     if (!location.storeId || pending.current || noMore) return;
@@ -835,6 +839,7 @@ export default function ProductsHomeScreen() {
           <>
             {/* Shrinking Video */}
             <Animated.View
+              pointerEvents="none"            // 👈 ADD THIS
               style={[
                 styles.videoContainer,
                 { height: videoHeight, opacity: videoOpacity },
@@ -883,7 +888,7 @@ export default function ProductsHomeScreen() {
             contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
             sections={[{ data: cats.slice(0, page * PAGE_SIZE) }]}
             keyExtractor={(item) => item.id}
-            extraData={{ introUrl, prodMap, cart }}
+            extraData={extra}
             ListHeaderComponent={() =>
               introUrl && <IntroCard url={introUrl} title={quizTitle} />
             }
@@ -947,6 +952,7 @@ export default function ProductsHomeScreen() {
                   horizontal
                   data={prodMap[item.id]?.rows || []}
                   keyExtractor={(p) => p.id}
+                  extraData={cart}
                   renderItem={({ item: p }) => (
                     <QuickTile p={p} guard={maybeGate} isPan={isPanProd(p)} />
                   )}
@@ -975,7 +981,7 @@ export default function ProductsHomeScreen() {
           <View style={{ flex: 1 }} />
         )}
 
-        {hasPerm === false && <LocationPromptCard />}
+        {hasPerm === false && !location.storeId && <LocationPromptCard />}
       </View>
 
       {/* ---------------- Pan Corner modal ---------------- */}
