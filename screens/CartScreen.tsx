@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Image,
   Alert,
-  ActivityIndicator,
   ScrollView,
   Dimensions,
   Modal,
@@ -17,7 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
+import firestore, { firebase, FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
@@ -26,7 +25,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import Toast from "react-native-toast-message";
+
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal"; // <-- NEW Import for error modal
 import { findNearestStore } from "../utils/findNearestStore";
@@ -34,6 +33,33 @@ import { useLocationContext } from "@/context/LocationContext";
 import NotificationModal from "../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
+import axios from "axios";
+
+/**
+ * Returns true if the current time is inside the delivery window.
+ * Reads the window from delivery_timing/timingData in Firestore.
+ */
+const checkDeliveryWindow = async (): Promise<boolean> => {
+  try {
+    const snap = await firestore()
+      .collection("delivery_timing")
+      .doc("timingData")
+      .get();
+
+    if (snap.exists) {
+      const { fromTime, toTime } = snap.data() as {
+        fromTime: number;
+        toTime: number;
+      };
+      const hour = new Date().getHours();
+      return hour >= fromTime && hour < toTime;
+    }
+  } catch (e) {
+    console.error("[checkDeliveryWindow]", e);
+  }
+  // if the doc is missing or any error ⇒ allow
+  return true;
+};
 
 /**
  * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
@@ -49,6 +75,20 @@ type Product = {
   CGST?: number;
   SGST?: number;
   cess?: number;
+};
+
+type Hotspot = {
+  id: string;
+  name: string;
+  center: firebase.firestore.GeoPoint;   // Firestore GeoPoint
+  radiusKm: number;                      // e.g. 3  (kilometres)
+  convenienceCharge: number;            // e.g. 25
+  reasons: string[];                    // UI bullet list
+};
+
+type ConvenienceResult = {
+  hotspot: Hotspot | null;     // null → not in any hotspot
+  fee: number;                 // 0 if not in hotspot
 };
 
 type PromoCode = {
@@ -92,7 +132,9 @@ const CartScreen: React.FC = () => {
   const { location, updateLocation } = useLocationContext(); // already have this in Categories – add here too
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
   const [recommended, setRecommended] = useState<Product[]>([]);
-
+  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [convenienceFee, setConvenienceFee] = useState<number>(0);
+  const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const {
     cart,
     increaseQuantity,
@@ -230,12 +272,28 @@ const CartScreen: React.FC = () => {
     inputRange: [-1, 1],
     outputRange: [-10, 10],
   });
+// ⬇ paste just ABOVE the big “Fetch Data On Mount” useEffect
+const fetchHotspots = async (storeId: string | null) => {
+  if (!storeId) { setHotspots([]); return; }
+
+  const snap = await firestore()
+      .collection('hotspots')
+      .where('storeId', '==', storeId)
+      .get();
+
+  const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as Hotspot) }));
+  console.log(list)
+
+  setHotspots(list);
+};
+
 
   /***************************************
    * Fetch Data On Mount
    ***************************************/
   useEffect(() => {
     fetchFareData(location.storeId ?? null);
+    fetchHotspots(location.storeId ?? null);
     fetchCartItems();
     watchPromos();
     const unsubscribe = watchUserLocations();
@@ -244,28 +302,48 @@ const CartScreen: React.FC = () => {
     };
   }, []);
 
-  // Re-fetch items whenever cart changes
-  useEffect(() => {
-    fetchCartItems();
-  }, [cart]);
-
   // If user selected location
   useEffect(() => {
-    if (route.params?.selectedLocation) {
-      setSelectedLocation(route.params.selectedLocation);
+  if (route.params?.selectedLocation) {
+    (async () => {
+      const ok = await checkDeliveryWindow();
+      if (!ok) {
+        Alert.alert(
+          "Closed for deliveries",
+          "Sorry, we’re not delivering right now. Please try again during our next delivery window."
+        );
+      } else {
+        setSelectedLocation(route.params.selectedLocation);
+      }
+      // clear the param so it doesn’t fire again
       navigation.setParams({ selectedLocation: null });
-    }
-  }, [route.params?.selectedLocation]);
+    })();
+  }
+}, [route.params?.selectedLocation]);
 
-  // Recalc totals
-  useEffect(() => {
-    if (cartItems.length > 0) calculateTotals();
-    else resetTotals();
-  }, [cartItems, selectedPromo, selectedLocation, fareData]);
 
   useEffect(() => {
     fetchFareData(location.storeId ?? null);
+    fetchHotspots(location.storeId ?? null);
+
   }, [location.storeId]);
+
+  useEffect(() => {
+  (async () => {
+    if (selectedLocation && hotspots.length) {
+      const res = await checkHotspot(
+        selectedLocation.lat,
+        selectedLocation.lng,
+        hotspots
+      );
+      setConvenienceFee(res.fee);
+      setActiveHotspot(res.hotspot);
+    } else {
+      setConvenienceFee(0);
+      setActiveHotspot(null);
+    }
+  })();
+}, [selectedLocation, hotspots]);
 
   /***************************************
    * Firestore Data
@@ -304,19 +382,24 @@ const CartScreen: React.FC = () => {
       setFareData(null);
     }
   };
-  useEffect(() => {
-    const loadCart = async () => {
-      setLoading(true);
-      await fetchCartItems();
-      setLoading(false);
-    };
-    loadCart();
-  }, []);
 
+  useEffect(() => { 
+    if (cartItems.length > 0) 
+      calculateTotals(); 
+    else 
+      resetTotals();
+  }, [cartItems,cart, selectedPromo, selectedLocation, fareData, convenienceFee]);
+
+  const n = (x: any, dflt = 0) => {
+  const v = Number(x);
+  return Number.isFinite(v) ? v : dflt;
+};
   const fetchCartItems = async (showLoader = true) => {
     try {
-      if (showLoader) setRefreshingCartItems(true);
-
+  if (showLoader) {
+     setLoading(true);                 
+     setRefreshingCartItems(true);
+    }
       const productIds = Object.keys(cart);
       if (productIds.length === 0) {
         setCartItems([]);
@@ -349,8 +432,10 @@ const CartScreen: React.FC = () => {
       console.error("Error fetching cart items:", error);
       Alert.alert("Error", "Failed to fetch cart items.");
     } finally {
-      if (showLoader) setRefreshingCartItems(false);
-    }
+if (showLoader) {
+     setRefreshingCartItems(false);
+      setLoading(false);                // ← NEW
+    }}
   };
 
   /**
@@ -497,6 +582,50 @@ const CartScreen: React.FC = () => {
     }
   };
 
+  const checkHotspot = async (
+  dropLat: number,
+  dropLng: number,
+  spots: Hotspot[]
+): Promise<ConvenienceResult> => {
+  if (!spots.length) return { hotspot: null, fee: 0 };
+
+  // create “lat,lng|lat,lng|…” list for Google
+  const destinations = spots
+    .map((h) => `${h.center.latitude},${h.center.longitude}`)
+    .join("|");
+
+  try {
+    const { data } = await axios.get(
+      "https://maps.googleapis.com/maps/api/distancematrix/json",
+      {
+        params: {
+          origins: `${dropLat},${dropLng}`,
+          destinations,
+          key: GOOGLE_PLACES_API_KEY.replace(/\s+/g, ""),
+          units: "metric",
+        },
+      }
+    );
+
+    if (data.status !== "OK") return { hotspot: null, fee: 0 };
+
+    let winner: { spot: Hotspot; distKm: number } | null = null;
+    data.rows[0].elements.forEach((el: any, idx: number) => {
+      if (el.status !== "OK") return;
+      const km = n(el.distance.value) / 1000;
+      const spot = spots[idx];
+      if (km <= spot.radiusKm && (!winner || km < winner.distKm))
+        winner = { spot, distKm: km };
+    });
+
+    return winner
+      ? { hotspot: winner.spot, fee: n(winner.spot.convenienceCharge) }
+      : { hotspot: null, fee: 0 };
+  } catch (e) {
+    console.error("[checkHotspot]", e);
+    return { hotspot: null, fee: 0 };
+  }
+};
   /***************************************
    * Calculate Totals
    ***************************************/
@@ -549,24 +678,25 @@ const CartScreen: React.FC = () => {
 
     // 4) Delivery
     let _deliveryCharge = 0;
-    if (distanceInKm <= fareData.distanceThreshold) {
-      _deliveryCharge = fareData.baseDeliveryCharge;
+    if (distanceInKm <= n(fareData.distanceThreshold)) {
+      _deliveryCharge = n(fareData.baseDeliveryCharge);
     } else {
-      const extraKms = distanceInKm - fareData.distanceThreshold;
+      const extraKms = distanceInKm - n(fareData.distanceThreshold);
       _deliveryCharge =
-        fareData.baseDeliveryCharge + extraKms * fareData.additionalCostPerKm;
+        n(fareData.baseDeliveryCharge) + extraKms * n(fareData.additionalCostPerKm);
     }
 
     // 5) Ride CGST/SGST
-    const totalGstOnDelivery = (_deliveryCharge * fareData.gstPercentage) / 100;
+    const totalGstOnDelivery = (_deliveryCharge * n(fareData.gstPercentage)) / 100;
     const _rideCgst = totalGstOnDelivery / 2;
     const _rideSgst = totalGstOnDelivery / 2;
 
     // 6) Platform fee
-    const _platformFee = fareData.platformFee;
+    const _platformFee = n(fareData.platformFee);
 
     // 7) Final total
     const surgeFee = location.surge?.active ? location.surge.fee : 0;
+    const _conFee = n(convenienceFee);
     const _final =
       itemsTotal +
       _productCgst +
@@ -576,7 +706,8 @@ const CartScreen: React.FC = () => {
       _rideCgst +
       _rideSgst +
       _platformFee +
-      surgeFee;
+      surgeFee + 
+      _conFee;
     // Update states
     setSubtotal(_subtotal);
     setProductCgst(_productCgst);
@@ -607,6 +738,8 @@ const CartScreen: React.FC = () => {
     setPlatformFee(0);
     setSurgeLine(0);
     setFinalTotal(0);
+    setConvenienceFee(0);
+    setActiveHotspot(null);
   };
 
   /***************************************
@@ -783,6 +916,8 @@ const CartScreen: React.FC = () => {
         status: "pending",
         createdAt: firestore.FieldValue.serverTimestamp(),
         usedPromo: selectedPromo ? selectedPromo.id : null,
+        convenienceFee,              // new field
+hotspotId: activeHotspot?.id || null,
       };
 
       const orderRef = await firestore().collection("orders").add(orderData);
@@ -898,33 +1033,43 @@ const CartScreen: React.FC = () => {
       <TouchableOpacity
         style={styles.addressItemLeft}
         onPress={async () => {
-          try {
-            const nearest = await findNearestStore(item.lat, item.lng);
-            if (!nearest) {
-              Alert.alert(
-                "Unavailable",
-                "We don’t deliver to that address yet – try another address."
-              );
-              return;
-            }
+  try {
+    /* 1️⃣  Block if we’re outside the delivery window */
+    const ok = await checkDeliveryWindow();
+    if (!ok) {
+      Alert.alert(
+        "Closed for deliveries",
+        "Sorry, we’re not delivering right now. Please try again during our next delivery window."
+      );
+      return;           // don’t close the sheet, don’t change the address
+    }
 
-            const fullLocation = {
-              ...item,
-              lat: item.lat,
-              lng: item.lng,
-              storeId: nearest.id, // attach the chosen store
-            };
+    /* 2️⃣  Continue with the existing nearest-store logic */
+    const nearest = await findNearestStore(item.lat, item.lng);
+    if (!nearest) {
+      Alert.alert(
+        "Unavailable",
+        "We don’t deliver to that address yet – try another address."
+      );
+      return;
+    }
 
-            setSelectedLocation(fullLocation);
-            updateLocation(fullLocation);
-          } catch (e) {
-            console.error("[findNearestStore]", e);
-            Alert.alert("Error", "Couldn’t validate that address.");
-          } finally {
-            setShowLocationSheet(false);
-          }
-        }}
-      >
+    const fullLocation = {
+      ...item,
+      lat: item.lat,
+      lng: item.lng,
+      storeId: nearest.id,
+    };
+
+    setSelectedLocation(fullLocation);
+    updateLocation(fullLocation);
+    setShowLocationSheet(false);      // close the bottom sheet
+  } catch (e) {
+    console.error("[findNearestStore]", e);
+    Alert.alert("Error", "Couldn’t validate that address.");
+  }
+}}
+>
         <Text style={styles.addressItemLabel}>
           {item.placeLabel} - {item.houseNo}
         </Text>
@@ -1232,7 +1377,12 @@ const CartScreen: React.FC = () => {
                     </View>
                   </>
                 )}
-
+{convenienceFee > 0 && (
+  <View style={styles.summaryRow}>
+    <Text style={styles.summaryLabel}>Convenience Fee</Text>
+    <Text style={styles.summaryValue}>₹{convenienceFee.toFixed(2)}</Text>
+  </View>
+)}
                 {/* Platform Fee */}
                 {platformFee > 0 && (
                   <View style={styles.summaryRow}>
