@@ -50,7 +50,14 @@ type Product = {
   SGST?: number;
   cess?: number;
 };
+type WeatherThreshold = {
+  precipMmPerHr: number;
+  windSpeedKph: number;
+};
 
+type WeatherResult = {
+  isBadWeather: boolean;
+};
 type PromoCode = {
   id: string;
   code: string;
@@ -71,6 +78,7 @@ type FareData = {
   distanceThreshold: number;
   gstPercentage: number; // ride-level GST
   platformFee: number;
+  surgeFee?: number; // 👈
   fixedPickupLocation?: {
     address: string;
     coordinates: {
@@ -78,6 +86,10 @@ type FareData = {
       longitude: string;
     };
     name: string;
+  };
+  weatherThreshold?: {
+    precipMmPerHr: number;
+    windSpeedKph: number;
   };
 };
 
@@ -104,8 +116,7 @@ const CartScreen: React.FC = () => {
 
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true); // for initial screen load
-  const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
+  const [loading, setLoading] = useState<boolean>(true);
 
   // ----- PROMO -----
   const [promos, setPromos] = useState<PromoCode[]>([]);
@@ -304,19 +315,10 @@ const CartScreen: React.FC = () => {
       setFareData(null);
     }
   };
-  useEffect(() => {
-    const loadCart = async () => {
-      setLoading(true);
-      await fetchCartItems();
-      setLoading(false);
-    };
-    loadCart();
-  }, []);
 
-  const fetchCartItems = async (showLoader = true) => {
+  const fetchCartItems = async () => {
     try {
-      if (showLoader) setRefreshingCartItems(true);
-
+      setLoading(true);
       const productIds = Object.keys(cart);
       if (productIds.length === 0) {
         setCartItems([]);
@@ -349,7 +351,7 @@ const CartScreen: React.FC = () => {
       console.error("Error fetching cart items:", error);
       Alert.alert("Error", "Failed to fetch cart items.");
     } finally {
-      if (showLoader) setRefreshingCartItems(false);
+      setLoading(false);
     }
   };
 
@@ -496,7 +498,35 @@ const CartScreen: React.FC = () => {
       return 0;
     }
   };
+  //WEATHER
+  const getWeather = async (
+    lat: number,
+    lng: number,
+    thresholds: WeatherThreshold = { precipMmPerHr: 0.3, windSpeedKph: 25 }
+  ): Promise<WeatherResult> => {
+    try {
+      const url = `https://weather.googleapis.com/v1/weather:lookup?location.latitude=${lat}&location.longitude=${lng}&fields=current&key=${GOOGLE_PLACES_API_KEY}`;
 
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Google Weather API failed: ${res.status}`);
+
+      const data = await res.json();
+
+      const current = data.current;
+      const precip = current?.precipitationIntensityMmPerHr ?? 0;
+      const wind = current?.windSpeedKph ?? 0;
+
+      const isRainy = precip > thresholds.precipMmPerHr;
+      const isWindy = wind > thresholds.windSpeedKph;
+
+      return {
+        isBadWeather: isRainy || isWindy,
+      };
+    } catch (err) {
+      console.error("Google Weather fetch error:", err);
+      return { isBadWeather: false };
+    }
+  };
   /***************************************
    * Calculate Totals
    ***************************************/
@@ -564,9 +594,19 @@ const CartScreen: React.FC = () => {
 
     // 6) Platform fee
     const _platformFee = fareData.platformFee;
+    // 7) Surge Fee (only if location is selected)
+    let surgeFee = 0;
+    if (selectedLocation?.lat && selectedLocation?.lng) {
+      const { isBadWeather } = await getWeather(
+        selectedLocation.lat,
+        selectedLocation.lng,
+        fareData.weatherThreshold
+      );
+      surgeFee = isBadWeather ? fareData.surgeFee ?? 0 : 0;
+    }
 
-    // 7) Final total
-    const surgeFee = location.surge?.active ? location.surge.fee : 0;
+    // 8) Final total
+
     const _final =
       itemsTotal +
       _productCgst +
@@ -842,10 +882,7 @@ const CartScreen: React.FC = () => {
             </TouchableOpacity>
             <Text style={styles.quantityText}>{quantity}</Text>
             <TouchableOpacity
-              onPress={() => {
-                increaseQuantity(item.id, item.quantity);
-                fetchCartItems(false);
-              }}
+              onPress={() => increaseQuantity(item.id, item.quantity)}
               style={styles.controlButton}
             >
               <MaterialIcons name="add" size={18} color="#fff" />
@@ -1051,10 +1088,7 @@ const CartScreen: React.FC = () => {
                         item={item}
                         qtyInCart={cart[item.id] ?? 0}
                         onAdd={() => addToCart(item.id, item.quantity)}
-                        onInc={() => {
-                          increaseQuantity(item.id, item.quantity);
-                          fetchCartItems(false);
-                        }}
+                        onInc={() => increaseQuantity(item.id, item.quantity)}
                         onDec={() => decreaseQuantity(item.id)}
                         width={RECO_CARD_WIDTH}
                       />

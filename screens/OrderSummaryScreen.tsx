@@ -67,12 +67,50 @@ const OrderSummaryScreen: React.FC = () => {
   const [gstAmount, setGstAmount] = useState<number>(0);
   const [totalCost, setTotalCost] = useState<number>(0);
 
+  // State for bad weather calculation
+  const [applySurge, setApplySurge] = useState(false);
+  const [surgeFee, setSurgeFee] = useState(15); // default ₹10
+  const [weatherThreshold, setWeatherThreshold] = useState({
+    precipMmPerHr: 0.3,
+    windSpeedKph: 25,
+  });
+
   // If you need the fixed pickup location from Firestore
   const [fixedPickupLocation, setFixedPickupLocation] =
     useState<PickupLocation | null>(null);
 
   // Logged-in user ID
   const userId = auth().currentUser?.uid;
+  //bad weather
+  useEffect(() => {
+    const checkWeatherConditions = async () => {
+      if (!pickupCoords) return;
+
+      try {
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${pickupCoords.latitude}&longitude=${pickupCoords.longitude}&current=precipitation,wind_speed`
+        );
+        const json = await res.json();
+        const precip = json?.current?.precipitation ?? 0;
+        const wind = json?.current?.wind_speed ?? 0;
+
+        if (
+          precip > weatherThreshold.precipMmPerHr ||
+          wind > weatherThreshold.windSpeedKph
+        ) {
+          setApplySurge(true);
+        } else {
+          setApplySurge(false);
+        }
+      } catch (e) {
+        console.warn("Weather fetch failed", e);
+      }
+    };
+
+    if (!loadingSettings) {
+      checkWeatherConditions();
+    }
+  }, [pickupCoords, loadingSettings, weatherThreshold]);
 
   // 1. Fetch fixed pickup location if needed
   useEffect(() => {
@@ -94,6 +132,15 @@ const OrderSummaryScreen: React.FC = () => {
 
         if (settingsDoc.exists) {
           const data = settingsDoc.data();
+          setSurgeFee(data?.surgeFee ?? 10);
+
+          if (data?.weatherThreshold) {
+            setWeatherThreshold({
+              precipMmPerHr: data.weatherThreshold.precipMmPerHr ?? 0.3,
+              windSpeedKph: data.weatherThreshold.windSpeedKph ?? 25,
+            });
+          }
+
           setBaseDeliveryCharge(data?.baseDeliveryCharge ?? 50);
           setPlatformFee(data?.platformFee ?? 4);
           setGstPercentage(data?.gstPercentage ?? 5);
@@ -155,8 +202,10 @@ const OrderSummaryScreen: React.FC = () => {
           ? (distance - distanceThreshold) * additionalCostPerKm
           : 0;
 
+      const surge = applySurge ? surgeFee : 0;
+
       const initialTotalCost =
-        baseDeliveryCharge + platformFee + additionalCost;
+        baseDeliveryCharge + platformFee + additionalCost + surge;
 
       // Calculate discount from promo
       let calculatedDiscount = 0;
@@ -214,8 +263,11 @@ const OrderSummaryScreen: React.FC = () => {
         distance > distanceThreshold
           ? (distance - distanceThreshold) * additionalCostPerKm
           : 0;
+      const surge = applySurge ? surgeFee : 0;
+
       const initialTotalCost =
-        baseDeliveryCharge + platformFee + additionalCost;
+        baseDeliveryCharge + platformFee + additionalCost + surge;
+
       let discountAmount = 0;
       if (discountApplied && promoType && promoAmount) {
         if (promoType === "flat") {
@@ -245,11 +297,13 @@ const OrderSummaryScreen: React.FC = () => {
             deliveryCharge: baseDeliveryCharge,
             platformFee,
             additionalCost,
+            surge,
             initialTotal: initialTotalCost,
             discount: discountAmount,
             gst: calculatedGst,
             totalCost: finalTotalCost,
           },
+
           distance,
           orderedBy: user.uid,
           paymentMethod,
@@ -342,6 +396,12 @@ const OrderSummaryScreen: React.FC = () => {
             </Text>
             <Text style={styles.detailValue}>₹{additionalCost.toFixed(2)}</Text>
           </View>
+          {applySurge && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Weather Surge Fee:</Text>
+              <Text style={styles.detailValue}>₹{surgeFee.toFixed(2)}</Text>
+            </View>
+          )}
 
           {/* OPTIONAL DIVIDER */}
           <View style={styles.divider} />
