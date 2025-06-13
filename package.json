@@ -34,7 +34,6 @@
     "axios": "^1.7.7",
     "date-fns": "^4.1.0",
     "expo": "^52.0.37",
-    "expo-blur": "^14.1.4",
     "expo-constants": "~17.0.7",
     "expo-dev-client": "~5.0.12",
     "expo-device": "~7.0.2",

@@ -104,7 +104,8 @@ const CartScreen: React.FC = () => {
 
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true); // for initial screen load
+  const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
 
   // ----- PROMO -----
   const [promos, setPromos] = useState<PromoCode[]>([]);
@@ -303,10 +304,19 @@ const CartScreen: React.FC = () => {
       setFareData(null);
     }
   };
-
-  const fetchCartItems = async () => {
-    try {
+  useEffect(() => {
+    const loadCart = async () => {
       setLoading(true);
+      await fetchCartItems();
+      setLoading(false);
+    };
+    loadCart();
+  }, []);
+
+  const fetchCartItems = async (showLoader = true) => {
+    try {
+      if (showLoader) setRefreshingCartItems(true);
+
       const productIds = Object.keys(cart);
       if (productIds.length === 0) {
         setCartItems([]);
@@ -339,7 +349,7 @@ const CartScreen: React.FC = () => {
       console.error("Error fetching cart items:", error);
       Alert.alert("Error", "Failed to fetch cart items.");
     } finally {
-      setLoading(false);
+      if (showLoader) setRefreshingCartItems(false);
     }
   };
 
@@ -832,7 +842,10 @@ const CartScreen: React.FC = () => {
             </TouchableOpacity>
             <Text style={styles.quantityText}>{quantity}</Text>
             <TouchableOpacity
-              onPress={() => increaseQuantity(item.id, item.quantity)}
+              onPress={() => {
+                increaseQuantity(item.id, item.quantity);
+                fetchCartItems(false);
+              }}
               style={styles.controlButton}
             >
               <MaterialIcons name="add" size={18} color="#fff" />
@@ -1038,7 +1051,10 @@ const CartScreen: React.FC = () => {
                         item={item}
                         qtyInCart={cart[item.id] ?? 0}
                         onAdd={() => addToCart(item.id, item.quantity)}
-                        onInc={() => increaseQuantity(item.id, item.quantity)}
+                        onInc={() => {
+                          increaseQuantity(item.id, item.quantity);
+                          fetchCartItems(false);
+                        }}
                         onDec={() => decreaseQuantity(item.id)}
                         width={RECO_CARD_WIDTH}
                       />

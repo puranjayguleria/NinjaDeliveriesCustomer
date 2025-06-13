@@ -20,7 +20,7 @@
     "apk": {
       "android": {
         "gradleCommand": ":app:assembleRelease",
-        "autoIncrement": "versionCode",
+        "autoIncrement": "versionCode", 
         "distribution": "store"
       }
     }

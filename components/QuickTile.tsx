@@ -1,26 +1,31 @@
-// components/QuickTile.tsx
 import React from "react";
-import { View, Text, Image, Pressable, StyleSheet, Dimensions } from "react-native";
+import { View, Text, Image, Pressable, StyleSheet } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useCart } from "@/context/CartContext";
+
+import { useCart, useCartQty } from "@/context/CartContext";
 
 const TILE_W = 120;
 const TILE_H = 210;
 
 export type QuickTileProps = { p: any };
-export const QuickTile: React.FC<QuickTileProps> = ({ p }) => {
-  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
-  const qty      = cart[p.id] ?? 0;
-  const price    = p.price ?? 0;
+
+export const QuickTile: React.FC<QuickTileProps> = React.memo(({ p }) => {
+  const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
+  const qty = useCartQty(p.id);
+
+  const price = p.price ?? 0;
   const discount = p.discount ?? 0;
-  const mrp      = price + discount;
-  const deal     = discount > 0;
-  const name     = p.name || p.title || "Product";
+  const mrp = price + discount;
+  const deal = discount > 0;
+  const name = p.name || p.title || "Product";
+  const stock = p.quantity ?? 1; // Ensures there's a fallback
 
   return (
     <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
       <Image
-        source={p.imageUrl || p.image ? { uri: p.imageUrl || p.image } : undefined}
+        source={
+          p.imageUrl || p.image ? { uri: p.imageUrl || p.image } : undefined
+        }
         style={styles.tileImg}
         resizeMode="cover"
       />
@@ -29,32 +34,46 @@ export const QuickTile: React.FC<QuickTileProps> = ({ p }) => {
           <Text style={styles.discountTagTxt}>₹{discount} OFF</Text>
         </View>
       )}
-      <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
+      <Text style={styles.tileName} numberOfLines={2}>
+        {name}
+      </Text>
       <View style={styles.ribbon}>
         <Text style={styles.priceNow}>₹{price}</Text>
         {deal && <Text style={styles.priceMRP}>₹{mrp}</Text>}
       </View>
       {qty === 0 ? (
         <Pressable
-          style={[styles.cartBar, { backgroundColor: "#009688", borderColor: "#009688" }]}
-          onPress={() => addToCart(p.id, 1)}
+          style={[
+            styles.cartBar,
+            { backgroundColor: "#009688", borderColor: "#009688" },
+          ]}
+          onPress={() => addToCart(p.id, stock)}
         >
           <Text style={styles.cartBarAdd}>ADD</Text>
         </Pressable>
       ) : (
-        <View style={[styles.cartBar, { backgroundColor: "#fff", borderColor: "#009688", flexDirection: "row" }]}>
+        <View
+          style={[
+            styles.cartBar,
+            {
+              backgroundColor: "#fff",
+              borderColor: "#009688",
+              flexDirection: "row",
+            },
+          ]}
+        >
           <Pressable onPress={() => decreaseQuantity(p.id)} hitSlop={12}>
             <MaterialIcons name="remove" size={18} color="#009688" />
           </Pressable>
           <Text style={styles.qtyNum}>{qty}</Text>
-          <Pressable onPress={() => increaseQuantity(p.id, 1)} hitSlop={12}>
+          <Pressable onPress={() => increaseQuantity(p.id, stock)} hitSlop={12}>
             <MaterialIcons name="add" size={18} color="#009688" />
           </Pressable>
         </View>
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   tile: {
@@ -115,5 +134,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  qtyNum: { color: "#009688", fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+  qtyNum: {
+    color: "#009688",
+    fontWeight: "700",
+    fontSize: 14,
+    marginHorizontal: 10,
+  },
 });

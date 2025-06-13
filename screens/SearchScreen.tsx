@@ -195,7 +195,7 @@ export default function SearchScreen() {
   }, [search, allProducts, categories]);
 
   /* ────────── local QuickTile (using same styling as ProductsHomeScreen) ────────── */
-  const QuickTileLocal: React.FC<{ p: any }> = ({ p }) => {
+  const QuickTileLocal: React.FC<{ p: any }> = React.memo(({ p }) => {
     const qty = cart[p.id] ?? 0;
     const deal = (p.discount ?? 0) > 0;
     const price = p.price ?? 0;
@@ -267,7 +267,7 @@ export default function SearchScreen() {
         )}
       </View>
     );
-  };
+}, (prev, next) => prev.p.id === next.p.id && prev.qty === next.qty);
 
   /* ────────── loading state ────────── */
   if (loading) {
@@ -423,6 +423,7 @@ export default function SearchScreen() {
                   )}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ paddingLeft: H, paddingBottom: 12 }}
+                  extraData={cart}
                   initialNumToRender={4}
                 />
               </View>
