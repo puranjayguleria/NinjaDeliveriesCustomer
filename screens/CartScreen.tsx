@@ -1015,9 +1015,13 @@ const CartScreen: React.FC = () => {
       return;
     }
 
-    const itemPrice = item.discount ? item.price - item.discount : item.price;
-    const cgstRate = item.CGST ?? 0;
-    const sgstRate = item.SGST ?? 0;
+    const itemPrice = Number(item.discount)
+      ? Number(item.price) - Number(item.discount)
+      : Number(item.price);
+
+    const cgstRate = Number(item.CGST ?? 0);
+    const sgstRate = Number(item.SGST ?? 0);
+
     const realPrice = itemPrice + cgstRate + sgstRate;
     const totalPrice = realPrice * quantity;
 

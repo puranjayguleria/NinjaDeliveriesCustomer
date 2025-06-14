@@ -195,79 +195,87 @@ export default function SearchScreen() {
   }, [search, allProducts, categories]);
 
   /* ────────── local QuickTile (using same styling as ProductsHomeScreen) ────────── */
-  const QuickTileLocal: React.FC<{ p: any }> = React.memo(({ p }) => {
-    const qty = cart[p.id] ?? 0;
-    const deal = (p.discount ?? 0) > 0;
-    const price = p.price ?? 0;
-    const pan = isPanProduct(p);
-    const imgUri = firstImg(p);
+  const QuickTileLocal: React.FC<{ p: any }> = React.memo(
+    ({ p }) => {
+      const qty = cart[p.id] ?? 0;
+      const deal = (p.discount ?? 0) > 0;
+      const price =
+        Math.round(
+          (Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0)) *
+            100
+        ) / 100;
 
-    const handleAdd = () => maybeGate(() => addToCart(p.id, p.quantity), pan);
-    const handleInc = () =>
-      maybeGate(() => increaseQuantity(p.id, p.quantity), pan);
-    const handleDec = () => decreaseQuantity(p.id);
+      const pan = isPanProduct(p);
+      const imgUri = firstImg(p);
 
-    return (
-      <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
-        <Image
-          source={imgUri ? { uri: imgUri } : undefined}
-          style={styles.tileImg}
-          resizeMode="contain"
-        />
+      const handleAdd = () => maybeGate(() => addToCart(p.id, p.quantity), pan);
+      const handleInc = () =>
+        maybeGate(() => increaseQuantity(p.id, p.quantity), pan);
+      const handleDec = () => decreaseQuantity(p.id);
 
-        {deal && (
-          <View style={styles.discountTag}>
-            <Text style={styles.discountTagTxt}>₹{p.discount} OFF</Text>
+      return (
+        <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
+          <Image
+            source={imgUri ? { uri: imgUri } : undefined}
+            style={styles.tileImg}
+            resizeMode="contain"
+          />
+
+          {deal && (
+            <View style={styles.discountTag}>
+              <Text style={styles.discountTagTxt}>₹{p.discount} OFF</Text>
+            </View>
+          )}
+
+          <Text style={styles.tileName} numberOfLines={2}>
+            {p.name || p.title}
+          </Text>
+
+          <View style={styles.ribbon}>
+            <Text style={styles.priceNow}>₹{price - p.discount}</Text>
+            {deal && <Text style={styles.priceMRP}>₹{price}</Text>}
           </View>
-        )}
 
-        <Text style={styles.tileName} numberOfLines={2}>
-          {p.name || p.title}
-        </Text>
-
-        <View style={styles.ribbon}>
-          <Text style={styles.priceNow}>₹{price}</Text>
-          {deal && <Text style={styles.priceMRP}>₹{price + p.discount}</Text>}
+          {qty === 0 ? (
+            <Pressable
+              style={[
+                styles.cartBar,
+                { backgroundColor: "#009688", borderColor: "#009688" },
+              ]}
+              onPress={handleAdd}
+              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+            >
+              <Text style={styles.cartBarAdd}>ADD</Text>
+            </Pressable>
+          ) : (
+            <View
+              style={[
+                styles.cartBar,
+                { flexDirection: "row", borderColor: "#009688" },
+              ]}
+            >
+              <Pressable
+                onPress={handleDec}
+                hitSlop={8}
+                android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+              >
+                <MaterialIcons name="remove" size={18} color="#009688" />
+              </Pressable>
+              <Text style={styles.qtyNum}>{qty}</Text>
+              <Pressable
+                onPress={handleInc}
+                hitSlop={8}
+                android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+              >
+                <MaterialIcons name="add" size={18} color="#009688" />
+              </Pressable>
+            </View>
+          )}
         </View>
-
-        {qty === 0 ? (
-          <Pressable
-            style={[
-              styles.cartBar,
-              { backgroundColor: "#009688", borderColor: "#009688" },
-            ]}
-            onPress={handleAdd}
-            android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-          >
-            <Text style={styles.cartBarAdd}>ADD</Text>
-          </Pressable>
-        ) : (
-          <View
-            style={[
-              styles.cartBar,
-              { flexDirection: "row", borderColor: "#009688" },
-            ]}
-          >
-            <Pressable
-              onPress={handleDec}
-              hitSlop={8}
-              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-            >
-              <MaterialIcons name="remove" size={18} color="#009688" />
-            </Pressable>
-            <Text style={styles.qtyNum}>{qty}</Text>
-            <Pressable
-              onPress={handleInc}
-              hitSlop={8}
-              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-            >
-              <MaterialIcons name="add" size={18} color="#009688" />
-            </Pressable>
-          </View>
-        )}
-      </View>
-    );
-}, (prev, next) => prev.p.id === next.p.id && prev.qty === next.qty);
+      );
+    },
+    (prev, next) => prev.p.id === next.p.id && prev.qty === next.qty
+  );
 
   /* ────────── loading state ────────── */
   if (loading) {

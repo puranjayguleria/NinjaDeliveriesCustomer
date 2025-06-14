@@ -7,15 +7,39 @@ import { useCart, useCartQty } from "@/context/CartContext";
 const TILE_W = 120;
 const TILE_H = 210;
 
-export type QuickTileProps = { p: any };
+export type QuickTileProps = {
+  p: {
+    id: string;
+    CESS: string;
+    CGST: number;
+    SGST: number;
+    categoryId: string;
+    description: string;
+    discount: number;
+    image: string;
+    isNew: boolean;
+    isStoreAvailable: boolean;
+    name: string;
+    price: number;
+    quantity: number;
+    shelfLife: string;
+    storeId: string;
+    subcategoryId: string;
+    weeklySold: string;
+  };
+};
 
 export const QuickTile: React.FC<QuickTileProps> = React.memo(({ p }) => {
   const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
   const qty = useCartQty(p.id);
 
-  const price = p.price ?? 0;
+  const mrp =
+    Math.round(
+      (Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0)) * 100
+    ) / 100;
+
   const discount = p.discount ?? 0;
-  const mrp = price + discount;
+  const price = mrp - discount;
   const deal = discount > 0;
   const name = p.name || p.title || "Product";
   const stock = p.quantity ?? 1; // Ensures there's a fallback
