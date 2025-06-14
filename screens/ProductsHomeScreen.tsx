@@ -46,6 +46,7 @@ import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
+import { useWeather } from "../context/WeatherContext"; // adjust path if needed
 
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_VIDEO_HEIGHT = 180;
@@ -182,9 +183,12 @@ const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
 };
 
 /* ------------------------------------------------------------------ header + search */
+
 const Header = memo(() => {
   const { location } = useLocationContext();
+  const { isBadWeather } = useWeather();
   const nav = useNavigation<any>();
+
   return (
     <Pressable
       style={styles.locationRow}
@@ -198,11 +202,19 @@ const Header = memo(() => {
         color="#fff"
         style={{ marginRight: 4 }}
       />
-      <Text style={styles.locationTxt} numberOfLines={1}>
-        {location.address
-          ? `Delivering to ${location.address}`
-          : "Set delivery location"}
-      </Text>
+      <View style={styles.textRow}>
+        <Text style={styles.locationTxt} numberOfLines={1}>
+          {location.address
+            ? `Delivering to ${location.address}`
+            : "Set delivery location"}
+        </Text>
+
+        {isBadWeather && (
+          <View style={styles.badge01}>
+            <Text style={styles.badgeText}>🌩️ Bad Weather</Text>
+          </View>
+        )}
+      </View>
       <MaterialIcons name="keyboard-arrow-down" size={18} color="#fff" />
     </Pressable>
   );
@@ -270,7 +282,11 @@ const MemoIntroCard = React.memo(
             )}
           </>
         ) : (
-          <Image source={{ uri: url }} style={styles.mediaBox} resizeMode="cover" />
+          <Image
+            source={{ uri: url }}
+            style={styles.mediaBox}
+            resizeMode="cover"
+          />
         )}
         <View style={styles.quizOverlay}>
           <Text style={styles.quizTxt}>
@@ -647,7 +663,7 @@ export default function ProductsHomeScreen() {
     initFetch();
   }, [initFetch]);
 
-   const extra = React.useMemo(
+  const extra = React.useMemo(
     () => ({ introUrl, prodMap, cart }),
     [introUrl, prodMap, cart]
   );
@@ -721,7 +737,6 @@ export default function ProductsHomeScreen() {
     loadHighlights();
   }, [loadHighlights]);
 
-
   const catLookup = useMemo(() => {
     const m: Record<string, any> = {};
     cats.forEach((c) => (m[c.id] = c));
@@ -750,50 +765,49 @@ export default function ProductsHomeScreen() {
     [freshProducts, groupByCat]
   );
   const sections = useMemo(
-  () => [{ data: cats.slice(0, page * PAGE_SIZE) }],
-  [cats, page]
-);
-
-const listHeader = useMemo(() => {
-  if (!introUrl) return null;
-  return <MemoIntroCard url={introUrl} title={quizTitle} />;
-}, [introUrl, quizTitle]);
-
-
-const renderSectionHeader = useCallback(() => {
-  return (
-    <>
-      {bestHeader.length > 0 && (
-        <>
-          <Text style={styles.laneTitle}>Best sellers</Text>
-          <FlatList
-            horizontal
-            data={bestHeader}
-            keyExtractor={(_, i) => `best${i}`}
-            renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingLeft: H }}
-          />
-        </>
-      )}
-      {freshHeader.length > 0 && (
-        <>
-          <Text style={styles.laneTitle}>Fresh arrivals</Text>
-          <FlatList
-            horizontal
-            data={freshHeader}
-            keyExtractor={(_, i) => `fresh${i}`}
-            renderItem={({ item }) => (
-              <MosaicCard {...item} badge="JUST IN" color="#ff7043" />
-            )}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingLeft: H }}
-          />
-        </>
-      )}
-    </>
+    () => [{ data: cats.slice(0, page * PAGE_SIZE) }],
+    [cats, page]
   );
-}, [bestHeader, freshHeader]);
+
+  const listHeader = useMemo(() => {
+    if (!introUrl) return null;
+    return <MemoIntroCard url={introUrl} title={quizTitle} />;
+  }, [introUrl, quizTitle]);
+
+  const renderSectionHeader = useCallback(() => {
+    return (
+      <>
+        {bestHeader.length > 0 && (
+          <>
+            <Text style={styles.laneTitle}>Best sellers</Text>
+            <FlatList
+              horizontal
+              data={bestHeader}
+              keyExtractor={(_, i) => `best${i}`}
+              renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingLeft: H }}
+            />
+          </>
+        )}
+        {freshHeader.length > 0 && (
+          <>
+            <Text style={styles.laneTitle}>Fresh arrivals</Text>
+            <FlatList
+              horizontal
+              data={freshHeader}
+              keyExtractor={(_, i) => `fresh${i}`}
+              renderItem={({ item }) => (
+                <MosaicCard {...item} badge="JUST IN" color="#ff7043" />
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingLeft: H }}
+            />
+          </>
+        )}
+      </>
+    );
+  }, [bestHeader, freshHeader]);
   // Animate on slide
 
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -823,9 +837,9 @@ const renderSectionHeader = useCallback(() => {
   });
   const memoizedGuard = useCallback(maybeGate, []);
   const memoizedIsPan = useCallback((p) => isPanProd?.(p), [isPanProd]);
-// -----------------------------------------------------------------
-// Ensures a stable reference for SectionList.re-render optimisation
-const listExtraData = useMemo(() => prodMap, [prodMap])// -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // Ensures a stable reference for SectionList.re-render optimisation
+  const listExtraData = useMemo(() => prodMap, [prodMap]); // -----------------------------------------------------------------
 
   /* -------------------------------------------------- render guard for loading-permission */
   if (hasPerm === null) {
@@ -843,7 +857,7 @@ const listExtraData = useMemo(() => prodMap, [prodMap])// ----------------------
           <>
             {/* Shrinking Video */}
             <Animated.View
-              pointerEvents="none"            // 👈 ADD THIS
+              pointerEvents="none" // 👈 ADD THIS
               style={[
                 styles.videoContainer,
                 { height: videoHeight, opacity: videoOpacity },
@@ -885,7 +899,6 @@ const listExtraData = useMemo(() => prodMap, [prodMap])// ----------------------
           <AnimatedSectionList
             showsVerticalScrollIndicator={false}
             stickySectionHeadersEnabled={false}
-
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { y: scrollY } } }],
               { useNativeDriver: false }
@@ -1061,7 +1074,12 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
   },
-
+  badge01: {
+    backgroundColor: "#FF3D00",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
   videoOverlay: {
     position: "relative",
     backgroundColor: "transparent",
@@ -1290,6 +1308,18 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: "#ccc",
     marginBottom: 12,
+  },
+
+  badgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  textRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    maxWidth: "80%",
+    flexWrap: "wrap",
   },
   locHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   locTitle: { fontSize: 18, fontWeight: "700", color: "#333", marginLeft: 6 },

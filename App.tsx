@@ -65,6 +65,7 @@ import LeaderboardScreen from "./screens/LeaderBoardScreen";
    ────────────────────────────────────────────────────────── */
 import { ensurePushTokenSynced } from "./utils/PushTokenManager";
 import { useOtaUpdate } from "./utils/useOtaUpdate";
+import { WeatherProvider } from "./context/WeatherContext";
 
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
@@ -523,30 +524,32 @@ const App: React.FC = () => {
       <CustomerProvider>
         <CartProvider>
           <LocationProvider>
-            <OrderProvider>
-              <NavigationContainer>
-                <RootStack.Navigator
-                  initialRouteName={initialRoute}
-                  screenOptions={{ headerShown: false }}
-                >
-                  <RootStack.Screen
-                    name="TermsAndConditions"
-                    component={TermsAndConditionsScreen}
-                  />
-                  <RootStack.Screen name="AppTabs" component={AppTabs} />
-                  <RootStack.Screen
-                    name="LocationSelector"
-                    component={LocationSelectorScreen}
-                    options={{ title: "Select Location" }}
-                  />
-                  <RootStack.Screen
-                    name="ContactUs"
-                    component={ContactUsScreen}
-                    options={{ title: "Contact Us", headerShown: true }}
-                  />
-                </RootStack.Navigator>
-              </NavigationContainer>
-            </OrderProvider>
+            <WeatherProvider>
+              <OrderProvider>
+                <NavigationContainer>
+                  <RootStack.Navigator
+                    initialRouteName={initialRoute}
+                    screenOptions={{ headerShown: false }}
+                  >
+                    <RootStack.Screen
+                      name="TermsAndConditions"
+                      component={TermsAndConditionsScreen}
+                    />
+                    <RootStack.Screen name="AppTabs" component={AppTabs} />
+                    <RootStack.Screen
+                      name="LocationSelector"
+                      component={LocationSelectorScreen}
+                      options={{ title: "Select Location" }}
+                    />
+                    <RootStack.Screen
+                      name="ContactUs"
+                      component={ContactUsScreen}
+                      options={{ title: "Contact Us", headerShown: true }}
+                    />
+                  </RootStack.Navigator>
+                </NavigationContainer>
+              </OrderProvider>
+            </WeatherProvider>
           </LocationProvider>
         </CartProvider>
       </CustomerProvider>
