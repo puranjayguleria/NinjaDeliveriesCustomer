@@ -365,6 +365,7 @@ export default function SearchScreen() {
           <SectionList
             sections={sections}
             keyExtractor={(item) => item.id}
+            stickySectionHeadersEnabled={false}
             renderSectionHeader={({ section }) => (
               <View>
                 <View style={styles.rowHeader}>

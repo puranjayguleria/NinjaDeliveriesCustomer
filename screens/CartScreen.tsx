@@ -47,24 +47,35 @@ import { useWeather } from "../context/WeatherContext"; // adjust path if needed
  */
 const checkDeliveryWindow = async (): Promise<boolean> => {
   try {
-    const snap = await firestore()
+    const doc = await firestore()
       .collection("delivery_timing")
       .doc("timingData")
       .get();
 
-    if (snap.exists) {
-      const { fromTime, toTime } = snap.data() as {
-        fromTime: number;
-        toTime: number;
-      };
-      const hour = new Date().getHours();
-      return hour >= fromTime && hour < toTime;
-    }
+    if (!doc.exists) return true;           // no timing data ⇒ allow
+
+    // normalise both fields to 0-23 integers
+    const { fromTime, toTime } = doc.data() as {
+      fromTime: number | string;
+      toTime: number | string;
+    };
+    const from = Number(fromTime);          // "08" ➜ 8
+    const to   = Number(toTime);            // "20" ➜ 20
+    const now  = new Date().getHours();     // 0-23
+
+    if (Number.isNaN(from) || Number.isNaN(to)) return true;
+
+    if (from === to) return true;           // 24 × 7
+
+    // same-day window (e.g. 8 → 20)
+    if (from < to) return now >= from && now < to;
+
+    // overnight window (e.g. 22 → 6)
+    return now >= from || now < to;
   } catch (e) {
     console.error("[checkDeliveryWindow]", e);
+    return true;                            // fail-open on error
   }
-  // if the doc is missing or any error ⇒ allow
-  return true;
 };
 
 /**
@@ -396,7 +407,7 @@ const CartScreen: React.FC = () => {
 
       if (!snap.empty /* use branch ❷ */ && snap.docs[0].exists) {
         setFareData(snap.docs[0].data() as FareData);
-      } else if (snap.exists /* use branch ❶ */) {
+      } else if (snap.exists ) {
         setFareData(snap.data() as unknown as FareData);
       } else {
         console.warn("No orderSetting found for store", storeId);
