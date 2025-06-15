@@ -940,13 +940,16 @@ export default function ProductsHomeScreen() {
                   initialNumToRender={10}
                   maxToRenderPerBatch={10}
                   windowSize={5}
-                  renderItem={({ item: p }) => (
-                    <QuickTile
-                      p={p}
-                      guard={memoizedGuard}
-                      isPan={memoizedIsPan(p)}
-                    />
-                  )}
+                  renderItem={({ item: p }) => {
+                    const isPan = isPanProd(p);
+                    return (
+                      <QuickTile
+                        p={p}
+                        isPan={isPan}
+                        guard={maybeGate} // passes age gate logic
+                      />
+                    );
+                  }}
                   extraData={cart}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ paddingLeft: H }}

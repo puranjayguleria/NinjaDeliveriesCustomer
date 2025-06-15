@@ -27,77 +27,88 @@ export type QuickTileProps = {
     subcategoryId: string;
     weeklySold: string;
   };
+  guard?: (cb: () => void, isPan: boolean) => void; // ✅ NEW
+  isPan?: boolean; // ✅ NEW
 };
 
-export const QuickTile: React.FC<QuickTileProps> = React.memo(({ p }) => {
-  const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
-  const qty = useCartQty(p.id);
+export const QuickTile: React.FC<QuickTileProps> = React.memo(
+  ({ p, guard, isPan }) => {
+    const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
+    const qty = useCartQty(p.id);
 
-  const mrp =
-    Math.round(
-      (Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0)) * 100
-    ) / 100;
+    const mrp =
+      Math.round(
+        (Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0)) * 100
+      ) / 100;
 
-  const discount = p.discount ?? 0;
-  const price = mrp - discount;
-  const deal = discount > 0;
-  const name = p.name || p.title || "Product";
-  const stock = p.quantity ?? 1; // Ensures there's a fallback
+    const discount = p.discount ?? 0;
+    const price = mrp - discount;
+    const deal = discount > 0;
+    const name = p.name || p.title || "Product";
+    const stock = p.quantity ?? 1; // Ensures there's a fallback
 
-  return (
-    <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
-      <Image
-        source={
-          p.imageUrl || p.image ? { uri: p.imageUrl || p.image } : undefined
-        }
-        style={styles.tileImg}
-        resizeMode="cover"
-      />
-      {deal && (
-        <View style={styles.discountTag}>
-          <Text style={styles.discountTagTxt}>₹{discount} OFF</Text>
+    return (
+      <Pressable>
+        <View style={[styles.tile, { width: TILE_W, height: TILE_H }]}>
+          <Image
+            source={
+              p.imageUrl || p.image ? { uri: p.imageUrl || p.image } : undefined
+            }
+            style={styles.tileImg}
+            resizeMode="cover"
+          />
+          {deal && (
+            <View style={styles.discountTag}>
+              <Text style={styles.discountTagTxt}>₹{discount} OFF</Text>
+            </View>
+          )}
+          <Text style={styles.tileName} numberOfLines={2}>
+            {name}
+          </Text>
+          <View style={styles.ribbon}>
+            <Text style={styles.priceNow}>₹{price}</Text>
+            {deal && <Text style={styles.priceMRP}>₹{mrp}</Text>}
+          </View>
+          {qty === 0 ? (
+            <Pressable
+              style={[
+                styles.cartBar,
+                { backgroundColor: "#009688", borderColor: "#009688" },
+              ]}
+              onPress={() => {
+                guard?.(() => addToCart(p.id, stock), isPan ?? false);
+              }}
+            >
+              <Text style={styles.cartBarAdd}>ADD</Text>
+            </Pressable>
+          ) : (
+            <View
+              style={[
+                styles.cartBar,
+                {
+                  backgroundColor: "#fff",
+                  borderColor: "#009688",
+                  flexDirection: "row",
+                },
+              ]}
+            >
+              <Pressable onPress={() => decreaseQuantity(p.id)} hitSlop={12}>
+                <MaterialIcons name="remove" size={18} color="#009688" />
+              </Pressable>
+              <Text style={styles.qtyNum}>{qty}</Text>
+              <Pressable
+                onPress={() => increaseQuantity(p.id, stock)}
+                hitSlop={12}
+              >
+                <MaterialIcons name="add" size={18} color="#009688" />
+              </Pressable>
+            </View>
+          )}
         </View>
-      )}
-      <Text style={styles.tileName} numberOfLines={2}>
-        {name}
-      </Text>
-      <View style={styles.ribbon}>
-        <Text style={styles.priceNow}>₹{price}</Text>
-        {deal && <Text style={styles.priceMRP}>₹{mrp}</Text>}
-      </View>
-      {qty === 0 ? (
-        <Pressable
-          style={[
-            styles.cartBar,
-            { backgroundColor: "#009688", borderColor: "#009688" },
-          ]}
-          onPress={() => addToCart(p.id, stock)}
-        >
-          <Text style={styles.cartBarAdd}>ADD</Text>
-        </Pressable>
-      ) : (
-        <View
-          style={[
-            styles.cartBar,
-            {
-              backgroundColor: "#fff",
-              borderColor: "#009688",
-              flexDirection: "row",
-            },
-          ]}
-        >
-          <Pressable onPress={() => decreaseQuantity(p.id)} hitSlop={12}>
-            <MaterialIcons name="remove" size={18} color="#009688" />
-          </Pressable>
-          <Text style={styles.qtyNum}>{qty}</Text>
-          <Pressable onPress={() => increaseQuantity(p.id, stock)} hitSlop={12}>
-            <MaterialIcons name="add" size={18} color="#009688" />
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-});
+      </Pressable>
+    );
+  }
+);
 
 const styles = StyleSheet.create({
   tile: {
