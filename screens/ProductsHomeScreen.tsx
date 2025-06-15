@@ -188,7 +188,7 @@ const Header = memo(() => {
   const { location } = useLocationContext();
   const { isBadWeather } = useWeather();
   const nav = useNavigation<any>();
-
+  console.log(isBadWeather);
   return (
     <Pressable
       style={styles.locationRow}
