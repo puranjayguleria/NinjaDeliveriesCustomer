@@ -1,19 +1,10 @@
-export type WeatherThreshold = {
-  precipMmPerHr?: number;
-  windSpeedKph?: number;
-};
-
-export const isBadWeather = (
-  weatherData: any,
-  _threshold?: WeatherThreshold // unused now
-): boolean => {
+export const isBadWeather = (weatherData: any, threshold: boolean): boolean => {
   if (!weatherData) return false;
-
+  const isBad = threshold;
   const conditionType =
     weatherData?.weatherCondition?.type?.toUpperCase() || "";
-  const precipType =
-    weatherData?.precipitation?.probability?.type?.toUpperCase() || "";
 
+  console.log(conditionType, isBad);
   const badWeatherTypes = new Set([
     "WIND_AND_RAIN",
     "LIGHT_RAIN_SHOWERS",
@@ -35,6 +26,5 @@ export const isBadWeather = (
     "SCATTERED_THUNDERSTORMS",
     "HEAVY_THUNDERSTORM",
   ]);
-
-  return badWeatherTypes.has(conditionType) || badWeatherTypes.has(precipType);
+  return badWeatherTypes.has(conditionType) || threshold;
 };

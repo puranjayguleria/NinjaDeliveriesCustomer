@@ -181,7 +181,15 @@ export default function SearchScreen() {
     const matches = allProducts.filter((p) => {
       const name = (p.name || p.title || "").toLowerCase();
       const desc = (p.description || "").toLowerCase();
-      return name.includes(q) || desc.includes(q);
+      const keywords = Array.isArray(p.keywords)
+        ? p.keywords.map((k) => k.toLowerCase())
+        : [];
+
+      return (
+        name.includes(q) ||
+        desc.includes(q) ||
+        keywords.some((kw) => kw.includes(q))
+      );
     });
 
     const byCat: Record<string, any[]> = {};

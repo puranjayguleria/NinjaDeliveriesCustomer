@@ -45,10 +45,12 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({
         .limit(1)
         .get();
 
-      const threshold =
-        !querySnap.empty && querySnap.docs[0].exists
-          ? querySnap.docs[0].data()?.weatherThreshold || {}
-          : {};
+      let threshold = false;
+      if (!querySnap.empty && querySnap.docs[0].exists) {
+        const setting = querySnap.docs[0].data();
+        threshold = setting?.badWeather === true;
+      }
+
       // 3️⃣ Check if it's bad weather
       const bad = isBadWeather(data, threshold);
 
