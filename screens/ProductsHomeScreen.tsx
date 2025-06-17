@@ -854,42 +854,65 @@ export default function ProductsHomeScreen() {
       <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
         {hasPerm && (
           <>
-            {/* Shrinking Video */}
-            <Animated.View
-              pointerEvents="none" // 👈 ADD THIS
-              style={[
-                styles.videoContainer,
-                { height: videoHeight, opacity: videoOpacity },
-              ]}
-            >
-              <Video
-                source={require("../assets/deliveryBackground.mp4")}
-                style={styles.backgroundVideo}
-                muted
-                repeat
-                resizeMode="cover"
-                rate={1.0}
-                ignoreSilentSwitch="obey"
-              />
-              <Animated.View style={[styles.topBg, { paddingTop: topPadding }]}>
-                <Header />
-                <StableSearchBar />
-              </Animated.View>
-            </Animated.View>
-
-            {/* Gradient Header appears on scroll */}
-            <Animated.View
-              pointerEvents="auto"
-              style={[styles.gradientHeader, { opacity: gradientOpacity }]}
-            >
-              <LinearGradient
-                colors={["#00b4a0", "#00d2c7", "#ffffff"]}
-                style={[styles.topBg, { paddingTop: COLLAPSED_PADDING_TOP }]}
+            <View style={{ flex: 1 }}>
+              {/* Background Video (non-interactive) */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    height: videoHeight,
+                    opacity: videoOpacity,
+                    zIndex: -1,
+                  },
+                ]}
               >
+                <Video
+                  source={require("../assets/deliveryBackground.mp4")}
+                  style={StyleSheet.absoluteFill}
+                  muted
+                  repeat
+                  resizeMode="cover"
+                  rate={1.0}
+                  ignoreSilentSwitch="obey"
+                />
+              </Animated.View>
+
+              {/* Animated Header Container — touchable + background fades */}
+              <Animated.View
+                pointerEvents="auto"
+                style={[
+                  {
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 10,
+                    paddingTop: topPadding,
+                    backgroundColor: "transparent",
+                    overflow: "hidden",
+                  },
+                ]}
+              >
+                <Animated.View
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    opacity: gradientOpacity, // gradient fades in
+                  }}
+                  pointerEvents="none"
+                >
+                  <LinearGradient
+                    colors={["#00b4a0", "#00d2c7", "#ffffff"]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+                {/* Touchable Content */}
                 <Header />
-                <StableSearchBar />
-              </LinearGradient>
-            </Animated.View>
+                <View style={{ paddingBottom: 12 }}>
+                  <StableSearchBar />
+                </View>
+              </Animated.View>
+            </View>
           </>
         )}
 

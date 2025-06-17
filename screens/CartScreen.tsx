@@ -339,6 +339,9 @@ const CartScreen: React.FC = () => {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    fetchCartItems(false);
+  }, [cart]);
 
   // If user selected location
   useEffect(() => {
@@ -1272,12 +1275,18 @@ const CartScreen: React.FC = () => {
                       <RecommendCard
                         item={item}
                         qtyInCart={cart[item.id] ?? 0}
-                        onAdd={() => addToCart(item.id, item.quantity)}
+                        onAdd={() => {
+                          addToCart(item.id, item.quantity);
+                          fetchCartItems(false); // 👈 Add this
+                        }}
                         onInc={() => {
                           increaseQuantity(item.id, item.quantity);
                           fetchCartItems(false);
                         }}
-                        onDec={() => decreaseQuantity(item.id)}
+                        onDec={() => {
+                          decreaseQuantity(item.id);
+                          fetchCartItems(false); // 👈 Add this
+                        }}
                         width={RECO_CARD_WIDTH}
                       />
                     )}
