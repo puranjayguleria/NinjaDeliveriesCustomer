@@ -29,6 +29,7 @@ import Constants from "expo-constants";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Toast from "react-native-toast-message";
 
 /* ──────────────────────────────────────────────────────────
    Context Providers
@@ -66,6 +67,7 @@ import LeaderboardScreen from "./screens/LeaderBoardScreen";
 import { ensurePushTokenSynced } from "./utils/PushTokenManager";
 import { useOtaUpdate } from "./utils/useOtaUpdate";
 import { WeatherProvider } from "./context/WeatherContext";
+import { StatusBar } from "expo-status-bar";
 
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
@@ -521,6 +523,8 @@ const App: React.FC = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <StatusBar style="dark" backgroundColor="#fdfdfd" />
+
       <CustomerProvider>
         <CartProvider>
           <LocationProvider>
@@ -592,6 +596,7 @@ const App: React.FC = () => {
           </View>
         </View>
       </RNModal>
+      <Toast />
     </GestureHandlerRootView>
   );
 };

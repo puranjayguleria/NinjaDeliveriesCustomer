@@ -1,11 +1,5 @@
 // screens/QuizScreen.tsx
-import React, {
-  useEffect,
-  useState,
-  useCallback,
-  useRef,
-  memo,
-} from "react";
+import React, { useEffect, useState, useCallback, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -176,34 +170,43 @@ export default function QuizScreen() {
           where("storeId", "==", storeId),
           where("userId", "==", user.uid),
           orderBy("timestamp", "desc"),
-          limit(1),
+          limit(1)
         );
         const playedSnap = await getDocs(playedQ);
-        if (
-          !playedSnap.empty &&
-          isToday(playedSnap.docs[0].data().timestamp)
-        ) {
+        if (!playedSnap.empty && isToday(playedSnap.docs[0].data().timestamp)) {
           setLockModalVisible(true);
           return;
         }
 
         /* 3 – Quiz definition + Questions ------------------------------- */
         const quizSnap = await getDocs(
-          query(collection(db, "quizzes"), where("storeId", "==", storeId), limit(1)),
+          query(
+            collection(db, "quizzes"),
+            where("storeId", "==", storeId),
+            limit(1)
+          )
         );
         if (quizSnap.empty) throw new Error("No quiz configured");
         const quizRef = quizSnap.docs[0].ref;
 
         let qsSnap = await getDocs(
-          query(collection(db, "questions"), where("quizId", "==", quizRef), orderBy("text")),
+          query(
+            collection(db, "questions"),
+            where("quizId", "==", quizRef),
+            orderBy("text")
+          )
         );
         // fallback legacy
         if (qsSnap.empty) {
           qsSnap = await getDocs(
-            query(collection(db, "questions"), where("storeId", "==", storeId), orderBy("text")),
+            query(
+              collection(db, "questions"),
+              where("storeId", "==", storeId),
+              orderBy("text")
+            )
           );
         }
-        setQuestions(qsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setQuestions(qsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (e) {
         console.error(e);
         Alert.alert("Error", "Could not load quiz.");
@@ -263,7 +266,7 @@ export default function QuizScreen() {
         totalQuestions: questions.length,
       });
     },
-    [db, displayName, nav, questions.length, storeId, user.uid],
+    [db, displayName, nav, questions.length, storeId, user.uid]
   );
 
   /* ---------------------------------------------------------------------- */
@@ -276,24 +279,32 @@ export default function QuizScreen() {
       setSelectedOption(optId);
 
       Animated.sequence([
-        Animated.timing(optionScale, { toValue: 0.95, duration: 100, useNativeDriver: true }),
-        Animated.timing(optionScale, { toValue: 1, duration: 100, useNativeDriver: true }),
+        Animated.timing(optionScale, {
+          toValue: 0.95,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(optionScale, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
       ]).start(() => {
         const q = questions[current];
         const gotIt = optId === q.correctOptionId;
-        setScore(s => s + (gotIt ? 1 : 0));
+        setScore((s) => s + (gotIt ? 1 : 0));
 
         setTimeout(() => {
           setSelectedOption(null);
           if (current + 1 < questions.length) {
-            setCurrent(c => c + 1);
+            setCurrent((c) => c + 1);
           } else {
             finishQuiz(score + (gotIt ? 1 : 0));
           }
         }, 1000);
       });
     },
-    [current, finishQuiz, questions, score],
+    [current, finishQuiz, questions, score]
   );
 
   /* ---------------------------------------------------------------------- */
@@ -312,7 +323,7 @@ export default function QuizScreen() {
     }).start();
 
     const iv = setInterval(() => {
-      setTimeLeft(t => {
+      setTimeLeft((t) => {
         if (t <= 1) {
           clearInterval(iv);
           onAnswer(-1); // time-out
@@ -325,15 +336,12 @@ export default function QuizScreen() {
     return () => clearInterval(iv);
   }, [isQuizTime, current, questions.length, onAnswer, timerAnim]);
 
-  /* ---------------------------------------------------------------------- */
-  /*                       HARDWARE BACK HANDLER GUARD                      */
-  /* ---------------------------------------------------------------------- */
-
   useFocusEffect(
     useCallback(() => {
       if (!isQuizTime || loading || lockModalVisible || questions.length === 0)
         return;
 
+      // 👇 Block hardware back
       const onBack = () => {
         Alert.alert(
           "Exit Quiz?",
@@ -345,13 +353,36 @@ export default function QuizScreen() {
               style: "destructive",
               onPress: () => nav.goBack(),
             },
-          ],
+          ]
         );
         return true;
       };
       BackHandler.addEventListener("hardwareBackPress", onBack);
-      return () => BackHandler.removeEventListener("hardwareBackPress", onBack);
-    }, [isQuizTime, loading, lockModalVisible, questions.length, nav]),
+
+      // 👇 Block tab switch or screen blur
+      const beforeRemove = (e: any) => {
+        e.preventDefault();
+        Alert.alert(
+          "Exit Quiz?",
+          "If you exit now, you won’t be able to attempt again today.",
+          [
+            { text: "Cancel", style: "cancel", onPress: () => {} },
+            {
+              text: "Exit",
+              style: "destructive",
+              onPress: () => nav.dispatch(e.data.action),
+            },
+          ]
+        );
+      };
+
+      nav.addListener("beforeRemove", beforeRemove);
+
+      return () => {
+        BackHandler.removeEventListener("hardwareBackPress", onBack);
+        nav.removeListener("beforeRemove", beforeRemove);
+      };
+    }, [isQuizTime, loading, lockModalVisible, questions.length, nav])
   );
 
   /* ---------------------------------------------------------------------- */
@@ -360,14 +391,20 @@ export default function QuizScreen() {
 
   if (loading)
     return (
-      <LinearGradient colors={[COLORS.primary, COLORS.secondary]} style={styles.center}>
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary]}
+        style={styles.center}
+      >
         <Loader />
       </LinearGradient>
     );
 
   if (!isQuizTime)
     return (
-      <LinearGradient colors={[COLORS.primary, COLORS.secondary]} style={styles.center}>
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary]}
+        style={styles.center}
+      >
         <View style={styles.timeLockedContainer}>
           <Text style={styles.timeLockedTitle}>Quiz Not Available Yet</Text>
           <Text style={styles.timeLockedText}>
@@ -393,7 +430,10 @@ export default function QuizScreen() {
 
   if (lockModalVisible)
     return (
-      <LinearGradient colors={[COLORS.primary, COLORS.secondary]} style={styles.center}>
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary]}
+        style={styles.center}
+      >
         <View style={styles.lockedContainer}>
           <Text style={styles.lockedTitle}>Daily Challenge Complete!</Text>
           <Text style={styles.lockedText}>
@@ -446,7 +486,8 @@ export default function QuizScreen() {
                       inputRange: [0, 1],
                       outputRange: ["0%", "100%"],
                     }),
-                    backgroundColor: timeLeft <= 5 ? COLORS.timer : COLORS.primary,
+                    backgroundColor:
+                      timeLeft <= 5 ? COLORS.timer : COLORS.primary,
                   },
                 ]}
               />
@@ -464,31 +505,19 @@ export default function QuizScreen() {
 
             <View style={styles.optionsContainer}>
               {questions[current].options.map((opt: any) => {
-                const isSelected = selectedOption === opt.id;
-                const isCorrect = opt.id === questions[current].correctOptionId;
-                const showCorrect = selectedOption !== null && isCorrect;
-                const showIncorrect = isSelected && !isCorrect;
-
                 return (
                   <View key={opt.id} style={styles.optionWrapper}>
-                    <Animated.View style={{ transform: [{ scale: optionScale }] }}>
+                    <Animated.View
+                      style={{ transform: [{ scale: optionScale }] }}
+                    >
                       <TouchableOpacity
-                        style={[
-                          styles.option,
-                          showCorrect && styles.correctOption,
-                          showIncorrect && styles.incorrectOption,
-                        ]}
+                        style={[styles.option]}
                         activeOpacity={0.7}
                         onPress={() => onAnswer(opt.id)}
                         disabled={selectedOption !== null}
                       >
                         <View style={styles.optionContent}>
                           <Text style={styles.optionLabel}>{opt.label}</Text>
-                          {(showCorrect || showIncorrect) && (
-                            <Text style={styles.feedbackText}>
-                              {showCorrect ? "✓ Correct!" : "✗ Wrong"}
-                            </Text>
-                          )}
                         </View>
                       </TouchableOpacity>
                     </Animated.View>
@@ -639,7 +668,12 @@ const styles = StyleSheet.create({
     minWidth: 40,
     textAlign: "center",
   },
-  timerBarBg: { flex: 1, height: 6, backgroundColor: "#E2E8F0", borderRadius: 3 },
+  timerBarBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 3,
+  },
   timerBar: { height: "100%", borderRadius: 3 },
 
   /* locked / unavailable */
@@ -696,8 +730,17 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     textAlign: "center",
   },
-  timeDisplay: { flexDirection: "row", alignItems: "center", marginVertical: 15 },
-  timeText: { fontSize: 28, fontWeight: "700", color: COLORS.primary, paddingHorizontal: 10 },
+  timeDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 15,
+  },
+  timeText: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: COLORS.primary,
+    paddingHorizontal: 10,
+  },
   timeSeparator: { fontSize: 18, color: COLORS.textLight },
   timeLockedSubtext: {
     fontSize: 16,
@@ -766,5 +809,10 @@ const styles = StyleSheet.create({
   },
 
   /* misc */
-  noQuestionsText: { fontSize: 18, color: COLORS.text, textAlign: "center", padding: 20 },
+  noQuestionsText: {
+    fontSize: 18,
+    color: COLORS.text,
+    textAlign: "center",
+    padding: 20,
+  },
 });

@@ -107,10 +107,14 @@ type CategoryAlert = {
   linkUrl: string;
 };
 type Props = {
-  setHasPerm: (value: boolean) => void;
+  setHasPerm: (v: boolean) => void;
+  setSelectManually: (v: boolean) => void;
 };
 /* ------------------------------------------------------------------ location-prompt bottom-sheet (unchanged) */
-const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
+const LocationPromptCard: React.FC<Props> = ({
+  setHasPerm,
+  setSelectManually,
+}) => {
   const nav = useNavigation<any>();
   const { updateLocation } = useLocationContext();
   const [busy, setBusy] = useState(false);
@@ -139,6 +143,7 @@ const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
         storeId: null,
       });
       setHasPerm(true);
+      setSelectManually(true);
     } catch (e) {
       Alert.alert("Error", "Unable to fetch location. Please try again.");
     } finally {
@@ -146,6 +151,11 @@ const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
     }
   }, [updateLocation, setHasPerm]);
 
+  const handleManualSelection = () => {
+    setHasPerm(true);
+    setSelectManually(true);
+    nav.navigate("LocationSelector", { fromScreen: "Products" });
+  };
   return (
     <View style={styles.locSheet}>
       <View style={styles.locHandle} />
@@ -171,9 +181,7 @@ const LocationPromptCard: React.FC<Props> = ({ setHasPerm }) => {
 
       <TouchableOpacity
         style={[styles.locBtn, styles.locBtnSecondary]}
-        onPress={() =>
-          nav.navigate("LocationSelector", { fromScreen: "Products" })
-        }
+        onPress={handleManualSelection}
         disabled={busy}
       >
         <Text style={styles.locBtnTxtSecondary}>Select Manually</Text>
@@ -471,10 +479,17 @@ export default function ProductsHomeScreen() {
 
   /* -------------------------------------------------- permissions / location — unchanged logic */
   const [hasPerm, setHasPerm] = useState<boolean | null>(null);
+  const [selectManually, setSelectManually] = useState(false);
+
   useEffect(() => {
-    Location.getForegroundPermissionsAsync().then((r) =>
-      setHasPerm(r.status === "granted")
-    );
+    Location.getForegroundPermissionsAsync().then((r) => {
+      setHasPerm(r.status === "granted");
+
+      // If location is granted, user doesn't need manual selection
+      if (r.status === "granted") {
+        setSelectManually(true);
+      }
+    });
   }, []);
 
   const [zones, setZones] = useState<DeliveryZone[] | null>(null);
@@ -723,15 +738,36 @@ export default function ProductsHomeScreen() {
         .where("storeId", "==", location.storeId)
         .where("quantity", ">", 0)
         .get();
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      const all = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() ?? null, // Optional timestamp
+        };
+      });
+
       setBestProducts(
         all
           .filter((p) => (p.weeklySold ?? 0) > 0)
           .sort((a, b) => (b.weeklySold ?? 0) - (a.weeklySold ?? 0))
       );
-      setFreshProducts(all.filter((p) => p.isNew));
-    } catch {}
+
+      setFreshProducts(
+        all
+          .filter((p) => p.isNew)
+          .sort((a, b) => {
+            const aTime = a.createdAt?.getTime?.() ?? 0;
+            const bTime = b.createdAt?.getTime?.() ?? 0;
+            return bTime - aTime;
+          })
+      );
+    } catch (err) {
+      console.error("Failed to load highlights", err);
+    }
   }, [location.storeId]);
+
   useEffect(() => {
     loadHighlights();
   }, [loadHighlights]);
@@ -999,7 +1035,12 @@ export default function ProductsHomeScreen() {
           <View style={{ flex: 1 }} />
         )}
 
-        {hasPerm === false && <LocationPromptCard setHasPerm={setHasPerm} />}
+        {hasPerm === false && selectManually === false && (
+          <LocationPromptCard
+            setHasPerm={setHasPerm}
+            setSelectManually={setSelectManually}
+          />
+        )}
       </View>
 
       {/* ---------------- Pan Corner modal ---------------- */}

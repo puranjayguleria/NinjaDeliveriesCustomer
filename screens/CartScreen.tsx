@@ -233,6 +233,8 @@ const CartScreen: React.FC = () => {
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
   const { isBadWeather, weatherData } = useWeather();
+  const [loadingCartUpdate, setLoadingCartUpdate] = useState(false);
+
   console.log(isBadWeather, weatherData);
   /***************************************
    * Animate Checkout Button
@@ -1214,6 +1216,12 @@ const CartScreen: React.FC = () => {
           </View>
         ) : (
           <>
+            {loadingCartUpdate && (
+              <View style={styles.loaderOverlay}>
+                <Loader />
+              </View>
+            )}
+
             {/* HEADER */}
             <View style={styles.headerBlock}>
               <Text style={styles.cartItemsHeader}>Your Cart</Text>
@@ -1277,15 +1285,24 @@ const CartScreen: React.FC = () => {
                         qtyInCart={cart[item.id] ?? 0}
                         onAdd={() => {
                           addToCart(item.id, item.quantity);
-                          fetchCartItems(false); // 👈 Add this
+                          setLoadingCartUpdate(true);
+                          fetchCartItems(false).finally(() =>
+                            setLoadingCartUpdate(false)
+                          );
                         }}
                         onInc={() => {
                           increaseQuantity(item.id, item.quantity);
-                          fetchCartItems(false);
+                          setLoadingCartUpdate(true);
+                          fetchCartItems(false).finally(() =>
+                            setLoadingCartUpdate(false)
+                          );
                         }}
                         onDec={() => {
                           decreaseQuantity(item.id);
-                          fetchCartItems(false); // 👈 Add this
+                          setLoadingCartUpdate(true);
+                          fetchCartItems(false).finally(() =>
+                            setLoadingCartUpdate(false)
+                          );
                         }}
                         width={RECO_CARD_WIDTH}
                       />
@@ -1868,6 +1885,18 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 6,
   },
+  loaderOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.5)", // optional dim
+    zIndex: 10,
+  },
+
   selectAddressButton: {
     backgroundColor: "#FF7043",
     borderRadius: 8,
