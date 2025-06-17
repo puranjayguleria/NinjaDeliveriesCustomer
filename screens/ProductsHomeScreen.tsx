@@ -879,6 +879,7 @@ export default function ProductsHomeScreen() {
 
             {/* Gradient Header appears on scroll */}
             <Animated.View
+              pointerEvents="auto"
               style={[styles.gradientHeader, { opacity: gradientOpacity }]}
             >
               <LinearGradient

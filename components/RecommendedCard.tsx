@@ -13,11 +13,13 @@ type Props = {
   item: {
     name: string;
     image: string;
+    CGST: number;
+    SGST: number;
     price: number;
     discount?: number;
   };
   qtyInCart: number;
-  width?: number;          // 👈 optional – parent sends it
+  width?: number; // 👈 optional – parent sends it
   onAdd: () => void;
   onInc: () => void;
   onDec: () => void;
@@ -35,9 +37,13 @@ export default function RecommendCard({
   onDec,
 }: Props) {
   /* price helpers ---------------------------------------------------- */
-  const base    = item.price ?? 0;
-  const saving  = item.discount ?? 0;
-  const final   = Math.max(base - saving, 0);
+  const saving = item.discount ?? 0;
+
+  const cgstRate = Number(item.CGST ?? 0);
+  const sgstRate = Number(item.SGST ?? 0);
+
+  const base = item.price + cgstRate + sgstRate;
+  const final = Math.max(base - saving);
 
   return (
     <View style={[styles.card, { width }]}>
@@ -86,7 +92,7 @@ export default function RecommendCard({
 }
 
 /* ---------- styles ---------- */
-const ACCENT = "#00C853";              // Blinkit green
+const ACCENT = "#00C853"; // Blinkit green
 
 const styles = StyleSheet.create({
   card: {
