@@ -41,10 +41,18 @@ interface Order {
   }>;
   subtotal?: number;
   discount?: number;
+  productCgst?: number;
+  productSgst?: number;
+  rideCgst?: number;
+  deliveryCharge?: number;
+  rideSgst?: number;
   finalTotal?: number;
   pickupCoords?: { latitude: number; longitude: number };
   dropoffCoords?: { latitude: number; longitude: number };
   refundAmount?: number;
+  convenienceFee?: number;
+  platformFee?: number;
+  surgeFee?: number;
 }
 
 const ProfileScreen: React.FC = () => {
@@ -105,6 +113,7 @@ const ProfileScreen: React.FC = () => {
                 setUserName(newName);
                 oldUserName.current = newName;
               }
+
               const rawDob = data?.dob || "";
               if (rawDob && oldDob.current !== rawDob) {
                 const newDate = new Date(rawDob);
@@ -131,6 +140,7 @@ const ProfileScreen: React.FC = () => {
             const fetched: Order[] = [];
             snapshot.forEach((doc) => {
               const data = doc.data();
+
               fetched.push({
                 id: doc.id,
                 status: data.status || "unknown",
@@ -140,12 +150,29 @@ const ProfileScreen: React.FC = () => {
                 discount: data.discount || 0,
                 finalTotal: data.finalTotal || 0,
                 refundAmount: data.refundAmount || 0,
+
+                // New Additional Fields
+                surgeFee: data.surgeFee || 0,
+                productCgst: data.productCgst || 0,
+                productSgst: data.productSgst || 0,
+                rideCgst: data.rideCgst || 0,
+                rideSgst: data.rideSgst || 0,
+                deliveryCharge: data.deliveryCharge || 0,
+                convenienceFee: data.convenienceFee || 0,
+                platformFee: data.platformFee || 0,
+                paymentMethod: data.paymentMethod || "",
+                paymentStatus: data.paymentStatus || "",
+                deliveryAddress: data.deliveryAddress || "",
+                mobile: data.mobile || "",
+                storeName: data.storeName || "",
+
                 pickupCoords: data.pickupCoords
                   ? {
                       latitude: data.pickupCoords.latitude,
                       longitude: data.pickupCoords.longitude,
                     }
                   : undefined,
+
                 dropoffCoords: data.dropoffCoords
                   ? {
                       latitude: data.dropoffCoords.latitude,
@@ -651,96 +678,152 @@ const ProfileScreen: React.FC = () => {
               <Text style={styles.bottomSheetTitle}>Order Details</Text>
 
               {selectedOrder ? (
-                <View>
-                  <Text style={styles.sheetSubtitle}>
-                    Order ID: {selectedOrder.id}
-                  </Text>
-                  {selectedOrder.createdAt && (
+                <>
+                  <View>
                     <Text style={styles.sheetSubtitle}>
-                      Date:{" "}
-                      {format(
-                        selectedOrder.createdAt.toDate
-                          ? selectedOrder.createdAt.toDate()
-                          : new Date(selectedOrder.createdAt),
-                        "dd MMM yyyy, hh:mm a"
-                      )}
+                      Order ID: {selectedOrder.id}
                     </Text>
-                  )}
-
-                  {Array.isArray(selectedOrder.items) &&
-                  selectedOrder.items.length > 0 ? (
-                    <FlatList
-                      data={selectedOrder.items}
-                      keyExtractor={(it, idx) =>
-                        it?.name ? `${it.name}${idx}` : `item-${idx}`
-                      }
-                      renderItem={({ item }) => {
-                        if (!item || typeof item !== "object") return null;
-                        const realPrice = item.discount
-                          ? item.price - item.discount
-                          : item.price;
-                        return (
-                          <View style={styles.detailItemRow}>
-                            <Text style={styles.detailItemName}>
-                              {item.name}
-                            </Text>
-                            <Text style={styles.detailItemQty}>
-                              x{item.quantity}
-                            </Text>
-                            <Text style={styles.detailItemPrice}>
-                              ₹{realPrice.toFixed(2)}
-                            </Text>
-                          </View>
-                        );
-                      }}
-                      style={{ maxHeight: 150, marginVertical: 8 }}
-                      ListEmptyComponent={
-                        <Text style={{ marginVertical: 8, color: "#666" }}>
-                          No items found for this order.
-                        </Text>
-                      }
-                    />
-                  ) : (
-                    <Text style={{ marginVertical: 8, color: "#666" }}>
-                      No items found for this order.
-                    </Text>
-                  )}
-
-                  <View style={styles.billSummaryContainer}>
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Subtotal</Text>
-                      <Text style={styles.billValue}>
-                        ₹{selectedOrder.subtotal?.toFixed(2) || "0.00"}
+                    {selectedOrder.createdAt && (
+                      <Text style={styles.sheetSubtitle}>
+                        Date:{" "}
+                        {format(
+                          selectedOrder.createdAt.toDate
+                            ? selectedOrder.createdAt.toDate()
+                            : new Date(selectedOrder.createdAt),
+                          "dd MMM yyyy, hh:mm a"
+                        )}
                       </Text>
-                    </View>
-
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Discount</Text>
-                      <Text style={styles.billValue}>
-                        -₹{selectedOrder.discount}
-                      </Text>
-                    </View>
-
-                    <View style={styles.billRow}>
-                      <Text style={[styles.billLabel, { fontWeight: "700" }]}>
-                        Total
-                      </Text>
-                      <Text style={[styles.billValue, { fontWeight: "700" }]}>
-                        ₹{selectedOrder.finalTotal?.toFixed(2) || "0.00"}
-                      </Text>
-                    </View>
+                    )}
                   </View>
-                </View>
+
+                  <ScrollView style={{ maxHeight: 300, marginVertical: 8 }}>
+                    {/* Item List */}
+                    {Array.isArray(selectedOrder.items) &&
+                    selectedOrder.items.length > 0 ? (
+                      selectedOrder.items.map(
+                        (item: OrderItem, idx: number) => {
+                          const price = Number(item.price) || 0;
+                          const discount = Number(item.discount) || 0;
+                          const cgst = Number(item.CGST) || 0;
+                          const sgst = Number(item.SGST) || 0;
+
+                          const basePrice = price - discount;
+                          const realPrice = basePrice + cgst + sgst;
+
+                          return (
+                            <View
+                              style={styles.detailItemRow}
+                              key={`item-${idx}`}
+                            >
+                              <Text style={styles.detailItemName}>
+                                {item.name}
+                              </Text>
+                              <Text style={styles.detailItemQty}>
+                                x{item.quantity}
+                              </Text>
+                              <Text style={styles.detailItemPrice}>
+                                ₹{realPrice.toFixed(2)}
+                              </Text>
+                            </View>
+                          );
+                        }
+                      )
+                    ) : (
+                      <Text>No items found</Text>
+                    )}
+
+                    {/* BILL SUMMARY */}
+                    <View style={styles.billSummaryContainer}>
+                      {/* Subtotal */}
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Subtotal</Text>
+                        <Text style={styles.billValue}>
+                          ₹
+                          {(
+                            (selectedOrder.subtotal || 0) +
+                            (selectedOrder.productCgst || 0) +
+                            (selectedOrder.productSgst || 0)
+                          ).toFixed(2)}
+                        </Text>
+                      </View>
+
+                      {/* Delivery Charge */}
+                      {typeof selectedOrder.deliveryCharge !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Delivery Charge</Text>
+                          <Text style={styles.billValue}>
+                            ₹
+                            {(
+                              (selectedOrder.deliveryCharge || 0) +
+                              (selectedOrder.rideCgst || 0) +
+                              (selectedOrder.rideSgst || 0)
+                            ).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Convenience Fee */}
+                      {typeof selectedOrder.convenienceFee !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Convenience Fee</Text>
+                          <Text style={styles.billValue}>
+                            ₹{(selectedOrder.convenienceFee || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+                      {/* Surge Fee */}
+                      {typeof selectedOrder.surgeFee !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Convenience Fee</Text>
+                          <Text style={styles.billValue}>
+                            ₹{(selectedOrder.surgeFee || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Platform Fee */}
+                      {typeof selectedOrder.platformFee !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Platform Fee</Text>
+                          <Text style={styles.billValue}>
+                            ₹{(selectedOrder.platformFee || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Discount */}
+                      {typeof selectedOrder.discount !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Discount</Text>
+                          <Text style={styles.billValue}>
+                            -₹{(selectedOrder.discount || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Final Total */}
+                      <View style={styles.billRow}>
+                        <Text style={[styles.billLabel, { fontWeight: "700" }]}>
+                          Total
+                        </Text>
+                        <Text style={[styles.billValue, { fontWeight: "700" }]}>
+                          ₹{selectedOrder.finalTotal?.toFixed(2) || "0.00"}
+                        </Text>
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  {/* Close Button */}
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setShowDetailsModal(false)}
+                  >
+                    <Text style={styles.closeButtonText}>Close</Text>
+                  </TouchableOpacity>
+                </>
               ) : (
                 <Text>No order selected</Text>
               )}
-
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowDetailsModal(false)}
-              >
-                <Text style={styles.closeButtonText}>Close</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </Modal>

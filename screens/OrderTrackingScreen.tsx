@@ -42,6 +42,8 @@ interface OrderItem {
   price: number;
   discount?: number;
   quantity: number;
+  CGST: number;
+  SGST: number;
 }
 
 // ------------------ COMPONENT ------------------
@@ -350,27 +352,37 @@ const OrderTrackingScreen: React.FC = () => {
             {/* Make the list scrollable within the container */}
             <ScrollView style={styles.itemsScrollContainer}>
               {orderDoc.items.map((item: OrderItem, idx: number) => {
-                const finalPrice = item.discount
-                  ? item.price - item.discount
-                  : item.price;
+                const price = Number(item.price) || 0;
+                const discount = Number(item.discount) || 0;
+                const cgst = Number(item.CGST) || 0;
+                const sgst = Number(item.SGST) || 0;
+
+                const basePrice = price - discount;
+                const realPrice = basePrice + cgst + sgst;
+
                 return (
                   <View style={styles.orderItemRow} key={`item-${idx}`}>
                     <Text style={styles.orderItemName}>{item.name}</Text>
                     <Text style={styles.orderItemQty}>x{item.quantity}</Text>
                     <Text style={styles.orderItemPrice}>
-                      ₹{finalPrice.toFixed(2)}
+                      ₹{realPrice.toFixed(2)}
                     </Text>
                   </View>
                 );
               })}
 
-              {/* PRICE BREAKDOWN (like in OrderAllocatingScreen) */}
+              {/* PRICE BREAKDOWN */}
               <View style={styles.billSummaryContainer}>
                 {/* Subtotal */}
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Subtotal</Text>
                   <Text style={styles.billValue}>
-                    ₹{orderDoc.subtotal?.toFixed(2) || "0.00"}
+                    ₹
+                    {(
+                      (orderDoc.subtotal || 0) +
+                      (orderDoc.productCgst || 0) +
+                      (orderDoc.productSgst || 0)
+                    ).toFixed(2)}
                   </Text>
                 </View>
 
@@ -379,31 +391,34 @@ const OrderTrackingScreen: React.FC = () => {
                   <View style={styles.billRow}>
                     <Text style={styles.billLabel}>Delivery Charge</Text>
                     <Text style={styles.billValue}>
-                      ₹{(orderDoc.deliveryCharge || 0).toFixed(2)}
+                      ₹
+                      {(
+                        (orderDoc.deliveryCharge || 0) +
+                        (orderDoc.rideCgst || 0) +
+                        (orderDoc.rideSgst || 0)
+                      ).toFixed(2)}
                     </Text>
                   </View>
                 )}
 
-                {/* CGST */}
-                {typeof orderDoc.cgst !== "undefined" && (
+                {/* Convenience Fee */}
+                {typeof orderDoc.convenienceFee !== "undefined" && (
                   <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>CGST</Text>
+                    <Text style={styles.billLabel}>Convenience Fee</Text>
                     <Text style={styles.billValue}>
-                      ₹{(orderDoc.cgst || 0).toFixed(2)}
+                      ₹{(orderDoc.convenienceFee || 0).toFixed(2)}
                     </Text>
                   </View>
                 )}
-
-                {/* SGST */}
-                {typeof orderDoc.sgst !== "undefined" && (
+                {/* Surgee Fee */}
+                {typeof orderDoc.surgeFee !== "undefined" && (
                   <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>SGST</Text>
+                    <Text style={styles.billLabel}>Surge Fee</Text>
                     <Text style={styles.billValue}>
-                      ₹{(orderDoc.sgst || 0).toFixed(2)}
+                      ₹{(orderDoc.surgeFee || 0).toFixed(2)}
                     </Text>
                   </View>
                 )}
-
                 {/* Platform Fee */}
                 {typeof orderDoc.platformFee !== "undefined" && (
                   <View style={styles.billRow}>
@@ -423,7 +438,6 @@ const OrderTrackingScreen: React.FC = () => {
                     </Text>
                   </View>
                 )}
-
                 {/* Final Total */}
                 <View style={styles.billRow}>
                   <Text style={[styles.billLabel, { fontWeight: "700" }]}>

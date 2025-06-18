@@ -27,6 +27,8 @@ type RatingScreenRouteProp = RouteProp<
 >;
 
 interface OrderItem {
+  convenienceFee?: number;
+  surgeFee?: number;
   productId: string;
   quantity: number;
   price?: number;
@@ -80,8 +82,8 @@ export default function RatingScreen() {
   const [rideSGST, setRideSGST] = useState(0);
   const [platformFee, setPlatformFee] = useState(0);
   const [finalTotal, setFinalTotal] = useState(0);
-
-  // Rating states
+  const [convenienceFee, setConvenienceFee] = useState(0);
+  const [surgeFee, setSurgeFee] = useState(0); // Rating states
   const [showRating, setShowRating] = useState(true);
   const [riderRating, setRiderRating] = useState(0);
   const [orderRating, setOrderRating] = useState(0);
@@ -215,6 +217,8 @@ export default function RatingScreen() {
     const docRideCgst = orderDetails.rideCgst ?? 0;
     const docRideSgst = orderDetails.rideSgst ?? 0;
     const docPlatformFee = orderDetails.platformFee ?? 0;
+    const docConvenienceFee = orderDetails.convenienceFee ?? 0;
+    const docSurgeFee = orderDetails.surgeFee ?? 0;
 
     // 3) Calculate item total and final total
     let itemTotal = sub - docDiscount;
@@ -228,6 +232,8 @@ export default function RatingScreen() {
       docDelivery +
       docRideCgst +
       docRideSgst +
+      docConvenienceFee +
+      docSurgeFee +
       docPlatformFee;
 
     // Update state with exact (decimal) values
@@ -239,11 +245,11 @@ export default function RatingScreen() {
     setDiscount(docDiscount);
     setDistance(docDistance);
     setDeliveryCharge(docDelivery);
-
+    setConvenienceFee(docConvenienceFee);
+    setSurgeFee(docSurgeFee);
     setRideCGST(docRideCgst);
     setRideSGST(docRideSgst);
     setPlatformFee(docPlatformFee);
-
     setFinalTotal(final);
   }
 
@@ -377,13 +383,29 @@ export default function RatingScreen() {
         </tr>
       `;
     }
+    if (convenienceFee > 0) {
+      costSummaryRows += `
+    <tr>
+      <td>Convenience Fee</td>
+      <td style="text-align:right;">₹${convenienceFee.toFixed(2)}</td>
+    </tr>
+  `;
+    }
+    if (surgeFee > 0) {
+      costSummaryRows += `
+    <tr>
+      <td>Surge Fee</td>
+      <td style="text-align:right;">₹${surgeFee.toFixed(2)}</td>
+    </tr>
+  `;
+    }
     if (platformFee > 0) {
       costSummaryRows += `
-        <tr>
-          <td>Platform Fee</td>
-          <td style="text-align:right;">₹${platformFee.toFixed(2)}</td>
-        </tr>
-      `;
+    <tr>
+      <td>Platform Fee</td>
+      <td style="text-align:right;">₹${platformFee.toFixed(2)}</td>
+    </tr>
+  `;
     }
     costSummaryRows += `
       <tr style="border-top:2px solid #555;">
@@ -474,6 +496,7 @@ export default function RatingScreen() {
       </html>
     `;
   }
+  console.log(convenienceFee);
 
   async function handleDownloadBill() {
     try {
@@ -494,7 +517,6 @@ export default function RatingScreen() {
       Alert.alert("Error", "Failed to create or share PDF.");
     }
   }
-
   async function handleSubmitRating() {
     try {
       await firestore().collection("orders").doc(orderId).update({
@@ -609,26 +631,9 @@ export default function RatingScreen() {
             <View style={styles.summaryRowTop}>
               <Text style={styles.summaryLabel}>Product Subtotal</Text>
               <Text style={styles.summaryValue}>
-                ₹{productSubtotal.toFixed(2)}
+                ₹{(productSubtotal + productCGST + productSGST).toFixed(2)}
               </Text>
             </View>
-
-            {productCGST > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Product CGST</Text>
-                <Text style={styles.summaryValue}>
-                  ₹{productCGST.toFixed(2)}
-                </Text>
-              </View>
-            )}
-            {productSGST > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Product SGST</Text>
-                <Text style={styles.summaryValue}>
-                  ₹{productSGST.toFixed(2)}
-                </Text>
-              </View>
-            )}
             {productCess > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Product CESS</Text>
@@ -654,28 +659,28 @@ export default function RatingScreen() {
               </View>
             )}
 
-            {deliveryCharge !== 0 && (
+            {deliveryCharge + rideCGST + rideSGST !== 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery Charge</Text>
                 <Text style={styles.summaryValue}>
-                  ₹{deliveryCharge.toFixed(2)}
+                  ₹{(deliveryCharge + rideCGST + rideSGST).toFixed(2)}
                 </Text>
               </View>
             )}
-
-            {rideCGST > 0 && (
+            {convenienceFee !== 0 && (
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Ride CGST</Text>
-                <Text style={styles.summaryValue}>₹{rideCGST.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Convenience Fee</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{convenienceFee.toFixed(2)}
+                </Text>
               </View>
             )}
-            {rideSGST > 0 && (
+            {surgeFee !== 0 && (
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Ride SGST</Text>
-                <Text style={styles.summaryValue}>₹{rideSGST.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Surge Fee</Text>
+                <Text style={styles.summaryValue}>₹{surgeFee.toFixed(2)}</Text>
               </View>
             )}
-
             {platformFee !== 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Platform Fee</Text>

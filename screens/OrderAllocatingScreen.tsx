@@ -56,6 +56,8 @@ interface OrderItem {
   price: number;
   discount?: number;
   quantity: number;
+  CGST: number;
+  SGST: number;
 }
 
 const OrderAllocatingScreen: React.FC = () => {
@@ -292,7 +294,14 @@ const OrderAllocatingScreen: React.FC = () => {
   // RENDER ORDER ITEMS
   // --------------------------------------------------
   const renderOrderItem = ({ item }: { item: OrderItem }) => {
-    const realPrice = item.discount ? item.price - item.discount : item.price;
+    const price = Number(item.price) || 0;
+    const discount = Number(item.discount) || 0;
+    const cgst = Number(item.CGST) || 0;
+    const sgst = Number(item.SGST) || 0;
+
+    const basePrice = price - discount;
+    const realPrice = basePrice + cgst + sgst;
+
     return (
       <View style={styles.orderItemRow}>
         <Text style={styles.orderItemName}>{item.name}</Text>
@@ -431,86 +440,96 @@ const OrderAllocatingScreen: React.FC = () => {
             {orderData && orderData.items && orderData.items.length > 0 && (
               <View style={styles.orderDetailsCard}>
                 <Text style={styles.orderDetailsHeader}>Order Details</Text>
+                <ScrollView>
+                  <FlatList
+                    data={orderData.items}
+                    keyExtractor={(item, index) => `${item.name}-${index}`}
+                    renderItem={renderOrderItem}
+                    ItemSeparatorComponent={() => (
+                      <View style={styles.separator} />
+                    )}
+                  />
 
-                <FlatList
-                  data={orderData.items}
-                  keyExtractor={(item, index) => `${item.name}-${index}`}
-                  renderItem={renderOrderItem}
-                  ItemSeparatorComponent={() => (
-                    <View style={styles.separator} />
-                  )}
-                />
+                  {/* PRICE BREAKDOWN */}
+                  <View style={styles.billSummaryContainer}>
+                    {/* Subtotal */}
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Subtotal</Text>
+                      <Text style={styles.billValue}>
+                        ₹
+                        {(
+                          (orderData.subtotal || 0) +
+                          (orderData.productCgst || 0) +
+                          (orderData.productSgst || 0)
+                        ).toFixed(2)}
+                      </Text>
+                    </View>
 
-                {/* PRICE BREAKDOWN */}
-                <View style={styles.billSummaryContainer}>
-                  {/* Subtotal */}
-                  <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>Subtotal</Text>
-                    <Text style={styles.billValue}>
-                      ₹{orderData.subtotal?.toFixed(2) || "0.00"}
-                    </Text>
+                    {/* Delivery Charge */}
+                    {typeof orderData.deliveryCharge !== "undefined" && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Delivery Charge</Text>
+                        <Text style={styles.billValue}>
+                          ₹
+                          {(
+                            (orderData.deliveryCharge || 0) +
+                            (orderData.rideCgst || 0) +
+                            (orderData.rideSgst || 0)
+                          ).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Convenience Fee */}
+                    {typeof orderData.convenienceFee !== "undefined" && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Convenience Fee</Text>
+                        <Text style={styles.billValue}>
+                          ₹{(orderData.convenienceFee || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                    {/* Surge Fee */}
+                    {typeof orderData.surgeFee !== "undefined" && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Surge Fee</Text>
+                        <Text style={styles.billValue}>
+                          ₹{(orderData.surgeFee || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Platform Fee */}
+                    {typeof orderData.platformFee !== "undefined" && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Platform Fee</Text>
+                        <Text style={styles.billValue}>
+                          ₹{(orderData.platformFee || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Discount */}
+                    {typeof orderData.discount !== "undefined" && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Discount</Text>
+                        <Text style={styles.billValue}>
+                          -₹{(orderData.discount || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Final Total */}
+                    <View style={styles.billRow}>
+                      <Text style={[styles.billLabel, { fontWeight: "700" }]}>
+                        Total
+                      </Text>
+                      <Text style={[styles.billValue, { fontWeight: "700" }]}>
+                        ₹{orderData.finalTotal?.toFixed(2) || "0.00"}
+                      </Text>
+                    </View>
                   </View>
-
-                  {/* Delivery Charge */}
-                  {typeof orderData.deliveryCharge !== "undefined" && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Delivery Charge</Text>
-                      <Text style={styles.billValue}>
-                        ₹{(orderData.deliveryCharge || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* CGST */}
-                  {typeof orderData.cgst !== "undefined" && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>CGST</Text>
-                      <Text style={styles.billValue}>
-                        ₹{(orderData.cgst || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* SGST */}
-                  {typeof orderData.sgst !== "undefined" && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>SGST</Text>
-                      <Text style={styles.billValue}>
-                        ₹{(orderData.sgst || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Platform Fee */}
-                  {typeof orderData.platformFee !== "undefined" && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Platform Fee</Text>
-                      <Text style={styles.billValue}>
-                        ₹{(orderData.platformFee || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Discount */}
-                  {typeof orderData.discount !== "undefined" && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Discount</Text>
-                      <Text style={styles.billValue}>
-                        -₹{(orderData.discount || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Final Total */}
-                  <View style={styles.billRow}>
-                    <Text style={[styles.billLabel, { fontWeight: "700" }]}>
-                      Total
-                    </Text>
-                    <Text style={[styles.billValue, { fontWeight: "700" }]}>
-                      ₹{orderData.finalTotal?.toFixed(2) || "0.00"}
-                    </Text>
-                  </View>
-                </View>
+                </ScrollView>
               </View>
             )}
           </ScrollView>

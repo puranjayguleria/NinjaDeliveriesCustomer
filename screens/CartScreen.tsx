@@ -985,8 +985,10 @@ const CartScreen: React.FC = () => {
         finalTotal,
         paymentMethod,
         status: "pending",
+        surgeFee: surgeLine,
         createdAt: firestore.FieldValue.serverTimestamp(),
         usedPromo: selectedPromo ? selectedPromo.id : null,
+
         convenienceFee, // new field
         hotspotId: activeHotspot?.id || null,
       };
