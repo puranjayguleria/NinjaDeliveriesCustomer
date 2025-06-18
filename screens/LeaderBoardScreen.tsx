@@ -127,8 +127,9 @@ export default function LeaderboardScreen() {
             <View
               style={[
                 styles.row,
-                index % 2 === 0 && styles.altRow,
-                index < 3 && styles.topRow,
+    index < 3 && styles.topRow,
+
+    index >= 3 && ( (index - 3) % 2 === 0 ) && styles.altRow,
               ]}
             >
               <Text style={styles.rank}>

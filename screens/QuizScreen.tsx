@@ -111,7 +111,7 @@ export default function QuizScreen() {
   const [timeLeft, setTimeLeft] = useState(TIMER_DURATION);
   const timerAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-
+const slideAnim = useRef(new Animated.Value(0)).current;
   /* ---------------------------------------------------------------------- */
   /*                           RUNTIME GUARDS                               */
   /* ---------------------------------------------------------------------- */
@@ -296,8 +296,17 @@ export default function QuizScreen() {
 
         setTimeout(() => {
           setSelectedOption(null);
-          if (current + 1 < questions.length) {
-            setCurrent((c) => c + 1);
+         if (current + 1 < questions.length) {
+  /* kick the card out, then bring the next one in */
+  const { width } = Dimensions.get("window");
+  slideAnim.setValue(width);                       // start off-screen right
+  setCurrent((c) => c + 1);                        // ➜ state update
+  Animated.timing(slideAnim, {
+    toValue: 0,                                    // slide to centre
+    duration: 300,
+    easing: Easing.out(Easing.poly(4)),
+    useNativeDriver: true,
+  }).start();
           } else {
             finishQuiz(score + (gotIt ? 1 : 0));
           }
@@ -336,45 +345,79 @@ export default function QuizScreen() {
     return () => clearInterval(iv);
   }, [isQuizTime, current, questions.length, onAnswer, timerAnim]);
 
+  /**
+ * Store a “played-today” entry if the user quits early.
+ */
+const recordEarlyExit = useCallback(async () => {
+  if (finishedRef.current) return;       // already handled
+  finishedRef.current = true;            // block re-entry today
+
+  try {
+    await addDoc(collection(db, "leaderboard"), {
+      score,                              // score so far
+      correctCount: score,
+      totalQuestions: questions.length,
+      storeId,
+      timestamp: serverTimestamp(),
+      userId: user.uid,
+      userName: displayName,
+      scorePercentage: Math.round((score / questions.length) * 100),
+      abandoned: true                     // handy flag (optional)
+    });
+  } catch (err) {
+    console.error("leaderboard early-exit", err);
+  }
+}, [db, displayName, questions.length, score, storeId, user.uid]);
+
   useFocusEffect(
     useCallback(() => {
-      if (!isQuizTime || loading || lockModalVisible || questions.length === 0)
+      if (finishedRef.current || !isQuizTime || loading || lockModalVisible || questions.length === 0)
         return;
 
       // 👇 Block hardware back
       const onBack = () => {
-        Alert.alert(
-          "Exit Quiz?",
-          "If you exit now, you won’t be able to attempt again today.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Exit",
-              style: "destructive",
-              onPress: () => nav.goBack(),
-            },
-          ]
-        );
-        return true;
-      };
-      BackHandler.addEventListener("hardwareBackPress", onBack);
+  if (finishedRef.current) return false;   // quiz already finished
 
-      // 👇 Block tab switch or screen blur
-      const beforeRemove = (e: any) => {
-        e.preventDefault();
-        Alert.alert(
-          "Exit Quiz?",
-          "If you exit now, you won’t be able to attempt again today.",
-          [
-            { text: "Cancel", style: "cancel", onPress: () => {} },
-            {
-              text: "Exit",
-              style: "destructive",
-              onPress: () => nav.dispatch(e.data.action),
-            },
-          ]
-        );
-      };
+  Alert.alert(
+    "Exit Quiz?",
+    "If you exit now, you won’t be able to attempt again today.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Exit",
+        style: "destructive",
+        onPress: async () => {
+          await recordEarlyExit();         // write leaderboard + lock
+          nav.goBack();                    // leave the quiz
+        }
+      }
+    ]
+  );
+  return true;                             // override default back action
+};
+
+
+     const beforeRemove = (e: any) => {
+  if (finishedRef.current) return;         // let navigation proceed
+
+  e.preventDefault();                      // block the navigation action
+  Alert.alert(
+    "Exit Quiz?",
+    "If you exit now, you won’t be able to attempt again today.",
+    [
+      { text: "Cancel", style: "cancel", onPress: () => {} },
+      {
+        text: "Exit",
+        style: "destructive",
+        onPress: async () => {
+          await recordEarlyExit();         // write leaderboard + lock
+          nav.dispatch(e.data.action);     // continue with navigation
+        }
+      }
+    ]
+  );
+};
+
 
       nav.addListener("beforeRemove", beforeRemove);
 
@@ -497,7 +540,7 @@ export default function QuizScreen() {
 
         {/* MAIN CARD ----------------------------------------------------- */}
         {questions.length > 0 ? (
-          <Animated.View style={styles.card}>
+          <Animated.View style={[styles.card, { transform: [{ translateX: slideAnim }] }]}>
             <Text style={styles.questionNumber}>
               Question {current + 1} of {questions.length}
             </Text>
