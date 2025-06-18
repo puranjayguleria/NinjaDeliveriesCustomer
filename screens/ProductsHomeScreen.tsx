@@ -1,12 +1,3 @@
-/* ------------------------------------------------------------------
-   ProductsHomeScreen.tsx — 2025-06 full version ❻
-   • “Best sellers” composite-index fix retained (client-side filter).
-   • Pan Corner age-gate:
-        – works when adding/increasing ANY Pan Corner product
-        – works when tapping “See all” on the Pan Corner category
-   • addToCart / increaseQuantity use each product’s stock quantity.
-------------------------------------------------------------------- */
-
 import React, {
   memo,
   useCallback,
@@ -851,70 +842,45 @@ export default function ProductsHomeScreen() {
 
   return (
     <>
-      <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
-        {hasPerm && (
-          <>
-            <View style={{ flex: 1 }}>
-              {/* Background Video (non-interactive) */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    height: videoHeight,
-                    opacity: videoOpacity,
-                    zIndex: -1,
-                  },
-                ]}
-              >
-                <Video
-                  source={require("../assets/deliveryBackground.mp4")}
-                  style={StyleSheet.absoluteFill}
-                  muted
-                  repeat
-                  resizeMode="cover"
-                  rate={1.0}
-                  ignoreSilentSwitch="obey"
-                />
-              </Animated.View>
+    <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
+<Animated.View
+  // ① this full-screen wrapper must not swallow taps outside its children
+  pointerEvents="box-none"
+  // ② give it the stacking power so iOS puts it above the list
+  style={[styles.headerWrapper, { paddingTop: topPadding }]}>
+  {/* --- Background video (decorative, not touchable) --- */}
+  
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      StyleSheet.absoluteFill,
+      { height: videoHeight, opacity: videoOpacity },]}>
+    <Video
+      source={require("../assets/deliveryBackground.mp4")}
+      style={StyleSheet.absoluteFill}
+      muted
+      repeat
+      resizeMode="cover"
+      rate={1.0}
+      ignoreSilentSwitch="obey"/>
+  </Animated.View>
 
-              {/* Animated Header Container — touchable + background fades */}
-              <Animated.View
-                pointerEvents="auto"
-                style={[
-                  {
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    zIndex: 10,
-                    paddingTop: topPadding,
-                    backgroundColor: "transparent",
-                    overflow: "hidden",
-                  },
-                ]}
-              >
-                <Animated.View
-                  style={{
-                    ...StyleSheet.absoluteFillObject,
-                    opacity: gradientOpacity, // gradient fades in
-                  }}
-                  pointerEvents="none"
-                >
-                  <LinearGradient
-                    colors={["#00b4a0", "#00d2c7", "#ffffff"]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
-                {/* Touchable Content */}
-                <Header />
-                <View style={{ paddingBottom: 12 }}>
-                  <StableSearchBar />
-                </View>
-              </Animated.View>
-            </View>
-          </>
-        )}
+  {/* --- Gradient overlay (also decorative) --- */}
+  <Animated.View
+    pointerEvents="none"
+    style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}>
+    <LinearGradient
+      colors={["#00b4a0", "#00d2c7", "#ffffff"]}
+      style={StyleSheet.absoluteFill}/>
+  </Animated.View>
+
+  {/* --- CLICKABLE HEADER & SEARCH --- */}
+  <Header />
+  <View style={{ paddingBottom: 12 }}>
+    <StableSearchBar />
+  </View>
+  
+</Animated.View>
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
@@ -1226,6 +1192,14 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
     textDecorationLine: "line-through",
     marginLeft: 4,
+  },
+  headerWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,     
+    elevation: 20,   
   },
   cartBar: {
     position: "absolute",

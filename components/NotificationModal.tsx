@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   Modal,
+  Platform
 } from "react-native";
 
 type NotificationModalProps = {
@@ -31,8 +32,13 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   cancelText = "Cancel",
 }) => {
   return (
-    <Modal transparent animationType="fade" visible={visible}>
-      <View style={styles.modalBackground}>
+<Modal
+    transparent
+    animationType="fade"
+    visible={visible}
+    presentationStyle="overFullScreen"   // ✨ lets iOS draw it over everything
+    statusBarTranslucent>      
+  <View style={styles.modalBackground}>
         <View style={styles.modalContainer}>
           {/* Replace with your notification ninja or bell icon */}
           <Image

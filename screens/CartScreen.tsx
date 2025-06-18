@@ -13,6 +13,7 @@ import {
   Dimensions,
   Modal,
   Animated,
+  InteractionManager
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
@@ -209,6 +210,7 @@ const CartScreen: React.FC = () => {
 
   // Confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
+  const [pendingNotice, setPendingNotice] = useState(false);
 
   // Location
   const [userLocations, setUserLocations] = useState<any[]>([]);
@@ -291,12 +293,13 @@ const CartScreen: React.FC = () => {
       clearCart(); // empty the old cart
       setSelectedLocation(null); // ← **reset the address**
       prevStoreIdRef.current = cur;
-
+      setShowLocationSheet(false);
+      setShowPaymentSheet(false);
       setNotificationModalMessage(
         "Looks like you’ve switched to another store. " +
           "Your cart has been emptied—please add items again."
       );
-      setNotificationModalVisible(true);
+       setPendingNotice(true); 
     }
   }, [location.storeId]);
 
@@ -1526,7 +1529,15 @@ const CartScreen: React.FC = () => {
         )}
 
         {/* LOCATION PICKER MODAL */}
-        <Modal visible={showLocationSheet} transparent animationType="slide">
+        <Modal visible={showLocationSheet} 
+        transparent 
+        animationType="slide"
+         onDismiss={() => {
+    if (pendingNotice) {
+      setNotificationModalVisible(true);
+      setPendingNotice(false);
+    }
+  }}>
           <View style={styles.modalOverlay}>
             <View style={styles.bottomSheet}>
               <Text style={styles.bottomSheetTitle}>Choose Address</Text>
