@@ -65,11 +65,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
       ? item.price + n(item.CGST) + n(item.SGST) + n(item.cess)
       : item.price;
 
-  // always floor & coerce to safe numbers
-  const safeFinal = Math.floor(Number(finalPrice ?? 0));
-  const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
+  // ✅ Use toFixed to retain 2 decimal precision safely
+  const safeFinal = Number((finalPrice ?? 0).toFixed(2));
+  const safeOriginal = Number((originalPriceIncl ?? 0).toFixed(2));
 
-  // ✅ Calculate discount percentage
+  // ✅ Calculate discount percentage with decimals
   const discountAmount = safeOriginal - safeFinal;
   const discountPercent =
     discountAmount > 0 ? Math.round((discountAmount / safeOriginal) * 100) : 0;
@@ -101,7 +101,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <View style={styles.priceOverlay}>
           <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(2)}</Text>
           {typeof item.discount === "number" && item.discount > 0 && (
-            <Text style={styles.originalPrice}>₹{safeOriginal.toFixed()}</Text>
+            <Text style={styles.originalPrice}>₹{safeOriginal.toFixed(2)}</Text>
           )}
         </View>
       </View>

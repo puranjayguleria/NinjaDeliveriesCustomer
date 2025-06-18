@@ -440,19 +440,20 @@ const OrderAllocatingScreen: React.FC = () => {
             {orderData && orderData.items && orderData.items.length > 0 && (
               <View style={styles.orderDetailsCard}>
                 <Text style={styles.orderDetailsHeader}>Order Details</Text>
-                <ScrollView>
-                  <FlatList
-                    data={orderData.items}
-                    keyExtractor={(item, index) => `${item.name}-${index}`}
-                    renderItem={renderOrderItem}
-                    ItemSeparatorComponent={() => (
-                      <View style={styles.separator} />
-                    )}
-                  />
+
+                <ScrollView style={styles.orderDetailsScroll}>
+                  {/* Order Items */}
+                  {orderData.items.map((item, index) => (
+                    <View key={index}>
+                      {renderOrderItem({ item })}
+                      {index < orderData.items.length - 1 && (
+                        <View style={styles.separator} />
+                      )}
+                    </View>
+                  ))}
 
                   {/* PRICE BREAKDOWN */}
                   <View style={styles.billSummaryContainer}>
-                    {/* Subtotal */}
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Subtotal</Text>
                       <Text style={styles.billValue}>
@@ -465,7 +466,6 @@ const OrderAllocatingScreen: React.FC = () => {
                       </Text>
                     </View>
 
-                    {/* Delivery Charge */}
                     {typeof orderData.deliveryCharge !== "undefined" && (
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Delivery Charge</Text>
@@ -480,7 +480,6 @@ const OrderAllocatingScreen: React.FC = () => {
                       </View>
                     )}
 
-                    {/* Convenience Fee */}
                     {typeof orderData.convenienceFee !== "undefined" && (
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Convenience Fee</Text>
@@ -489,7 +488,7 @@ const OrderAllocatingScreen: React.FC = () => {
                         </Text>
                       </View>
                     )}
-                    {/* Surge Fee */}
+
                     {typeof orderData.surgeFee !== "undefined" && (
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Surge Fee</Text>
@@ -499,7 +498,6 @@ const OrderAllocatingScreen: React.FC = () => {
                       </View>
                     )}
 
-                    {/* Platform Fee */}
                     {typeof orderData.platformFee !== "undefined" && (
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Platform Fee</Text>
@@ -509,7 +507,6 @@ const OrderAllocatingScreen: React.FC = () => {
                       </View>
                     )}
 
-                    {/* Discount */}
                     {typeof orderData.discount !== "undefined" && (
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Discount</Text>
@@ -519,7 +516,6 @@ const OrderAllocatingScreen: React.FC = () => {
                       </View>
                     )}
 
-                    {/* Final Total */}
                     <View style={styles.billRow}>
                       <Text style={[styles.billLabel, { fontWeight: "700" }]}>
                         Total
@@ -540,12 +536,30 @@ const OrderAllocatingScreen: React.FC = () => {
 };
 
 export default OrderAllocatingScreen;
-
-// ---------------- STYLES ----------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  itemsScrollContainer: {
+    maxHeight: 150, // or use height: '40%' for relative sizing
+    marginBottom: 10,
+  },
+  orderDetailsCard: {
+    backgroundColor: "#f9f9f9",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    height: "70%", // or 300 depending on screen size
+  },
+  orderDetailsScroll: {
+    maxHeight: "100%", // adjust based on screen height (can use Dimensions.get if needed)
+  },
+
   closeButton: {
     position: "absolute",
     top: 15,
@@ -565,6 +579,7 @@ const styles = StyleSheet.create({
   mapContainer: {
     flex: 1,
     backgroundColor: "#e1e1e1",
+    height: "40%", // You can adjust this to desired map portion
   },
   map: {
     ...StyleSheet.absoluteFillObject,
@@ -574,7 +589,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    maxHeight: "60%",
+    height: "60%", // dynamic height for bottom drawer
     backgroundColor: "#fff",
     borderTopRightRadius: 12,
     borderTopLeftRadius: 12,
@@ -585,8 +600,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
   },
   bottomContainerContent: {
+    paddingTop: 16,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 20,
+    height: "100%", // fills the bottomScroll container
   },
   header: {
     fontSize: 18,
@@ -636,17 +653,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 14,
   },
-  orderDetailsCard: {
-    backgroundColor: "#f9f9f9",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
+
   orderDetailsHeader: {
     fontSize: 16,
     fontWeight: "700",
@@ -686,6 +693,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderColor: "#ddd",
+    height: "auto", // or use % if it's a known section
   },
   billRow: {
     flexDirection: "row",

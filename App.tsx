@@ -523,7 +523,7 @@ const App: React.FC = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="dark" backgroundColor="#fdfdfd" />
+      <StatusBar style="dark" translucent backgroundColor="transparent" />
 
       <CustomerProvider>
         <CartProvider>

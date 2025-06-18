@@ -466,6 +466,7 @@ const styles = StyleSheet.create({
   },
   mapContainer: {
     flex: 1,
+    height: "50%", // Takes half the screen height
   },
   map: {
     ...StyleSheet.absoluteFillObject,
@@ -496,7 +497,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: -2 },
-    maxHeight: "50%", // allow scrolling for longer orders
+    height: "50%", // changed from maxHeight to fixed dynamic height
   },
   statusText: {
     fontSize: 16,
@@ -529,6 +530,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    height: "19%", // approx size, adjust as needed
   },
   riderCardLeft: {
     flexDirection: "row",
@@ -570,7 +572,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginTop: 16,
-    flex: 1,
+    height: "30%", // dynamic height for order section
   },
   orderDetailsHeader: {
     fontSize: 14,
@@ -580,7 +582,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   itemsScrollContainer: {
-    maxHeight: 150,
+    maxHeight: "40%", // percentage of parent height
     marginBottom: 10,
   },
   orderItemRow: {
@@ -631,6 +633,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    height: "100%",
   },
   loaderText: {
     marginTop: 10,
