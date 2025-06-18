@@ -346,11 +346,11 @@ const OrderTrackingScreen: React.FC = () => {
 
         {/* Show order details if doc has items */}
         {orderDoc && orderDoc.items && orderDoc.items.length > 0 && (
-          <View style={styles.orderDetails}>
+          <ScrollView style={styles.orderDetails}>
             <Text style={styles.orderDetailsHeader}>Order Details</Text>
 
             {/* Make the list scrollable within the container */}
-            <ScrollView style={styles.itemsScrollContainer}>
+            <View style={styles.itemsScrollContainer}>
               {orderDoc.items.map((item: OrderItem, idx: number) => {
                 const price = Number(item.price) || 0;
                 const discount = Number(item.discount) || 0;
@@ -448,8 +448,8 @@ const OrderTrackingScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
-            </ScrollView>
-          </View>
+            </View>
+          </ScrollView>
         )}
       </View>
     </View>

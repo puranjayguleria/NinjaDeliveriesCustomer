@@ -1,17 +1,17 @@
 // components/ProductCard.tsx
 
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Image, 
-  Dimensions, 
-  ActivityIndicator 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { Product } from "../types/Product"; 
+import { Product } from "../types/Product";
 
 type ProductCardProps = {
   item: Product;
@@ -36,47 +36,51 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onIncrease,
   onDecrease,
   displayPrice,
-  style
+  style,
 }) => {
   const [isImageLoading, setIsImageLoading] = useState<boolean>(true);
 
   /** Safely coerce possible string/undefined tax values to numbers */
-const n = (v: unknown): number => {
-  const num = Number(v);
-  return isFinite(num) ? num : 0;
-};
+  const n = (v: unknown): number => {
+    const num = Number(v);
+    return isFinite(num) ? num : 0;
+  };
 
   // final price (base – discount + taxes)
-const finalPrice =
-typeof displayPrice === "number"
-  ? displayPrice
-  : (() => {
-      const base =
-        typeof item.price === "number" && typeof item.discount === "number"
-          ? item.price - item.discount
-          : item.price;
+  const finalPrice =
+    typeof displayPrice === "number"
+      ? displayPrice
+      : (() => {
+          const base =
+            typeof item.price === "number" && typeof item.discount === "number"
+              ? item.price - item.discount
+              : item.price;
 
-      return (
-        base + n(item.CGST) + n(item.SGST) + n(item.cess)
-      );
-    })();
+          return base + n(item.CGST) + n(item.SGST) + n(item.cess);
+        })();
 
-// original strike-through price (price + taxes)
-const originalPriceIncl =
-typeof item.price === "number"
-  ? item.price + n(item.CGST) + n(item.SGST) + n(item.cess)
-  : item.price;
+  // original strike-through price (price + taxes)
+  const originalPriceIncl =
+    typeof item.price === "number"
+      ? item.price + n(item.CGST) + n(item.SGST) + n(item.cess)
+      : item.price;
 
-// always floor & coerce to safe numbers
-const safeFinal    = Math.floor(Number(finalPrice  ?? 0));
-const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
+  // always floor & coerce to safe numbers
+  const safeFinal = Math.floor(Number(finalPrice ?? 0));
+  const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
+
+  // ✅ Calculate discount percentage
+  const discountAmount = safeOriginal - safeFinal;
+  const discountPercent =
+    discountAmount > 0 ? Math.round((discountAmount / safeOriginal) * 100) : 0;
+
   return (
     <View style={[styles.cardContainer, style]}>
       <View style={styles.imageContainer}>
         <Image
           source={{ uri: item.image }}
           style={styles.productImage}
-          onLoadEnd={() => setIsImageLoading(false)} 
+          onLoadEnd={() => setIsImageLoading(false)}
         />
 
         {isImageLoading && (
@@ -89,17 +93,15 @@ const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
         {typeof item.discount === "number" && item.discount > 0 && (
           <View style={styles.discountTag}>
             <Text style={styles.discountTagText}>
-              ₹{item.discount.toFixed(0)} OFF
+              {discountPercent.toFixed(0)}% OFF
             </Text>
           </View>
         )}
         {/* Price Overlay */}
         <View style={styles.priceOverlay}>
-          <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(0)}</Text>
+          <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(2)}</Text>
           {typeof item.discount === "number" && item.discount > 0 && (
-            <Text style={styles.originalPrice}>
-              ₹{safeOriginal.toFixed(0)}
-            </Text>
+            <Text style={styles.originalPrice}>₹{safeOriginal.toFixed()}</Text>
           )}
         </View>
       </View>
@@ -135,22 +137,20 @@ const safeOriginal = Math.floor(Number(originalPriceIncl ?? 0));
             <MaterialIcons name="add" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+      ) : item.outOfStock ? (
+        <View style={styles.oosButton}>
+          <Text style={styles.oosButtonText}>Out of Stock</Text>
+        </View>
       ) : (
-        item.outOfStock ? (
-              <View style={styles.oosButton}>
-                <Text style={styles.oosButtonText}>Out of Stock</Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.addToCartButton}
-                onPress={onAddToCart}
-                accessibilityLabel={`Add ${item.name} to cart`}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="shopping-cart" size={18} color="#FFFFFF" />
-                <Text style={styles.addToCartText}>Add to Cart</Text>
-              </TouchableOpacity>
-            )
+        <TouchableOpacity
+          style={styles.addToCartButton}
+          onPress={onAddToCart}
+          accessibilityLabel={`Add ${item.name} to cart`}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="shopping-cart" size={18} color="#FFFFFF" />
+          <Text style={styles.addToCartText}>Add to Cart</Text>
+        </TouchableOpacity>
       )}
     </View>
   );

@@ -46,6 +46,7 @@ export const QuickTile: React.FC<QuickTileProps> = React.memo(
     const deal = discount > 0;
     const name = p.name || p.title || "Product";
     const stock = p.quantity ?? 1; // Ensures there's a fallback
+    const discountPercent = deal ? Math.round((discount / mrp) * 100) : 0;
 
     return (
       <Pressable>
@@ -59,7 +60,7 @@ export const QuickTile: React.FC<QuickTileProps> = React.memo(
           />
           {deal && (
             <View style={styles.discountTag}>
-              <Text style={styles.discountTagTxt}>₹{discount} OFF</Text>
+              <Text style={styles.discountTagTxt}>{discountPercent}% OFF</Text>
             </View>
           )}
           <Text style={styles.tileName} numberOfLines={2}>

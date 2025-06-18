@@ -48,6 +48,7 @@ export default function RecommendCard({
   const sgstRate = Math.round(rawSgst * 100) / 100;
   const base = Math.round((rawPrice + cgstRate + sgstRate) * 100) / 100;
   const final = Math.round(Math.max(base - saving, 0) * 100) / 100;
+  const discountPercent = saving > 0 ? Math.round((saving / base) * 100) : 0;
 
   return (
     <View style={[styles.card, { width }]}>
@@ -66,7 +67,7 @@ export default function RecommendCard({
           <>
             <Text style={styles.mrp}>₹{base}</Text>
             <View style={styles.saveTag}>
-              <Text style={styles.saveTxt}>-{saving}</Text>
+              <Text style={styles.saveTxt}>{discountPercent}%</Text>
             </View>
           </>
         )}

@@ -206,13 +206,19 @@ export default function SearchScreen() {
   const QuickTileLocal: React.FC<{ p: any }> = React.memo(
     ({ p }) => {
       const qty = cart[p.id] ?? 0;
-      const deal = (p.discount ?? 0) > 0;
+      const discount = Number(p.discount ?? 0);
+      const deal = discount > 0;
+
       const price =
         Math.round(
           (Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0)) *
             100
         ) / 100;
 
+      const finalPrice = Math.round(Math.max(price - discount, 0) * 100) / 100;
+
+      // Calculate discount percentage
+      const discountPercent = deal ? Math.round((discount / price) * 100) : 0;
       const pan = isPanProduct(p);
       const imgUri = firstImg(p);
 
@@ -231,7 +237,7 @@ export default function SearchScreen() {
 
           {deal && (
             <View style={styles.discountTag}>
-              <Text style={styles.discountTagTxt}>₹{p.discount} OFF</Text>
+              <Text style={styles.discountTagTxt}>{discountPercent}% OFF</Text>
             </View>
           )}
 
