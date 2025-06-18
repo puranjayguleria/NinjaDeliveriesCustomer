@@ -878,45 +878,50 @@ export default function ProductsHomeScreen() {
 
   return (
     <>
-    <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
-<Animated.View
-  // ① this full-screen wrapper must not swallow taps outside its children
-  pointerEvents="box-none"
-  // ② give it the stacking power so iOS puts it above the list
-  style={[styles.headerWrapper, { paddingTop: topPadding }]}>
-  {/* --- Background video (decorative, not touchable) --- */}
-  
-  <Animated.View
-    pointerEvents="none"
-    style={[
-      StyleSheet.absoluteFill,
-      { height: videoHeight, opacity: videoOpacity },]}>
-    <Video
-      source={require("../assets/deliveryBackground.mp4")}
-      style={StyleSheet.absoluteFill}
-      muted
-      repeat
-      resizeMode="cover"
-      rate={1.0}
-      ignoreSilentSwitch="obey"/>
-  </Animated.View>
+      <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
+        <Animated.View
+          // ① this full-screen wrapper must not swallow taps outside its children
+          pointerEvents="box-none"
+          // ② give it the stacking power so iOS puts it above the list
+          style={[styles.headerWrapper, { paddingTop: topPadding }]}
+        >
+          {/* --- Background video (decorative, not touchable) --- */}
 
-  {/* --- Gradient overlay (also decorative) --- */}
-  <Animated.View
-    pointerEvents="none"
-    style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}>
-    <LinearGradient
-      colors={["#00b4a0", "#00d2c7", "#ffffff"]}
-      style={StyleSheet.absoluteFill}/>
-  </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              { height: videoHeight, opacity: videoOpacity },
+            ]}
+          >
+            <Video
+              source={require("../assets/deliveryBackground.mp4")}
+              style={StyleSheet.absoluteFill}
+              muted
+              repeat
+              resizeMode="cover"
+              rate={1.0}
+              ignoreSilentSwitch="obey"
+            />
+          </Animated.View>
 
-  {/* --- CLICKABLE HEADER & SEARCH --- */}
-  <Header />
-  <View style={{ paddingBottom: 12 }}>
-    <StableSearchBar />
-  </View>
-  
-</Animated.View>
+          {/* --- Gradient overlay (also decorative) --- */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
+          >
+            <LinearGradient
+              colors={["#00b4a0", "#00d2c7", "#ffffff"]}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+
+          {/* --- CLICKABLE HEADER & SEARCH --- */}
+          <Header />
+          <View style={{ paddingBottom: 12 }}>
+            <StableSearchBar />
+          </View>
+        </Animated.View>
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
@@ -1239,8 +1244,8 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 999,     
-    elevation: 20,   
+    zIndex: 999,
+    elevation: 20,
   },
   cartBar: {
     position: "absolute",
