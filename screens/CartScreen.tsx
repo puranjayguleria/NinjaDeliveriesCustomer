@@ -13,7 +13,7 @@ import {
   Dimensions,
   Modal,
   Animated,
-  InteractionManager
+  InteractionManager,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
@@ -301,7 +301,7 @@ const CartScreen: React.FC = () => {
         "Looks like you’ve switched to another store. " +
           "Your cart has been emptied—please add items again."
       );
-       setPendingNotice(true); 
+      setPendingNotice(true);
     }
   }, [location.storeId]);
 
@@ -1548,15 +1548,17 @@ const CartScreen: React.FC = () => {
         )}
 
         {/* LOCATION PICKER MODAL */}
-        <Modal visible={showLocationSheet} 
-        transparent 
-        animationType="slide"
-         onDismiss={() => {
-    if (pendingNotice) {
-      setNotificationModalVisible(true);
-      setPendingNotice(false);
-    }
-  }}>
+        <Modal
+          visible={showLocationSheet}
+          transparent
+          animationType="slide"
+          onDismiss={() => {
+            if (pendingNotice) {
+              setNotificationModalVisible(true);
+              setPendingNotice(false);
+            }
+          }}
+        >
           <View style={styles.modalOverlay}>
             <View style={styles.bottomSheet}>
               <Text style={styles.bottomSheetTitle}>Choose Address</Text>
