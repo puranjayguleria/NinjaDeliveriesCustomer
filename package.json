@@ -80,7 +80,7 @@
     "react-native-screens": "~4.4.0",
     "react-native-step-indicator": "^1.0.3",
     "react-native-svg": "^15.12.0",
-    "react-native-toast-message": "^2.2.1",
+    "react-native-toast-message": "^2.3.0",
     "react-native-vector-icons": "^10.2.0",
     "react-native-video": "^6.14.1",
     "react-native-web": "~0.19.13",

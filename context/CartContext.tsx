@@ -91,20 +91,27 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
   // -------------------------------
   const addToCart = useCallback(
     (productId: string, availableQuantity: number) => {
+      if (availableQuantity === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Out of Stock",
+          text2: "This product is currently unavailable.",
+        });
+        return;
+      }
+
       setCart((prevCart) => {
         const currentQty = prevCart[productId] || 0;
 
-        // If already at max quantity
         if (currentQty >= availableQuantity) {
           Toast.show({
             type: "info",
             text1: "Stock limit reached",
-            text2: `Only ${availableQuantity} left in stock`,
+            text2: `Only ${availableQuantity} in stock`,
           });
           return prevCart;
         }
 
-        // Add to cart or increment by 1
         return {
           ...prevCart,
           [productId]: currentQty + 1,
@@ -119,6 +126,15 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
   // -------------------------------
   const increaseQuantity = useCallback(
     (productId: string, availableQuantity: number) => {
+      if (availableQuantity === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Out of Stock",
+          text2: "This product is currently unavailable.",
+        });
+        return;
+      }
+
       setCart((prevCart) => {
         const currentQty = prevCart[productId] || 0;
 
@@ -126,7 +142,7 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
           Toast.show({
             type: "info",
             text1: "Not enough stock",
-            text2: `Only ${availableQuantity} left in stock`,
+            text2: `Only ${availableQuantity} in stock`,
           });
           return prevCart;
         }

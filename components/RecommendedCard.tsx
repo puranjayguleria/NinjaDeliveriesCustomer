@@ -37,13 +37,17 @@ export default function RecommendCard({
   onDec,
 }: Props) {
   /* price helpers ---------------------------------------------------- */
-  const saving = item.discount ?? 0;
+  const rawSaving = Number(item.discount ?? 0);
+  const rawCgst = Number(item.CGST ?? 0);
+  const rawSgst = Number(item.SGST ?? 0);
+  const rawPrice = Number(item.price ?? 0);
 
-  const cgstRate = Number(item.CGST ?? 0);
-  const sgstRate = Number(item.SGST ?? 0);
-
-  const base = item.price + cgstRate + sgstRate;
-  const final = Math.max(base - saving);
+  // Round individually
+  const saving = Math.round(rawSaving * 100) / 100;
+  const cgstRate = Math.round(rawCgst * 100) / 100;
+  const sgstRate = Math.round(rawSgst * 100) / 100;
+  const base = Math.round((rawPrice + cgstRate + sgstRate) * 100) / 100;
+  const final = Math.round(Math.max(base - saving, 0) * 100) / 100;
 
   return (
     <View style={[styles.card, { width }]}>

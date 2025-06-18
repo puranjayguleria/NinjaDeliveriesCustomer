@@ -42,7 +42,7 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
       ],
-      "versionCode": 13,
+      "versionCode": 14,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"
