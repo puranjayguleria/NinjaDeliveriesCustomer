@@ -15,6 +15,8 @@ import {
   Animated,
   InteractionManager,
 } from "react-native";
+import { useFocusEffect,useIsFocused } from "@react-navigation/native";
+import  { useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
@@ -78,6 +80,7 @@ const checkDeliveryWindow = async (): Promise<boolean> => {
     return true; // fail-open on error
   }
 };
+let storeChangeSerial = 0;
 
 /**
  * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
@@ -164,7 +167,7 @@ const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
-
+const isFocused = useIsFocused();
   const { location, updateLocation } = useLocationContext(); // already have this in Categories – add here too
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
   const [recommended, setRecommended] = useState<Product[]>([]);
@@ -210,8 +213,8 @@ const CartScreen: React.FC = () => {
 
   // Confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
-  const [pendingNotice, setPendingNotice] = useState(false);
-
+  const unseenChangeId    = useRef<number | null>(null);   // queued id
+  const lastSeenChangeId  = useRef<number>(0);             // already shown
   // Location
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
@@ -230,15 +233,31 @@ const CartScreen: React.FC = () => {
   // Animations
   const colorAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const cartJustCleared = useRef(false);
 
   // --- NEW: Delivery Timing Error Modal State ---
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
   const { isBadWeather, weatherData } = useWeather();
   const [loadingCartUpdate, setLoadingCartUpdate] = useState(false);
-const prevLocationSheetVisible = useRef<boolean>(false);
 
   console.log(isBadWeather, weatherData);
+const maybeShowNotice = () => {
+  if (
+    unseenChangeId.current !== null &&
+    unseenChangeId.current > lastSeenChangeId.current &&
+    !showLocationSheet &&
+    !showPaymentSheet &&
+    isFocused
+  ) {
+    lastSeenChangeId.current = unseenChangeId.current;  // mark as seen
+    unseenChangeId.current   = null;                    // consume
+    InteractionManager.runAfterInteractions(() =>
+      setNotificationModalVisible(true)
+    );
+  }
+};
+
   /***************************************
    * Animate Checkout Button
    ***************************************/
@@ -249,7 +268,6 @@ const prevLocationSheetVisible = useRef<boolean>(false);
       duration: 600,
       useNativeDriver: false,
     }).start();
-
     // Shake animation if location is selected
     if (selectedLocation) {
       Animated.sequence([
@@ -283,28 +301,42 @@ const prevLocationSheetVisible = useRef<boolean>(false);
       shakeAnim.setValue(0);
     }
   }, [selectedLocation]);
+  
 
-  useEffect(() => {
-    const cur = location.storeId ?? null;
 
-    if (prevStoreIdRef.current === null && cur !== null) {
-      prevStoreIdRef.current = cur; // first time → just remember
-      return;
-    }
+useEffect(() => {
+  const currentStore = location.storeId ?? null;
 
-    if (cur && cur !== prevStoreIdRef.current) {
-      clearCart(); // empty the old cart
-      setSelectedLocation(null); // ← **reset the address**
-      prevStoreIdRef.current = cur;
-      setShowLocationSheet(false);
-      setShowPaymentSheet(false);
+  /* ─────────── first mount – just remember the store ─────────── */
+  if (prevStoreIdRef.current === null && currentStore !== null) {
+    prevStoreIdRef.current = currentStore;
+    return;
+  }
+
+  /* ─────────── real change detected ─────────── */
+  if (currentStore && currentStore !== prevStoreIdRef.current) {
+    /* 1️⃣  wipe data tied to the old store */
+    clearCart();
+    setSelectedLocation(null);
+    setShowLocationSheet(false);
+    setShowPaymentSheet(false);
+    prevStoreIdRef.current = currentStore;
+
+    /* 2️⃣  surface the “cart-emptied” notice only if Cart
+           is the **active** screen right now                      */
+    if (isFocused) {
+      storeChangeSerial += 1;
+      unseenChangeId.current = storeChangeSerial;
       setNotificationModalMessage(
         "Looks like you’ve switched to another store. " +
           "Your cart has been emptied—please add items again."
       );
-      setPendingNotice(true);
+      maybeShowNotice();    // tries to pop the banner immediately
     }
-  }, [location.storeId]);
+  }
+}, [location.storeId, isFocused]);
+
+
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
@@ -349,14 +381,6 @@ const prevLocationSheetVisible = useRef<boolean>(false);
     fetchCartItems(false);
   }, [cart]);
 
-
-  useEffect(() => {
-  if (prevLocationSheetVisible.current && !showLocationSheet && pendingNotice) {
-    setNotificationModalVisible(true);
-    setPendingNotice(false);
-  }
-  prevLocationSheetVisible.current = showLocationSheet;
-}, [showLocationSheet, pendingNotice]);
 
 
   // If user selected location
@@ -498,6 +522,17 @@ const prevLocationSheetVisible = useRef<boolean>(false);
       }
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      maybeShowNotice();
+      // on focus → nothing special
+      return () => {
+        // on blur  → make sure the banner is gone
+        setNotificationModalVisible(false);
+      };
+    }, [showLocationSheet, showPaymentSheet])
+  );
 
   /**
    * Pull “people also bought” items into state.recommended
@@ -1545,12 +1580,7 @@ const prevLocationSheetVisible = useRef<boolean>(false);
           visible={showLocationSheet}
           transparent
           animationType="slide"
-          onDismiss={() => {
-            if (pendingNotice) {
-              setNotificationModalVisible(true);
-              setPendingNotice(false);
-            }
-          }}
+          onDismiss={maybeShowNotice}
           onRequestClose={() => setShowLocationSheet(false)}
         >
           <View style={styles.modalOverlay}>
