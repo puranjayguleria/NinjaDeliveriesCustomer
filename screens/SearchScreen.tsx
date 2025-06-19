@@ -526,6 +526,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 22,
     paddingHorizontal: 10,
+    paddingTop: 26,
+
     elevation: 2,
   },
   searchInput: { flex: 1, height: 40, fontSize: 14, color: "#222" },

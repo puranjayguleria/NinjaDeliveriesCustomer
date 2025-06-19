@@ -661,7 +661,12 @@ const ProfileScreen: React.FC = () => {
             data={orders}
             keyExtractor={(item) => item.id}
             renderItem={renderOrderItem}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 10,
+              flexGrow: 1,
+            }}
+            scrollEnabled={false}
             style={{ marginTop: 10 }}
           />
         )}
@@ -774,7 +779,7 @@ const ProfileScreen: React.FC = () => {
                       {/* Surge Fee */}
                       {typeof selectedOrder.surgeFee !== "undefined" && (
                         <View style={styles.billRow}>
-                          <Text style={styles.billLabel}>Convenience Fee</Text>
+                          <Text style={styles.billLabel}>Surge Fee</Text>
                           <Text style={styles.billValue}>
                             ₹{(selectedOrder.surgeFee || 0).toFixed(2)}
                           </Text>

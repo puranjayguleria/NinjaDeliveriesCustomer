@@ -717,6 +717,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingTop: 30,
     elevation: 3,
     shadowColor: "#000",
     shadowOpacity: 0.05,

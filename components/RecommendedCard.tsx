@@ -67,7 +67,7 @@ export default function RecommendCard({
           <>
             <Text style={styles.mrp}>₹{base}</Text>
             <View style={styles.saveTag}>
-              <Text style={styles.saveTxt}>{discountPercent}%</Text>
+              <Text style={styles.saveTxt}>{discountPercent}% OFF</Text>
             </View>
           </>
         )}
