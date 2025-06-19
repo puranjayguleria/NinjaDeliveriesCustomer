@@ -1089,7 +1089,8 @@ export default function ProductsHomeScreen() {
 /* ------------------------------------------------------------------ STYLES (same + modal) */
 const pastelGreen = "#e7f8f6";
 const BORDER_CLR = "#e0e0e0";
-const GAP_BG = "#f8f8f8"; // shows in the tiny gaps between thumbs
+const GAP_BG = "#f8f8f8";   // shows in the tiny gaps between thumbs
+
 
 const styles = StyleSheet.create({
   /* ---- (unchanged styles from previous version plus modal styles) ---- */
@@ -1178,6 +1179,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     padding: 8,
   },
+
   quizTxt: {
     color: "#fff",
     fontSize: 16,
@@ -1206,34 +1208,35 @@ const styles = StyleSheet.create({
   },
   chipTxt: { fontSize: 11, color: "#00695c", fontWeight: "600" },
   tile: {
-    marginRight: 8,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 6,
+  marginRight: 8,
+  backgroundColor: "#fff",
+  borderRadius: 10,
+  padding: 6,
 
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
+  borderWidth: 1,
+  borderColor: BORDER_CLR,
 
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
+  shadowColor: "#000",
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+},
 
-  mosaicCard: {
-    width: MOSAIC_W,
-    height: MOSAIC_W,
-    borderRadius: 12,
-    backgroundColor: "#f5f5f5",
-    overflow: "hidden",
-    marginRight: G,
-    flexDirection: "row",
-    flexWrap: "wrap",
+mosaicCard: {
+  width: MOSAIC_W,
+  height: MOSAIC_W,
+  borderRadius: 12,
+  backgroundColor: "#f5f5f5",
+  overflow: "hidden",
+  marginRight: G,
+  flexDirection: "row",
+  flexWrap: "wrap",
 
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
-  },
+  borderWidth: 1,
+  borderColor: BORDER_CLR,
+},
+
 
   tileImg: {
     width: TILE_W - 12,
@@ -1306,61 +1309,51 @@ const styles = StyleSheet.create({
     marginHorizontal: H,
   },
 
-  wholeCell: {
-    width: "100%",
-    height: "100%",
-    borderWidth: 0, // ⟵ no inner border
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+wholeCell: {
+  width: "100%", height: "100%",
+  borderWidth: 0,                // ⟵ no inner border
+  justifyContent: "center", alignItems: "center",
+  borderRadius: 8,
+  overflow: "hidden",
+},
 
-  fullWidthCell: {
-    width: "100%",
-    height: "50%",
-    borderWidth: 0, // ⟵ no inner border
-    backgroundColor: GAP_BG,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+fullWidthCell: {
+  width: "100%", height: "50%",
+  borderWidth: 0,                // ⟵ no inner border
+  backgroundColor: GAP_BG,
+  justifyContent: "center", alignItems: "center",
+  borderRadius: 8,
+  overflow: "hidden",
+},
 
-  halfCell: {
-    width: "50%",
-    height: "100%",
-    borderWidth: 0,
-    borderColor: BORDER_CLR,
-    backgroundColor: GAP_BG,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+halfCell:     {
+  width:"50%",  height:"100%",
+  borderWidth:0, borderColor:BORDER_CLR,
+  backgroundColor: GAP_BG,
+  justifyContent:"center", alignItems:"center",
+  borderRadius: 8,
+  overflow:"hidden",
+},
 
-  quarterCell: {
-    width: "50%",
-    height: "50%",
-    borderWidth: 0.5,
-    borderColor: BORDER_CLR,
-    backgroundColor: GAP_BG,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+quarterCell:  {
+  width:"50%",  height:"50%",
+  borderWidth:0.5, borderColor:BORDER_CLR,
+  backgroundColor: GAP_BG,
+  justifyContent:"center", alignItems:"center",
+  borderRadius: 8,
+  overflow:"hidden",
+},
+
 
   roundTL: { borderTopLeftRadius: 12 },
   roundBR: { borderBottomRightRadius: 12 },
-  mosaicImg: {
-    width: "88%", // a little breathing space all round
-    height: "88%",
-    alignSelf: "center",
-
-    backgroundColor: "#fff", // keeps any transparent PNGs looking clean
-    resizeMode: "contain",
-  },
+mosaicImg: {
+  width: "88%",           // a little breathing space all round
+  height: "88%",
+  alignSelf: "center",
+  backgroundColor: "#fff", // keeps any transparent PNGs looking clean
+  resizeMode: "contain",
+},
   morePill: {
     position: "absolute",
     bottom: 18,

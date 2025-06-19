@@ -236,6 +236,7 @@ const CartScreen: React.FC = () => {
   const [errorModalMessage, setErrorModalMessage] = useState("");
   const { isBadWeather, weatherData } = useWeather();
   const [loadingCartUpdate, setLoadingCartUpdate] = useState(false);
+const prevLocationSheetVisible = useRef<boolean>(false);
 
   console.log(isBadWeather, weatherData);
   /***************************************
@@ -301,7 +302,6 @@ const CartScreen: React.FC = () => {
         "Looks like you’ve switched to another store. " +
           "Your cart has been emptied—please add items again."
       );
-      setNotificationModalVisible(true);
       setPendingNotice(true);
     }
   }, [location.storeId]);
@@ -348,6 +348,16 @@ const CartScreen: React.FC = () => {
   useEffect(() => {
     fetchCartItems(false);
   }, [cart]);
+
+
+  useEffect(() => {
+  if (prevLocationSheetVisible.current && !showLocationSheet && pendingNotice) {
+    setNotificationModalVisible(true);
+    setPendingNotice(false);
+  }
+  prevLocationSheetVisible.current = showLocationSheet;
+}, [showLocationSheet, pendingNotice]);
+
 
   // If user selected location
   useEffect(() => {
@@ -1541,6 +1551,7 @@ const CartScreen: React.FC = () => {
               setPendingNotice(false);
             }
           }}
+          onRequestClose={() => setShowLocationSheet(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.bottomSheet}>
