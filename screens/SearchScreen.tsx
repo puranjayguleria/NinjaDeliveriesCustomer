@@ -515,7 +515,7 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#fdfdfd" },
+  safe: { flex: 1, backgroundColor: "#fdfdfd", paddingTop: 30 },
   centerBox: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   /* search bar */
@@ -526,7 +526,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 22,
     paddingHorizontal: 10,
-    paddingTop: 26,
 
     elevation: 2,
   },

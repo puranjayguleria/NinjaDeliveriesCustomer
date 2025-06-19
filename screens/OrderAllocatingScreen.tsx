@@ -271,13 +271,9 @@ const OrderAllocatingScreen: React.FC = () => {
   // OTHER HANDLERS
   // --------------------------------------------------
   const handleForgotItemsLink = () => {
-    // Navigate to the "Home" tab, specifically "Categories" if desired
-    navigation.navigate(
-      "HomeTab" as never,
-      {
-        screen: "Categories",
-      } as never
-    );
+    navigation.navigate("HomeTab", {
+      screen: "ProductsHome",
+    });
   };
 
   const handleClose = () => {

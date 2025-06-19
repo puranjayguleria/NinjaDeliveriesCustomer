@@ -301,6 +301,7 @@ const CartScreen: React.FC = () => {
         "Looks like you’ve switched to another store. " +
           "Your cart has been emptied—please add items again."
       );
+      setNotificationModalVisible(true);
       setPendingNotice(true);
     }
   }, [location.storeId]);
@@ -750,24 +751,6 @@ const CartScreen: React.FC = () => {
     let surgeFee = 0;
 
     surgeFee = isBadWeather ? fareData?.surgeFee ?? 0 : 0;
-
-    // if (
-    //   selectedLocation?.lat &&
-    //   selectedLocation?.lng &&
-    //   fareData?.weatherThreshold
-    // ) {
-    //   const weatherData = await getGoogleWeatherData(
-    //     selectedLocation.lat,
-    //     selectedLocation.lng,
-    //     GOOGLE_PLACES_API_KEY
-    //   );
-
-    //   const isBad = weatherData
-    //     ? isBadWeather(weatherData, fareData.weatherThreshold)
-    //     : false;
-
-    //   surgeFee = isBad ? fareData.surgeFee ?? 0 : 0;
-    // }
 
     // 7) Final total
     const _conFee = n(convenienceFee);

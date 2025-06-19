@@ -1,10 +1,15 @@
-export const isBadWeather = (weatherData: any, threshold: boolean): boolean => {
+export const isBadWeather = (
+  weatherData: any,
+  threshold: boolean,
+  weatherFromApi: boolean
+): boolean => {
   if (!weatherData) return false;
-  const isBad = threshold;
+
   const conditionType =
     weatherData?.weatherCondition?.type?.toUpperCase() || "";
 
-  console.log(conditionType, isBad);
+  console.log("Weather Condition:", conditionType, "Threshold:", threshold);
+
   const badWeatherTypes = new Set([
     "WIND_AND_RAIN",
     "LIGHT_RAIN_SHOWERS",
@@ -26,5 +31,12 @@ export const isBadWeather = (weatherData: any, threshold: boolean): boolean => {
     "SCATTERED_THUNDERSTORMS",
     "HEAVY_THUNDERSTORM",
   ]);
-  return badWeatherTypes.has(conditionType) || threshold;
+
+  // ✅ If weather API logic is enabled: use both API + threshold
+  if (weatherFromApi) {
+    return badWeatherTypes.has(conditionType) || threshold;
+  }
+
+  // ❌ Otherwise: use only the threshold flag
+  return threshold;
 };
