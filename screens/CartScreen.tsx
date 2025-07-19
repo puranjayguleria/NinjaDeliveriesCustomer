@@ -15,8 +15,8 @@ import {
   Animated,
   InteractionManager,
 } from "react-native";
-import { useFocusEffect,useIsFocused } from "@react-navigation/native";
-import  { useCallback } from "react";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
+import { useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
@@ -167,7 +167,7 @@ const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
-const isFocused = useIsFocused();
+  const isFocused = useIsFocused();
   const { location, updateLocation } = useLocationContext(); // already have this in Categories – add here too
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
   const [recommended, setRecommended] = useState<Product[]>([]);
@@ -213,8 +213,8 @@ const isFocused = useIsFocused();
 
   // Confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
-  const unseenChangeId    = useRef<number | null>(null);   // queued id
-  const lastSeenChangeId  = useRef<number>(0);             // already shown
+  const unseenChangeId = useRef<number | null>(null); // queued id
+  const lastSeenChangeId = useRef<number>(0); // already shown
   // Location
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
@@ -242,21 +242,21 @@ const isFocused = useIsFocused();
   const [loadingCartUpdate, setLoadingCartUpdate] = useState(false);
 
   console.log(isBadWeather, weatherData);
-const maybeShowNotice = () => {
-  if (
-    unseenChangeId.current !== null &&
-    unseenChangeId.current > lastSeenChangeId.current &&
-    !showLocationSheet &&
-    !showPaymentSheet &&
-    isFocused
-  ) {
-    lastSeenChangeId.current = unseenChangeId.current;  // mark as seen
-    unseenChangeId.current   = null;                    // consume
-    InteractionManager.runAfterInteractions(() =>
-      setNotificationModalVisible(true)
-    );
-  }
-};
+  const maybeShowNotice = () => {
+    if (
+      unseenChangeId.current !== null &&
+      unseenChangeId.current > lastSeenChangeId.current &&
+      !showLocationSheet &&
+      !showPaymentSheet &&
+      isFocused
+    ) {
+      lastSeenChangeId.current = unseenChangeId.current; // mark as seen
+      unseenChangeId.current = null; // consume
+      InteractionManager.runAfterInteractions(() =>
+        setNotificationModalVisible(true)
+      );
+    }
+  };
 
   /***************************************
    * Animate Checkout Button
@@ -301,42 +301,38 @@ const maybeShowNotice = () => {
       shakeAnim.setValue(0);
     }
   }, [selectedLocation]);
-  
 
+  useEffect(() => {
+    const currentStore = location.storeId ?? null;
 
-useEffect(() => {
-  const currentStore = location.storeId ?? null;
-
-  /* ─────────── first mount – just remember the store ─────────── */
-  if (prevStoreIdRef.current === null && currentStore !== null) {
-    prevStoreIdRef.current = currentStore;
-    return;
-  }
-
-  /* ─────────── real change detected ─────────── */
-  if (currentStore && currentStore !== prevStoreIdRef.current) {
-    /* 1️⃣  wipe data tied to the old store */
-    clearCart();
-    setSelectedLocation(null);
-    setShowLocationSheet(false);
-    setShowPaymentSheet(false);
-    prevStoreIdRef.current = currentStore;
-
-    /* 2️⃣  surface the “cart-emptied” notice only if Cart
-           is the **active** screen right now                      */
-    if (isFocused) {
-      storeChangeSerial += 1;
-      unseenChangeId.current = storeChangeSerial;
-      setNotificationModalMessage(
-        "Looks like you’ve switched to another store. " +
-          "Your cart has been emptied—please add items again."
-      );
-      maybeShowNotice();    // tries to pop the banner immediately
+    /* ─────────── first mount – just remember the store ─────────── */
+    if (prevStoreIdRef.current === null && currentStore !== null) {
+      prevStoreIdRef.current = currentStore;
+      return;
     }
-  }
-}, [location.storeId, isFocused]);
 
+    /* ─────────── real change detected ─────────── */
+    if (currentStore && currentStore !== prevStoreIdRef.current) {
+      /* 1️⃣  wipe data tied to the old store */
+      clearCart();
+      setSelectedLocation(null);
+      setShowLocationSheet(false);
+      setShowPaymentSheet(false);
+      prevStoreIdRef.current = currentStore;
 
+      /* 2️⃣  surface the “cart-emptied” notice only if Cart
+           is the **active** screen right now                      */
+      if (isFocused) {
+        storeChangeSerial += 1;
+        unseenChangeId.current = storeChangeSerial;
+        setNotificationModalMessage(
+          "Looks like you’ve switched to another store. " +
+            "Your cart has been emptied—please add items again."
+        );
+        maybeShowNotice(); // tries to pop the banner immediately
+      }
+    }
+  }, [location.storeId, isFocused]);
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
@@ -380,8 +376,6 @@ useEffect(() => {
   useEffect(() => {
     fetchCartItems(false);
   }, [cart]);
-
-
 
   // If user selected location
   useEffect(() => {

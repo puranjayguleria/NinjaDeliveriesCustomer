@@ -9,6 +9,7 @@ import { GOOGLE_PLACES_API_KEY } from "@env";
 type WeatherContextType = {
   weatherData: any | null;
   isBadWeather: boolean;
+  weatherFromApi : boolean;
   refreshWeather: () => Promise<void>;
 };
 
@@ -45,14 +46,17 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({
         .limit(1)
         .get();
 
-      let threshold = false;
-      if (!querySnap.empty && querySnap.docs[0].exists) {
-        const setting = querySnap.docs[0].data();
-        threshold = setting?.badWeather === true;
-      }
+   let threshold = false;
+let weatherFromApi = true;
 
-      // 3️⃣ Check if it's bad weather
-      const bad = isBadWeather(data, threshold);
+if (!querySnap.empty && querySnap.docs[0].exists) {
+  const setting = querySnap.docs[0].data();
+  threshold = setting?.badWeather === true;
+  weatherFromApi = setting?.weatherFromApi ?? false;
+}
+
+// 3️⃣ Check if it's bad weather (with extra param)
+const bad = isBadWeather(data, threshold, weatherFromApi);
 
       setWeatherData(data);
       setIsBad(bad);
