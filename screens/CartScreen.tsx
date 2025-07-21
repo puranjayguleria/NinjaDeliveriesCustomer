@@ -182,12 +182,11 @@ const CartScreen: React.FC = () => {
     clearCart,
     addToCart,
   } = useCart();
-
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true); // for initial screen load
   const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
-
+  console.log(location.storeId);
   // ----- PROMO -----
   const [promos, setPromos] = useState<PromoCode[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
@@ -1013,7 +1012,7 @@ const CartScreen: React.FC = () => {
         surgeFee: surgeLine,
         createdAt: firestore.FieldValue.serverTimestamp(),
         usedPromo: selectedPromo ? selectedPromo.id : null,
-
+        storeId: location.storeId,
         convenienceFee, // new field
         hotspotId: activeHotspot?.id || null,
       };

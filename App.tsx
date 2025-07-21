@@ -60,7 +60,7 @@ import SearchScreen from "./screens/SearchScreen";
 import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
 import LeaderboardScreen from "./screens/LeaderBoardScreen";
-
+import AllDiscountedProductsScreen from "./screens/AllDiscountedProductsScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -124,6 +124,7 @@ function HomeStack() {
           </RequireAuth>
         )}
       </Stack.Screen>
+
       <Stack.Screen
         name="Congrats"
         options={{ title: "Congratulations!", headerShown: false }}
@@ -158,6 +159,11 @@ function HomeStack() {
           title: route.params?.categoryName || "Products",
           headerShown: true,
         })}
+      />
+      <Stack.Screen
+        name="AllDiscountedProducts"
+        component={AllDiscountedProductsScreen}
+        options={{ title: "Discounted Products", headerShown: false }}
       />
 
       {/* Order flow */}

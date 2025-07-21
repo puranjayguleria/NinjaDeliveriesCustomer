@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import Loader from "@/components/VideoLoader";
+import { useLocationContext } from "@/context/LocationContext";
 
 type RatingScreenRouteProp = RouteProp<
   { RatingScreen: { orderId: string } },
@@ -51,7 +52,8 @@ export default function RatingScreen() {
   const navigation = useNavigation();
   const route = useRoute<RatingScreenRouteProp>();
   const { orderId } = route.params;
-
+  const { location, updateLocation } = useLocationContext();
+  console.log(location.storeId);
   // Loading states
   const [loading, setLoading] = useState(true);
 
@@ -166,13 +168,20 @@ export default function RatingScreen() {
       }
     }
 
-    async function fetchCompanyDoc() {
+    async function fetchCompanyDoc(location: { storeId: string }) {
       try {
-        const snap = await firestore().collection("company").limit(1).get();
+        const snap = await firestore()
+          .collection("company")
+          .where("storeId", "==", location.storeId)
+          .limit(1)
+          .get();
+
         if (!snap.empty) {
           const doc = snap.docs[0];
           const cData = doc.data() as CompanyInfo;
           setCompanyData(cData);
+        } else {
+          console.warn("No company found with matching storeId");
         }
       } catch (err) {
         console.warn("Error fetching company doc:", err);
