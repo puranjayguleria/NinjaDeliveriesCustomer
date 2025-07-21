@@ -95,6 +95,7 @@ export default function RatingScreen() {
   // Fetch order, rider, company data
   // ---------------------------------
   useEffect(() => {
+    if (!location?.storeId) return;
     let isMounted = true;
 
     async function fetchOrderAndRider() {
@@ -189,12 +190,16 @@ export default function RatingScreen() {
     }
 
     fetchOrderAndRider();
-    fetchCompanyDoc();
+
+    // ✅ Correctly pass the location object
+    if (location?.storeId) {
+      fetchCompanyDoc(location);
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [orderId, navigation]);
+  }, [orderId, navigation, location?.storeId]);
 
   // ---------------------------------
   // Recompute totals once we have doc & items
