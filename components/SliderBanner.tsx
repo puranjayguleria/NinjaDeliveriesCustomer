@@ -56,6 +56,8 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
         categoryId: banner.categoryId,
         categoryName: banner.description || "Category",
       });
+    } else if (banner.redirectType === "saleItems") {
+      navigation.navigate("AllDiscountedProductsScreen");
     } else {
       navigation.navigate("FeaturedTab");
     }
