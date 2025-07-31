@@ -68,6 +68,7 @@ import { ensurePushTokenSynced } from "./utils/PushTokenManager";
 import { useOtaUpdate } from "./utils/useOtaUpdate";
 import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
+import GlobalCongrats from "./components/CongratulationModal ";
 
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
@@ -75,7 +76,13 @@ import { StatusBar } from "expo-status-bar";
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigation = useNavigation<any>();
   const user = auth().currentUser;
-
+  useEffect(() => {
+    const subscriber = auth().onAuthStateChanged((user) => {
+      // Auth state changes will be handled by CustomerContext
+      console.log("User auth state changed:", user?.uid);
+    });
+    return subscriber; // unsubscribe on unmount
+  }, []);
   useEffect(() => {
     if (!user) {
       Alert.alert(
@@ -537,6 +544,7 @@ const App: React.FC = () => {
             <WeatherProvider>
               <OrderProvider>
                 <NavigationContainer>
+                  <GlobalCongrats />
                   <RootStack.Navigator
                     initialRouteName={initialRoute}
                     screenOptions={{ headerShown: false }}

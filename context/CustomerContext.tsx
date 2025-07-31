@@ -1,14 +1,28 @@
 // context/CustomerContext.tsx
-import React, { createContext, useContext, useState } from 'react';
-import auth from '@react-native-firebase/auth';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import auth from "@react-native-firebase/auth";
 
-// Define a context for holding customer information
 const CustomerContext = createContext<any>(null);
 
 export const useCustomer = () => useContext(CustomerContext);
 
 export const CustomerProvider = ({ children }) => {
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Automatically detect logged-in user on app launch
+  useEffect(() => {
+    const unsubscribe = auth().onAuthStateChanged((user) => {
+      if (user) {
+        setCustomerId(user.uid);
+      } else {
+        setCustomerId(null);
+      }
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const login = async (phoneNumber: string, confirmationResult: any) => {
     try {
@@ -17,12 +31,14 @@ export const CustomerProvider = ({ children }) => {
         setCustomerId(user.uid);
       }
     } catch (error) {
-      console.error('Login Error:', error);
+      console.error("Login Error:", error);
     }
   };
 
   return (
-    <CustomerContext.Provider value={{ customerId, setCustomerId, login }}>
+    <CustomerContext.Provider
+      value={{ customerId, setCustomerId, login, loading }}
+    >
       {children}
     </CustomerContext.Provider>
   );

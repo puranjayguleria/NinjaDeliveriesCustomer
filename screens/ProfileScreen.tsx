@@ -533,7 +533,15 @@ const ProfileScreen: React.FC = () => {
       >
         <View style={styles.headerBlock}>
           <Text style={styles.mainTitle}>My Profile</Text>
-          <Text style={styles.subTitle}></Text>
+
+          <TouchableOpacity style={styles.iconContainer}>
+            <Image
+              source={require("../assets/rewards.png")} // Your rewards logo image
+              style={styles.icon}
+              resizeMode="contain"
+            />
+            <Text style={styles.reward}>Rewards</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.profileCard}>
@@ -932,12 +940,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomRightRadius: 24,
     borderBottomLeftRadius: 24,
+    marginBottom: 15,
+    flexDirection: "row", // 👈 Arrange in a row
+    justifyContent: "space-between", // 👈 Push items to edges
+    alignItems: "center", // 👈 Align vertically
   },
   mainTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: primaryTextColor,
-    marginBottom: 5,
+  },
+  iconContainer: {
+    padding: 5,
+  },
+  icon: {
+    width: 32,
+    height: 32,
+  },
+  reward: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: primaryTextColor,
   },
   subTitle: {
     fontSize: 13,
@@ -1230,6 +1253,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
+
   reauthCancelButton: {
     backgroundColor: "#fff",
     borderWidth: 1,

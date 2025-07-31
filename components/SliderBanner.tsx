@@ -12,12 +12,14 @@ import {
 import firestore from "@react-native-firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import Loader from "./VideoLoader";
+import { useLocationContext } from "@/context/LocationContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_WIDTH = SCREEN_WIDTH - 32;
 const BANNER_HEIGHT = BANNER_WIDTH * 0.5;
 
 const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
+  const { location, updateLocation } = useLocationContext();
   const [banners, setBanners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -51,13 +53,16 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   const handleBannerPress = (banner: any) => {
     if (!banner.clickable) return;
 
-    if (banner.redirectType === "category" && banner.categoryId) {
+    if (banner.redirectType === "ProductListingPage" && banner.categoryId) {
       navigation.navigate("ProductListingFromHome", {
         categoryId: banner.categoryId,
         categoryName: banner.description || "Category",
       });
     } else if (banner.redirectType === "saleItems") {
-      navigation.navigate("AllDiscountedProductsScreen");
+      navigation.navigate("HomeTab", {
+        screen: "AllDiscountedProducts",
+        params: { storeId: location.storeId },
+      });
     } else {
       navigation.navigate("FeaturedTab");
     }

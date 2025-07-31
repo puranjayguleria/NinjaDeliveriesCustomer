@@ -60,7 +60,7 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
 
       try {
         let query = firestore()
-          .collection("products")
+          .collection("saleProducts")
           .where("storeId", "==", storeId)
           .where("discount", ">", 0)
           .orderBy("discount", "desc")
