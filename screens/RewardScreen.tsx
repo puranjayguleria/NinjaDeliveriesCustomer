@@ -133,7 +133,7 @@ export default function HiddenCouponCard() {
               )
             }
             renderItem={({ item }) => {
-              const isRevealed = revealed[item.couponId];
+              const isRevealed = item.isScratched;
 
               return (
                 /*----------------------------------------------------------------------------------------*/
@@ -216,12 +216,27 @@ export default function HiddenCouponCard() {
                       {item.isActive ? (
                         <Pressable
                           style={styles.revealButton}
-                          onPress={() => {
-                            !isRevealed &&
-                              setRevealed((prev) => ({
-                                ...prev,
-                                [item.couponId]: true,
-                              }));
+                          onPress={async () => {
+                            if (!isRevealed) {
+                              if (!item.isScratched) {
+                                const userRef = doc(db, "users", User);
+                                const userSnap = await getDoc(userRef);
+                                if (userSnap.exists()) {
+                                  const userData = userSnap.data();
+                                  const coupons = userData.coupons || [];
+                                  const couponIndex = coupons.findIndex(
+                                    (c) => c.couponId === item.couponId
+                                  );
+                                  if (couponIndex !== -1) {
+                                    coupons[couponIndex] = {
+                                      ...coupons[couponIndex],
+                                      isScratched: true,
+                                    };
+                                    await updateDoc(userRef, { coupons });
+                                  }
+                                }
+                              }
+                            }
                           }}
                         >
                           <Text style={styles.revealText}>TAP TO REVEAL</Text>
