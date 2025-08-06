@@ -534,9 +534,12 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.headerBlock}>
           <Text style={styles.mainTitle}>My Profile</Text>
 
-          <TouchableOpacity style={styles.iconContainer}>
+          <TouchableOpacity
+            style={styles.iconContainer}
+            onPress={() => navigation.navigate("RewardScreen")}
+          >
             <Image
-              source={require("../assets/rewards.png")} // Your rewards logo image
+              source={require("../assets/rewards.png")}
               style={styles.icon}
               resizeMode="contain"
             />

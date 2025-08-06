@@ -69,6 +69,7 @@ import { useOtaUpdate } from "./utils/useOtaUpdate";
 import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
+import HiddenCouponCard from "./screens/RewardScreen";
 
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
@@ -171,6 +172,11 @@ function HomeStack() {
         name="AllDiscountedProducts"
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
+      />
+      <Stack.Screen
+        name="RewardScreen"
+        component={HiddenCouponCard}
+        options={{ title: "Reward Screen", headerShown: false }}
       />
 
       {/* Order flow */}

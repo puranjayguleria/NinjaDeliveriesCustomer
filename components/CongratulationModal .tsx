@@ -3,8 +3,10 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import { useCustomer } from "../context/CustomerContext";
 import LottieView from "lottie-react-native";
-
+import { useNavigation } from "@react-navigation/native";
 const GlobalCongrats = () => {
+  const navigation = useNavigation();
+
   const { customerId } = useCustomer();
   const [visible, setVisible] = useState(false);
 
@@ -70,9 +72,12 @@ const GlobalCongrats = () => {
 
           <TouchableOpacity
             style={styles.button}
-            onPress={() => setVisible(false)}
+            onPress={() => {
+              setVisible(false);
+              navigation.navigate("RewardScreen");
+            }}
           >
-            <Text style={styles.buttonText}>Awesome!</Text>
+            <Text style={styles.buttonText}>Claim!</Text>
           </TouchableOpacity>
         </View>
       </View>

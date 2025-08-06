@@ -88,11 +88,7 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   );
 
   if (loading) {
-    return (
-      <View style={styles.loadingPlaceholder}>
-        <Loader />
-      </View>
-    );
+    return <View style={styles.loadingPlaceholder}></View>;
   }
 
   if (banners.length === 0) {

@@ -42,11 +42,7 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
   }, [storeId]);
 
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <Loader />
-      </View>
-    );
+    return <View style={styles.container}></View>;
   }
 
   if (error) {
