@@ -16,7 +16,6 @@ import firestore from "@react-native-firebase/firestore"; // ✅ Native Firebase
 import auth from "@react-native-firebase/auth"; // ✅ To get current user
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RFValue } from "react-native-responsive-fontsize";
-import { BlurView } from "expo-blur";
 
 export default function HiddenCouponCard() {
   const [userId, setUserId] = useState(null);
