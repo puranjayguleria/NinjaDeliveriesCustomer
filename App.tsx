@@ -173,11 +173,6 @@ function HomeStack() {
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
       />
-      <Stack.Screen
-        name="RewardScreen"
-        component={HiddenCouponCard}
-        options={{ title: "Reward Screen", headerShown: false }}
-      />
 
       {/* Order flow */}
       <Stack.Screen
@@ -194,6 +189,12 @@ function HomeStack() {
           gestureEnabled: false,
           title: "Order Tracking",
         }}
+      />
+      {/* Reward */}
+      <Stack.Screen
+        name="RewardScreen"
+        component={HiddenCouponCard}
+        options={{ title: "Reward Screen", headerShown: false }}
       />
       <Stack.Screen
         name="OrderCancelled"
@@ -236,6 +237,11 @@ function CategoriesStack() {
           headerShown: true,
         })}
       />
+      <Stack.Screen
+        name="OrderAllocating"
+        component={OrderAllocatingScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -265,6 +271,11 @@ const CartStack = () => (
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ProfileHome" component={ProfileScreen} />
+    <Stack.Screen
+      name="RewardScreen"
+      component={HiddenCouponCard}
+      options={{ title: "Reward Screen", headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -569,6 +580,11 @@ const App: React.FC = () => {
                       name="ContactUs"
                       component={ContactUsScreen}
                       options={{ title: "Contact Us", headerShown: true }}
+                    />
+                    <RootStack.Screen
+                      name="RewardScreen"
+                      component={HiddenCouponCard}
+                      options={{ title: "Reward Screen", headerShown: false }}
                     />
                   </RootStack.Navigator>
                 </NavigationContainer>

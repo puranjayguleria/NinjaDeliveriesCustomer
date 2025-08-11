@@ -4,51 +4,47 @@ import firestore from "@react-native-firebase/firestore";
 import { useCustomer } from "../context/CustomerContext";
 import LottieView from "lottie-react-native";
 import { useNavigation } from "@react-navigation/native";
+
 const GlobalCongrats = () => {
   const navigation = useNavigation();
-
   const { customerId } = useCustomer();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (!customerId) return;
 
-    const fetchAndUpdateCoupon = async () => {
-      try {
-        const userRef = firestore().collection("users").doc(customerId);
-        const snapshot = await userRef.get();
-
+    // Real-time listener for user document
+    const unsubscribe = firestore()
+      .collection("users")
+      .doc(customerId)
+      .onSnapshot(async (snapshot) => {
         if (!snapshot.exists) return;
 
         const userData = snapshot.data() || {};
         const coupons = userData.coupons || [];
 
-        // Find the first coupon with notifyUser == false
-        const couponIndex = coupons.findIndex(
-          (c: any) => c.notifyUser === false
-        );
+        // Find first coupon with notifyUser == false
+        const couponIndex = coupons.findIndex((c) => c.notifyUser === false);
 
         if (couponIndex !== -1) {
           setVisible(true);
 
-          // 🔹 Update notifyUser to true for that coupon
+          // Update notifyUser for that coupon
           const updatedCoupons = [...coupons];
           updatedCoupons[couponIndex] = {
             ...updatedCoupons[couponIndex],
             notifyUser: true,
           };
 
-          await userRef.update({ coupons: updatedCoupons });
-          console.log("✅ notifyUser updated successfully");
-        } else {
-          console.log("ℹ️ No new coupons to notify");
-        }
-      } catch (error) {
-        console.error("❌ Error fetching or updating coupon:", error);
-      }
-    };
+          await firestore().collection("users").doc(customerId).update({
+            coupons: updatedCoupons,
+          });
 
-    fetchAndUpdateCoupon();
+          console.log("✅ notifyUser updated successfully");
+        }
+      });
+
+    return () => unsubscribe();
   }, [customerId]);
 
   return (
@@ -68,7 +64,7 @@ const GlobalCongrats = () => {
           />
           <Text style={styles.title}>🎉 Congratulations! 🎉</Text>
           <Text style={styles.subtitle}>You’ve won a new coupon! </Text>
-          <Text style={styles.subtitle1}>Check the rewards to claim it!. </Text>
+          <Text style={styles.subtitle1}>Check the rewards to claim it! </Text>
 
           <TouchableOpacity
             style={styles.button}

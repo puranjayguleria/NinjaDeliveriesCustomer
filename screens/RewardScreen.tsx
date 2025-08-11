@@ -10,42 +10,31 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, FontAwesome, MaterialIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import firestore from "@react-native-firebase/firestore"; // ✅ Native Firebase Firestore
-import auth from "@react-native-firebase/auth"; // ✅ To get current user
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RFValue } from "react-native-responsive-fontsize";
+import Loader from "@/components/VideoLoader";
 
 export default function HiddenCouponCard() {
   const [userId, setUserId] = useState(null);
-
-  /*-----------------For CouponCode Detail Model---------------------*/
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-
-  /*----------------For CouponCode List In Flatlist-------------------*/
   const [couponList, setCouponList] = useState([]);
-
-  /*----------------For Side Visiblity Of Coupon Code------------------ */
-  const [revealed, setRevealed] = useState({});
-
-  /*----------------To Change Copy To Copied (Button)------------------*/
   const [copied, setCopied] = useState("COPY");
-
-  /*--------------------------For Loader------------------------------ */
   const [loading, setLoading] = useState(false);
 
-  // ✅ Get current user dynamically
+  // Get current user
   useEffect(() => {
     const currentUser = auth().currentUser;
-    console.log("[HiddenCouponCard] currentUser:", currentUser?.uid);
     setUserId(currentUser?.uid || null);
   }, []);
 
-  /*------------------Getting data from user and coupons-----------------------*/
+  // Fetch user coupons
   useEffect(() => {
-    if (!userId) return; // Wait for userId
+    if (!userId) return;
 
     setLoading(true);
     const unsubscribe = firestore()
@@ -72,9 +61,9 @@ export default function HiddenCouponCard() {
               }
             }
             setCouponList(fetchedCoupons);
-            setLoading(false);
           } catch (error) {
             Alert.alert("Error", "Failed to load coupons.");
+          } finally {
             setLoading(false);
           }
         } else {
@@ -86,7 +75,7 @@ export default function HiddenCouponCard() {
     return () => unsubscribe();
   }, [userId]);
 
-  /*---------------Function to copy couponCode in clipboard----------------- */
+  // Copy coupon code
   const copyToClipboard = useCallback((code) => {
     Clipboard.setStringAsync(code);
     setCopied("COPIED");
@@ -95,116 +84,54 @@ export default function HiddenCouponCard() {
     }, 3000);
   }, []);
 
+  // Reveal coupon
+  const revealCoupon = async (item) => {
+    const userRef = firestore().collection("users").doc(userId);
+    const userSnap = await userRef.get();
+
+    if (userSnap.exists) {
+      const userData = userSnap.data();
+      const coupons = userData.coupons || [];
+      const couponIndex = coupons.findIndex(
+        (c) => c.couponId === item.couponId
+      );
+
+      if (couponIndex !== -1) {
+        coupons[couponIndex] = {
+          ...coupons[couponIndex],
+          isScratched: true,
+        };
+        await userRef.update({ coupons });
+      }
+    }
+  };
+
   return (
-    /*------------------------------------------------------------------------------*/
-    /*                           HiddenCouponCard Screen                            */
-    /*------------------------------------------------------------------------------*/
     <SafeAreaView>
-      <Text
-        style={{
-          fontSize: RFValue(23),
-          alignSelf: "center",
-          marginTop: "5%",
-          marginBottom: "3%",
-        }}
-      >
-        Rewards
-      </Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Rewards</Text>
+      </View>
       <View style={{ height: "85%" }}>
-        {/*--------------------------LOADER------------------------------- */}
         {loading ? (
           <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#1E40AF" />
-            <Text style={styles.text}>Fetching your exclusive coupon...</Text>
+            <Loader />
           </View>
         ) : (
-          /*----------------------------COUPONLIST--------------------------- */
           <FlatList
             data={couponList}
-            keyExtractor={(item) => item.couponId}
-            ListEmptyComponent={() =>
-              !loading && (
-                <View style={{ alignItems: "center", marginTop: RFValue(40) }}>
-                  <Text style={{ color: "#94A3B8", fontSize: RFValue(16) }}>
-                    No rewards available at the moment.
-                  </Text>
-                </View>
-              )
-            }
+            keyExtractor={(item, index) => item.couponId || index.toString()}
+            ListEmptyComponent={() => (
+              <View style={{ alignItems: "center", marginTop: RFValue(40) }}>
+                <Text style={{ color: "#94A3B8", fontSize: RFValue(16) }}>
+                  No rewards available at the moment.
+                </Text>
+              </View>
+            )}
             renderItem={({ item }) => {
               const isRevealed = item.isScratched;
 
               return (
-                /*----------------------------------------------------------------------------------------*/
-                /*                                      COUPON-CODE                                       */
-                /*----------------------------------------------------------------------------------------*/
-                <Pressable
-                  style={[styles.card]}
-                  android_ripple={{ color: "#f1f5f9" }}
-                >
-                  {!item.isActive && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        height: "100%",
-                        width: "100%",
-                        zIndex: 99,
-                        justifyContent: "center",
-                        alignItems: "center",
-                        borderRadius: RFValue(14),
-                        overflow: "hidden",
-                      }}
-                    >
-                      {/* Blur Glass Background */}
-                      <BlurView
-                        intensity={50}
-                        tint="dark"
-                        style={{ ...StyleSheet.absoluteFillObject }}
-                      />
-
-                      {/* Glowing Red Badge */}
-                      <View
-                        style={{
-                          backgroundColor: "rgba(255, 56, 56, 0.9)",
-                          paddingHorizontal: RFValue(24),
-                          paddingVertical: RFValue(10),
-                          borderRadius: RFValue(50),
-                          borderWidth: RFValue(1),
-                          borderColor: "#fff",
-                          shadowColor: "red",
-                          shadowOffset: { width: 0, height: 0 },
-                          shadowOpacity: 0.4,
-                          shadowRadius: RFValue(10),
-                          elevation: RFValue(8),
-                          flexDirection: "row",
-                          alignItems: "center",
-                        }}
-                      >
-                        {/* Expired Icon */}
-                        <Feather
-                          name="alert-circle"
-                          size={18}
-                          color="white"
-                          style={{ marginRight: 8 }}
-                        />
-
-                        <Text
-                          style={{
-                            color: "#FFFFFF",
-                            fontSize: RFValue(15),
-                            fontWeight: "bold",
-                            letterSpacing: 1,
-                          }}
-                        >
-                          EXPIRED
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                  {/*--------------------TAP TO REVEAL SIDE OF COUPON-CODE--------------------*/}
-
+                <Pressable style={styles.card}>
                   {!isRevealed ? (
                     <View style={styles.revealContainer}>
                       <Text style={styles.heading}>Unlock Your Coupon</Text>
@@ -215,28 +142,7 @@ export default function HiddenCouponCard() {
                       {item.isActive ? (
                         <Pressable
                           style={styles.revealButton}
-                          onPress={async () => {
-                            if (!isRevealed) {
-                              if (!item.isScratched) {
-                                const userRef = doc(db, "users", User);
-                                const userSnap = await getDoc(userRef);
-                                if (userSnap.exists()) {
-                                  const userData = userSnap.data();
-                                  const coupons = userData.coupons || [];
-                                  const couponIndex = coupons.findIndex(
-                                    (c) => c.couponId === item.couponId
-                                  );
-                                  if (couponIndex !== -1) {
-                                    coupons[couponIndex] = {
-                                      ...coupons[couponIndex],
-                                      isScratched: true,
-                                    };
-                                    await updateDoc(userRef, { coupons });
-                                  }
-                                }
-                              }
-                            }
-                          }}
+                          onPress={() => revealCoupon(item)}
                         >
                           <Text style={styles.revealText}>TAP TO REVEAL</Text>
                         </Pressable>
@@ -256,7 +162,6 @@ export default function HiddenCouponCard() {
                       )}
                     </View>
                   ) : (
-                    /*--------------------------------------COUPON-CODE SIDE OF COUPON------------------------------------------------*/
                     <View style={{ zIndex: 1 }}>
                       <View
                         style={{
@@ -291,14 +196,12 @@ export default function HiddenCouponCard() {
                                 resizeMode="cover"
                               />
                               <Text
-                                style={[
-                                  {
-                                    marginLeft: RFValue(6),
-                                    color: "#475569",
-                                    fontWeight: 600,
-                                    fontSize: RFValue(15),
-                                  },
-                                ]}
+                                style={{
+                                  marginLeft: RFValue(6),
+                                  color: "#475569",
+                                  fontWeight: "600",
+                                  fontSize: RFValue(15),
+                                }}
                               >
                                 {item.businessName}
                               </Text>
@@ -324,21 +227,14 @@ export default function HiddenCouponCard() {
                               }) || "N/A"}
                           </Text>
                         </View>
-                        <View style={styles.rowBetween}>
+                        {/* <View style={styles.rowBetween}>
                           <Text style={styles.title}>{item.title}</Text>
-                        </View>
+                        </View> */}
 
                         <Text style={styles.description}>
                           {item.description}
                         </Text>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginTop: RFValue(5),
-                          }}
-                        >
+                        <View style={styles.detailsRow}>
                           <Text style={styles.minOrder}>
                             Min order: ₹{item.minOrderValue}
                           </Text>
@@ -358,45 +254,14 @@ export default function HiddenCouponCard() {
                       </View>
 
                       {item.isClaimed ? (
-                        <View
-                          style={{
-                            backgroundColor: "#2A4365",
-                            paddingVertical: RFValue(16),
-                            paddingHorizontal: RFValue(16),
-                            borderTopWidth: 0.5,
-                            borderColor: "#E2E8F0",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: RFValue(15),
-                              fontWeight: "700",
-                              color: "#f0b9abff",
-                              letterSpacing: 1.2,
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            Already used
-                          </Text>
+                        <View style={styles.claimedBox}>
+                          <Text style={styles.claimedText}>Already used</Text>
                         </View>
                       ) : (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            paddingVertical: RFValue(12),
-                            paddingHorizontal: RFValue(16),
-                            backgroundColor: "#2A4365",
-                            borderTopWidth: 0.5,
-                            borderColor: "#E2E8F0",
-                          }}
-                        >
-                          <Text style={styles.code}>{item.code}</Text>
+                        <View style={styles.codeBox}>
+                          <Text style={styles.code}>{item.couponCode}</Text>
                           <Pressable
-                            onPress={() => copyToClipboard(item.code)}
+                            onPress={() => copyToClipboard(item.couponCode)}
                             style={styles.copyButton}
                           >
                             <Text style={styles.copyText}>{copied}</Text>
@@ -411,7 +276,8 @@ export default function HiddenCouponCard() {
             contentContainerStyle={{ paddingBottom: RFValue(40) }}
           />
         )}
-        {/*--------------------------------------------------------------------------------------------------------------*/}
+
+        {/* Coupon detail modal */}
         {/*                                            COUPON-CODE DETAIL MODEL                                           */}
         {/*--------------------------------------------------------------------------------------------------------------*/}
         {selectedCoupon && (
@@ -487,6 +353,7 @@ export default function HiddenCouponCard() {
                 {/* Title */}
                 <Text
                   style={{
+                    marginTop: "10",
                     fontSize: RFValue(20),
                     fontWeight: "700",
                     color: "#0F172A",
@@ -537,15 +404,14 @@ export default function HiddenCouponCard() {
                 </View>
 
                 {/* Coupon Code */}
-                <View
+                <Pressable
+                  onPress={() => copyToClipboard(selectedCoupon.couponCode)}
                   style={{
                     backgroundColor: "#F8FAFC",
                     borderRadius: RFValue(10),
                     paddingVertical: RFValue(14),
                     paddingHorizontal: RFValue(18),
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    justifyContent: "center",
                     borderWidth: 1,
                     borderColor: "#E2E8F0",
                     marginBottom: RFValue(18),
@@ -553,24 +419,18 @@ export default function HiddenCouponCard() {
                 >
                   <Text
                     style={{
-                      fontSize: RFValue(15),
-                      color: "#64748B",
-                      fontWeight: "600",
-                    }}
-                  >
-                    Coupon Code:
-                  </Text>
-                  <Text
-                    style={{
                       fontSize: RFValue(16),
                       fontWeight: "bold",
                       color: "#1E293B",
                       letterSpacing: 1.2,
+                      textAlign: "center",
                     }}
+                    numberOfLines={1}
+                    ellipsizeMode="middle"
                   >
-                    {selectedCoupon.code}
+                    {selectedCoupon.couponCode}
                   </Text>
-                </View>
+                </Pressable>
 
                 {/* Close Link */}
                 <Pressable
@@ -603,10 +463,13 @@ export default function HiddenCouponCard() {
   );
 }
 
-/*-----------------------------------------------------------------------------------------------------*/
-/*                                            StyleSheet                                               */
-/*-----------------------------------------------------------------------------------------------------*/
 const styles = StyleSheet.create({
+  header: {
+    fontSize: RFValue(23),
+    alignSelf: "center",
+    marginTop: "5%",
+    marginBottom: "3%",
+  },
   card: {
     backgroundColor: "rgba(192, 217, 228, 0.28)",
     borderRadius: RFValue(14),
@@ -621,18 +484,12 @@ const styles = StyleSheet.create({
     padding: RFValue(24),
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
   },
   heading: {
     fontSize: RFValue(18),
     fontWeight: "700",
     color: "#FFFFFF",
     marginBottom: RFValue(6),
-    letterSpacing: 0.5,
   },
   subtext: {
     fontSize: RFValue(13),
@@ -650,72 +507,50 @@ const styles = StyleSheet.create({
     paddingVertical: RFValue(10),
     paddingHorizontal: RFValue(28),
     borderRadius: RFValue(8),
-    shadowColor: "#805D0A",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  viewDetailsButton: {
-    paddingHorizontal: RFValue(8),
-    borderRadius: RFValue(4),
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  viewDetailsText: {
-    color: "#1E3A8A",
-    fontWeight: "600",
-    fontSize: RFValue(12),
-    letterSpacing: 0.8,
-    textAlign: "center",
-    padding: RFValue(4),
   },
   revealText: {
     color: "#2A4365",
     fontWeight: "700",
     fontSize: RFValue(13),
-    letterSpacing: 1.2,
   },
-
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: RFValue(8),
   },
-
-  title: {
-    fontSize: RFValue(18),
-    fontWeight: "700",
-    color: "#1E293B",
-    letterSpacing: 0.3,
-    flexShrink: 1,
-  },
-
   validity: {
     fontSize: RFValue(12),
     fontWeight: "600",
     paddingHorizontal: RFValue(8),
     paddingVertical: RFValue(2),
     borderRadius: RFValue(6),
-    alignSelf: "center",
   },
-
   description: {
     fontSize: RFValue(13),
     color: "#4A5568",
-    marginTop: RFValue(3),
-    lineHeight: RFValue(15),
     marginBottom: RFValue(3),
   },
-
   minOrder: {
     fontSize: RFValue(12),
     color: "#434445ff",
-    marginTop: RFValue(2),
   },
-
+  detailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: RFValue(5),
+  },
+  viewDetailsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  viewDetailsText: {
+    color: "#1E3A8A",
+    fontWeight: "600",
+    fontSize: RFValue(12),
+    marginLeft: RFValue(4),
+  },
   codeBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -723,42 +558,47 @@ const styles = StyleSheet.create({
     paddingVertical: RFValue(12),
     paddingHorizontal: RFValue(16),
     backgroundColor: "#2A4365",
-    borderTopWidth: 0.5,
-    borderColor: "#E2E8F0",
   },
-
   code: {
     fontSize: RFValue(15),
     fontWeight: "700",
     color: "#ECC94B",
-    letterSpacing: 1.5,
   },
-
   copyButton: {
     paddingVertical: RFValue(6),
     paddingHorizontal: RFValue(14),
     backgroundColor: "#ECC94B",
     borderRadius: RFValue(6),
   },
-
   copyText: {
     color: "#2A4365",
     fontWeight: "700",
     fontSize: RFValue(12),
-    letterSpacing: 0.5,
   },
-
-  /*  Loader */
+  claimedBox: {
+    backgroundColor: "#2A4365",
+    paddingVertical: RFValue(16),
+    alignItems: "center",
+  },
+  claimedText: {
+    fontSize: RFValue(15),
+    fontWeight: "700",
+    color: "#f0b9abff",
+  },
   loaderContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8fafc0a",
   },
   text: {
     marginTop: RFValue(15),
     fontSize: RFValue(16),
     color: "#1E293B",
     fontWeight: "500",
+  },
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

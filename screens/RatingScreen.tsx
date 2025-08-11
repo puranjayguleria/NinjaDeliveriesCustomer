@@ -46,6 +46,7 @@ interface CompanyInfo {
   FSSAI: string;
   GSTIN: string;
   businessAddress: string;
+  billName: string;
 }
 
 export default function RatingScreen() {
@@ -433,7 +434,7 @@ export default function RatingScreen() {
     // 3) Company info
     let companyHTML = "";
     if (companyData) {
-      const { name, FSSAI, GSTIN, businessAddress } = companyData;
+      const { name, FSSAI, GSTIN, businessAddress, billName } = companyData;
       companyHTML = `
         <div style="margin-bottom:15px;">
           <h2 style="color:#00C853; margin-bottom:5px;">${name}</h2>
@@ -486,7 +487,7 @@ export default function RatingScreen() {
       ${companyHTML}
 
       <div class="header">
-        <h2>Ninja Delivery Bill</h2>
+        <h2>${companyData.billName}</h2>
         <p><strong>Date:</strong> ${dateString}</p>
         <p><strong>Rider:</strong> ${riderName}</p>
         <p><strong>Status:</strong> ${status}</p>

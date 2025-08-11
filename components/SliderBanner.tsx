@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+// components/SliderBanner.tsx
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,49 +7,124 @@ import {
   StyleSheet,
   Image,
   Dimensions,
-  Animated,
-  Platform,
+  FlatList,
+  ActivityIndicator,
+  TouchableWithoutFeedback,
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
+import Video from "react-native-video";
 import { useNavigation } from "@react-navigation/native";
-import Loader from "./VideoLoader";
 import { useLocationContext } from "@/context/LocationContext";
 
+const HORIZONTAL_PADDING = 16;
+const SLIDE_GAP = 8; // space between slides
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const BANNER_WIDTH = SCREEN_WIDTH - 32;
-const BANNER_HEIGHT = BANNER_WIDTH * 0.5;
+const SLIDE_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
+const BANNER_HEIGHT = SCREEN_WIDTH * 0.5;
+const AUTO_PLAY_INTERVAL = 4000;
+
+const isMp4 = (url?: string) =>
+  !!url &&
+  (url.endsWith(".mp4") || url.includes(".mp4?") || /\.mp4(\?|$)/i.test(url));
+
+const isImageLike = (url?: string) =>
+  !!url && (/\.(gif|jpe?g|png|webp)(\?|$)/i.test(url) || !isMp4(url));
 
 const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
-  const { location, updateLocation } = useLocationContext();
-  const [banners, setBanners] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<any>(null);
+  const { location } = useLocationContext();
   const navigation = useNavigation();
 
-  // Debug Firestore data
+  const [banners, setBanners] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadedMap, setLoadedMap] = useState<Record<string, boolean>>({});
+
+  const flatListRef = useRef<FlatList<any> | null>(null);
+  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
+  const currentIndexRef = useRef(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const userInteractingRef = useRef(false);
+  const resumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Firestore listener
   useEffect(() => {
+    setLoading(true);
     const unsubscribe = firestore()
       .collection("sliderBanner")
       .where("storeId", "==", storeId)
       .onSnapshot(
         (querySnapshot) => {
-          const loadedBanners: any[] = [];
+          const loaded: any[] = [];
           querySnapshot.forEach((doc) => {
-            loadedBanners.push({ id: doc.id, ...doc.data() });
+            loaded.push({ id: doc.id, ...doc.data() });
           });
-          setBanners(loadedBanners);
+          setBanners(loaded);
           setLoading(false);
+
+          const initialMap: Record<string, boolean> = {};
+          loaded.forEach((b) => (initialMap[b.id] = false));
+          setLoadedMap(initialMap);
         },
-        (error) => {
-          console.error("Firestore error:", error);
+        (err) => {
+          console.error("SliderBanner Firestore error:", err);
           setLoading(false);
         }
       );
 
     return () => unsubscribe();
   }, [storeId]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    startAutoPlayIfNeeded();
+    return () => {
+      stopAutoPlay();
+      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    };
+  }, [banners.length]);
+
+  const startAutoPlayIfNeeded = () => {
+    stopAutoPlay();
+    if (banners.length <= 1) return;
+    autoPlayRef.current = setInterval(() => {
+      if (userInteractingRef.current) return;
+      const next = (currentIndexRef.current + 1) % banners.length;
+      scrollToIndex(next);
+      setCurrentIndex(next);
+    }, AUTO_PLAY_INTERVAL);
+  };
+
+  const stopAutoPlay = () => {
+    if (autoPlayRef.current) {
+      clearInterval(autoPlayRef.current);
+      autoPlayRef.current = null;
+    }
+  };
+
+  const pauseAutoPlayForInteraction = () => {
+    userInteractingRef.current = true;
+    stopAutoPlay();
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+      resumeTimeoutRef.current = null;
+    }
+  };
+
+  const resumeAutoPlayAfterDelay = (delay = 2500) => {
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    resumeTimeoutRef.current = setTimeout(() => {
+      userInteractingRef.current = false;
+      startAutoPlayIfNeeded();
+    }, delay);
+  };
+
+  const scrollToIndex = (index: number) => {
+    if (!flatListRef.current) return;
+    const offset = index * (SLIDE_WIDTH + SLIDE_GAP);
+    flatListRef.current.scrollToOffset({ offset, animated: true });
+  };
 
   const handleBannerPress = (banner: any) => {
     if (!banner.clickable) return;
@@ -57,43 +133,84 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
       navigation.navigate("ProductListingFromHome", {
         categoryId: banner.categoryId,
         categoryName: banner.description || "Category",
-      });
+      } as never);
     } else if (banner.redirectType === "saleItems") {
-      navigation.navigate("HomeTab", {
-        screen: "AllDiscountedProducts",
-        params: { storeId: location.storeId },
-      });
+      navigation.navigate(
+        "HomeTab" as never,
+        {
+          screen: "AllDiscountedProducts",
+          params: { storeId: location?.storeId },
+        } as never
+      );
     } else {
-      navigation.navigate("FeaturedTab");
+      navigation.navigate("FeaturedTab" as never);
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <Pressable
-      style={styles.bannerContainer}
-      onPress={() => handleBannerPress(item)}
-    >
-      <Image
-        source={{ uri: item.image }}
-        style={styles.bannerImage}
-        resizeMode="cover"
-        onError={() => console.log("Failed to load image:", item.image)}
-      />
-      {item.description && (
-        <View style={styles.textContainer}>
-          <Text style={styles.bannerText}>{item.description}</Text>
-        </View>
-      )}
-    </Pressable>
-  );
+  const renderItem = ({ item, index }: { item: any; index: number }) => {
+    const url = item.image || item.mediaUrl || item.introGifUrl;
+    const loaded = !!loadedMap[item.id];
+
+    return (
+      <TouchableWithoutFeedback
+        onPressIn={pauseAutoPlayForInteraction}
+        onPressOut={resumeAutoPlayAfterDelay}
+      >
+        <Pressable
+          style={[
+            styles.bannerContainer,
+            { marginRight: index === banners.length - 1 ? 0 : SLIDE_GAP },
+          ]}
+          onPress={() => handleBannerPress(item)}
+        >
+          {isMp4(url) ? (
+            <Video
+              source={{ uri: url }}
+              style={styles.bannerImage}
+              resizeMode="cover"
+              muted
+              repeat
+              paused={index !== currentIndex}
+              onLoad={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
+              onError={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
+            />
+          ) : (
+            <Image
+              source={{ uri: url }}
+              style={styles.bannerImage}
+              resizeMode="cover"
+              onLoad={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
+              onError={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
+            />
+          )}
+
+          {!loaded && (
+            <View style={styles.loaderOverlay}>
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          )}
+
+          {item.description && (
+            <View style={styles.textContainer}>
+              <Text style={styles.bannerText}>{item.description}</Text>
+            </View>
+          )}
+        </Pressable>
+      </TouchableWithoutFeedback>
+    );
+  };
 
   if (loading) {
-    return <View style={styles.loadingPlaceholder}></View>;
+    return (
+      <View style={[styles.placeholder, { height: BANNER_HEIGHT }]}>
+        <ActivityIndicator size="large" color="#999" />
+      </View>
+    );
   }
 
-  if (banners.length === 0) {
+  if (!banners || banners.length === 0) {
     return (
-      <View style={styles.emptyPlaceholder}>
+      <View style={[styles.emptyPlaceholder, { height: BANNER_HEIGHT }]}>
         <Text>No banners available</Text>
       </View>
     );
@@ -101,36 +218,36 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
 
   return (
     <View style={styles.container}>
-      <Animated.FlatList
+      <FlatList
         ref={flatListRef}
         data={banners}
-        renderItem={renderItem}
         horizontal
-        pagingEnabled
+        pagingEnabled={false}
         showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item.id}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          {
-            useNativeDriver: true,
-            listener: (e: any) => {
-              const offset = e.nativeEvent.contentOffset.x;
-              const index = Math.round(offset / BANNER_WIDTH);
-              if (index !== currentIndex) {
-                setCurrentIndex(index);
-              }
-            },
-          }
-        )}
-        scrollEventThrottle={16}
+        keyExtractor={(i) => i.id}
+        renderItem={renderItem}
+        getItemLayout={(_, index) => ({
+          length: SLIDE_WIDTH + SLIDE_GAP,
+          offset: (SLIDE_WIDTH + SLIDE_GAP) * index,
+          index,
+        })}
+        contentContainerStyle={{ paddingHorizontal: HORIZONTAL_PADDING }}
+        snapToInterval={SLIDE_WIDTH + SLIDE_GAP}
+        decelerationRate="fast"
+        onMomentumScrollEnd={(e) => {
+          const offset = e.nativeEvent.contentOffset.x;
+          const idx = Math.round(offset / (SLIDE_WIDTH + SLIDE_GAP));
+          setCurrentIndex(idx);
+        }}
+        onScrollBeginDrag={pauseAutoPlayForInteraction}
+        onScrollEndDrag={resumeAutoPlayAfterDelay}
       />
 
-      {/* Simplified pagination for debugging */}
       <View style={styles.pagination}>
-        {banners.map((_, index) => (
+        {banners.map((_, i) => (
           <View
-            key={index}
-            style={[styles.dot, index === currentIndex && styles.activeDot]}
+            key={i}
+            style={[styles.dot, i === currentIndex && styles.activeDot]}
           />
         ))}
       </View>
@@ -143,28 +260,32 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
   bannerContainer: {
-    width: BANNER_WIDTH,
-    height: BANNER_HEIGHT,
+    width: SLIDE_WIDTH,
+    alignItems: "center",
     borderRadius: 8,
     overflow: "hidden",
-    marginHorizontal: 16,
-    backgroundColor: "#f0f0f0",
   },
   bannerImage: {
     width: "100%",
-    height: "100%",
+    height: BANNER_HEIGHT,
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
   },
   textContainer: {
     position: "absolute",
-    bottom: 0,
+    bottom: 8,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     padding: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    marginHorizontal: 8,
   },
   bannerText: {
     color: "white",
-    fontSize: 16,
+    fontSize: 14,
+    fontWeight: "700",
   },
   pagination: {
     flexDirection: "row",
@@ -181,13 +302,17 @@ const styles = StyleSheet.create({
   activeDot: {
     backgroundColor: "#007AFF",
   },
-  loadingPlaceholder: {
-    height: BANNER_HEIGHT,
+  loaderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  placeholder: {
     justifyContent: "center",
     alignItems: "center",
   },
   emptyPlaceholder: {
-    height: BANNER_HEIGHT,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f9f9f9",

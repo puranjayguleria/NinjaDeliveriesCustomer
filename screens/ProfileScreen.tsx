@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Easing,
+  Animated,
+  Vibration,
   ScrollView,
   FlatList,
   Platform,
@@ -366,7 +369,54 @@ const ProfileScreen: React.FC = () => {
       ]
     );
   };
+  /**Reward section */
+  const scaleValue = new Animated.Value(1);
+  const rotateValue = new Animated.Value(0);
 
+  useEffect(() => {
+    // Continuous subtle animation
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.spring(scaleValue, {
+            toValue: 1.05,
+            friction: 3,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleValue, {
+            toValue: 1,
+            friction: 5,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(rotateValue, {
+          toValue: 1,
+          duration: 10000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Initial pop effect
+    scaleValue.setValue(0.5);
+    Animated.spring(scaleValue, {
+      toValue: 1,
+      friction: 6,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const rotateInterpolate = rotateValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-3deg", "3deg"],
+  });
+
+  const handlePress = () => {
+    Vibration.vibrate(50);
+    navigation.navigate("RewardScreen");
+  };
   /** For date picking */
   const openDatePicker = () => {
     if (Platform.OS === "ios") {
@@ -534,7 +584,7 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.headerBlock}>
           <Text style={styles.mainTitle}>My Profile</Text>
 
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.iconContainer}
             onPress={() => navigation.navigate("RewardScreen")}
           >
@@ -544,7 +594,7 @@ const ProfileScreen: React.FC = () => {
               resizeMode="contain"
             />
             <Text style={styles.reward}>Rewards</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         <View style={styles.profileCard}>
@@ -657,6 +707,32 @@ const ProfileScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Premium Reward Section */}
+        <View style={styles.rewardSectionContainer}>
+          <Animated.View
+            style={[
+              styles.rewardButtonContainer,
+              {
+                transform: [
+                  { scale: scaleValue },
+                  { rotate: rotateInterpolate },
+                ],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={handlePress}
+              activeOpacity={0.7}
+              style={styles.rewardTouchable}
+            >
+              <Image
+                source={require("../assets/rewards.png")}
+                style={styles.rewardIconPremium}
+              />
+            </TouchableOpacity>
+          </Animated.View>
+          <Text style={styles.rewardText}>Rewards</Text>
+        </View>
         {/* My Orders Header */}
         <View style={styles.myOrdersHeader}>
           <Text style={styles.myOrdersTitle}>My Orders</Text>
@@ -1268,5 +1344,78 @@ const styles = StyleSheet.create({
   reauthCancelButtonText: {
     color: "#e74c3c",
     fontWeight: "600",
+  },
+  containerReward: {
+    position: "absolute",
+    top: -25, // Half outside the tab bar
+    right: 20,
+    shadowColor: "#FFD700",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  rewardIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "rgba(255, 215, 0, 0.3)",
+    // Add these if you want a shine effect
+    overflow: "hidden",
+    backgroundColor: "#FFF",
+  },
+  rewardSectionContainer: {
+    justifyContent: "center",
+    alignItems: "flex-start",
+    marginHorizontal: 30,
+    marginVertical: 25,
+    paddingTop: 10,
+  },
+  rewardButtonContainer: {
+    shadowColor: "#FFD700",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 15,
+    marginBottom: 8,
+  },
+  rewardTouchable: {
+    position: "relative",
+  },
+  rewardIconPremium: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+
+    backgroundColor: "#FFF",
+  },
+  rewardBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "#FF4757",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFF",
+  },
+  rewardBadgeText: {
+    color: "#FFF",
+    fontWeight: "bold",
+    fontSize: 14,
+    marginTop: -1,
+  },
+  rewardText: {
+    color: "#black",
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textShadowColor: "rgba(255, 215, 0, 0.3)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });

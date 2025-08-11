@@ -107,20 +107,9 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
 
       try {
         let query = firestore()
-          .collection("saleProducts")
+          .collection("products")
           .where("storeId", "==", storeId)
-          .where("discount", ">", 0);
-
-        // Add sorting
-        if (sortOption === "discount") {
-          query = query.orderBy("discount", "desc");
-        } else if (sortOption === "price-low") {
-          query = query.orderBy("price", "asc");
-        } else if (sortOption === "price-high") {
-          query = query.orderBy("price", "desc");
-        }
-
-        query = query.limit(PAGE_SIZE);
+          .limit(PAGE_SIZE);
 
         if (loadMore && lastVisible) {
           query = query.startAfter(lastVisible);
@@ -129,9 +118,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         const snapshot = await query.get();
 
         if (snapshot.empty) {
-          if (loadMore) {
-            setHasMore(false);
-          }
+          if (loadMore) setHasMore(false);
           return;
         }
 
@@ -140,9 +127,16 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
           ...doc.data(),
         }));
 
-        setProducts((prev) =>
-          loadMore ? [...prev, ...newProducts] : newProducts
-        );
+        // ✅ Remove duplicates by ID
+        setProducts((prev) => {
+          const combined = loadMore ? [...prev, ...newProducts] : newProducts;
+          const unique = combined.filter(
+            (item, index, self) =>
+              index === self.findIndex((p) => p.id === item.id)
+          );
+          return unique;
+        });
+
         setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
         setHasMore(snapshot.docs.length === PAGE_SIZE);
       } catch (error) {
@@ -152,8 +146,9 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         setRefreshing(false);
       }
     },
-    [storeId, lastVisible, loading, products.length, sortOption]
+    [storeId, lastVisible, loading, products.length]
   );
+
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     setProducts([]);
@@ -164,7 +159,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
 
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts, sortOption]);
+  }, [fetchProducts]);
 
   const handleEndReached = useCallback(() => {
     if (hasMore && !loading && !refreshing) {
@@ -371,14 +366,16 @@ const styles = StyleSheet.create({
   },
   itemContainer: {
     width: ITEM_WIDTH,
-    marginBottom: ITEM_SPACING,
-    borderRadius: 8,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: 20,
+    // borderRadius: 8,
+    // backgroundColor: "#fff",
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.1,
+    // shadowRadius: 4,
+    // elevation: 2,
+    alignItems: "center",
+    alignContent: "center",
   },
   loadingFooter: {
     padding: 16,
