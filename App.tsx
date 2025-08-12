@@ -22,7 +22,7 @@ import {
   useRoute,
 } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createStackNavigator } from "@react-navigation/stack";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -113,8 +113,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
    Navigator Instances
    ══════════════════════════════════════════════════════════ */
 const Tab = createBottomTabNavigator();
-const Stack = createStackNavigator();
-const RootStack = createStackNavigator();
+const Stack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator();
 
 /* ==========================================================
    STACK COMPOSITIONS
