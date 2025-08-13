@@ -265,6 +265,11 @@ function FeaturedStack() {
 const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="CartHome" component={CartScreen} />
+    <Stack.Screen
+      name="OrderAllocating"
+      component={OrderAllocatingScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 

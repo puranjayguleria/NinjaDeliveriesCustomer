@@ -13,7 +13,6 @@ const GlobalCongrats = () => {
   useEffect(() => {
     if (!customerId) return;
 
-    // Real-time listener for user document
     const unsubscribe = firestore()
       .collection("users")
       .doc(customerId)
@@ -23,13 +22,11 @@ const GlobalCongrats = () => {
         const userData = snapshot.data() || {};
         const coupons = userData.coupons || [];
 
-        // Find first coupon with notifyUser == false
         const couponIndex = coupons.findIndex((c) => c.notifyUser === false);
 
         if (couponIndex !== -1) {
           setVisible(true);
 
-          // Update notifyUser for that coupon
           const updatedCoupons = [...coupons];
           updatedCoupons[couponIndex] = {
             ...updatedCoupons[couponIndex],
@@ -56,6 +53,14 @@ const GlobalCongrats = () => {
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
+          {/* Close Button */}
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => setVisible(false)}
+          >
+            <Text style={styles.closeText}>✕</Text>
+          </TouchableOpacity>
+
           <LottieView
             source={require("../assets/Coupon.json")}
             autoPlay
@@ -96,6 +101,18 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: "center",
     width: "80%",
+    position: "relative",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 1,
+    padding: 5,
+  },
+  closeText: {
+    fontSize: 20,
+    color: "#555",
   },
   title: {
     fontSize: 24,
