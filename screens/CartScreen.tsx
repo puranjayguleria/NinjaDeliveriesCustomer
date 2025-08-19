@@ -209,7 +209,7 @@ const CartScreen: React.FC = () => {
 
   // Fare data from Firestore
   const [fareData, setFareData] = useState<FareData | null>(null);
-
+  const [promoMinVal, setPromoMinVal] = useState(Number);
   // Confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const unseenChangeId = useRef<number | null>(null); // queued id
@@ -609,7 +609,6 @@ const CartScreen: React.FC = () => {
       (err) => console.error("Error watching user locations:", err)
     );
   };
-
   const watchPromos = () => {
     const currentUser = auth().currentUser;
     if (!currentUser) return () => {};
@@ -618,7 +617,7 @@ const CartScreen: React.FC = () => {
       .collection("promoCodes")
       .where("isActive", "==", true)
       .onSnapshot(
-        (snapshot) => {
+        async (snapshot) => {
           const raw = snapshot.docs.map((doc) => ({
             id: doc.id,
             ...(doc.data() as Omit<PromoCode, "id">),
@@ -626,11 +625,21 @@ const CartScreen: React.FC = () => {
 
           const phone = currentUser.phoneNumber ?? "";
           const uid = currentUser.uid;
+          const userDoc = await firestore().collection("users").doc(uid).get();
+          const userStoreId = location.storeId ?? null;
 
           const filtered = raw.filter((promo) => {
             const byId = promo.usedByIds ?? promo.usedBy ?? [];
             const byPhone = promo.usedByPhones ?? [];
-            return !byId.includes(uid) && !byPhone.includes(phone);
+            const promoStoreId = promo?.storeId;
+
+            return (
+              !byId.includes(uid) &&
+              !byPhone.includes(phone) &&
+              promoStoreId &&
+              userStoreId &&
+              promoStoreId === userStoreId
+            );
           });
 
           setPromos(filtered);
@@ -638,7 +647,6 @@ const CartScreen: React.FC = () => {
         (err) => console.error("Error listening to promos:", err)
       );
   };
-
   /***************************************
    * Distance from Google
    ***************************************/
@@ -1111,7 +1119,8 @@ const CartScreen: React.FC = () => {
     return (
       <TouchableOpacity
         style={styles.promoCard}
-        onPress={() => selectPromo(item)}
+        onPress={() => subtotal >= item.minValue && selectPromo(item)}
+        disabled={subtotal < item.minValue}
       >
         <View style={styles.promoHeader}>
           <Ionicons
@@ -1128,6 +1137,16 @@ const CartScreen: React.FC = () => {
           <Text style={styles.promoDescription} numberOfLines={2}>
             {item.description}
           </Text>
+        )}
+        {subtotal < item.minValue && (
+          <View style={styles.promoOverlay}>
+            <View style={styles.lockContainer}>
+              <View style={styles.lockIcon}>
+                <Ionicons name="wallet-outline" size={12} color="#ffffff" />
+              </View>
+              <Text style={styles.lockText}>Min ₹{item.minValue}</Text>
+            </View>
+          </View>
         )}
       </TouchableOpacity>
     );
@@ -2233,10 +2252,65 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
+  alternateButton: {
+    padding: 9,
+    backgroundColor: "#f0f0f09a",
+    borderRadius: 5,
+    marginTop: 5,
+    alignItems: "center",
+    position: "absolute",
+    height: "100%",
+    width: "100%",
+    alignSelf: "center",
+  },
+
+  alternateButtonText: {
+    color: "#d32f2f",
+    fontSize: 13,
+    fontWeight: "600",
+    opacity: 0.8,
+  },
   paymentOptionText: {
     color: "#1f4f4f",
     fontSize: 14,
     fontWeight: "600",
+  },
+  promoOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+
+  lockContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 251, 251, 0.63)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 4,
+    backdropFilter: "blur(15px)",
+  },
+  lockIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#d5470fff",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  lockText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#d5470fff",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 });
 
