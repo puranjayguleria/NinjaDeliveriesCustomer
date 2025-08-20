@@ -3,7 +3,10 @@
     "name": "Ninja Deliveries",
     "slug": "CustomerApp",
     "version": "1.0.1",
-    "platforms": ["android", "ios"],
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
@@ -20,7 +23,8 @@
       "buildNumber": "11",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
-        "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts."
+        "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
