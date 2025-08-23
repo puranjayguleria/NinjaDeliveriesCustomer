@@ -60,7 +60,8 @@
       "@react-native-firebase/app",
       "expo-font",
       "expo-updates",
-      "./app.plugin.js"
+      "./app.plugin.js",
+      "expo-notifications"
     ],
     "updates": {
       "url": "https://u.expo.dev/6b44378d-74c3-4698-bbfd-ab0b8b165bc7",

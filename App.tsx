@@ -1,7 +1,7 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-
+import '@react-native-firebase/app';
 import React, { useEffect, useRef, useState } from "react";
 import {
   View,
@@ -25,9 +25,9 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
+import { auth, firestore } from './firebase.native'; 
+// import auth from "@react-native-firebase/auth";
+// import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 
