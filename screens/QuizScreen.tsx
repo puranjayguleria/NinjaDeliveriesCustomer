@@ -386,7 +386,7 @@ export default function QuizScreen() {
 
         Alert.alert(
           "Exit Quiz?",
-          "If you exit now, you won’t be able to attempt again today 1.",
+          "If you exit now, you won’t be able to attempt again today.",
           [
             { text: "Cancel", style: "cancel" },
             {

@@ -3,16 +3,13 @@
     "name": "Ninja Deliveries",
     "slug": "CustomerApp",
     "version": "1.0.1",
-    "platforms": [
-      "android",
-      "ios"
-    ],
+    "platforms": ["android", "ios"],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/images/new_splash.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

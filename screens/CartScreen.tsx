@@ -1142,7 +1142,11 @@ const CartScreen: React.FC = () => {
           <View style={styles.promoOverlay}>
             <View style={styles.lockContainer}>
               <View style={styles.lockIcon}>
-                <Ionicons name="wallet-outline" size={12} color="#ffffff" />
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={12}
+                  color="#ffffff"
+                />
               </View>
               <Text style={styles.lockText}>Min ₹{item.minValue}</Text>
             </View>
