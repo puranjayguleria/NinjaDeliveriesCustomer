@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "scripts": {
     "eas-build-pre-install": "npm install --package-lock-only --ignore-scripts --no-audit --fund=false",
-
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
@@ -37,6 +36,7 @@
     "axios": "^1.7.7",
     "date-fns": "^4.1.0",
     "expo": "^53.0.20",
+    "expo-build-properties": "^0.14.8",
     "expo-clipboard": "~7.1.5",
     "expo-constants": "~17.1.7",
     "expo-dev-client": "~5.2.4",
@@ -107,5 +107,8 @@
   },
   "private": true,
   "packageManager": "npm@10.8.2",
-  "engines": { "node": ">=20 <21", "npm": ">=10 <11" }
+  "engines": {
+    "node": ">=20 <21",
+    "npm": ">=10 <11"
   }
+}

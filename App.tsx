@@ -1,7 +1,9 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-import '@react-native-firebase/app';
+import app from '@react-native-firebase/app';
+import { ensureFirebaseReady } from './firebase.native';
+import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
 import {
   View,
@@ -30,7 +32,17 @@ import { auth, firestore } from './firebase.native';
 // import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
+import { NativeModules, Platform } from 'react-native';
+try {
+  // RNFB v22-compatible way to check initialized apps:
+  // If zero on iOS, native didn't configure from GoogleService-Info.plist
+  console.log('[RNFB] apps length', app.apps?.length);
+} catch (e) {
+  console.log('[RNFB] apps check threw', e);
+}
 
+console.log('[RNFB] Native module present?', !!NativeModules.RNFBAppModule);
+console.log('[RNFB] Native apps constant', NativeModules.RNFBAppModule?.NATIVE_FIREBASE_APPS);
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -261,6 +273,8 @@ function FeaturedStack() {
     </Stack.Navigator>
   );
 }
+
+
 
 const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -499,12 +513,44 @@ const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<null | any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [firebaseReady, setFirebaseReady] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const checkingOta = useOtaUpdate();
+
+  useEffect(() => {
+    (async () => {
+      await ensureFirebaseReady();
+      setFirebaseReady(true);
+      // Optional: verify
+      // import { getApps } from '@react-native-firebase/app';
+      // console.log('[RNFB] post-init apps:', getApps().map(a => a.name));
+    })();
+  }, []);
+
+   useEffect(() => {
+    if (!firebaseReady) return;
+    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
+        // ... your terms logic
+      }
+      setLoadingAuth(false);
+    });
+    return () => unsub();
+  }, [firebaseReady]);
 
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
 
+  useEffect(() => {
+    (async () => {
+      // (optional) prove the plist is bundled
+      const p = FileSystem.bundleDirectory + "GoogleService-Info.plist";
+      const info = await FileSystem.getInfoAsync(p);
+      console.log("[RNFB] Plist in bundle?", info.exists, p);
+    })();
+  }, []);
   /* ask for push-permission on first mount */
   useEffect(() => {
     (async () => {
@@ -556,7 +602,7 @@ const App: React.FC = () => {
     return () => unsub();
   }, []);
 
-  if (loadingAuth || checkingOta) {
+  if (!firebaseReady || loadingAuth || checkingOta) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00C853" />
