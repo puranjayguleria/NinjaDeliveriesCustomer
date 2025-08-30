@@ -407,6 +407,7 @@ function AppTabs() {
             tabPress: (e) => {
               if (!auth().currentUser) {
                 e.preventDefault();
+                promptLogin(navigation, "Cart");
                 // ...login prompt...
               } else if (route.state && route.state.index > 0) {
                 e.preventDefault();
@@ -434,6 +435,7 @@ function AppTabs() {
           listeners={({ navigation }) => ({
             tabPress: (e) => {
               if (!auth().currentUser) {
+                promptLogin(navigation, "Profile");
                 e.preventDefault();
                 // ...login prompt...
               }
