@@ -407,7 +407,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         setPlaceLabel("");
         setShowSaveForm(true);
       } else {
-        navigation.navigate("AppTabs", { screen: "Home" });
+        navigation.goBack();
       }
     } catch (err) {
       console.error("confirmLocation:", err);
@@ -478,7 +478,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           return;
         }
       }
-      fetchCurrentLocation();
+      await fetchCurrentLocation();
     } catch (err) {
       console.error("Error using current location:", err);
       showErrorModal("Error", "Failed to use current location.");
@@ -507,9 +507,12 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
 
       setShowSaveForm(false);
       if (fromScreen === "Cart") {
-        navigation.navigate("CartFlow", {
-          screen: "CartHome",
-          params: { selectedLocation: newLoc },
+        navigation.navigate("AppTabs", {
+          screen: "CartFlow",
+          params: {
+            screen: "CartHome",
+            params: { selectedLocation: newLoc },
+          },
         });
       } else {
         navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
@@ -891,3 +894,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
+function fetchCurrentLocation() {
+  throw new Error("Function not implemented.");
+}
+function setIsLoading(arg0: boolean) {
+  throw new Error("Function not implemented.");
+}
