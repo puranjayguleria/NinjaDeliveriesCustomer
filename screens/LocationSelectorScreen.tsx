@@ -507,9 +507,12 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
 
       setShowSaveForm(false);
       if (fromScreen === "Cart") {
-        navigation.navigate("CartFlow", {
-          screen: "CartHome",
-          params: { selectedLocation: newLoc },
+        navigation.navigate("AppTabs", {
+          screen: "CartFlow",
+          params: {
+            screen: "CartHome",
+            params: { selectedLocation: newLoc },
+          },
         });
       } else {
         navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
