@@ -2,8 +2,11 @@
   "expo": {
     "name": "Ninja Deliveries",
     "slug": "CustomerApp",
-    "version": "1.0.1",
-    "platforms": ["android", "ios"],
+    "version": "1.0.4",
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
@@ -17,11 +20,18 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ninjadeliveries.customer",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "11",
+      "buildNumber": "26",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
         "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.1047234268136-87md54v87djhg5hrfiu33oamhb2c3nmi"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -40,7 +50,7 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
       ],
-      "versionCode": 19,
+      "versionCode": 41,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"
@@ -54,8 +64,10 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-build-properties", { "ios": { "useFrameworks": "static" } }],
-
+      [
+        "expo-build-properties",
+        {}
+      ],
       "@react-native-firebase/app",
       "expo-font",
       "expo-updates",
@@ -74,10 +86,9 @@
       "googlePlacesApiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg",
       "eas": {
         "projectId": "6b44378d-74c3-4698-bbfd-ab0b8b165bc7"
-      }
+      },
+      "iosReversedClientId": "com.googleusercontent.apps.1047234268136-87md54v87djhg5hrfiu33oamhb2c3nmi"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "runtimeVersion": "1.0.3"
   }
 }

@@ -12,7 +12,6 @@ import {
   Alert,
   Dimensions,
   FlatList,
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -31,7 +30,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
-
+import { Image } from "expo-image";
 import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
@@ -44,6 +43,7 @@ const INITIAL_VIDEO_HEIGHT = 180;
 const COLLAPSED_VIDEO_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 80 : 80;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 60 : 40;
+const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
 
 const { width } = Dimensions.get("window");
 const H = 16;
@@ -57,6 +57,7 @@ const PAGE_SIZE = 5;
 const ROW_LIMIT = 5;
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
+
 /* ------------------------------------------------------------------ helpers */
 const firstImg = (p: any) =>
   p.imageUrl ||
@@ -64,6 +65,16 @@ const firstImg = (p: any) =>
   (Array.isArray(p.images) && p.images[0]) ||
   p.thumbnail ||
   "";
+type PageBg = {
+  enabled?: boolean;
+  imageUrl?: string;
+  resizeMode?: "cover" | "contain";
+  overlayGradient?: string[];
+  overlayOpacity?: number;
+  activeFrom?: any;
+  activeTo?: any;
+};
+
 
 const toRad = (d: number) => (d * Math.PI) / 180;
 const haversineKm = (
@@ -365,11 +376,14 @@ const MosaicCard: React.FC<{
           ]}
         >
           {pics[idx] ? (
-            <Image
-              source={{ uri: pics[idx] }}
-              style={styles.mosaicImg}
-              resizeMode="contain"
-            />
+           <Image
+            source={{ uri: pics[idx] }}
+            style={styles.mosaicImg}
+            contentFit="contain"
+            placeholder={PLACEHOLDER_BLURHASH}
+            cachePolicy="disk"
+            transition={160}
+          />
           ) : (
             <View style={{ flex: 1, backgroundColor: "#fafafa" }} />
           )}
@@ -418,7 +432,10 @@ export default function ProductsHomeScreen() {
   const nav = useNavigation<any>();
   const { location, updateLocation } = useLocationContext();
   const { cart } = useCart();
-
+// under other useState hooks in ProductsHomeScreen()
+const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
+  ["#00b4a0", "#00d2c7", "#ffffff"] // fallback defaults
+);
   /* ========== Pan Corner age-gate state ========== */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
   const [acceptedPan, setAcceptedPan] = useState(false);
@@ -428,6 +445,68 @@ export default function ProductsHomeScreen() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [onErrorConfirm, setOnErrorConfirm] = useState<() => void>(() => {});
+  const [pageBg, setPageBg] = useState<PageBg | null>(null);
+
+
+  // pull gradient colors for the collapsing header from Firestore
+useEffect(() => {
+  if (!location.storeId) {
+    setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"]);
+    return;
+  }
+
+  const unsub = firestore()
+    .collection("config")
+    .where("storeId", "==", location.storeId)
+    .limit(1)
+    .onSnapshot(
+      (snap) => {
+        const d = snap.docs[0]?.data() as any;
+
+        // Expecting: headerGradientColors: string[] (e.g. ["#00b4a0","#00d2c7","#ffffff"])
+        const arr = Array.isArray(d?.headerGradientColors)
+          ? d.headerGradientColors.filter(
+              (c: unknown) =>
+                typeof c === "string" &&
+                // very lax color guard: hex or css color-ish
+                (/^#/.test(c) || /^rgb/.test(c) || /^hsl/.test(c))
+            )
+          : null;
+
+        setHeaderGradientColors(
+          arr && arr.length ? arr : ["#00b4a0", "#00d2c7", "#ffffff"]
+        );
+      },
+      () => setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"])
+    );
+
+  return unsub;
+}, [location.storeId]);
+
+  useEffect(() => {
+  if (!location.storeId) { setPageBg(null); return; }
+
+  const q = firestore()
+    .collection("page_backgrounds")
+    .where("storeId", "==", location.storeId)
+    .where("page", "==", "home")
+    .limit(1);
+
+  const unsub = q.onSnapshot(
+    (snap) => {
+      const d = snap.docs[0]?.data() as PageBg | undefined;
+      if (!d || d.enabled === false) { setPageBg(null); return; }
+
+      const now = Date.now();
+      const fromOk = !d.activeFrom || new Date(d.activeFrom).getTime() <= now;
+      const toOk   = !d.activeTo   || new Date(d.activeTo).getTime()   >= now;
+      setPageBg(fromOk && toOk ? d : null);
+    },
+    () => setPageBg(null)
+  );
+
+  return unsub;
+}, [location.storeId]);
 
   useEffect(() => {
     firestore()
@@ -895,7 +974,31 @@ export default function ProductsHomeScreen() {
 
   return (
     <>
-      <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
+<View style={{ flex: 1, position: "relative", backgroundColor: pageBg ? "transparent" : "#fdfdfd" }}>
+  {/* UNDERLAY: page background (does not block touches) */}
+  {pageBg ? (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {pageBg.imageUrl ? (
+       <Image
+        source={{ uri: pageBg.imageUrl }}
+        style={StyleSheet.absoluteFill}
+        contentFit={pageBg.resizeMode || "cover"}
+        placeholder={PLACEHOLDER_BLURHASH}
+        cachePolicy="disk"
+        transition={200}
+      />
+      ) : null}
+
+      {pageBg.overlayGradient && pageBg.overlayGradient.length > 0 ? (
+        <View style={[StyleSheet.absoluteFill, { opacity: pageBg.overlayOpacity ?? 1 }]}>
+          <LinearGradient
+            colors={pageBg.overlayGradient}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      ) : null}
+    </View>
+  ) : null}
         <Animated.View
           // ① this full-screen wrapper must not swallow taps outside its children
           pointerEvents="box-none"
@@ -928,9 +1031,10 @@ export default function ProductsHomeScreen() {
             style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
           >
             <LinearGradient
-              colors={["#00b4a0", "#00d2c7", "#ffffff"]}
+              colors={headerGradientColors}
               style={StyleSheet.absoluteFill}
             />
+
           </Animated.View>
 
           {/* --- CLICKABLE HEADER & SEARCH --- */}

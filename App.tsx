@@ -82,7 +82,21 @@ import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
+import { Linking } from "react-native";
+import  firebase  from "@react-native-firebase/app";
+console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
+console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
+try {
+  const def = firebase.app();
+  console.log("[RNFB] default app:", def?.name, def?.options);
+} catch (e) {
+  console.log("[RNFB] firebase.app() threw:", e);
+}
+
+// Log inbound deep links (for the reCAPTCHA return)
+Linking.addEventListener("url", ({ url }) => console.log("[Linking] open url:", url));
+Linking.getInitialURL().then((url) => url && console.log("[Linking] initial url:", url));
 /* ══════════════════════════════════════════════════════════
    Auth Guard Helper
    ══════════════════════════════════════════════════════════ */
@@ -91,7 +105,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const user = auth().currentUser;
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged((user) => {
-      // Auth state changes will be handled by CustomerContext
       console.log("User auth state changed:", user?.uid);
     });
     return subscriber; // unsubscribe on unmount
@@ -315,6 +328,15 @@ function AppTabs() {
     (o) => o.status === "pending" || o.status === "active"
   );
 
+  useEffect(() => {
+   const onUrl = ({ url }: { url: string }) => {
+     console.log('[Linking] Open URL:', url);
+   };
+   const sub = Linking.addEventListener('url', onUrl);
+   Linking.getInitialURL().then((u) => u && console.log('[Linking] Initial URL:', u));
+   return () => sub.remove();
+  }, []);
+
   const promptLogin = (navigation: any, tab: string) =>
     Alert.alert("Login Required", `You must be logged in to access ${tab}.`, [
       { text: "Cancel", style: "cancel" },
@@ -450,9 +472,7 @@ function AppTabs() {
           options={{ title: "Contact Us" }}
         />
       </Tab.Navigator>
-      {/* ... blinking order bar, modals, etc. */}
-        
-    </View>
+          </View>
   );
 }
 

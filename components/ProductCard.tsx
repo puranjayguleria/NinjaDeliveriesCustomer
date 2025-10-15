@@ -6,12 +6,15 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Dimensions,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
+
 import { MaterialIcons } from "@expo/vector-icons";
 import { Product } from "../types/Product";
+import { useUiTheme } from "@/hooks/useUiTheme";
+import { useLocationContext } from "@/context/LocationContext"; // you already use this elsewhere
 
 type ProductCardProps = {
   item: Product;
@@ -28,6 +31,8 @@ const SIDE_NAV_WIDTH = 100;
 const CARD_MARGIN = 6;
 const CARD_WIDTH = (width - SIDE_NAV_WIDTH - CARD_MARGIN * 6) / 2.05;
 const CARD_HEIGHT = 270;
+const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
+
 
 const ProductCard: React.FC<ProductCardProps> = ({
   item,
@@ -39,6 +44,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   style,
 }) => {
   const [isImageLoading, setIsImageLoading] = useState<boolean>(true);
+  const { location } = useLocationContext();
+  const theme = useUiTheme(location?.storeId);
 
   /** Safely coerce possible string/undefined tax values to numbers */
   const n = (v: unknown): number => {
@@ -75,11 +82,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
     discountAmount > 0 ? Math.round((discountAmount / safeOriginal) * 100) : 0;
 
   return (
-    <View style={[styles.cardContainer, style]}>
-      <View style={styles.imageContainer}>
+    <View style={[styles.cardContainer, { backgroundColor: theme.productCardBg }, style]}>
+    <View style={[styles.imageContainer, { backgroundColor: theme.productImageBg }]}>
         <Image
           source={{ uri: item.image }}
           style={styles.productImage}
+          contentFit="contain"
+          cachePolicy="disk"
+          transition={120}
+          placeholder={PLACEHOLDER_BLURHASH}
           onLoadEnd={() => setIsImageLoading(false)}
         />
 
@@ -91,14 +102,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Discount Tag */}
         {typeof item.discount === "number" && item.discount > 0 && (
-          <View style={styles.discountTag}>
+        <View style={[styles.discountTag, { backgroundColor: theme.discountTagBg }]}>
             <Text style={styles.discountTagText}>
               {discountPercent.toFixed(0)}% OFF
             </Text>
           </View>
         )}
         {/* Price Overlay */}
-        <View style={styles.priceOverlay}>
+      <View style={[styles.priceOverlay, { backgroundColor: theme.priceOverlayBg }]}>
           <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(2)}</Text>
           {typeof item.discount === "number" && item.discount > 0 && (
             <Text style={styles.originalPrice}>₹{safeOriginal.toFixed(2)}</Text>
@@ -118,32 +129,33 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Cart Action */}
       {quantity > 0 ? (
-        <View style={styles.quantityControl}>
+        <View style={[styles.quantityControl, { backgroundColor: theme.qtyBarBg }]} >
           <TouchableOpacity
             onPress={onDecrease}
-            style={styles.controlButton}
-            accessibilityLabel={`Decrease quantity of ${item.name}`}
-            activeOpacity={0.7}
-          >
+            style={[
+                  styles.controlButton,
+                  { backgroundColor: theme.qtyBtnBg, borderColor: theme.qtyBtnBorder },
+                  ]}>
             <MaterialIcons name="remove" size={20} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.quantityText}>{quantity}</Text>
           <TouchableOpacity
             onPress={onIncrease}
-            style={styles.controlButton}
-            accessibilityLabel={`Increase quantity of ${item.name}`}
-            activeOpacity={0.7}
+            style={[
+              styles.controlButton,
+              { backgroundColor: theme.qtyBtnBg, borderColor: theme.qtyBtnBorder },
+            ]}
           >
             <MaterialIcons name="add" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       ) : item.outOfStock ? (
-        <View style={styles.oosButton}>
+        <View style={[styles.oosButton, { backgroundColor: theme.oosBg }]}>
           <Text style={styles.oosButtonText}>Out of Stock</Text>
         </View>
       ) : (
         <TouchableOpacity
-          style={styles.addToCartButton}
+          style={[styles.addToCartButton, { backgroundColor: theme.addToCartBg }]}
           onPress={onAddToCart}
           accessibilityLabel={`Add ${item.name} to cart`}
           activeOpacity={0.8}

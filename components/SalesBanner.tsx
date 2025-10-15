@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -10,7 +9,7 @@ import {
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
-import { QuickTile } from "./QuickTile"; // Adjust import path as needed
+import { QuickTile } from "./QuickTile";
 import Loader from "./VideoLoader";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -24,16 +23,60 @@ interface Product {
   price: number;
   discount: number;
   image: string;
-  // Include all other product fields you need
+  // add other fields you use in QuickTile
 }
 
+type ConfigDoc = {
+  storeId: string;
+  // optional "key" if you later segment configs, e.g., "home"
+  key?: string;
+  homeDiscountTitle?: string;
+  homeDiscountSeeAll?: string;
+};
+
 const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
+  // --- UI strings from config ---
+  const [cfgLoading, setCfgLoading] = useState(true);
+  const [homeDiscountTitle, setHomeDiscountTitle] = useState<string | undefined>(undefined);
+  const [homeDiscountSeeAll, setHomeDiscountSeeAll] = useState<string | undefined>(undefined);
+
+  // Listen to /config where storeId == current store
+  useEffect(() => {
+    if (!storeId) {
+      setCfgLoading(false);
+      setHomeDiscountTitle(undefined);
+      setHomeDiscountSeeAll(undefined);
+      return;
+    }
+    setCfgLoading(true);
+
+    // If you later add a "key" field, you can chain .where("key","==","home")
+    const q = firestore().collection("config").where("storeId", "==", storeId).limit(1);
+    const unsub = q.onSnapshot(
+      (snap) => {
+        const doc = snap.docs[0]?.data() as ConfigDoc | undefined;
+        setHomeDiscountTitle(doc?.homeDiscountTitle);
+        setHomeDiscountSeeAll(doc?.homeDiscountSeeAll);
+        setCfgLoading(false);
+      },
+      () => {
+        setHomeDiscountTitle(undefined);
+        setHomeDiscountSeeAll(undefined);
+        setCfgLoading(false);
+      }
+    );
+
+    return unsub;
+  }, [storeId]);
+
+  // --- products (discounted) ---
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastVisible, setLastVisible] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
+
   const navigation = useNavigation();
-  const isPan = false; // or fetch from user state, e.g. user?.isPan || false
+  const isPan = false;
 
   const [acceptedPan, setAcceptedPan] = useState(false);
   const [catAlert, setCatAlert] = useState(true);
@@ -41,8 +84,8 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   const onAcceptRef = useRef<() => void>(() => {});
 
   const maybeGate = useCallback(
-    (cb: () => void, isPan: boolean) => {
-      if (!isPan || acceptedPan || !catAlert) {
+    (cb: () => void, isPanFlag: boolean) => {
+      if (!isPanFlag || acceptedPan || !catAlert) {
         cb();
         return;
       }
@@ -54,10 +97,9 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
 
   const fetchDiscountedProducts = useCallback(
     async (loadMore = false) => {
-      if (loading || (!loadMore && products.length > 0)) return;
+      if (!storeId || loading || (!loadMore && products.length > 0)) return;
 
       setLoading(true);
-
       try {
         let query = firestore()
           .collection("saleProducts")
@@ -73,24 +115,20 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
         const snapshot = await query.get();
 
         if (snapshot.empty) {
-          if (loadMore) {
-            setHasMore(false);
-          }
+          if (loadMore) setHasMore(false);
           return;
         }
 
         const newProducts = snapshot.docs.map((doc) => ({
           id: doc.id,
-          ...doc.data(),
-        })) as Product[];
+          ...(doc.data() as Product),
+        }));
 
-        setProducts((prev) =>
-          loadMore ? [...prev, ...newProducts] : newProducts
-        );
+        setProducts((prev) => (loadMore ? [...prev, ...newProducts] : newProducts));
         setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
         setHasMore(snapshot.docs.length === PAGE_SIZE);
       } catch (error) {
-        console.error("Error fetching products:", error);
+        console.error("Error fetching discounted products:", error);
       } finally {
         setLoading(false);
       }
@@ -109,22 +147,27 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   };
 
   const navigateToAllDiscounted = () => {
+    // @ts-ignore – adjust your navigator types if needed
     navigation.navigate("AllDiscountedProducts", { storeId });
   };
 
-  const renderItem = ({ item }: { item: Product }) => {
-    return <QuickTile p={item} isPan={isPan} guard={maybeGate} />;
-  };
+  const renderItem = ({ item }: { item: Product }) => (
+    <QuickTile p={item as any} isPan={isPan} guard={maybeGate} />
+  );
+
+  const titleText = homeDiscountTitle?.trim() || "Discounted Products";
+  const seeAllText = homeDiscountSeeAll?.trim() || "See All";
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Special Discounts</Text>
+        <Text style={styles.title}>{titleText}</Text>
         <Pressable onPress={navigateToAllDiscounted}>
-          <Text style={styles.seeAll}>See All</Text>
+          <Text style={styles.seeAll}>{seeAllText}</Text>
         </Pressable>
       </View>
 
+      {/* You could show a tiny shimmer or loader when cfgLoading, but it's optional */}
       {products.length === 0 && !loading ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No discounted products available</Text>
@@ -140,7 +183,11 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
-            loading ? <View style={styles.loadingFooter}></View> : null
+            loading ? (
+              <View style={styles.loadingFooter}>
+                <Loader />
+              </View>
+            ) : null
           }
         />
       )}

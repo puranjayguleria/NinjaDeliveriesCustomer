@@ -9,7 +9,6 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   StyleSheet,
   Dimensions,
@@ -22,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { Image } from "expo-image";
 
 import { RootStackParamList } from "../types/navigation";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -202,7 +202,15 @@ const CategoriesScreen: React.FC = () => {
       style={styles.catCard}
       onPress={() => handleCategoryPress(item)}
     >
-      <Image source={{ uri: item.image }} style={styles.catImg} />
+      <Image
+        source={{ uri: item.image }}
+        style={styles.catImg}
+        contentFit="cover"
+        cachePolicy="disk"
+        transition={120}
+        recyclingKey={item.id}
+        priority="high"
+      />
       <Text style={styles.catTxt}>{item.name}</Text>
     </TouchableOpacity>
   );

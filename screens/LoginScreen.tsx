@@ -11,7 +11,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import auth, { getAuth } from "@react-native-firebase/auth";
+import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
@@ -94,34 +94,44 @@ const LoginScreen: React.FC = () => {
   }, []);
 
   // Function to send OTP
-  const sendOtp = async () => {
-    console.log("sendOtp called with phoneNumber:", phoneNumber);
-    if (!phoneNumber) {
-      showErrorModal("Please enter a valid phone number.");
-      return;
-    }
+ const sendOtp = async () => {
+  console.log("sendOtp called with phoneNumber:", phoneNumber);
+  if (!phoneNumber || phoneNumber.replace(/\D/g, "").length < 10) {
+    showErrorModal("Please enter a valid phone number.");
+    return;
+  }
 
-    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-    console.log("Formatted phone number:", formattedPhoneNumber);
+  const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+  console.log("[OTP] E.164:", formattedPhoneNumber);
+if (__DEV__ && Platform.OS === "ios") {
+  try {
+    auth().settings.appVerificationDisabledForTesting = true;
+    console.log("[OTP] appVerificationDisabledForTesting enabled (iOS dev)");
+  } catch (e) {
+    console.log("[OTP] could not enable appVerificationDisabledForTesting", e);
+  }
+}
+  try {
+    setIsSendingOtp(true);
+    console.log("[OTP] Calling RNFB auth().signInWithPhoneNumber...");
+    const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
+    console.log("[OTP] signInWithPhoneNumber resolved. Keys:", Object.keys(confirmationResult || {}));
+    setConfirmation(confirmationResult);
 
-    try {
-      setIsSendingOtp(true);
-      console.log("Sending OTP...");
+    setTimeout(() => otpInputRef.current?.focus(), 300);
+  } catch (error: any) {
+    console.error("[OTP] send failed:", {
+      name: error?.name,
+      code: error?.code,
+      message: error?.message,
+      stack: error?.stack,
+    });
+    showErrorModal("Something went wrong while sending OTP. Please try again.");
+  } finally {
+    setIsSendingOtp(false);
+  }
+};
 
-      const confirmationResult = await getAuth().signInWithPhoneNumber(formattedPhoneNumber);
-      console.log("OTP sent, confirmation result:", confirmationResult);
-      setConfirmation(confirmationResult);
-
-      setTimeout(() => {
-        otpInputRef.current?.focus();
-      }, 500);
-    } catch (error: any) {
-      console.error("Failed to send OTP:", error.message, error);
-      showErrorModal("Something went wrong while sending OTP. Please try again.");
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
 
   // Function to confirm OTP
   const confirmOtp = async () => {

@@ -5,16 +5,17 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  Image,
   Dimensions,
   FlatList,
   ActivityIndicator,
   TouchableWithoutFeedback,
 } from "react-native";
+import { Image } from "expo-image";
 import firestore from "@react-native-firebase/firestore";
 import Video from "react-native-video";
 import { useNavigation } from "@react-navigation/native";
 import { useLocationContext } from "@/context/LocationContext";
+const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
 const HORIZONTAL_PADDING = 16;
 const SLIDE_GAP = 8; // space between slides
@@ -175,13 +176,20 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
               onError={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
             />
           ) : (
-            <Image
-              source={{ uri: url }}
-              style={styles.bannerImage}
-              resizeMode="cover"
-              onLoad={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
-              onError={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
-            />
+           <Image
+                source={{ uri: url }}
+                style={styles.bannerImage}
+                contentFit="cover"
+                cachePolicy="disk"
+                transition={160}
+                placeholder={PLACEHOLDER_BLURHASH}
+                onLoad={() =>
+                  setLoadedMap((m) => ({ ...m, [item.id]: true }))
+                }
+                onError={() =>
+                  setLoadedMap((m) => ({ ...m, [item.id]: true }))
+                }
+              />
           )}
 
           {!loaded && (
