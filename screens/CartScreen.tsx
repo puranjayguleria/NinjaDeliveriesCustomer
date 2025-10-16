@@ -483,27 +483,63 @@ const CartScreen: React.FC = () => {
         return;
       }
 
+      // Fetch from both collections in parallel
       const batchPromises: Promise<firebase.firestore.QuerySnapshot>[] = [];
+
+      // Split productIds into batches of 10 for Firestore 'in' query limit
       const tempIds = [...productIds];
       while (tempIds.length > 0) {
         const batchIds = tempIds.splice(0, 10);
+        // Query products collection
         batchPromises.push(
           firestore()
             .collection("products")
             .where(firestore.FieldPath.documentId(), "in", batchIds)
             .get()
         );
+        // Query saleProducts collection
+        batchPromises.push(
+          firestore()
+            .collection("saleProducts")
+            .where(firestore.FieldPath.documentId(), "in", batchIds)
+            .get()
+        );
       }
 
+      // Execute all queries
       const snapshots = await Promise.all(batchPromises);
+
+      // Merge and deduplicate results
       const productsData: Product[] = [];
       snapshots.forEach((snap) => {
         snap.forEach((doc) => {
-          productsData.push({ id: doc.id, ...(doc.data() as Product) });
+          const data = doc.data() as Product;
+          // Only add if quantity > 0 and not already included
+          if ((data.quantity ?? 0) > 0) {
+            const existing = productsData.find((p) => p.id === doc.id);
+            if (!existing) {
+              productsData.push({ id: doc.id, ...data });
+            } else {
+              // Update with latest data if saleProducts has a discount
+              if (
+                doc.ref.parent.path.includes("saleProducts") &&
+                data.discount
+              ) {
+                productsData[productsData.indexOf(existing)] = {
+                  id: doc.id,
+                  ...data,
+                };
+              }
+            }
+          }
         });
       });
+
+      // Filter to only items with quantity > 0 in cart
       const visible = productsData.filter((p) => (cart[p.id] ?? 0) > 0);
       setCartItems(visible);
+
+      // Fetch recommended items based on visible cart items
       await fetchRecommended(visible);
     } catch (error) {
       console.error("Error fetching cart items:", error);
@@ -511,7 +547,7 @@ const CartScreen: React.FC = () => {
     } finally {
       if (showLoader) {
         setRefreshingCartItems(false);
-        setLoading(false); // ← NEW
+        setLoading(false);
       }
     }
   };
@@ -968,22 +1004,32 @@ const CartScreen: React.FC = () => {
       const batch = firestore().batch();
       for (let i = 0; i < items.length; i++) {
         const { productId, quantity } = items[i];
-        const productRef = firestore().collection("products").doc(productId);
-        const productSnap = await productRef.get();
+        let productRef = firestore().collection("saleProducts").doc(productId); // Check saleProducts first
+        let productSnap = await productRef.get();
 
+        // If not in saleProducts, check products
         if (!productSnap.exists) {
-          throw new Error("Some products are no longer available.");
+          productRef = firestore().collection("products").doc(productId);
+          productSnap = await productRef.get();
+          if (!productSnap.exists) {
+            throw new Error("Some products are no longer available.");
+          }
         }
-        const currentQty = productSnap.data()?.quantity || 0;
+
+        const data = productSnap.data() as Product | undefined;
+        if (!data || typeof data.quantity !== "number") {
+          throw new Error(`Invalid product data for ID ${productId}`);
+        }
+        const currentQty = data.quantity || 0;
         if (currentQty < quantity) {
           throw new Error(
-            `Not enough stock for product: ${productSnap.data()?.name}`
+            `Not enough stock for product: ${data.name || `ID` + productId}`
           );
-        } else {
-          const newQty = currentQty - quantity;
-          batch.update(productRef, { quantity: newQty < 0 ? 0 : newQty });
         }
+        const newQty = currentQty - quantity;
+        batch.update(productRef, { quantity: newQty < 0 ? 0 : newQty });
       }
+
       await batch.commit();
 
       // Build pickup coords from fareData

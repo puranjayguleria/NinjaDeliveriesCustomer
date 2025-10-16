@@ -144,16 +144,27 @@ export default function RatingScreen() {
         const resolvedItems: (OrderItem & { image?: string })[] = [];
         for (const it of rawItems) {
           let imgUri = "";
+
           try {
-            const pSnap = await firestore()
-              .collection("products")
-              .doc(it.productId)
-              .get();
+            // Try fetching from "products" first
+            let pRef = firestore().collection("products").doc(it.productId);
+            let pSnap = await pRef.get();
+
+            // If not found, try "saleProducts"
+            if (!pSnap.exists) {
+              pRef = firestore().collection("saleProducts").doc(it.productId);
+              pSnap = await pRef.get();
+            }
+
+            // If found in either collection, extract image
             if (pSnap.exists) {
               const pData = pSnap.data() || {};
               imgUri = pData.image || "";
             }
-          } catch {}
+          } catch (error) {
+            console.error(`Error fetching image for ${it.productId}:`, error);
+          }
+
           resolvedItems.push({ ...it, image: imgUri });
         }
 
