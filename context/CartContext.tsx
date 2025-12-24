@@ -21,6 +21,9 @@ type CartContextType = {
   decreaseQuantity: (productId: string) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
+  addMultipleItems: (
+    items: { productId: string; quantity: number; availableQuantity: number }[]
+  ) => void;
   getItemQuantity: (productId: string) => number;
 };
 
@@ -121,6 +124,42 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
     []
   );
 
+  const addMultipleItems = useCallback(
+  (
+    items: {
+      productId: string;
+      quantity: number;
+      availableQuantity: number;
+    }[]
+  ) => {
+    setCart((prevCart) => {
+      const updatedCart = { ...prevCart };
+
+      items.forEach(({ productId, quantity, availableQuantity }) => {
+        let currentQty = updatedCart[productId] ?? 0;
+        for (let i = 0; i < quantity; i++) {
+          if (currentQty >= availableQuantity) {
+            Toast.show({
+              type: "info",
+              text1: "Stock limit reached",
+              text2: `Only ${availableQuantity} in stock`,
+            });
+            break;
+          }
+          currentQty += 1;
+        }
+        if (currentQty > 0) {
+          updatedCart[productId] = currentQty;
+        }
+      });
+
+      return updatedCart;
+    });
+  },
+  []
+);
+
+
   // -------------------------------
   //  INCREASE QUANTITY
   // -------------------------------
@@ -195,6 +234,7 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
     () => ({
       cart,
       addToCart,
+      addMultipleItems,
       increaseQuantity,
       decreaseQuantity,
       removeFromCart,
@@ -204,6 +244,7 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
     [
       cart,
       addToCart,
+      addMultipleItems,
       increaseQuantity,
       decreaseQuantity,
       removeFromCart,

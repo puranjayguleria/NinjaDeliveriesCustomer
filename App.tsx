@@ -25,7 +25,7 @@ import {
 } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
 import { auth, firestore } from './firebase.native'; 
 // import auth from "@react-native-firebase/auth";
@@ -33,6 +33,8 @@ import { auth, firestore } from './firebase.native';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
+import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
+
 try {
   // RNFB v22-compatible way to check initialized apps:
   // If zero on iOS, native didn't configure from GoogleService-Info.plist
@@ -84,8 +86,130 @@ import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
 import { Linking } from "react-native";
 import  firebase  from "@react-native-firebase/app";
+import NinjaEatsHomeScreen from './screens/NinjaEatsHomeScreen';
+import NinjaEatsSearchScreen from './screens/NinjaEatsSearchScreen';
+import NinjaEatsOrdersScreen from './screens/NinjaEatsOrdersScreen';
+import NinjaEatsProfileScreen from './screens/NinjaEatsProfileScreen';
+import CuisinesScreen from './screens/CuisinesScreen';
+import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
+import { RestaurantCartProvider } from './context/RestaurantCartContext';
+import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
+import NinjaEatsOrderDetailScreen from "./screens/NinjaEatsOrderDetailScreen";
+
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
+
+const NinjaEatsTab = createBottomTabNavigator();
+const NinjaEatsStack = () => (
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+    }}
+  >
+    <Stack.Screen
+      name="NinjaEatsHome"
+      component={NinjaEatsHomeScreen}
+    />
+     <Stack.Screen
+      name="RestaurantCategoryListing"
+      component={RestaurantCategoryListingScreen}
+    />
+    <Stack.Screen
+      name="RestaurantDetails"
+      component={RestaurantDetailsScreen}
+    /> 
+    <Stack.Screen
+      name="RestaurantCheckout"
+      component={RestaurantCheckoutScreen}
+    />
+  </Stack.Navigator>
+);
+
+const NinjaEatsOrdersStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen
+      name="NinjaEatsOrders"
+      component={NinjaEatsOrdersScreen}
+    />
+    <Stack.Screen
+      name="NinjaEatsOrderDetail"
+      component={NinjaEatsOrderDetailScreen}
+    />
+  </Stack.Navigator>
+);
+
+/**
+ * Bottom tabs for Ninja Eats:
+ * - Home (with its own stack)
+ * - Cuisines
+ * - Orders
+ * - Profile
+ */
+const NinjaEatsTabs = () => (
+  <Tab.Navigator
+    screenOptions={{
+      headerShown: false,
+      tabBarActiveTintColor: "#00b4a0",
+      tabBarInactiveTintColor: "#777",
+      tabBarLabelStyle: {
+        fontSize: 11,
+        fontWeight: "600",
+      },
+      tabBarStyle: {
+        backgroundColor: "#ffffff",
+        borderTopColor: "#eee",
+        elevation: 8,
+        height: 56,
+      },
+    }}
+  >
+    <Tab.Screen
+      name="NinjaEatsHomeTab"
+      component={NinjaEatsStack}
+      options={{
+        title: "Home",
+        tabBarIcon: ({ color, size }) => (
+          <MaterialIcons name="home-filled" size={size} color={color} />
+        ),
+      }}
+    />
+
+    <Tab.Screen
+      name="CuisinesTab"
+      component={CuisinesScreen}
+      options={{
+        title: "Cuisines",
+        tabBarIcon: ({ color, size }) => (
+          <MaterialIcons name="restaurant-menu" size={size} color={color} />
+        ),
+      }}
+    />
+
+   <Tab.Screen
+  name="OrdersTab"
+  component={NinjaEatsOrdersStack}
+  options={{
+    title: "Orders",
+    tabBarIcon: ({ color, size }) => (
+      <MaterialIcons name="receipt-long" size={size} color={color} />
+    ),
+  }}
+/>
+
+
+    <Tab.Screen
+      name="ProfileTab"
+      component={ProfileScreen}
+      options={{
+        title: "Profile",
+        tabBarIcon: ({ color, size }) => (
+          <MaterialIcons name="person" size={size} color={color} />
+        ),
+      }}
+    />
+  </Tab.Navigator>
+);
+
 
 try {
   const def = firebase.app();
@@ -645,6 +769,8 @@ const App: React.FC = () => {
 
       <CustomerProvider>
         <CartProvider>
+          <RestaurantCartProvider>
+
           <LocationProvider>
             <WeatherProvider>
               <OrderProvider>
@@ -659,6 +785,7 @@ const App: React.FC = () => {
                       component={TermsAndConditionsScreen}
                     />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
+                      <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
                     <RootStack.Screen
                       name="LocationSelector"
                       component={LocationSelectorScreen}
@@ -676,9 +803,11 @@ const App: React.FC = () => {
                     />
                   </RootStack.Navigator>
                 </NavigationContainer>
+                
               </OrderProvider>
             </WeatherProvider>
           </LocationProvider>
+          </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
 
