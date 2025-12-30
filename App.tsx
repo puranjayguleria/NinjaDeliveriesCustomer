@@ -86,15 +86,11 @@ import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
 import { Linking } from "react-native";
 import  firebase  from "@react-native-firebase/app";
-import NinjaEatsHomeScreen from './screens/NinjaEatsHomeScreen';
-import NinjaEatsSearchScreen from './screens/NinjaEatsSearchScreen';
-import NinjaEatsOrdersScreen from './screens/NinjaEatsOrdersScreen';
-import NinjaEatsProfileScreen from './screens/NinjaEatsProfileScreen';
+
 import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
 import { RestaurantCartProvider } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
-import NinjaEatsOrderDetailScreen from "./screens/NinjaEatsOrderDetailScreen";
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
