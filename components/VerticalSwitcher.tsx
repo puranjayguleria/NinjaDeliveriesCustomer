@@ -71,13 +71,14 @@ export const VerticalSwitcher: React.FC<Props> = ({ active, onChange }) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    width: 110,
-    height: 32,
-    borderRadius: 16,
+    width: 120,              // slightly wider
+    height: 36,              // more touch-friendly
+    borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.95)",
-    padding: 2,
+    padding: 4,              // proper inner spacing
+    marginTop: 6,            // spacing from elements above
     shadowColor: "#000",
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
@@ -85,10 +86,12 @@ const styles = StyleSheet.create({
 
   thumb: {
     position: "absolute",
-    width: 52,
+    width: 56,               // matches half of container minus padding
     height: 28,
     borderRadius: 14,
     backgroundColor: "#00b4a0",
+    top: 4,                  // centers thumb vertically
+    left: 4,                 // default (animated horizontally)
   },
 
   option: {
@@ -96,6 +99,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     zIndex: 1,
+    paddingVertical: 4,      // better tap target
   },
 
   label: {

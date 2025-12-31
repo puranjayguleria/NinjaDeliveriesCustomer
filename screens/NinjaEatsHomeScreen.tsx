@@ -34,8 +34,9 @@ import Loader from "@/components/VideoLoader";
 const { width } = Dimensions.get("window");
 const H = 16;
 
-const INITIAL_HEADER_HEIGHT = 190;
-const COLLAPSED_HEADER_HEIGHT = 90;
+const INITIAL_HEADER_HEIGHT = 180; // 👈 taller video
+const COLLAPSED_HEADER_HEIGHT = 120;
+
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 40 : 30;
 
@@ -679,25 +680,28 @@ export default function NinjaEatsHomeScreen() {
           colors={["rgba(0,0,0,0.7)", "rgba(0,0,0,0.25)", "transparent"]}
           style={StyleSheet.absoluteFill}
         />
-{/* Foreground content */}
-<View style={styles.topBg}>
-  {/* Location row */}
-  <Header />
 
-  {/* Search + Switcher in SAME LINE */}
-  <View style={styles.searchSwitcherRow}>
-    <View style={styles.searchFlex}>
-      <RotatingRestaurantSearchBar />
-    </View>
-
-    <VerticalSwitcher
-      active="restaurants"
-      onChange={handleModeChange}
-    />
-  </View>
+        {/* Foreground content */}
+        <View style={styles.topBg}>
+          {/* Top pill switcher */}
+<View style={styles.verticalSwitcherRow}>
+  <VerticalSwitcher
+    active="restaurants"
+    onChange={handleModeChange}
+  />
 </View>
-</Animated.View>
 
+
+          {/* Location row */}
+          <Header />
+
+          {/* Search */}
+<View style={styles.searchContainer}>
+  <RotatingRestaurantSearchBar />
+</View>
+
+        </View>
+      </Animated.View>
 
       {/* Main feed */}
       {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -763,11 +767,10 @@ const styles = StyleSheet.create({
 
 verticalSwitcherRow: {
   position: "absolute",
-  top: Platform.OS === "ios" ? 104 : 92, // 👈 below location + search
-  right: 12,
+  top: Platform.OS === "ios" ? 104 : 92, // below location + search
+  left: 12,          // 👈 move to LEFT
   zIndex: 1000,
 },
-
 
   locationRow: {
     flexDirection: "row",
@@ -1068,7 +1071,7 @@ verticalSwitcherRow: {
   searchSwitcherRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginTop: 6,
+  marginTop: 8,
 },
 
 searchFlex: {

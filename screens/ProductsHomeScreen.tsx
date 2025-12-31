@@ -1663,24 +1663,23 @@ useEffect(() => {
           />
         </Animated.View>
 
- <View style={styles.topBg}>
+<View style={styles.topBg}>
   <Header />
 
- <View style={styles.searchSwitchRow}>
+  {/* Search bar */}
   <View style={styles.searchFlex}>
     <StableSearchBar />
   </View>
 
-  <VerticalSwitcher
-    active={activeVerticalMode}
-    onChange={handleModeChange}
-  />
+  {/* Vertical switcher BELOW search */}
+  <View style={styles.verticalSwitcherRow}>
+    <VerticalSwitcher
+      active={activeVerticalMode}
+      onChange={handleModeChange}
+    />
+  </View>
 </View>
 
-</View>
-
-
-       
         </Animated.View>
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -2313,11 +2312,10 @@ labelActive: { color: '#fff' },
     fontWeight: "600",
   },
 verticalSwitcherRow: {
-  position: "absolute",
-  top: Platform.OS === "ios" ? 96 : 84, // 👈 below Header + SearchBar
-  right: 12,
-  zIndex: 1000,
+  marginTop: 8,          // space below search bar
+  alignSelf: "flex-start", // or "center" if you prefer
 },
+
 
 searchSwitchRow: {
   flexDirection: "row",
@@ -2327,8 +2325,6 @@ searchSwitchRow: {
 
 searchFlex: {
   flex: 1,
-  marginRight: 8,
+  marginRight: 22,
 },
-
-
 });
