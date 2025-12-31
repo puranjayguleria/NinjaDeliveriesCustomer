@@ -555,12 +555,17 @@ export default function NinjaEatsHomeScreen() {
 
   /* --------------------------- Switcher interactions ------------------------ */
 
-  const handleModeChange = (mode: "grocery" | "restaurants") => {
-    if (mode === "grocery") {
-      nav.navigate("ProductsHome");
-    }
-    // if restaurants, we're already here – no-op
-  };
+const handleModeChange = (mode: "grocery" | "restaurants") => {
+  // give instant UI feedback first
+  if (mode === "grocery") {
+    requestAnimationFrame(() => {
+      nav.replace("AppTabs");
+    });
+  }
+};
+
+
+
 
   /* ------------------------------ List header ------------------------------- */
 

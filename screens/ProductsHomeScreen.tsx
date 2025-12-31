@@ -1581,13 +1581,15 @@ useEffect(() => {
   }
   const navigation = useNavigation<any>();
 
- const handleModeChange = (mode: 'grocery' | 'restaurants') => {
-    if (mode === 'restaurants') {
-      navigation.navigate('NinjaEatsTabs');
-    } else {
-      // Stay on grocery; nothing else required because you’re already on ProductsHome
-    }
-  };
+const handleModeChange = (mode: "grocery" | "restaurants") => {
+  if (mode === "restaurants") {
+    requestAnimationFrame(() => {
+      navigation.replace("NinjaEatsTabs");
+    });
+  }
+  // grocery → already on ProductsHome
+};
+
   return (
     <>
       <View
