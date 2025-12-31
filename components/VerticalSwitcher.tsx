@@ -1,6 +1,6 @@
 // @/components/VerticalSwitcher.tsx
-import React from "react";
-import { View, Pressable, Text, StyleSheet } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
 
 type Mode = "grocery" | "restaurants";
 
@@ -10,61 +10,101 @@ type Props = {
 };
 
 export const VerticalSwitcher: React.FC<Props> = ({ active, onChange }) => {
-  const isGrocery = active === "grocery";
-  const isRestaurants = active === "restaurants";
+  const translateX = useRef(new Animated.Value(active === "grocery" ? 0 : 1))
+    .current;
+
+  useEffect(() => {
+    Animated.spring(translateX, {
+      toValue: active === "grocery" ? 0 : 1,
+      useNativeDriver: true,
+      friction: 7,
+    }).start();
+  }, [active]);
+
+  const thumbTranslate = translateX.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 52], // 👈 thumb positions
+  });
 
   return (
     <View style={styles.container}>
+      {/* Sliding thumb */}
+      <Animated.View
+        style={[
+          styles.thumb,
+          {
+            transform: [{ translateX: thumbTranslate }],
+          },
+        ]}
+      />
+
       <Pressable
-        style={[styles.pill, isGrocery && styles.pillActive]}
+        style={styles.option}
         onPress={() => onChange?.("grocery")}
       >
-        <Text style={[styles.label, isGrocery && styles.labelActive]}>
+        <Text
+          style={[
+            styles.label,
+            active === "grocery" && styles.labelActive,
+          ]}
+        >
           Grocery
         </Text>
       </Pressable>
 
       <Pressable
-        style={[styles.pill, isRestaurants && styles.pillActive]}
+        style={styles.option}
         onPress={() => onChange?.("restaurants")}
       >
-        <Text style={[styles.label, isRestaurants && styles.labelActive]}>
-          Ninja Eats
+        <Text
+          style={[
+            styles.label,
+            active === "restaurants" && styles.labelActive,
+          ]}
+        >
+          Eats
         </Text>
       </Pressable>
     </View>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    alignItems: "center",
-    // 🔥 Solid, high-contrast pill behind the tabs
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 999,
-    padding: 3,
-    // Light shadow so it pops over the video
+    width: 110,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    padding: 2,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+
+  thumb: {
+    position: "absolute",
+    width: 52,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#00b4a0",
   },
-  pillActive: {
-    backgroundColor: "#00b4a0", // Ninja green accent
+
+  option: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
   },
+
   label: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#333", // dark text for contrast on white
+    fontWeight: "700",
+    color: "#555",
   },
+
   labelActive: {
-    color: "#fff", // white text on active green
+    color: "#fff",
   },
 });

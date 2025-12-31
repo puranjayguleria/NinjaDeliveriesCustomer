@@ -679,26 +679,25 @@ export default function NinjaEatsHomeScreen() {
           colors={["rgba(0,0,0,0.7)", "rgba(0,0,0,0.25)", "transparent"]}
           style={StyleSheet.absoluteFill}
         />
+{/* Foreground content */}
+<View style={styles.topBg}>
+  {/* Location row */}
+  <Header />
 
-        {/* Foreground content */}
-        <View style={styles.topBg}>
-          {/* Top pill switcher */}
-          <View style={styles.verticalSwitcherRow}>
-            <VerticalSwitcher
-              active="restaurants"
-              onChange={handleModeChange}
-            />
-          </View>
+  {/* Search + Switcher in SAME LINE */}
+  <View style={styles.searchSwitcherRow}>
+    <View style={styles.searchFlex}>
+      <RotatingRestaurantSearchBar />
+    </View>
 
-          {/* Location row */}
-          <Header />
+    <VerticalSwitcher
+      active="restaurants"
+      onChange={handleModeChange}
+    />
+  </View>
+</View>
+</Animated.View>
 
-          {/* Search */}
-          <View style={{ marginTop: 6 }}>
-            <RotatingRestaurantSearchBar />
-          </View>
-        </View>
-      </Animated.View>
 
       {/* Main feed */}
       {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -756,10 +755,19 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
 
-  verticalSwitcherRow: {
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
+  searchContainer: {
+  height: 52,              // 👈 fixed height like Grocery
+  justifyContent: "center",
+  marginTop: 6,
+},
+
+verticalSwitcherRow: {
+  position: "absolute",
+  top: Platform.OS === "ios" ? 104 : 92, // 👈 below location + search
+  right: 12,
+  zIndex: 1000,
+},
+
 
   locationRow: {
     flexDirection: "row",
@@ -1057,4 +1065,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 32,
   },
+  searchSwitcherRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 6,
+},
+
+searchFlex: {
+  flex: 1,              // 👈 search takes remaining space
+  marginRight: 8,       // 👈 gap between search & switcher
+},
+
 });

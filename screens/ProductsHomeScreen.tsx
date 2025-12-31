@@ -266,7 +266,10 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
   const nav = useNavigation<any>();
 
   return (
-    <Pressable style={styles.searchWrapper} onPress={() => nav.navigate("Search")}>
+    <Pressable
+      style={[styles.searchWrapper, styles.searchGap]}
+      onPress={() => nav.navigate("Search")}
+    >
       <MaterialIcons
         name="search"
         size={20}
@@ -277,6 +280,7 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
     </Pressable>
   );
 });
+
 
 /* ------------------------------------------------------------------ intro media */
 
@@ -1659,15 +1663,22 @@ useEffect(() => {
           />
         </Animated.View>
 
-       <View style={styles.topBg}>
-  <View style={styles.verticalSwitcherRow}>
-    <VerticalSwitcher active={activeVerticalMode} onChange={handleModeChange} />
-  </View>
+ <View style={styles.topBg}>
   <Header />
-  <View style={{ paddingTop: 4 }}>
+
+ <View style={styles.searchSwitchRow}>
+  <View style={styles.searchFlex}>
     <StableSearchBar />
   </View>
+
+  <VerticalSwitcher
+    active={activeVerticalMode}
+    onChange={handleModeChange}
+  />
 </View>
+
+</View>
+
 
        
         </Animated.View>
@@ -2301,10 +2312,23 @@ labelActive: { color: '#fff' },
     fontSize: 12,
     fontWeight: "600",
   },
-  verticalSwitcherRow: {
-  paddingHorizontal: H,
-  marginBottom: 6,
-  alignItems: "flex-start",
+verticalSwitcherRow: {
+  position: "absolute",
+  top: Platform.OS === "ios" ? 96 : 84, // 👈 below Header + SearchBar
+  right: 12,
+  zIndex: 1000,
 },
+
+searchSwitchRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 6,
+},
+
+searchFlex: {
+  flex: 1,
+  marginRight: 8,
+},
+
 
 });
