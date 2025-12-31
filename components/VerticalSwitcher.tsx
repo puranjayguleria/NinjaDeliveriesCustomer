@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     // 🔥 Solid, high-contrast pill behind the tabs
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: "rgba(236, 227, 227, 0.96)",
     borderRadius: 999,
     padding: 3,
     // Light shadow so it pops over the video
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   pillActive: {
-    backgroundColor: "#00b4a0", // Ninja green accent
+    backgroundColor: "#15dac3ff", // Ninja green accent
   },
   label: {
     fontSize: 12,
