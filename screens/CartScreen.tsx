@@ -184,6 +184,7 @@ const CartScreen: React.FC = () => {
   } = useCart();
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
+  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(true); // true for order pouse
   const [loading, setLoading] = useState(true); // for initial screen load
   const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
   console.log(location.storeId);
@@ -896,6 +897,14 @@ const CartScreen: React.FC = () => {
    * CART ACTIONS
    ***************************************/
   const handleCheckout = async () => {
+    if (isOrderAcceptancePaused) {
+    Alert.alert(
+      "Orders Paused",
+      "We can't take orders right now. Please try again later.",
+      [{ text: "OK" }] // only OK button
+    );
+    return; // Pause payment flow 
+  }
     // NEW: Delivery timing check
     try {
       const timingDoc = await firestore()
@@ -1618,11 +1627,14 @@ const CartScreen: React.FC = () => {
                   styles.footerCheckoutButton,
                   {
                     backgroundColor: animatedButtonColor,
-                    transform: [{ translateX: shakeTranslate }],
-                  },
-                ]}
-                onPress={handleCheckout}
-              >
+                    transform: [{ translateX: shakeTranslate }],// if paused, gray + low opacity
+      opacity: isOrderAcceptancePaused ? 0.6 : 1,
+    },
+    isOrderAcceptancePaused && styles.disabledButton, // extra style add 
+  ]}
+  onPress={handleCheckout}
+  disabled={isOrderAcceptancePaused} // important: it disable touch when paused
+>
                 <Ionicons
                   name={selectedLocation ? "cash-outline" : "cart-outline"}
                   size={16}
@@ -1630,8 +1642,12 @@ const CartScreen: React.FC = () => {
                   style={{ marginRight: 6 }}
                 />
                 <Text style={styles.footerCheckoutText}>
-                  {selectedLocation ? "Pay Now" : "Checkout"}
-                </Text>
+                 {isOrderAcceptancePaused
+                   ? "Orders Paused"  // paused text
+                   : selectedLocation
+                   ? "Pay Now"
+                   : "Checkout"}
+  </Text>
               </AnimatedTouchable>
             </View>
           </>
@@ -2180,6 +2196,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#000",
   },
+  disabledButton: {
+  backgroundColor: "#95a5a6", // gray color (disable look)
+},
 
   /** FOOTER BAR **/
   footerBar: {

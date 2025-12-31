@@ -2,6 +2,8 @@
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
 import app from '@react-native-firebase/app';
+
+
 import { ensureFirebaseReady } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";

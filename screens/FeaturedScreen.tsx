@@ -267,7 +267,7 @@ const FeaturedScreen: React.FC = () => {
               <MaterialIcons
                 name="remove-circle"
                 size={32}
-                color={eventAttrs?.themeColor || "#d32f2f"}
+                color="white"
               />
             </TouchableOpacity>
             <Text style={styles.quantityText}>{qty}</Text>
@@ -279,7 +279,7 @@ const FeaturedScreen: React.FC = () => {
               <MaterialIcons
                 name="add-circle"
                 size={32}
-                color={eventAttrs?.themeColor || "#d32f2f"}
+                color="white"
               />
             </TouchableOpacity>
           </View>
@@ -485,8 +485,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 10,
+    
+     
   },
-  quantityText: { fontSize: 18, fontWeight: "600", marginHorizontal: 10 },
+  quantityText: { color: "white",fontSize: 18, fontWeight: "600", marginHorizontal: 10 },
 
   /* grid */
   gridContainer: {

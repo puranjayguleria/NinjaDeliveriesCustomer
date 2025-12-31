@@ -1667,6 +1667,12 @@ useEffect(() => {
   <View style={{ paddingTop: 4 }}>
     <StableSearchBar />
   </View>
+  <View style={styles.headerMessageContainer}>
+    <Text style={styles.headerMessageText}>
+     Due to some reasons we cant process orders .
+    </Text>
+  </View>
+
 </View>
 
        
@@ -2306,5 +2312,24 @@ labelActive: { color: '#fff' },
   marginBottom: 6,
   alignItems: "flex-start",
 },
-
+headerMessageContainer: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+  },
+  headerMessageText: {
+    fontSize: 13.5,
+    color: "#fff",
+    paddingHorizontal: 20,       
+  paddingVertical: 8,
+    fontWeight: "500",
+    backgroundColor: "#009688",
+    textAlign: "center",
+    borderRadius: 30,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
 });
+
+
