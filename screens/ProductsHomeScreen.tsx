@@ -266,7 +266,10 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
   const nav = useNavigation<any>();
 
   return (
-    <Pressable style={styles.searchWrapper} onPress={() => nav.navigate("Search")}>
+    <Pressable
+      style={[styles.searchWrapper, styles.searchGap]}
+      onPress={() => nav.navigate("Search")}
+    >
       <MaterialIcons
         name="search"
         size={20}
@@ -277,6 +280,7 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
     </Pressable>
   );
 });
+
 
 /* ------------------------------------------------------------------ intro media */
 
@@ -1577,13 +1581,15 @@ useEffect(() => {
   }
   const navigation = useNavigation<any>();
 
- const handleModeChange = (mode: 'grocery' | 'restaurants') => {
-    if (mode === 'restaurants') {
-      navigation.navigate('NinjaEatsTabs');
-    } else {
-      // Stay on grocery; nothing else required because you’re already on ProductsHome
-    }
-  };
+const handleModeChange = (mode: "grocery" | "restaurants") => {
+  if (mode === "restaurants") {
+    requestAnimationFrame(() => {
+      navigation.replace("NinjaEatsTabs");
+    });
+  }
+  // grocery → already on ProductsHome
+};
+
   return (
     <>
       <View
@@ -1659,17 +1665,23 @@ useEffect(() => {
           />
         </Animated.View>
 
-       <View style={styles.topBg}>
-  <View style={styles.verticalSwitcherRow}>
-    <VerticalSwitcher active={activeVerticalMode} onChange={handleModeChange} />
-  </View>
+<View style={styles.topBg}>
   <Header />
-  <View style={{ paddingTop: 4 }}>
+
+  {/* Search bar */}
+  <View style={styles.searchFlex}>
     <StableSearchBar />
   </View>
+
+  {/* Vertical switcher BELOW search */}
+  {/* <View style={styles.verticalSwitcherRow}>
+    <VerticalSwitcher
+      active={activeVerticalMode}
+      onChange={handleModeChange}
+    />
+  </View> */}
 </View>
 
-       
         </Animated.View>
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -2301,10 +2313,20 @@ labelActive: { color: '#fff' },
     fontSize: 12,
     fontWeight: "600",
   },
-  verticalSwitcherRow: {
-  paddingHorizontal: H,
-  marginBottom: 6,
-  alignItems: "flex-start",
+verticalSwitcherRow: {
+  marginTop: 8,          // space below search bar
+  alignSelf: "flex-start", // or "center" if you prefer
 },
 
+
+searchSwitchRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 6,
+},
+
+searchFlex: {
+  flex: 1,
+  marginRight: 22,
+},
 });
