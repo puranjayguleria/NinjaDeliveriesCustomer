@@ -163,6 +163,12 @@ type FareData = {
 const RECO_CARD_WIDTH = 140;
 const RECO_GAP = 12;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+//  MAPPING 
+// const STORE_DOCUMENT_IDS: Record<string, string> = {
+//   "Dharamshala": "0oS7Zig2gxj2MJesvlC2",  // Dharamshala  ID
+//   // "Manali": "dusre_ka_document_id",
+//   // "Shimla": "teesre_ka_id",
+// };
 
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -173,6 +179,7 @@ const CartScreen: React.FC = () => {
   const [recommended, setRecommended] = useState<Product[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [convenienceFee, setConvenienceFee] = useState<number>(0);
+ 
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const {
     cart,
@@ -184,8 +191,8 @@ const CartScreen: React.FC = () => {
   } = useCart();
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(true); // true for order pouse
-  const [loading, setLoading] = useState(true); // for initial screen load
+  const [loading, setLoading] = useState(true); // initial load ke liye
+  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<boolean | null>(null); // null = loading // for initial screen load
   const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
   console.log(location.storeId);
   // ----- PROMO -----
@@ -369,6 +376,7 @@ const CartScreen: React.FC = () => {
     fetchCartItems();
     watchPromos();
     const unsubscribe = watchUserLocations();
+    setLoading(false)
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -376,6 +384,24 @@ const CartScreen: React.FC = () => {
   useEffect(() => {
     fetchCartItems(false);
   }, [cart]);
+useEffect(() => {
+  if (!location?.storeId) return;
+
+  const unsubscribe = firestore()
+    .collection("delivery_zones")   // ✅ correct collection
+    .doc(location.storeId)          // ✅ correct document
+    .onSnapshot(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        const isActive = data?.isActive ?? true;
+
+        // isActive false → orders paused
+        setIsOrderAcceptancePaused(!isActive);
+      }
+    });
+
+  return () => unsubscribe();
+}, [location?.storeId]);
 
   // If user selected location
   useEffect(() => {
@@ -897,14 +923,14 @@ const CartScreen: React.FC = () => {
    * CART ACTIONS
    ***************************************/
   const handleCheckout = async () => {
-    if (isOrderAcceptancePaused) {
-    Alert.alert(
-      "Orders Paused",
-      "We can't take orders right now. Please try again later.",
-      [{ text: "OK" }] // only OK button
-    );
-    return; // Pause payment flow 
-  }
+  if (isOrderAcceptancePaused === true) {
+  Alert.alert(
+    "Orders Paused",
+    "We can't take orders right now. Please try again later.",
+    [{ text: "OK" }]
+  );
+  return;
+}
     // NEW: Delivery timing check
     try {
       const timingDoc = await firestore()
@@ -1623,32 +1649,37 @@ const CartScreen: React.FC = () => {
               </View>
 
               <AnimatedTouchable
-                style={[
-                  styles.footerCheckoutButton,
-                  {
-                    backgroundColor: animatedButtonColor,
-                    transform: [{ translateX: shakeTranslate }],// if paused, gray + low opacity
-      opacity: isOrderAcceptancePaused ? 0.6 : 1,
+  style={[
+    styles.footerCheckoutButton,
+    {
+      backgroundColor: 
+        isOrderAcceptancePaused === null || isOrderAcceptancePaused === true
+          ? "#95a5a6"  // grey color jab loading ya paused
+          : animatedButtonColor,  // normal green/red animation
+      transform: [{ translateX: shakeTranslate }],
+      opacity: isOrderAcceptancePaused === null || isOrderAcceptancePaused === true ? 0.6 : 1,
     },
-    isOrderAcceptancePaused && styles.disabledButton, // extra style add 
+    (isOrderAcceptancePaused === null || isOrderAcceptancePaused === true) && styles.disabledButton,
   ]}
   onPress={handleCheckout}
-  disabled={isOrderAcceptancePaused} // important: it disable touch when paused
+  disabled={isOrderAcceptancePaused === null || isOrderAcceptancePaused === true}  //disable in loading or paused  
 >
-                <Ionicons
-                  name={selectedLocation ? "cash-outline" : "cart-outline"}
-                  size={16}
-                  color="#fff"
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.footerCheckoutText}>
-                 {isOrderAcceptancePaused
-                   ? "Orders Paused"  // paused text
-                   : selectedLocation
-                   ? "Pay Now"
-                   : "Checkout"}
+  <Ionicons
+    name={selectedLocation ? "cash-outline" : "cart-outline"}
+    size={16}
+    color="#fff"
+    style={{ marginRight: 6 }}
+  />
+  <Text style={styles.footerCheckoutText}>
+    {isOrderAcceptancePaused === null
+      ? "Loading..."           // dataaa from firebase
+      : isOrderAcceptancePaused
+      ? "Orders Paused"        // paused
+      : selectedLocation
+      ? "Pay Now"
+      : "Checkout"}
   </Text>
-              </AnimatedTouchable>
+</AnimatedTouchable>
             </View>
           </>
         )}
