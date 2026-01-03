@@ -1672,14 +1672,6 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
   <View style={styles.searchFlex}>
     <StableSearchBar />
   </View>
-
-  {/* Vertical switcher BELOW search */}
-  {/* <View style={styles.verticalSwitcherRow}>
-    <VerticalSwitcher
-      active={activeVerticalMode}
-      onChange={handleModeChange}
-    />
-  </View> */}
 </View>
 
         </Animated.View>
@@ -2329,4 +2321,5 @@ searchFlex: {
   flex: 1,
   marginRight: 22,
 },
+
 });

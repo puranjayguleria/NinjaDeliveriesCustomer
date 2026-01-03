@@ -155,7 +155,7 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
     <QuickTile p={item as any} isPan={isPan} guard={maybeGate} />
   );
 
-  const titleText = homeDiscountTitle?.trim() || "Discounted Products";
+  const titleText = "Salete";
   const seeAllText = homeDiscountSeeAll?.trim() || "See All";
 
   return (
