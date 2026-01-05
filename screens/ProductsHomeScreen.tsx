@@ -42,13 +42,23 @@ import { useWeather } from "../context/WeatherContext"; // adjust path if needed
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 
+// Silence modular deprecation warnings from React Native Firebase. Once you
+// migrate to the modular API, you can remove this. See:
+// https://rnfirebase.io/migrating-to-v22#switching-off-warning-logs
+if (typeof globalThis !== "undefined") {
+  // When set to true, the deprecated namespaced APIs (e.g. firestore().collection())
+  // will no longer log a warning on every call. This should be set before
+  // any Firebase APIs are used.
+  // @ts-ignore: global may not have this property typed
+  globalThis.RNFB_SILENCE_MODULAR_DEPRECATION_WARNINGS = true;
+}
+
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_VIDEO_HEIGHT = 180;
 const COLLAPSED_VIDEO_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
-
 
 const { width } = Dimensions.get("window");
 const H = 16;
@@ -267,7 +277,7 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
 
   return (
     <Pressable
-      style={[styles.searchWrapper, styles.searchGap]}
+      style={[styles.searchWrapper]}
       onPress={() => nav.navigate("Search")}
     >
       <MaterialIcons
@@ -280,7 +290,6 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
     </Pressable>
   );
 });
-
 
 /* ------------------------------------------------------------------ intro media */
 
@@ -307,7 +316,7 @@ const MemoIntroCard = React.memo(
     };
 
     return (
-      <Pressable style={styles.quizCard} onPress={() => nav.navigate("Quiz")}>
+      <Pressable style={styles.quizCard} onPress={() => nav.navigate("Quiz")}>        
         {isMp4 ? (
           <>
             <Video
@@ -437,7 +446,7 @@ const MosaicCard: React.FC<{
 
       <View style={styles.cardLabel}>
         {badge && (
-          <View style={[styles.badge, { backgroundColor: color }]}>
+          <View style={[styles.badge, { backgroundColor: color }]}>            
             <Text style={styles.badgeTxt}>{badge}</Text>
           </View>
         )}
@@ -545,7 +554,6 @@ type ReorderCardProps = {
   onRepeat: () => void;
 };
 
-
 type RepeatLastOrderCardProps = {
   lastOrder: any | null;
   productLookupById: Record<string, any>;
@@ -555,128 +563,6 @@ type RepeatLastOrderCardProps = {
   setOnErrorConfirm: (fn: () => void) => void;
   setIsErrorModalVisible: (v: boolean) => void;
 };
-
-// const RepeatLastOrderCard: React.FC<RepeatLastOrderCardProps> = ({
-//   lastOrder,
-//   productLookupById,
-//   extraProductsById,
-//   setErrorMessage,
-//   setConfirmText,
-//   setOnErrorConfirm,
-//   setIsErrorModalVisible,
-// }) => {
-//   const { addToCart, addMultipleItems } = useCart() as any;
-//   const nav = useNavigation<any>();
-
-//   const handleRepeatOrder = useCallback(async () => {
-//     if (!lastOrder || !(lastOrder.items || []).length) return;
-
-//     const resolved = (lastOrder.items || []).map((it: any) => {
-//       const id = it.productId || it.product?.id || it.id;
-
-//       const prod =
-//         (id && (productLookupById[id] || extraProductsById[id])) ||
-//         it.product ||
-//         it;
-
-//       const name = prod?.name || it.name || "Item";
-//       const reqQty = Number(it.quantity ?? 1);
-//       const stock = Number(prod?.availableQuantity ?? prod?.quantity ?? 0);
-
-//       const addQty = Math.max(0, Math.min(reqQty, stock));
-//       return { id, name, reqQty, stock, addQty, prod };
-//     });
-
-//     const toAdd = resolved
-//       .filter((r) => r.id && r.addQty > 0)
-//       .map((r) => ({
-//         productId: r.id,
-//         quantity: r.addQty,
-//         availableQuantity: r.stock,
-//       }));
-
-//     const skipped = resolved.filter((r) => r.addQty === 0);
-//     const partial = resolved.filter((r) => r.addQty > 0 && r.addQty < r.reqQty);
-
-//     if (toAdd.length) {
-//       if (typeof addMultipleItems === "function") {
-//         addMultipleItems(toAdd);
-//       } else {
-//         for (const { productId, quantity, availableQuantity } of toAdd) {
-//           for (let i = 0; i < quantity; i++) {
-//             addToCart(productId, availableQuantity);
-//             // let the JS thread breathe a bit
-//             // eslint-disable-next-line no-await-in-loop
-//             await new Promise((r) => setTimeout(r, 0));
-//           }
-//         }
-//       }
-//     }
-
-//     const addedUnits = toAdd.reduce((s, r) => s + (r.quantity ?? 0), 0);
-//     const addedDistinct = toAdd.length;
-
-//     const list = (
-//       arr: { name: string; reqQty?: number; addQty?: number }[],
-//       mapFn: (r: any) => string
-//     ) => {
-//       const parts = arr.map(mapFn);
-//       const preview = parts.slice(0, 5).join(", ");
-//       return parts.length > 5
-//         ? `${preview} +${parts.length - 5} more`
-//         : preview;
-//     };
-
-//     let msg = "";
-//     if (addedUnits > 0) {
-//       msg += `Added ${addedUnits} item${
-//         addedUnits > 1 ? "s" : ""
-//       } across ${addedDistinct} product${
-//         addedDistinct > 1 ? "s" : ""
-//       } from your last order.`;
-//     } else {
-//       msg += `Couldn’t add any items from your last order.`;
-//     }
-
-//     if (partial.length) {
-//       msg += `\n\nPartially added: ${list(
-//         partial,
-//         (r) => `${r.name} (${r.addQty}/${r.reqQty})`
-//       )}`;
-//     }
-//     if (skipped.length) {
-//       msg += `\n\nOut of stock / unavailable: ${list(skipped, (r) => r.name)}`;
-//     }
-
-//     setConfirmText(addedUnits ? "Review Cart" : "OK");
-//     setOnErrorConfirm(() => {
-//       if (addedUnits) nav.navigate("CartFlow");
-//     });
-//     setErrorMessage(msg);
-//     setIsErrorModalVisible(true);
-//   }, [
-//     lastOrder,
-//     productLookupById,
-//     extraProductsById,
-//     addMultipleItems,
-//     addToCart,
-//     nav,
-//     setConfirmText,
-//     setErrorMessage,
-//     setIsErrorModalVisible,
-//     setOnErrorConfirm,
-//   ]);
-
-//   if (!lastOrder) return null;
-
-//   return (
-//     <ReorderCard
-//       order={lastOrder}
-//       lookup={{ ...productLookupById, ...extraProductsById }}
-//       onRepeat={handleRepeatOrder}
-//     />
-//   );
-// };
 
 /* ------------------------------------------------------------------ multi-row grid */
 
@@ -801,6 +687,89 @@ const MultiRowProductGrid: React.FC<{
   );
 };
 
+const HomeMessageBar = ({
+  msg,
+  onClose,
+}: {
+  msg: any;
+  onClose?: () => void;
+}) => {
+  if (!msg?.text) return null;
+  // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
+  const iconMap: Record<string, string> = {
+    bolt: "offline-bolt",
+    rain: "umbrella",
+    offer: "local-offer",
+    info: "info-outline",
+  };
+
+  // Default colours for each message type if bgColor/textColor are not provided.
+  const typeDefaults: Record<string, { bgColor: string; textColor: string }> = {
+    info: { bgColor: "#EFF6FF", textColor: "#0A2C59" },
+    warning: { bgColor: "#FFF4E5", textColor: "#92400E" },
+    success: { bgColor: "#ECFDF4", textColor: "#065F46" },
+  };
+
+  // Normalise icon/type strings to lower‑case.
+  const iconKey =
+    typeof msg.icon === "string" ? msg.icon.toLowerCase().trim() : undefined;
+  const typeKey =
+    typeof msg.type === "string" ? msg.type.toLowerCase().trim() : undefined;
+
+  const defaults = (typeKey && typeDefaults[typeKey]) || {};
+  const bg = msg.bgColor || defaults.bgColor || "rgba(255,255,255,0.92)";
+  const tc = msg.textColor || defaults.textColor || "#1f2937";
+  const iconName = iconKey && iconMap[iconKey] ? iconMap[iconKey] : undefined;
+
+  const onActionPress =
+    typeof msg.onActionPress === "function" ? msg.onActionPress : undefined;
+  const actionLabel =
+    typeof msg.actionLabel === "string" ? msg.actionLabel : undefined;
+
+  return (
+    <View style={[styles.homeMsgBar, { backgroundColor: bg }]}>      
+      {/* Optional leading icon */}
+      {iconName && (
+        <MaterialIcons
+          name={iconName as any}
+          size={16}
+          color={tc}
+          style={styles.homeMsgIcon}
+        />
+      )}
+      {/* Message text */}
+      <Text style={[styles.homeMsgText, { color: tc }]}> {msg.text} </Text>
+      {/* CTA button */}
+      {onActionPress && actionLabel && (
+        <Pressable
+          onPress={onActionPress}
+          hitSlop={10}
+          style={styles.homeMsgAction}
+        >
+          <Text style={[styles.homeMsgActionText, { color: tc }]}>
+            {actionLabel}
+          </Text>
+        </Pressable>
+      )}
+      {/* Close button */}
+      {msg.dismissible && onClose && (
+        <Pressable
+          onPress={onClose}
+          hitSlop={10}
+          style={styles.homeMsgClose}
+        >
+          <MaterialIcons name="close" size={16} color={tc} />
+        </Pressable>
+      )}
+    </View>
+  );
+};
+
+/* ------------------------------------------------------------------ OrderPausedBar */
+// Previously there was an OrderPausedBar component for displaying the "orders paused" message.
+// It has been removed in favour of constructing a message object and passing it into
+// HomeMessageBar. See the render section below for how the paused message is displayed.
+
 /* ------------------------------------------------------------------ MAIN */
 
 export default function ProductsHomeScreen() {
@@ -810,7 +779,14 @@ export default function ProductsHomeScreen() {
   const [lastOrder, setLastOrder] = useState<any | null>(null);
   const [buyAgainItems, setBuyAgainItems] = useState<any[]>([]);
   const [confirmText, setConfirmText] = useState<string>("OK");
+  const [homeMsg, setHomeMsg] = useState<any | null>(null);
+  const [homeMsgLoading, setHomeMsgLoading] = useState(false);
 
+  // Tracks whether the user has dismissed a message in this session. Once a
+  // message is dismissed, no further messages (including paused messages) will
+  // appear until a new homeMsg is received. This prevents fallback messages
+  // (e.g. pausedMessage) from appearing after closing a higher priority message.
+  const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>([
     "#00b4a0",
     "#00d2c7",
@@ -819,7 +795,7 @@ export default function ProductsHomeScreen() {
 
   const [activeVerticalMode, setActiveVerticalMode] =
     useState<"grocery" | "restaurants">("grocery");
-    
+
   /* ========== Pan Corner age-gate state ========== */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
   const [acceptedPan, setAcceptedPan] = useState(false);
@@ -836,6 +812,115 @@ export default function ProductsHomeScreen() {
   const [extraProductsById, setExtraProductsById] = useState<Record<string, any>>(
     {}
   );
+
+  // new state to track order acceptance status (store activity)
+  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(false);
+
+  // Build a local message object for when the store is not accepting orders.
+  // This object will be passed into HomeMessageBar and is inspired by quick‑commerce
+  // messaging. It includes a warning type, a bolt icon and an action to change
+  // the location. If the store is active, this will be null and nothing will
+  // render. We do not use a hook here since this is a simple conditional object.
+  const pausedMessage =
+    isOrderAcceptancePaused
+      ? {
+          text:
+            "Due to excessive orders, we’re not able to accept new orders right now. Please try again later.",
+          type: "warning",
+          icon: "bolt",
+          dismissible: false,
+          actionLabel: "Change location",
+          onActionPress: () =>
+            nav.navigate("LocationSelector", { fromScreen: "Products" }),
+        }
+      : null;
+
+  // watch delivery_zones collection for the current store to know if orders are paused
+  useEffect(() => {
+    if (!location?.storeId) {
+      setIsOrderAcceptancePaused(false);
+      return;
+    }
+    const unsubscribe = firestore()
+      .collection("delivery_zones")
+      .doc(location.storeId)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const data: any = doc.data() || {};
+          // Some Firestore docs may not set isActive, default to true. Also
+          // ensure that string values like "true"/"false" are coerced to
+          // booleans. If the field is missing entirely, treat as active.
+          let isActiveVal = data?.isActive;
+          // Convert strings "true"/"false" to booleans
+          if (typeof isActiveVal === "string") {
+            isActiveVal = isActiveVal.toLowerCase() === "true";
+          }
+          const isActive: boolean =
+            typeof isActiveVal === "boolean"
+              ? isActiveVal
+              : isActiveVal
+              ? Boolean(isActiveVal)
+              : true;
+          // isActive false → orders paused
+          setIsOrderAcceptancePaused(!isActive);
+        } else {
+          setIsOrderAcceptancePaused(false);
+        }
+      });
+    return () => unsubscribe();
+  }, [location?.storeId]);
+
+  useEffect(() => {
+    if (!location.storeId) {
+      setHomeMsg(null);
+      return;
+    }
+
+    setHomeMsgLoading(true);
+
+    const unsub = firestore()
+      .collection("home_messages")
+      .where("storeId", "==", location.storeId)
+      .onSnapshot(
+        (snap) => {
+          const now = Date.now();
+          // Gather all documents for this store
+          let msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          // Filter by enabled flag on the client (avoids composite index requirement)
+          msgs = msgs.filter((m: any) => m.enabled !== false);
+          // Sort by priority (ascending). Missing priority will be treated as Infinity.
+          msgs.sort((a: any, b: any) => {
+            const aP = typeof a.priority === "number" ? a.priority : Number.MAX_SAFE_INTEGER;
+            const bP = typeof b.priority === "number" ? b.priority : Number.MAX_SAFE_INTEGER;
+            return aP - bP;
+          });
+          // Consider activeFrom and activeTo bounds
+          const active = msgs.find((m: any) => {
+            const fromOk =
+              !m.activeFrom ||
+              new Date(m.activeFrom?.toDate?.() ?? m.activeFrom).getTime() <= now;
+            const toOk =
+              !m.activeTo ||
+              new Date(m.activeTo?.toDate?.() ?? m.activeTo).getTime() >= now;
+            return fromOk && toOk;
+          });
+          // Reset dismissal whenever a new active message is available
+          if (active) {
+            setMessageDismissed(false);
+            setHomeMsg(active);
+          } else {
+            setHomeMsg(null);
+          }
+          setHomeMsgLoading(false);
+        },
+        () => {
+          setHomeMsg(null);
+          setHomeMsgLoading(false);
+        }
+      );
+
+    return unsub;
+  }, [location.storeId]);
 
   /* ------------------------------------------------------------------ Reorder fetch & config */
 
@@ -1278,22 +1363,21 @@ export default function ProductsHomeScreen() {
     }
   }, [cats, page, noMore, location.storeId]);
 
-
   // 🚀 Keep loading more categories in the background,
-// without waiting for the user to reach the end of the list.
-useEffect(() => {
-  if (!location.storeId) return;
-  if (!cats.length) return;
-  if (noMore) return;
+  // without waiting for the user to reach the end of the list.
+  useEffect(() => {
+    if (!location.storeId) return;
+    if (!cats.length) return;
+    if (noMore) return;
 
-  const totalPages = Math.ceil(cats.length / PAGE_SIZE);
+    const totalPages = Math.ceil(cats.length / PAGE_SIZE);
 
-  // If there are still pages whose products we haven't fetched,
-  // keep pre-loading them sequentially in the background.
-  if (page < totalPages && !pending.current) {
-    loadMoreRows();
-  }
-}, [location.storeId, cats, page, noMore, loadMoreRows]);
+    // If there are still pages whose products we haven't fetched,
+    // keep pre-loading them sequentially in the background.
+    if (page < totalPages && !pending.current) {
+      loadMoreRows();
+    }
+  }, [location.storeId, cats, page, noMore, loadMoreRows]);
 
   /* ------------------------------------------------------------------ store-wide highlights */
 
@@ -1500,14 +1584,12 @@ useEffect(() => {
     loadHighlights();
   }, [loadHighlights]);
 
+  // Build the list header for the SectionList
   const listHeader = (
     <>
       {/* Promotional banners */}
       <BannerSwitcher storeId={location.storeId} />
-
       {/* Last order → Repeat order card */}
-     
-
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
         <View>
@@ -1547,7 +1629,7 @@ useEffect(() => {
               horizontal
               data={bestHeader}
               keyExtractor={(_, i) => `best${i}`}
-              renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}
+              renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}              
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingLeft: H }}
             />
@@ -1574,21 +1656,32 @@ useEffect(() => {
 
   if (hasPerm === null) {
     return (
-      <View style={[styles.center, { flex: 1 }]}>
+      <View style={[styles.center, { flex: 1 }]}>        
         <Loader />
       </View>
     );
   }
-  const navigation = useNavigation<any>();
+  /**
+   * NOTE: We intentionally do not call useNavigation() here because doing so
+   * after the early return above would create an inconsistent hook order
+   * between renders. The component already obtains the navigation instance
+   * at the top of the function (`const nav = useNavigation()`), so use that
+   * instance instead of creating a new one. See the Rules of Hooks for
+   * details on why hooks must always be called in the same order.
+   */
+  // const navigation = useNavigation<any>();
 
-const handleModeChange = (mode: "grocery" | "restaurants") => {
-  if (mode === "restaurants") {
-    requestAnimationFrame(() => {
-      navigation.replace("NinjaEatsTabs");
-    });
-  }
-  // grocery → already on ProductsHome
-};
+  const handleModeChange = (mode: "grocery" | "restaurants") => {
+    if (mode === "restaurants") {
+      requestAnimationFrame(() => {
+        // Use the top-level navigation instance (nav) to avoid creating
+        // a new navigation hook inside this component. This ensures
+        // consistent hook ordering across renders.
+        nav.replace("NinjaEatsTabs");
+      });
+    }
+    // grocery → already on ProductsHome
+  };
 
   return (
     <>
@@ -1654,34 +1747,86 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
           </Animated.View>
 
           {/* Gradient overlay */}
-                  {/* Gradient overlay */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
-        >
-          <LinearGradient
-            colors={headerGradientColors}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
+          >
+            <LinearGradient
+              colors={headerGradientColors}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
 
-<View style={styles.topBg}>
-  <Header />
+          <View style={styles.topBg}>
+            <Header />
 
-  {/* Search bar */}
-  <View style={styles.searchFlex}>
-    <StableSearchBar />
-  </View>
+            {/* Search bar */}
+            <View style={styles.searchFlex}>
+              <StableSearchBar />
+            </View>
 
-  {/* Vertical switcher BELOW search */}
-  {/* <View style={styles.verticalSwitcherRow}>
-    <VerticalSwitcher
-      active={activeVerticalMode}
-      onChange={handleModeChange}
-    />
-  </View> */}
-</View>
+            {/* Informational messages displayed below the search bar.
+               Show the highest priority message first (homeMsg from Firestore
+               takes precedence over the local pausedMessage). Only one message
+               is rendered at a time. */}
+            {(() => {
+              // Determine which message should be displayed. Only one message
+              // (either from Firestore or the pausedMessage) is shown at a time.
+              // If the user has dismissed a message, no other messages will be
+              // displayed until a new one arrives.
+              if (messageDismissed) return null;
 
+              // Helper to determine if a home message is specifically about
+              // order acceptance being paused. We treat a message as an
+              // "orders paused" notification if its type is "warning", its icon
+              // is "bolt", or its text mentions orders, riders, or being busy.
+              const isOrdersPausedMsg = (msg: any) => {
+                const msgType = String(msg?.type || '').toLowerCase();
+                const iconKey = String(msg?.icon || '').toLowerCase();
+                const text = String(msg?.text || '').toLowerCase();
+                return (
+                  msgType === 'warning' ||
+                  iconKey === 'bolt' ||
+                  text.includes('order') ||
+                  text.includes('rider') ||
+                  text.includes('busy')
+                );
+              };
+
+              // Only show Firestore messages when they are not an orders-paused
+              // notification, or when orders are actually paused. This prevents
+              // a lingering "orders paused" message from showing after the
+              // store becomes active again.
+              let activeHomeMsg: any | null = null;
+              if (homeMsg) {
+                if (!isOrdersPausedMsg(homeMsg) || isOrderAcceptancePaused) {
+                  activeHomeMsg = homeMsg;
+                }
+              }
+              const displayMsg = activeHomeMsg || pausedMessage;
+              if (!displayMsg) return null;
+              return (
+                <HomeMessageBar
+                  msg={displayMsg}
+                  onClose={() => {
+                    // Dismiss the current message. Once dismissed, no other
+                    // messages (including fallback paused messages) will appear
+                    // until a new homeMsg is fetched from Firestore.
+                    setHomeMsg(null);
+                    setMessageDismissed(true);
+                  }}
+                />
+              );
+            })()}
+
+            {/* Vertical switcher BELOW search */}
+            {/* <View style={styles.verticalSwitcherRow}>
+              <VerticalSwitcher
+                active={activeVerticalMode}
+                onChange={handleModeChange}
+              />
+            </View> */}
+          </View>
         </Animated.View>
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
@@ -1695,7 +1840,7 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
               { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT  }}
+            contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
@@ -1712,17 +1857,17 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
                   </View>
 
-                  <ChipsRow
-                    subs={subMap[item.id] || []}
-                    onPress={(s) =>
-                      maybeNavigateCat({
-                        ...item,
-                        id: item.id,
-                        name: item.name,
-                        subcategoryId: s.id,
-                      })
-                    }
-                  />
+                    <ChipsRow
+                      subs={subMap[item.id] || []}
+                      onPress={(s) =>
+                        maybeNavigateCat({
+                          ...item,
+                          id: item.id,
+                          name: item.name,
+                          subcategoryId: s.id,
+                        })
+                      }
+                    />
 
                   <MultiRowProductGrid
                     products={data}
@@ -1745,7 +1890,7 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
             }
           />
         ) : hasPerm ? (
-          <View style={[styles.center, { flex: 1 }]}>
+          <View style={[styles.center, { flex: 1 }]}>            
             <Loader />
           </View>
         ) : (
@@ -2329,4 +2474,44 @@ searchFlex: {
   flex: 1,
   marginRight: 22,
 },
+  homeMsgBar: {
+    marginHorizontal: H,
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  homeMsgIcon: {
+    marginRight: 8,
+  },
+  homeMsgText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  homeMsgAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 8,
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  homeMsgActionText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  homeMsgClose: {
+    marginLeft: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
 });
