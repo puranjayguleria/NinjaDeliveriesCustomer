@@ -163,12 +163,6 @@ type FareData = {
 const RECO_CARD_WIDTH = 140;
 const RECO_GAP = 12;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
-//  MAPPING 
-// const STORE_DOCUMENT_IDS: Record<string, string> = {
-//   "Dharamshala": "0oS7Zig2gxj2MJesvlC2",  // Dharamshala  ID
-//   // "Manali": "dusre_ka_document_id",
-//   // "Shimla": "teesre_ka_id",
-// };
 
 const CartScreen: React.FC = () => {
   const navigation = useNavigation();
