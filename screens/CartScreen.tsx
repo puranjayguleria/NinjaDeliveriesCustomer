@@ -173,6 +173,7 @@ const CartScreen: React.FC = () => {
   const [recommended, setRecommended] = useState<Product[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [convenienceFee, setConvenienceFee] = useState<number>(0);
+ 
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const {
     cart,
@@ -184,7 +185,8 @@ const CartScreen: React.FC = () => {
   } = useCart();
   // ----- CART ITEMS / LOADING -----
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true); // for initial screen load
+  const [loading, setLoading] = useState(true); // initial load ke liye
+  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<boolean | null>(null); // null = loading // for initial screen load
   const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
   console.log(location.storeId);
   // ----- PROMO -----
@@ -368,6 +370,7 @@ const CartScreen: React.FC = () => {
     fetchCartItems();
     watchPromos();
     const unsubscribe = watchUserLocations();
+    setLoading(false)
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -375,6 +378,24 @@ const CartScreen: React.FC = () => {
   useEffect(() => {
     fetchCartItems(false);
   }, [cart]);
+useEffect(() => {
+  if (!location?.storeId) return;
+
+  const unsubscribe = firestore()
+    .collection("delivery_zones")   // ✅ correct collection
+    .doc(location.storeId)          // ✅ correct document
+    .onSnapshot(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        const isActive = data?.isActive ?? true;
+
+        // isActive false → orders paused
+        setIsOrderAcceptancePaused(!isActive);
+      }
+    });
+
+  return () => unsubscribe();
+}, [location?.storeId]);
 
   // If user selected location
   useEffect(() => {
@@ -896,6 +917,14 @@ const CartScreen: React.FC = () => {
    * CART ACTIONS
    ***************************************/
   const handleCheckout = async () => {
+  if (isOrderAcceptancePaused === true) {
+  Alert.alert(
+    "Orders Paused",
+    "We can't take orders right now. Please try again later.",
+    [{ text: "OK" }]
+  );
+  return;
+}
     // NEW: Delivery timing check
     try {
       const timingDoc = await firestore()
@@ -1614,25 +1643,37 @@ const CartScreen: React.FC = () => {
               </View>
 
               <AnimatedTouchable
-                style={[
-                  styles.footerCheckoutButton,
-                  {
-                    backgroundColor: animatedButtonColor,
-                    transform: [{ translateX: shakeTranslate }],
-                  },
-                ]}
-                onPress={handleCheckout}
-              >
-                <Ionicons
-                  name={selectedLocation ? "cash-outline" : "cart-outline"}
-                  size={16}
-                  color="#fff"
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.footerCheckoutText}>
-                  {selectedLocation ? "Pay Now" : "Checkout"}
-                </Text>
-              </AnimatedTouchable>
+  style={[
+    styles.footerCheckoutButton,
+    {
+      backgroundColor: 
+        isOrderAcceptancePaused === null || isOrderAcceptancePaused === true
+          ? "#95a5a6"  // grey color jab loading ya paused
+          : animatedButtonColor,  // normal green/red animation
+      transform: [{ translateX: shakeTranslate }],
+      opacity: isOrderAcceptancePaused === null || isOrderAcceptancePaused === true ? 0.6 : 1,
+    },
+    (isOrderAcceptancePaused === null || isOrderAcceptancePaused === true) && styles.disabledButton,
+  ]}
+  onPress={handleCheckout}
+  disabled={isOrderAcceptancePaused === null || isOrderAcceptancePaused === true}  //disable in loading or paused  
+>
+  <Ionicons
+    name={selectedLocation ? "cash-outline" : "cart-outline"}
+    size={16}
+    color="#fff"
+    style={{ marginRight: 6 }}
+  />
+  <Text style={styles.footerCheckoutText}>
+    {isOrderAcceptancePaused === null
+      ? "Loading..."           // dataaa from firebase
+      : isOrderAcceptancePaused
+      ? "Orders Paused"        // paused
+      : selectedLocation
+      ? "Pay Now"
+      : "Checkout"}
+  </Text>
+</AnimatedTouchable>
             </View>
           </>
         )}
@@ -2180,6 +2221,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#000",
   },
+  disabledButton: {
+  backgroundColor: "#95a5a6", // gray color (disable look)
+},
 
   /** FOOTER BAR **/
   footerBar: {
