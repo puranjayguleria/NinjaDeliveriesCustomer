@@ -1572,6 +1572,15 @@ useEffect(() => {
     );
   }, [bestHeader, freshHeader]);
 
+  const handleModeChange = (mode: "grocery" | "restaurants") => {
+    if (mode === "restaurants") {
+      requestAnimationFrame(() => {
+        nav.replace("NinjaEatsTabs");
+      });
+    }
+    // grocery → already on ProductsHome
+  };
+
   if (hasPerm === null) {
     return (
       <View style={[styles.center, { flex: 1 }]}>
@@ -1579,16 +1588,6 @@ useEffect(() => {
       </View>
     );
   }
-  const navigation = useNavigation<any>();
-
-const handleModeChange = (mode: "grocery" | "restaurants") => {
-  if (mode === "restaurants") {
-    requestAnimationFrame(() => {
-      navigation.replace("NinjaEatsTabs");
-    });
-  }
-  // grocery → already on ProductsHome
-};
 
   return (
     <>

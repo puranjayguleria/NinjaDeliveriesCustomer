@@ -1076,12 +1076,12 @@ verticalSwitcherRow: {
   searchSwitcherRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginTop: 8,
+  marginTop: 10,
 },
 
 searchFlex: {
   flex: 1,              // 👈 search takes remaining space
-  marginRight: 8,       // 👈 gap between search & switcher
+  marginRight: 10,       // 👈 gap between search & switcher
 },
 
 });
