@@ -227,6 +227,8 @@ const CartScreen: React.FC = () => {
   // Modals
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
   const [showPaymentSheet, setShowPaymentSheet] = useState<boolean>(false);
+  // Show a small modal when orders are paused (set from handleCheckout)
+  const [showPausedModal, setShowPausedModal] = useState<boolean>(false);
 
   // Navigation
   const [navigating, setNavigating] = useState<boolean>(false);
@@ -857,7 +859,7 @@ useEffect(() => {
 
     // 7) Final total
     const _conFee = n(convenienceFee);
-    const _final =
+    const _final =  
       itemsTotal +
       _productCgst +
       _productSgst +
@@ -918,11 +920,8 @@ useEffect(() => {
    ***************************************/
   const handleCheckout = async () => {
   if (isOrderAcceptancePaused === true) {
-  Alert.alert(
-    "Orders Paused",
-    "We can't take orders right now. Please try again later.",
-    [{ text: "OK" }]
-  );
+  setShowPausedModal(true);
+  
   return;
 }
     // NEW: Delivery timing check
@@ -1641,34 +1640,33 @@ useEffect(() => {
                   ₹{finalTotal.toFixed(2)}
                 </Text>
               </View>
-
-              <AnimatedTouchable
+<AnimatedTouchable
   style={[
     styles.footerCheckoutButton,
     {
-      backgroundColor: 
+      backgroundColor:
         isOrderAcceptancePaused === null || isOrderAcceptancePaused === true
-          ? "#95a5a6"  // grey color jab loading ya paused
-          : animatedButtonColor,  // normal green/red animation
+          ? "#95a5a6" // grey when paused/loading
+          : animatedButtonColor,
       transform: [{ translateX: shakeTranslate }],
-      opacity: isOrderAcceptancePaused === null || isOrderAcceptancePaused === true ? 0.6 : 1,
+      opacity: isOrderAcceptancePaused === null || isOrderAcceptancePaused === true ? 0.6 : 1, // reduced opacity for disabled look
     },
+    // Optional: extra style for disabled look 
     (isOrderAcceptancePaused === null || isOrderAcceptancePaused === true) && styles.disabledButton,
   ]}
-  onPress={handleCheckout}
-  disabled={isOrderAcceptancePaused === null || isOrderAcceptancePaused === true}  //disable in loading or paused  
+  onPress={handleCheckout} // clickable 
 >
   <Ionicons
     name={selectedLocation ? "cash-outline" : "cart-outline"}
     size={16}
-    color="#fff"
+    color="#ffffffff"
     style={{ marginRight: 6 }}
   />
   <Text style={styles.footerCheckoutText}>
     {isOrderAcceptancePaused === null
-      ? "Loading..."           // dataaa from firebase
+      ? "Loading..."
       : isOrderAcceptancePaused
-      ? "Orders Paused"        // paused
+      ? "Orders Paused"
       : selectedLocation
       ? "Pay Now"
       : "Checkout"}
@@ -1679,6 +1677,38 @@ useEffect(() => {
         )}
 
         {/* LOCATION PICKER MODAL */}
+        {/* PAUSED ORDERS MODAL */}
+        <Modal
+          visible={showPausedModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowPausedModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.pausedModalBox}>
+              <Text style={styles.pausedModalTitle}>Orders Temporarily Paused</Text>
+              <Text style={styles.pausedModalMessage}>
+                We’re not accepting new orders right now. You can change your
+                location or try again later.
+              </Text>
+              <TouchableOpacity
+                style={styles.pausedModalButton}
+                onPress={() => {
+                  setShowPausedModal(false);
+                  setShowLocationSheet(true);
+                }}
+              >
+                <Text style={styles.pausedModalButtonText}>Change Location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pausedModalButton, styles.pausedModalClose]}
+                onPress={() => setShowPausedModal(false)}
+              >
+                <Text style={[styles.pausedModalButtonText, styles.pausedModalCloseText]}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
         <Modal
           visible={showLocationSheet}
           transparent
@@ -1687,13 +1717,13 @@ useEffect(() => {
           onRequestClose={() => setShowLocationSheet(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={styles.bottomSheet}>
+            <View style={[styles.bottomSheet, showLocationSheet && styles.bottomSheetOpen]}>
               <Text style={styles.bottomSheetTitle}>Choose Address</Text>
               <FlatList
                 data={userLocations}
                 keyExtractor={(_, idx) => String(idx)}
                 renderItem={renderSavedAddressItem}
-                style={{ maxHeight: 200 }}
+                style={{ maxHeight: Dimensions.get('window').height * 0.4 }}
                 ListEmptyComponent={
                   <Text style={{ textAlign: "center" }}>No addresses.</Text>
                 }
@@ -2223,6 +2253,13 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
   backgroundColor: "#95a5a6", // gray color (disable look)
+  // ensure disabled state shows visually and prevents interactions feel
+  opacity: 0.85,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.12,
+  shadowRadius: 2,
+  elevation: 0,
 },
 
   /** FOOTER BAR **/
@@ -2256,16 +2293,25 @@ const styles = StyleSheet.create({
     color: "#16a085",
   },
   footerCheckoutButton: {
-    borderRadius: 6,
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    minWidth: 130,
+    // elevation + shadow for raised button look
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
   },
   footerCheckoutText: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#fff",
-    fontWeight: "600",
+    fontWeight: "700",
+    textAlign: "center",
   },
   recoTitleLight: { fontWeight: "400" },
 
@@ -2273,19 +2319,77 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
+
   },
   bottomSheet: {
     backgroundColor: pastelGreen,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
+    borderBottomLeftRadius: 50,
+    borderBottomRightRadius: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 22,
+  },
+  bottomSheetOpen: {
+    paddingHorizontal: 28,
+    paddingVertical: 32,
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
+    borderBottomLeftRadius: 50,
+    borderBottomRightRadius: 50,
   },
   bottomSheetTitle: {
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 10,
     color: "#333",
+  },
+  /* Paused orders modal */
+  pausedModalBox: {
+    marginHorizontal: 28,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 18,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  pausedModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  pausedModalMessage: {
+    fontSize: 14,
+    color: '#444',
+    textAlign: 'center',
+    marginBottom: 14,
+    lineHeight: 20,
+  },
+  pausedModalButton: {
+    backgroundColor: '#2310ccff',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    minWidth: 160,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pausedModalButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  pausedModalClose: {
+    backgroundColor: '#eef0f1',
+  },
+  pausedModalCloseText: {
+    color: '#333',
   },
   addNewLocationButton: {
     backgroundColor: "#3498db",
@@ -2316,11 +2420,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#fff",
-    borderRadius: 6,
-    padding: 10,
+    // borderRadius: 5,
+    padding: 5,
     borderWidth: 1,
     borderColor: "#eee",
-    marginBottom: 6,
+    borderBottomWidth: 3,
+    borderBottomColor: "#FF7043",
+    marginBottom: 10,
   },
   addressItemLeft: {
     flex: 1,
@@ -2337,7 +2443,7 @@ const styles = StyleSheet.create({
   addressItemAddress: {
     fontSize: 12,
     color: "#777",
-    marginTop: 2,
+    // marginTop: 2,
   },
   paymentOptionButton: {
     backgroundColor: "#6fdccf",
