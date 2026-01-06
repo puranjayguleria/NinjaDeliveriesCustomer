@@ -54,7 +54,7 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 180;
+const INITIAL_VIDEO_HEIGHT = 165;
 const COLLAPSED_VIDEO_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
@@ -695,6 +695,7 @@ const HomeMessageBar = ({
   onClose?: () => void;
 }) => {
   if (!msg?.text) return null;
+  
   // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
   const iconMap: Record<string, string> = {
     bolt: "offline-bolt",
@@ -726,41 +727,127 @@ const HomeMessageBar = ({
   const actionLabel =
     typeof msg.actionLabel === "string" ? msg.actionLabel : undefined;
 
+  // Determine if message is active or inactive
+  let isMessageActive = true;
+  if (typeof msg.isActive === "boolean") {
+    isMessageActive = msg.isActive;
+  } else if (typeof msg.isActive === "string") {
+    isMessageActive = msg.isActive.toLowerCase() === "true";
+  }
+
+  // Calculate dynamic media height based on message text length AND active/inactive state
+ // Smooth, responsive sizing based on message content
+const messageText = String(msg.text || "").trim();
+const messageLength = messageText.length;
+
+// Estimate characters per line based on typical chat bubble width
+const CHARS_PER_LINE = 32;
+
+// Estimate number of lines
+const estimatedLines = Math.max(1, Math.ceil(messageLength / CHARS_PER_LINE));
+
+// Text metrics (keep in sync with Text styles)
+const FONT_SIZE = 13;
+const LINE_HEIGHT = 18;
+const VERTICAL_PADDING = 16;
+
+// Estimated text height
+const textHeight =
+  estimatedLines * LINE_HEIGHT + VERTICAL_PADDING;
+
+// Media height calculation
+let mediaHeight: number;
+
+if (isMessageActive) {
+  // Active message → prominent media
+  const MIN_HEIGHT = 120;
+  const MAX_HEIGHT = 280;
+
+  mediaHeight = Math.min(
+    MAX_HEIGHT,
+    Math.max(MIN_HEIGHT, textHeight * 1.8)
+  );
+} else {
+  // Inactive message → subtle media
+  const MIN_HEIGHT = 70;
+  const MAX_HEIGHT = 160;
+
+  mediaHeight = Math.min(
+    MAX_HEIGHT,
+    Math.max(MIN_HEIGHT, textHeight * 1.2)
+  );
+}
+
+
+  // Check if message has image or video
+  const hasImage = msg.imageUrl || msg.image || msg.imageURL;
+  const hasVideo = msg.videoUrl || msg.video;
+
   return (
-    <View style={[styles.homeMsgBar, { backgroundColor: bg }]}>      
-      {/* Optional leading icon */}
-      {iconName && (
-        <MaterialIcons
-          name={iconName as any}
-          size={16}
-          color={tc}
-          style={styles.homeMsgIcon}
-        />
-      )}
-      {/* Message text */}
-      <Text style={[styles.homeMsgText, { color: tc }]}> {msg.text} </Text>
-      {/* CTA button */}
-      {onActionPress && actionLabel && (
-        <Pressable
-          onPress={onActionPress}
-          hitSlop={10}
-          style={styles.homeMsgAction}
+    <View>
+      {/* Media section (image or video) - displayed above message */}
+      {(hasImage || hasVideo) && (
+        <View
+          style={[
+            styles.homeMsgMediaContainer,
+            { height: mediaHeight },
+          ]}
         >
-          <Text style={[styles.homeMsgActionText, { color: tc }]}>
-            {actionLabel}
-          </Text>
-        </Pressable>
+          {hasVideo ? (
+            <Video
+              source={{ uri: hasVideo }}
+              style={styles.homeMsgMedia}
+              resizeMode="cover"
+              muted
+              repeat
+              onError={(err) => console.log("Video error:", err)}
+            />
+          ) : hasImage ? (
+            <Image
+              source={{ uri: hasImage }}
+              style={styles.homeMsgMedia}
+              resizeMode="cover"
+            />
+          ) : null}
+        </View>
       )}
-      {/* Close button */}
-      {msg.dismissible && onClose && (
-        <Pressable
-          onPress={onClose}
-          hitSlop={10}
-          style={styles.homeMsgClose}
-        >
-          <MaterialIcons name="close" size={16} color={tc} />
-        </Pressable>
-      )}
+
+      {/* Message bar with text and controls */}
+      <View style={[styles.homeMsgBar, { backgroundColor: bg }]}>      
+        {/* Optional leading icon */}
+        {iconName && (
+          <MaterialIcons
+            name={iconName as any}
+            size={16}
+            color={tc}
+            style={styles.homeMsgIcon}
+          />
+        )}
+        {/* Message text */}
+        <Text style={[styles.homeMsgText, { color: tc }]}> {msg.text} </Text>
+        {/* CTA button */}
+        {onActionPress && actionLabel && (
+          <Pressable
+            onPress={onActionPress}
+            hitSlop={10}
+            style={styles.homeMsgAction}
+          >
+            <Text style={[styles.homeMsgActionText, { color: tc }]}>
+              {actionLabel}
+            </Text>
+          </Pressable>
+        )}
+        {/* Close button */}
+        {msg.dismissible && onClose && (
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            style={styles.homeMsgClose}
+          >
+            <MaterialIcons name="close" size={16} color={tc} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 };
@@ -2485,6 +2572,19 @@ searchFlex: {
     flexDirection: "row",
     alignItems: "center",
   },
+  homeMsgMediaContainer: {
+    marginHorizontal: H,
+    marginTop: 12,
+    marginBottom: 0,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#f0f0f0",
+  },
+  homeMsgMedia: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#000",
+  },
   homeMsgIcon: {
     marginRight: 8,
   },
@@ -2503,7 +2603,7 @@ searchFlex: {
   },
   homeMsgActionText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "100",
   },
   homeMsgClose: {
     marginLeft: 8,
