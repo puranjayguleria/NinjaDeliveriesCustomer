@@ -75,6 +75,9 @@ import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
 import LeaderboardScreen from "./screens/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/AllDiscountedProductsScreen";
+
+
+
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -99,31 +102,36 @@ import NinjaEatsOrderDetailScreen from "./screens/NinjaEatsOrderDetailScreen";
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
-const NinjaEatsTab = createBottomTabNavigator();
 const NinjaEatsStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-    }}
-  >
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen
       name="NinjaEatsHome"
       component={NinjaEatsHomeScreen}
     />
-     <Stack.Screen
+
+    {/* ✅ REQUIRED */}
+    <Stack.Screen
+      name="RestaurantSearch"
+      component={NinjaEatsSearchScreen}
+    />
+
+    <Stack.Screen
       name="RestaurantCategoryListing"
       component={RestaurantCategoryListingScreen}
     />
+
     <Stack.Screen
       name="RestaurantDetails"
       component={RestaurantDetailsScreen}
-    /> 
+    />
+
     <Stack.Screen
       name="RestaurantCheckout"
       component={RestaurantCheckoutScreen}
     />
   </Stack.Navigator>
 );
+
 
 const NinjaEatsOrdersStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
