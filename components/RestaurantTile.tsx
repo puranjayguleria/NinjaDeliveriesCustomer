@@ -1,5 +1,5 @@
 // @/components/RestaurantTile.tsx
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, memo } from "react";
 import { View, Text, StyleSheet, Pressable, Animated } from "react-native";
 import { Image } from "expo-image";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -125,7 +125,16 @@ const RestaurantTile: React.FC<Props> = ({ restaurant, onPress }) => {
   );
 };
 
-export default RestaurantTile;
+export default memo(RestaurantTile, (prevProps, nextProps) => {
+  // Only re-render if restaurant data actually changed
+  return (
+    prevProps.restaurant.id === nextProps.restaurant.id &&
+    prevProps.restaurant.name === nextProps.restaurant.name &&
+    prevProps.restaurant.avgRating === nextProps.restaurant.avgRating &&
+    prevProps.restaurant.deliveryTimeMins === nextProps.restaurant.deliveryTimeMins &&
+    prevProps.restaurant.costForTwo === nextProps.restaurant.costForTwo
+  );
+});
 
 const styles = StyleSheet.create({
   cardWrapper: {

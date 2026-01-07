@@ -7,6 +7,7 @@ export type LocationData = {
   lng: number | null;
   address: string;
   storeId: string | null;
+  cityId?: string | null; // Added for restaurant filtering
   houseNo?: string;
   placeLabel?: string;
   surge?: {
@@ -20,6 +21,7 @@ type LocationContextType = {
   updateLocation: (loc: Partial<LocationData>) => void;
   clearLocation: () => void;
   setStoreId: (id: string) => void;
+  setCityId: (id: string) => void; // Added for restaurant filtering
   setSurge: (s: { active: boolean; fee: number }) => void;
 };
 
@@ -27,12 +29,17 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children})=>{
   const [location, setLocation] = useState<LocationData>({
-    lat:null, lng:null, address:'', storeId:null, surge:{ active:false, fee:0 }
+    lat:null, lng:null, address:'', storeId:null, cityId:null, surge:{ active:false, fee:0 }
   });
 
   /** called from CategoriesScreen once we know the zone */
   const setStoreId = (id:string)=>{
     setLocation(prev=>({...prev, storeId:id}));
+  };
+
+  /** called to set city for restaurant filtering */
+  const setCityId = (id:string)=>{
+    setLocation(prev=>({...prev, cityId:id}));
   };
 
   const updateLocation = (loc: Partial<LocationData>) => {
@@ -43,12 +50,12 @@ export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children
       storeId: loc.storeId !== undefined ? loc.storeId : prev.storeId,
     }));
   };
-  const clearLocation = ()=> setLocation({lat:null,lng:null,address:'',storeId:null});
+  const clearLocation = ()=> setLocation({lat:null,lng:null,address:'',storeId:null,cityId:null});
  /** called by CategoriesScreen after weather evaluation */
    const setSurge = (s:{active:boolean;fee:number}) =>
       setLocation(prev=>({ ...prev, surge:s }));
   return (
-  <LocationContext.Provider value={{location,updateLocation,clearLocation,setStoreId,setSurge}}>
+  <LocationContext.Provider value={{location,updateLocation,clearLocation,setStoreId,setCityId,setSurge}}>
     {children}
     </LocationContext.Provider>
   );

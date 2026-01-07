@@ -132,6 +132,42 @@ const NinjaEatsStack = () => (
   </Stack.Navigator>
 );
 
+const CuisinesStack = () => (
+  <Stack.Navigator 
+    screenOptions={{ 
+      headerShown: false,
+      // 🔥 PERFORMANCE OPTIMIZATIONS FOR BACK NAVIGATION
+      animation: 'slide_from_right',
+      gestureEnabled: true,
+      gestureDirection: 'horizontal',
+    }}
+  >
+    <Stack.Screen
+      name="CuisinesHome"
+      component={CuisinesScreen}
+    />
+    
+    <Stack.Screen
+      name="RestaurantCategoryListing"
+      component={RestaurantCategoryListingScreen}
+      options={{
+        // Optimize for back navigation
+        gestureEnabled: true,
+      }}
+    />
+
+    <Stack.Screen
+      name="RestaurantDetails"
+      component={RestaurantDetailsScreen}
+    />
+
+    <Stack.Screen
+      name="RestaurantCheckout"
+      component={RestaurantCheckoutScreen}
+    />
+  </Stack.Navigator>
+);
+
 
 const NinjaEatsOrdersStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -153,70 +189,84 @@ const NinjaEatsOrdersStack = () => (
  * - Orders
  * - Profile
  */
-const NinjaEatsTabs = () => (
-  <Tab.Navigator
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: "#00b4a0",
-      tabBarInactiveTintColor: "#777",
-      tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: "600",
-      },
-      tabBarStyle: {
-        backgroundColor: "#ffffff",
-        borderTopColor: "#eee",
-        elevation: 8,
-        height: 56,
-      },
-    }}
-  >
-    <Tab.Screen
-      name="NinjaEatsHomeTab"
-      component={NinjaEatsStack}
-      options={{
-        title: "Home",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="home-filled" size={size} color={color} />
-        ),
+const NinjaEatsTabs = () => {
+  // Memoize tab bar icons for better performance
+  const HomeIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="home-filled" size={size} color={color} />
+  ), []);
+
+  const CuisinesIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="restaurant-menu" size={size} color={color} />
+  ), []);
+
+  const OrdersIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="receipt-long" size={size} color={color} />
+  ), []);
+
+  const ProfileIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="person" size={size} color={color} />
+  ), []);
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: "#00b4a0",
+        tabBarInactiveTintColor: "#777",
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
+        },
+        tabBarStyle: {
+          backgroundColor: "#ffffff",
+          borderTopColor: "#eee",
+          elevation: 8,
+          height: 56,
+        },
+        // 🔥 PERFORMANCE OPTIMIZATIONS
+        lazy: false,                    // Pre-load all tabs for instant switching
+        freezeOnBlur: true,            // Freeze inactive screens to save resources
+        tabBarHideOnKeyboard: true,    // Better UX
       }}
-    />
+    >
+      <Tab.Screen
+        name="NinjaEatsHomeTab"
+        component={NinjaEatsStack}
+        options={{
+          title: "Home",
+          tabBarIcon: HomeIcon,
+        }}
+      />
 
-    <Tab.Screen
-      name="CuisinesTab"
-      component={CuisinesScreen}
-      options={{
-        title: "Cuisines",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="restaurant-menu" size={size} color={color} />
-        ),
-      }}
-    />
+      <Tab.Screen
+        name="CuisinesTab"
+        component={CuisinesStack}
+        options={{
+          title: "Cuisines",
+          tabBarIcon: CuisinesIcon,
+        }}
+      />
 
-   <Tab.Screen
-  name="OrdersTab"
-  component={NinjaEatsOrdersStack}
-  options={{
-    title: "Orders",
-    tabBarIcon: ({ color, size }) => (
-      <MaterialIcons name="receipt-long" size={size} color={color} />
-    ),
-  }}
-/>
+      <Tab.Screen
+        name="OrdersTab"
+        component={NinjaEatsOrdersStack}
+        options={{
+          title: "Orders",
+          tabBarIcon: OrdersIcon,
+        }}
+      />
 
-
-    <Tab.Screen
-      name="ProfileTab"
-      component={ProfileScreen}
-      options={{
-        title: "Profile",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="person" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
+      <Tab.Screen
+        name="ProfileTab"
+        component={NinjaEatsProfileScreen}
+        options={{
+          title: "Profile",
+          tabBarIcon: ProfileIcon,
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
 
 try {
@@ -786,14 +836,30 @@ const App: React.FC = () => {
                   <GlobalCongrats />
                   <RootStack.Navigator
                     initialRouteName={initialRoute}
-                    screenOptions={{ headerShown: false }}
+                    screenOptions={{ 
+                      headerShown: false,
+                      // 🔥 PERFORMANCE OPTIMIZATIONS FOR MODE SWITCHING
+                      animation: 'fade',
+                      animationDuration: 200,
+                      gestureEnabled: true,
+                    }}
                   >
                     <RootStack.Screen
                       name="TermsAndConditions"
                       component={TermsAndConditionsScreen}
                     />
-                    <RootStack.Screen name="AppTabs" component={AppTabs} />
-                      <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
+                    <RootStack.Screen name="AppTabs" component={AppTabs} 
+                      options={{
+                        animation: 'fade',
+                        animationDuration: 150,
+                      }}
+                    />
+                    <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs}
+                      options={{
+                        animation: 'fade', 
+                        animationDuration: 150,
+                      }}
+                    />
                     <RootStack.Screen
                       name="LocationSelector"
                       component={LocationSelectorScreen}

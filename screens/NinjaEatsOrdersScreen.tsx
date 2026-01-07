@@ -1,6 +1,6 @@
 // screens/NinjaEatsOrdersScreen.tsx
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -109,7 +109,7 @@ const NinjaEatsOrdersScreen: React.FC = () => {
     [orders]
   );
 
-  const renderOrderCard = ({ item }: { item: RestaurantOrder }) => {
+  const renderOrderCard = useCallback(({ item }: { item: RestaurantOrder }) => {
     const label = statusLabelMap[item.status] ?? item.status;
     const color = statusColorMap[item.status] ?? "#555";
 
@@ -171,7 +171,7 @@ const NinjaEatsOrdersScreen: React.FC = () => {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [navigation]);
 
   if (loading) {
     return (
@@ -217,6 +217,17 @@ const NinjaEatsOrdersScreen: React.FC = () => {
         data={ongoingOrders}
         keyExtractor={(item) => `ongoing-${item.id}`}
         renderItem={renderOrderCard}
+        // 🔥 PERFORMANCE OPTIMIZATIONS
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={8}
+        windowSize={8}
+        initialNumToRender={6}
+        updateCellsBatchingPeriod={50}
+        getItemLayout={(data, index) => ({
+          length: 120, // Approximate item height
+          offset: 120 * index,
+          index,
+        })}
         ListFooterComponent={
           <>
             {pastOrders.length > 0 && (

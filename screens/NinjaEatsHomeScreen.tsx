@@ -429,6 +429,8 @@ export default function NinjaEatsHomeScreen() {
   const [cuisines, setCuisines] = useState<Cuisine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeVerticalMode, setActiveVerticalMode] =
+    useState<"grocery" | "restaurants">("restaurants");
   const [activeFilter, setActiveFilter] = useState<QuickFilterKey | null>(null);
 
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -653,22 +655,10 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
-      {/* Collapsing header with NinjaEats background video */}
-      <Animated.View
-        pointerEvents="box-none"
-        style={[
-          styles.headerWrapper,
-          {
-            height: headerHeight,
-            paddingTop: headerPaddingTop,
-          },
-        ]}
-      >
+      {/* Static header with video background */}
+      <View style={styles.staticHeaderWrapper}>
         {/* Background video */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { opacity: videoOpacity }]}
-        >
+        <View style={styles.staticVideoContainer}>
           <Video
             source={require("../assets/deliveryBackground.mp4")}
             style={StyleSheet.absoluteFill}
@@ -678,7 +668,7 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
             rate={1.0}
             ignoreSilentSwitch="obey"
           />
-        </Animated.View>
+        </View>
 
         {/* Gradient overlay */}
         <LinearGradient
@@ -686,32 +676,30 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
           style={StyleSheet.absoluteFill}
         />
 
-        {/* Foreground content */}
-        <View style={styles.topBg}>
-          {/* Top pill switcher */}
-<View style={styles.verticalSwitcherRow}>
-  <VerticalSwitcher
-    active="restaurants"
-    onChange={handleModeChange}
-  />
-</View>
-
-
+        {/* Static content */}
+        <View style={styles.staticContentContainer}>
           {/* Location row */}
           <Header />
 
-          {/* Search */}
-<View style={styles.searchContainer}>
-  <RotatingRestaurantSearchBar />
-</View>
+          {/* Search bar */}
+          <View style={styles.staticSearchRow}>
+            <RotatingRestaurantSearchBar />
+          </View>
 
+          {/* Vertical switcher below search */}
+          <View style={styles.staticSwitcherRow}>
+            <VerticalSwitcher
+              active={activeVerticalMode}
+              onChange={handleModeChange}
+            />
+          </View>
         </View>
-      </Animated.View>
+      </View>
 
       {/* Main feed */}
       {error && <Text style={styles.errorTxt}>{error}</Text>}
 
-      <AnimatedFlatList
+      <FlatList
         data={filteredRestaurants}
         keyExtractor={(item: Restaurant) => item.id}
         renderItem={({ item }: { item: Restaurant }) => (
@@ -720,14 +708,9 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: INITIAL_HEADER_HEIGHT + 16,
+          paddingTop: 16, // Just basic padding since header is now static
           paddingBottom: 32,
         }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
-        scrollEventThrottle={16}
         ListEmptyComponent={
           !loading ? (
             <View style={styles.emptyState}>
@@ -750,6 +733,36 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
 const styles = StyleSheet.create({
   center: { justifyContent: "center", alignItems: "center" },
 
+  staticHeaderWrapper: {
+    height: 180, // Reduced height for smaller video + content
+    position: "relative",
+    zIndex: 999,
+    elevation: 20,
+  },
+
+  staticVideoContainer: {
+    ...StyleSheet.absoluteFillObject,
+    height: 180, // Matching reduced height
+  },
+
+  staticContentContainer: {
+    flex: 1,
+    paddingTop: Platform.OS === "ios" ? 52 : 40,
+    paddingHorizontal: H,
+    paddingBottom: 16,
+    position: "relative",
+    zIndex: 1,
+  },
+
+  staticSwitcherRow: {
+    alignSelf: "flex-start",
+    marginTop: 12, // Space below search bar
+  },
+
+  staticSearchRow: {
+    marginTop: 10,
+  },
+
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -765,7 +778,7 @@ const styles = StyleSheet.create({
   },
 
   searchContainer: {
-  height: 52,              // 👈 fixed height like Grocery
+  height: 55,              // 👈 fixed height like Grocery
   justifyContent: "center",
   marginTop: 6,
 },
@@ -773,7 +786,7 @@ const styles = StyleSheet.create({
 verticalSwitcherRow: {
   position: "absolute",
   top: Platform.OS === "ios" ? 104 : 92, // below location + search
-  left: 12,          // 👈 move to LEFT
+  left: 18,          // 👈 move to LEFT
   zIndex: 1000,
 },
 
@@ -823,7 +836,7 @@ verticalSwitcherRow: {
   errorTxt: {
     color: "#c62828",
     textAlign: "center",
-    marginTop: INITIAL_HEADER_HEIGHT + 20,
+    marginTop: 20,
   },
 
   /* Quick filters */

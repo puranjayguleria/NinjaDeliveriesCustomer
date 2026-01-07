@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,13 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocationContext } from "@/context/LocationContext";
 import RestaurantTile, { Restaurant } from "@/components/RestaurantTile";
+import { getEffectiveCityId } from "@/utils/locationHelper";
+import { firestoreCache, CACHE_KEYS } from "@/utils/firestoreCache";
 
 type SortKey = "relevance" | "rating" | "fastest" | "costLowHigh" | "costHighLow";
 
@@ -29,60 +31,79 @@ const RestaurantCategoryListingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
 
-  const { cuisineName } = route.params || {};
+  const { cuisineName, categoryName } = route.params || {};
+  const displayName = cuisineName || categoryName; // Support both parameter names
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortKey>("relevance");
 
-  useEffect(() => {
-    // Same fallback as NinjaEatsHome
-    const effectiveCityId = location.cityId || "dharamshala";
+  // Optimized Firestore listener with caching
+  useFocusEffect(
+    useCallback(() => {
+      const effectiveCityId = getEffectiveCityId(location);
 
-    // If we don't have a cuisineName or city, show empty state, not infinite loader
-    if (!cuisineName || !effectiveCityId) {
-      setRestaurants([]);
-      setLoading(false);
-      return;
-    }
+      // If we don't have a displayName, show empty state
+      if (!displayName) {
+        setRestaurants([]);
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
+      // Check cache first
+      const cacheKey = `${CACHE_KEYS.RESTAURANTS(effectiveCityId)}_${displayName}`;
+      const cachedRestaurants = firestoreCache.get<Restaurant[]>(cacheKey);
+      
+      if (cachedRestaurants) {
+        setRestaurants(cachedRestaurants);
+        setLoading(false);
+        return;
+      }
 
-    const unsub = firestore()
-      .collection("restaurants")
-      .where("isActive", "==", true)
-      .where("cityId", "==", effectiveCityId)
-      .where("cuisines", "array-contains", cuisineName)
-      .onSnapshot(
-        (snap) => {
-          const list: Restaurant[] = snap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as any),
-          }));
-          setRestaurants(list);
-          setLoading(false);
-        },
-        (err) => {
-          console.warn("[NinjaEats] category listing error", err);
-          setRestaurants([]);
-          setLoading(false);
-        }
-      );
+      setLoading(true);
 
-    return unsub;
-  }, [location.cityId, cuisineName]);
+      const unsub = firestore()
+        .collection("restaurants")
+        .where("isActive", "==", true)
+        .where("cityId", "==", effectiveCityId)
+        .where("cuisines", "array-contains", displayName)
+        .onSnapshot(
+          (snap) => {
+            const list: Restaurant[] = snap.docs.map((d) => ({
+              id: d.id,
+              ...(d.data() as any),
+            }));
+            
+            // Cache the results for 5 minutes
+            firestoreCache.set(cacheKey, list, 5 * 60 * 1000);
+            
+            setRestaurants(list);
+            setLoading(false);
+          },
+          (err) => {
+            console.warn("[NinjaEats] category listing error", err);
+            setRestaurants([]);
+            setLoading(false);
+          }
+        );
 
-  // 🔹 THIS WAS MISSING – derive sorted list from restaurants + sortBy
+      return unsub;
+    }, [location.cityId, displayName])
+  );
+
+  // Optimized sorting with memoization
   const sorted = useMemo(() => {
+    if (!restaurants.length) return [];
+    
     const arr = [...restaurants];
 
     switch (sortBy) {
       case "rating":
-        arr.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        arr.sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0));
         break;
       case "fastest":
         arr.sort(
           (a, b) =>
-            (a.deliveryTimeMin ?? 9999) - (b.deliveryTimeMin ?? 9999)
+            (a.deliveryTimeMins ?? 9999) - (b.deliveryTimeMins ?? 9999)
         );
         break;
       case "costLowHigh":
@@ -100,26 +121,54 @@ const RestaurantCategoryListingScreen: React.FC = () => {
     return arr;
   }, [restaurants, sortBy]);
 
-  const renderHeader = () => (
+  // Memoized navigation handlers
+  const handleBackPress = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  const handleRestaurantPress = useCallback((restaurantId: string) => {
+    navigation.navigate("RestaurantDetails", {
+      restaurantId,
+    });
+  }, [navigation]);
+
+  const handleSortChange = useCallback((newSortBy: SortKey) => {
+    setSortBy(newSortBy);
+  }, []);
+
+  // Memoized render functions
+  const renderRestaurantItem = useCallback(({ item }: { item: Restaurant }) => (
+    <RestaurantTile
+      restaurant={item}
+      onPress={() => handleRestaurantPress(item.id)}
+    />
+  ), [handleRestaurantPress]);
+
+  const keyExtractor = useCallback((item: Restaurant) => item.id, []);
+
+  const ItemSeparator = useCallback(() => <View style={{ height: 14 }} />, []);
+
+  const renderHeader = useCallback(() => (
     <View style={styles.header}>
       <TouchableOpacity
-        onPress={() => navigation.goBack()}
+        onPress={handleBackPress}
         style={styles.backBtn}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <MaterialIcons name="arrow-back" size={22} color="#222" />
       </TouchableOpacity>
       <View style={{ flex: 1 }}>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {cuisineName || "Restaurants"}
+          {displayName || "Restaurants"}
         </Text>
         <Text style={styles.headerSubtitle} numberOfLines={1}>
           {location.address || "Select delivery location"}
         </Text>
       </View>
     </View>
-  );
+  ), [handleBackPress, displayName, location.address]);
 
-  const renderSortBar = () => (
+  const renderSortBar = useCallback(() => (
     <View style={styles.sortRow}>
       <ScrollView
         horizontal
@@ -131,7 +180,7 @@ const RestaurantCategoryListingScreen: React.FC = () => {
           return (
             <TouchableOpacity
               key={opt.key}
-              onPress={() => setSortBy(opt.key)}
+              onPress={() => handleSortChange(opt.key)}
               style={[styles.sortChip, active && styles.sortChipActive]}
             >
               <Text
@@ -146,6 +195,49 @@ const RestaurantCategoryListingScreen: React.FC = () => {
           );
         })}
       </ScrollView>
+    </View>
+  ), [sortBy, handleSortChange]);
+
+  if (loading && !restaurants.length) {
+    return (
+      <View style={styles.loadingContainer}>
+        {renderHeader()}
+        <ActivityIndicator size="large" color="#00b4a0" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {renderHeader()}
+      {renderSortBar()}
+      {sorted.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>No restaurants yet</Text>
+          <Text style={styles.emptySubtitle}>
+            We're onboarding partners in this category. Check back soon!
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={sorted}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={ItemSeparator}
+          renderItem={renderRestaurantItem}
+          // 🔥 PERFORMANCE OPTIMIZATIONS
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={8}
+          windowSize={8}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={50}
+          getItemLayout={(data, index) => ({
+            length: 180, // Approximate item height including separator
+            offset: 180 * index,
+            index,
+          })}
+        />
+      )}
     </View>
   );
 
@@ -277,5 +369,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#777",
     textAlign: "center",
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 10,
   },
 });

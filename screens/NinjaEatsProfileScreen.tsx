@@ -1,9 +1,13 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-export default function NinjaEatsProfileScreen() {
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Ninja Eats Profile</Text>
-    </View>
-  );
-}
+// screens/NinjaEatsProfileScreen.tsx
+import React, { memo } from "react";
+import ProfileScreen from "./ProfileScreen";
+
+// Lightweight wrapper for NinjaEats profile tab
+// Uses memo to prevent unnecessary re-renders when switching tabs
+const NinjaEatsProfileScreen = memo(() => {
+  return <ProfileScreen />;
+});
+
+NinjaEatsProfileScreen.displayName = "NinjaEatsProfileScreen";
+
+export default NinjaEatsProfileScreen;

@@ -13,6 +13,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useLocationContext } from "@/context/LocationContext";
 import RestaurantTile, { Restaurant } from "@/components/RestaurantTile";
+import { getEffectiveCityId } from "@/utils/locationHelper";
 
 const RestaurantSearchScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -23,12 +24,14 @@ const RestaurantSearchScreen: React.FC = () => {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    if (!location.storeId) return;
+    const effectiveCityId = getEffectiveCityId(location);
+    
     setLoading(true);
 
     const unsub = firestore()
       .collection("restaurants")
-      .where("storeId", "==", location.storeId)
+      .where("isActive", "==", true)
+      .where("cityId", "==", effectiveCityId)
       .onSnapshot(
         (snap) => {
           const list: Restaurant[] = snap.docs.map((d) => ({
@@ -42,7 +45,7 @@ const RestaurantSearchScreen: React.FC = () => {
       );
 
     return unsub;
-  }, [location.storeId]);
+  }, [location.cityId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

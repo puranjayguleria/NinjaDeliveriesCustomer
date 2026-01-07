@@ -1573,10 +1573,19 @@ useEffect(() => {
   }, [bestHeader, freshHeader]);
 
   const handleModeChange = (mode: "grocery" | "restaurants") => {
+    // Provide immediate visual feedback
+    const startTime = performance.now();
+    
     if (mode === "restaurants") {
-      requestAnimationFrame(() => {
-        nav.replace("NinjaEatsTabs");
+      // Use navigate instead of replace for faster transition
+      nav.navigate("NinjaEatsTabs", { 
+        screen: "NinjaEatsHomeTab",
+        params: { screen: "NinjaEatsHome" }
       });
+      
+      // Log performance
+      const endTime = performance.now();
+      console.log(`[ProductsHome] Mode switch took ${(endTime - startTime).toFixed(2)}ms`);
     }
     // grocery → already on ProductsHome
   };
