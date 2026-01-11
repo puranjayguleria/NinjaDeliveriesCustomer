@@ -42,6 +42,8 @@ import { useWeather } from "../context/WeatherContext"; // adjust path if needed
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 
+import { PerformanceMonitor } from "@/utils/PerformanceMonitor";
+
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_VIDEO_HEIGHT = 180;
 const COLLAPSED_VIDEO_HEIGHT = 100;
@@ -1500,7 +1502,7 @@ useEffect(() => {
     loadHighlights();
   }, [loadHighlights]);
 
-  const listHeader = (
+  const listHeader = useMemo(() => (
     <>
       {/* Promotional banners */}
       <BannerSwitcher storeId={location.storeId} />
@@ -1535,7 +1537,7 @@ useEffect(() => {
         </View>
       )}
     </>
-  );
+  ), [location.storeId, buyAgainResolved, isPanProd, maybeGate]);
 
   const renderSectionHeader = useCallback(() => {
     return (
@@ -1572,23 +1574,65 @@ useEffect(() => {
     );
   }, [bestHeader, freshHeader]);
 
-  const handleModeChange = (mode: "grocery" | "restaurants") => {
-    // Provide immediate visual feedback
-    const startTime = performance.now();
-    
+  const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
     if (mode === "restaurants") {
-      // Use navigate instead of replace for faster transition
-      nav.navigate("NinjaEatsTabs", { 
-        screen: "NinjaEatsHomeTab",
-        params: { screen: "NinjaEatsHome" }
-      });
+      // Start performance monitoring
+      PerformanceMonitor.startTimer("grocery-to-restaurants");
       
-      // Log performance
-      const endTime = performance.now();
-      console.log(`[ProductsHome] Mode switch took ${(endTime - startTime).toFixed(2)}ms`);
+      // Immediate visual feedback - update state first
+      setActiveVerticalMode(mode);
+      
+      // Use requestAnimationFrame for smoother transition with longer delay for loader visibility
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          nav.replace("NinjaEatsTabs", { 
+            screen: "NinjaEatsHomeTab",
+            params: { screen: "NinjaEatsHome" }
+          });
+          
+          // End performance monitoring after navigation
+          setTimeout(() => {
+            PerformanceMonitor.endTimer("grocery-to-restaurants");
+          }, 100);
+        }, 200); // Increased delay to ensure loader is visible
+      });
     }
-    // grocery → already on ProductsHome
-  };
+    // grocery → already on ProductsHome, just update state
+    setActiveVerticalMode(mode);
+  }, [nav]);
+
+  // Memoize the render item function for better performance
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    if (!item?.id || !item?.name) return null;
+
+    const data = prodMap[item.id]?.rows || [];
+    return (
+      <View style={{ marginTop: 32 }}>
+        <View style={styles.rowHeader}>
+          <Text style={styles.rowTitle}>{item.name}</Text>
+          <SeeAllButton onPress={() => maybeNavigateCat(item)} />
+        </View>
+
+        <ChipsRow
+          subs={subMap[item.id] || []}
+          onPress={(s) =>
+            maybeNavigateCat({
+              ...item,
+              id: item.id,
+              name: item.name,
+              subcategoryId: s.id,
+            })
+          }
+        />
+
+        <MultiRowProductGrid
+          products={data}
+          isPanProd={isPanProd}
+          maybeGate={maybeGate}
+        />
+      </View>
+    );
+  }, [prodMap, subMap, maybeNavigateCat, isPanProd, maybeGate]);
 
   if (hasPerm === null) {
     return (
@@ -1709,37 +1753,12 @@ useEffect(() => {
             renderSectionHeader={renderSectionHeader}
             keyExtractor={(item) => item.id}
             extraData={listExtraData}
-            renderItem={({ item }) => {
-              if (!item?.id || !item?.name) return null;
-
-              const data = prodMap[item.id]?.rows || [];
-              return (
-                <View style={{ marginTop: 32 }}>
-                  <View style={styles.rowHeader}>
-                    <Text style={styles.rowTitle}>{item.name}</Text>
-                    <SeeAllButton onPress={() => maybeNavigateCat(item)} />
-                  </View>
-
-                  <ChipsRow
-                    subs={subMap[item.id] || []}
-                    onPress={(s) =>
-                      maybeNavigateCat({
-                        ...item,
-                        id: item.id,
-                        name: item.name,
-                        subcategoryId: s.id,
-                      })
-                    }
-                  />
-
-                  <MultiRowProductGrid
-                    products={data}
-                    isPanProd={isPanProd}
-                    maybeGate={maybeGate}
-                  />
-                </View>
-              );
-            }}
+            renderItem={renderItem}
+            // Performance optimizations
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            initialNumToRender={2}
             onEndReached={loadMoreRows}
             onEndReachedThreshold={0.3}
             ListFooterComponent={() =>
@@ -1885,7 +1904,7 @@ labelActive: { color: '#fff' },
   locationRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginBottom: 10,
+  marginBottom: 16,
   // no paddingHorizontal here – topBg already has it
 },
 
@@ -2322,19 +2341,19 @@ labelActive: { color: '#fff' },
     fontWeight: "600",
   },
 verticalSwitcherRow: {
-  marginTop: 8,          // space below search bar
-  alignSelf: "flex-start", // or "center" if you prefer
+  marginTop: 16,          // space below search bar (matching NinjaEats)
+  alignSelf: "flex-start",
 },
 
 
 searchSwitchRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginTop: 6,
+  marginTop: 25,
 },
 
 searchFlex: {
   flex: 1,
-  marginRight: 22,
+  marginRight: 24,
 },
 });

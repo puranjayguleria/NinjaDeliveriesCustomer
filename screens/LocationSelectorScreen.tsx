@@ -393,12 +393,19 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         return;
       }
 
-      const newLocationData: LocationData & { storeId: string } = {
-        lat: markerCoord.latitude,
-        lng: markerCoord.longitude,
-        address: addr,
-        storeId: nearest.storeId,
-      };
+      const newLocationData = fromScreen === "NinjaEatsHome" 
+        ? {
+            lat: markerCoord.latitude,
+            lng: markerCoord.longitude,
+            address: addr,
+            cityId: "dharamshala", // For restaurants, use dharamshala as default city
+          }
+        : {
+            lat: markerCoord.latitude,
+            lng: markerCoord.longitude,
+            address: addr,
+            storeId: nearest.storeId, // For grocery, use storeId
+          };
 
       updateLocation(newLocationData);
 
@@ -406,6 +413,12 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         setHouseNo("");
         setPlaceLabel("");
         setShowSaveForm(true);
+      } else if (fromScreen === "NinjaEatsHome") {
+        // Navigate back to NinjaEats screen
+        navigation.navigate("NinjaEatsTabs", { 
+          screen: "NinjaEatsHomeTab",
+          params: { screen: "NinjaEatsHome" }
+        });
       } else {
         navigation.navigate("AppTabs", { screen: "Home" });
       }
@@ -513,6 +526,12 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
             screen: "CartHome",
             params: { selectedLocation: newLoc },
           },
+        });
+      } else if (fromScreen === "NinjaEatsHome") {
+        // Navigate back to NinjaEats screen
+        navigation.navigate("NinjaEatsTabs", { 
+          screen: "NinjaEatsHomeTab",
+          params: { screen: "NinjaEatsHome" }
         });
       } else {
         navigation.navigate("CategoriesTab", { selectedLocation: newLoc });

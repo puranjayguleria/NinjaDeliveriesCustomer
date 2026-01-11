@@ -1,6 +1,6 @@
 // @/components/VerticalSwitcher.tsx
-import React, { useEffect, useRef, useCallback, memo } from "react";
-import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
+import React, { useCallback, memo, useState, useEffect } from "react";
+import { View, Pressable, Text, StyleSheet, ActivityIndicator } from "react-native";
 
 type Mode = "grocery" | "restaurants";
 
@@ -10,135 +10,198 @@ type Props = {
 };
 
 export const VerticalSwitcher: React.FC<Props> = memo(({ active, onChange }) => {
-  const translateX = useRef(new Animated.Value(active === "grocery" ? 0 : 1)).current;
-  const scaleGrocery = useRef(new Animated.Value(active === "grocery" ? 1 : 0.95)).current;
-  const scaleEats = useRef(new Animated.Value(active === "restaurants" ? 1 : 0.95)).current;
+  const [isLoading, setIsLoading] = useState(false);
+  const [pendingMode, setPendingMode] = useState<Mode | null>(null);
 
+  // Reset loading state when active mode changes
   useEffect(() => {
-    // Optimized spring animation with better performance
-    Animated.parallel([
-      Animated.spring(translateX, {
-        toValue: active === "grocery" ? 0 : 1,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 120,
-        restDisplacementThreshold: 0.01,
-        restSpeedThreshold: 0.01,
-      }),
-      Animated.spring(scaleGrocery, {
-        toValue: active === "grocery" ? 1 : 0.95,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 120,
-      }),
-      Animated.spring(scaleEats, {
-        toValue: active === "restaurants" ? 1 : 0.95,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 120,
-      }),
-    ]).start();
-  }, [active, translateX, scaleGrocery, scaleEats]);
-
-  const thumbTranslate = translateX.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2, 52], // 👈 thumb positions
-  });
-
-  // Optimized press handlers
-  const handleGroceryPress = useCallback(() => {
-    if (active !== "grocery") {
-      onChange?.("grocery");
+    if (pendingMode && active === pendingMode) {
+      // Keep loader visible for a bit longer to ensure smooth transition
+      setTimeout(() => {
+        setIsLoading(false);
+        setPendingMode(null);
+      }, 300);
     }
-  }, [active, onChange]);
+  }, [active, pendingMode]);
 
+  // Optimized press handlers with loading state
   const handleEatsPress = useCallback(() => {
-    if (active !== "restaurants") {
-      onChange?.("restaurants");
+    if (active !== "restaurants" && !isLoading) {
+      setIsLoading(true);
+      setPendingMode("restaurants");
+      // Add a small delay to show the loader before navigation
+      setTimeout(() => {
+        onChange?.("restaurants");
+      }, 150);
     }
-  }, [active, onChange]);
+  }, [active, onChange, isLoading]);
+
+  const handleGroceryPress = useCallback(() => {
+    if (active !== "grocery" && !isLoading) {
+      setIsLoading(true);
+      setPendingMode("grocery");
+      // Add a small delay to show the loader before navigation
+      setTimeout(() => {
+        onChange?.("grocery");
+      }, 150);
+    }
+  }, [active, onChange, isLoading]);
 
   return (
     <View style={styles.container}>
-      {/* Sliding thumb with optimized animation */}
-      <Animated.View
-        style={[
-          styles.thumb,
-          {
-            transform: [{ translateX: thumbTranslate }],
-          },
-        ]}
-      />
-
-      <Animated.View style={[styles.option, { transform: [{ scale: scaleGrocery }] }]}>
-        <Pressable
-          style={styles.pressable}
-          onPress={handleGroceryPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text
-            style={[
-              styles.label,
-              active === "grocery" && styles.labelActive,
-            ]}
-          >
-            Grocery
+      {/* Loading Overlay */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator 
+            size="small" 
+            color={pendingMode === "restaurants" ? "#2196F3" : "#4CAF50"} 
+          />
+          <Text style={styles.loadingText}>
+            Switching to {pendingMode === "restaurants" ? "Eats" : "Grocery"}...
           </Text>
-        </Pressable>
-      </Animated.View>
+        </View>
+      )}
 
-      <Animated.View style={[styles.option, { transform: [{ scale: scaleEats }] }]}>
+      {/* Eats Tab - First */}
+      <View style={[
+        styles.option, 
+        styles.eatsTab,
+        active === "restaurants" ? styles.eatsActive : styles.eatsInactive,
+        isLoading && styles.optionDisabled
+      ]}>
         <Pressable
           style={styles.pressable}
           onPress={handleEatsPress}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={isLoading}
         >
           <Text
             style={[
               styles.label,
-              active === "restaurants" && styles.labelActive,
+              active === "restaurants" && styles.eatsLabelActive,
+              isLoading && styles.labelDisabled,
             ]}
           >
             Eats
           </Text>
         </Pressable>
-      </Animated.View>
+      </View>
+
+      {/* Grocery Tab - Second */}
+      <View style={[
+        styles.option, 
+        styles.groceryTab,
+        active === "grocery" ? styles.groceryActive : styles.groceryInactive,
+        isLoading && styles.optionDisabled
+      ]}>
+        <Pressable
+          style={styles.pressable}
+          onPress={handleGroceryPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={isLoading}
+        >
+          <Text
+            style={[
+              styles.label,
+              active === "grocery" && styles.groceryLabelActive,
+              isLoading && styles.labelDisabled,
+            ]}
+          >
+            Grocery
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 });
 
 VerticalSwitcher.displayName = "VerticalSwitcher";
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    width: 120,              // slightly wider
-    height: 36,              // more touch-friendly
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    padding: 4,              // proper inner spacing
-    marginTop: 6,            // spacing from elements above
+    width: 150,              // slightly wider for better spacing
+    height: 40,              // more touch-friendly
+    borderRadius: 10,         // box-like appearance
+    backgroundColor: "#f5f5f5",
+    padding: 4,              // minimal padding for box effect
+    marginTop: 2,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    elevation: 3,
+    position: "relative",    // For loading overlay positioning
   },
 
-  thumb: {
+  loadingOverlay: {
     position: "absolute",
-    width: 56,               // matches half of container minus padding
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#00b4a0",
-    top: 4,                  // centers thumb vertically
-    left: 4,                 // default (animated horizontally)
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    flexDirection: "row",
+    paddingHorizontal: 8,
+  },
+
+  loadingText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#666",
+    marginLeft: 6,
   },
 
   option: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 1,
+    borderRadius: 6,         // slightly rounded corners for box tabs
+    marginHorizontal: 1,     // small gap between tabs
+  },
+
+  optionDisabled: {
+    opacity: 0.6,
+  },
+
+  // Eats tab styles (Blue)
+  eatsTab: {
+    // Base eats tab styling
+  },
+
+  eatsActive: {
+    backgroundColor: "#2196F3", // Blue color for active Eats
+    shadowColor: "#2196F3",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+
+  eatsInactive: {
+    backgroundColor: "transparent",
+  },
+
+  // Grocery tab styles (Green)
+  groceryTab: {
+    // Base grocery tab styling
+  },
+
+  groceryActive: {
+    backgroundColor: "#4CAF50", // Green color for active Grocery
+    shadowColor: "#4CAF50",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+
+  groceryInactive: {
+    backgroundColor: "transparent",
   },
 
   pressable: {
@@ -146,16 +209,27 @@ const styles = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 4,      // better tap target
+    paddingVertical: 6,      // better tap target
+    borderRadius: 6,
   },
 
   label: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#555",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#666",
   },
 
-  labelActive: {
-    color: "#fff",
+  labelDisabled: {
+    opacity: 0.5,
+  },
+
+  eatsLabelActive: {
+    color: "#fff",           // White text for active blue tab
+    fontWeight: "700",
+  },
+
+  groceryLabelActive: {
+    color: "#fff",           // White text for active green tab
+    fontWeight: "700",
   },
 });

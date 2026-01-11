@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useCallback,
 } from "react";
 import {
   Animated,
@@ -15,17 +16,21 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Video from "react-native-video";
 import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
-
 import { useLocationContext } from "@/context/LocationContext";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 import Loader from "@/components/VideoLoader";
+import { PerformanceMonitor } from "@/utils/PerformanceMonitor";
+import * as Location from "expo-location";
 
 /* -------------------------------------------------------------------------- */
 /*  CONSTANTS                                                                 */
@@ -83,7 +88,100 @@ type Cuisine = {
 type QuickFilterKey = "veg" | "fast" | "rating" | "offers";
 
 /* -------------------------------------------------------------------------- */
-/*  HEADER + SEARCH                                                           */
+/*  LOCATION PROMPT CARD COMPONENT                                            */
+/* -------------------------------------------------------------------------- */
+
+const LocationPromptCard: React.FC<{
+  setHasPerm: (v: boolean) => void;
+  setSelectManually: (v: boolean) => void;
+  setShowLocationPrompt: (v: boolean) => void;
+}> = ({ setHasPerm, setSelectManually, setShowLocationPrompt }) => {
+  const nav = useNavigation<any>();
+  const { updateLocation } = useLocationContext();
+  const [busy, setBusy] = useState(false);
+
+  console.log('[LocationPromptCard] Rendering location prompt card');
+
+  const enableLocation = useCallback(async () => {
+    try {
+      setBusy(true);
+      let { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== "granted") {
+        const res = await Location.requestForegroundPermissionsAsync();
+        status = res.status;
+      }
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission needed",
+          "Please allow location access or choose your address manually."
+        );
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      updateLocation({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        address: "",
+        cityId: "dharamshala", // Default city for restaurants
+      });
+
+      setHasPerm(true);
+      setSelectManually(true);
+      setShowLocationPrompt(false); // Hide the prompt
+    } catch (err) {
+      console.warn("enableLocation error", err);
+      Alert.alert("Error", "Could not fetch location. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [updateLocation, setHasPerm, setSelectManually, setShowLocationPrompt]);
+
+  const handleManualSelection = () => {
+    setHasPerm(true);
+    setSelectManually(true);
+    setShowLocationPrompt(false); // Hide the prompt
+    nav.navigate("LocationSelector", { fromScreen: "NinjaEatsHome" });
+  };
+
+  return (
+    <View style={styles.locationPromptSheet}>
+      <View style={styles.locationPromptHandle} />
+      
+      <View style={styles.locationPromptHeader}>
+        <MaterialIcons name="location-on" size={26} color="#00b4a0" />
+        <Text style={styles.locationPromptTitle}>Choose your location</Text>
+      </View>
+      
+      <Text style={styles.locationPromptSubtitle}>
+        To find the best restaurants and delivery options near you
+      </Text>
+
+      <TouchableOpacity
+        style={[styles.locationPromptBtn, styles.locationPromptBtnPrimary]}
+        onPress={enableLocation}
+        disabled={busy}
+      >
+        {busy ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.locationPromptBtnTxtPrimary}>Enable Location</Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.locationPromptBtn, styles.locationPromptBtnSecondary]}
+        onPress={handleManualSelection}
+        disabled={busy}
+      >
+        <Text style={styles.locationPromptBtnTxtSecondary}>Select Manually</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 /* -------------------------------------------------------------------------- */
 
 const Header = memo(() => {
@@ -433,6 +531,70 @@ export default function NinjaEatsHomeScreen() {
     useState<"grocery" | "restaurants">("restaurants");
   const [activeFilter, setActiveFilter] = useState<QuickFilterKey | null>(null);
 
+  // Permission-based location prompt logic - Show immediately on load
+  const [hasPerm, setHasPerm] = useState<boolean | null>(null);
+  const [selectManually, setSelectManually] = useState(false);
+  // Show prompt immediately unless user already has a location set
+  const [showLocationPrompt, setShowLocationPrompt] = useState(
+    !location.lat && !location.lng && !location.address
+  );
+
+  // Check location permissions on mount but don't hide prompt based on permissions
+  useEffect(() => {
+    console.log('[NinjaEats] Checking location permissions...');
+    Location.getForegroundPermissionsAsync().then((r) => {
+      console.log('[NinjaEats] Permission status:', r.status);
+      const hasPermission = r.status === "granted";
+      setHasPerm(hasPermission);
+      // Don't automatically hide the prompt - let user choose
+    }).catch((error) => {
+      console.error('[NinjaEats] Error checking permissions:', error);
+      setHasPerm(false);
+    });
+  }, []);
+
+  // Hide prompt if user already has location
+  useEffect(() => {
+    if (location.lat && location.lng) {
+      console.log('[NinjaEats] User has location, hiding prompt');
+      setShowLocationPrompt(false);
+    }
+  }, [location.lat, location.lng]);
+
+  // Debug log for render condition
+  useEffect(() => {
+    console.log('[NinjaEats] Render state:', {
+      hasPerm,
+      selectManually,
+      showLocationPrompt,
+      shouldShowPrompt: showLocationPrompt,
+      location: {
+        lat: location.lat,
+        lng: location.lng,
+        address: location.address,
+        cityId: location.cityId
+      }
+    });
+  }, [hasPerm, selectManually, showLocationPrompt, location]);
+
+  // Ensure we stay on NinjaEats screen when returning from location selection
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[NinjaEats] Screen focused - ensuring we stay on restaurants');
+      // Force the vertical switcher to show restaurants mode
+      setActiveVerticalMode("restaurants");
+      
+      // If user is returning from location selection, hide the prompt
+      if (selectManually) {
+        setShowLocationPrompt(false);
+      }
+      
+      return () => {
+        // Cleanup if needed
+      };
+    }, [selectManually])
+  );
+
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const headerHeight = scrollY.interpolate({
@@ -460,6 +622,9 @@ export default function NinjaEatsHomeScreen() {
     // DEV fallback: if cityId not set yet, default to Dharamshala so you see data
     const effectiveCityId = location.cityId || "dharamshala";
 
+    console.log('[NinjaEats] Fetching restaurants for cityId:', effectiveCityId);
+    console.log('[NinjaEats] Current location:', location);
+
     if (!effectiveCityId) {
       setRestaurants([]);
       setLoading(false);
@@ -478,6 +643,7 @@ export default function NinjaEatsHomeScreen() {
             id: d.id,
             ...(d.data() as any),
           }));
+          console.log('[NinjaEats] Loaded restaurants:', list.length);
           setRestaurants(list);
           setLoading(false);
           setError(null);
@@ -557,21 +723,39 @@ export default function NinjaEatsHomeScreen() {
 
   /* --------------------------- Switcher interactions ------------------------ */
 
-const handleModeChange = (mode: "grocery" | "restaurants") => {
-  // give instant UI feedback first
+const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
   if (mode === "grocery") {
+    // Start performance monitoring
+    PerformanceMonitor.startTimer("restaurants-to-grocery");
+    
+    // Immediate visual feedback - update state first
+    setActiveVerticalMode(mode);
+    
+    // Use requestAnimationFrame for smoother transition with longer delay for loader visibility
     requestAnimationFrame(() => {
-      nav.replace("AppTabs");
+      setTimeout(() => {
+        nav.replace("AppTabs", {
+          screen: "HomeTab",
+          params: { screen: "ProductsHome" }
+        });
+        
+        // End performance monitoring after navigation
+        setTimeout(() => {
+          PerformanceMonitor.endTimer("restaurants-to-grocery");
+        }, 100);
+      }, 200); // Increased delay to ensure loader is visible
     });
   }
-};
+  // For restaurants mode, we're already here, so just update the state
+  setActiveVerticalMode(mode);
+}, [nav]);
 
 
 
 
   /* ------------------------------ List header ------------------------------- */
 
-  const listHeader = (
+  const listHeader = useMemo(() => (
     <>
       <QuickFiltersRow
         activeFilter={activeFilter}
@@ -641,7 +825,12 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
         All restaurants around you
       </Text>
     </>
-  );
+  ), [activeFilter, setActiveFilter, cuisines, topRated, fastDelivery, budgetFriendly]);
+
+  // Memoize the render item function for better performance
+  const renderRestaurantItem = useCallback(({ item }: { item: Restaurant }) => (
+    <RestaurantTile restaurant={item} />
+  ), []);
 
   /* ------------------------------ Loading / UI ------------------------------ */
 
@@ -699,29 +888,58 @@ const handleModeChange = (mode: "grocery" | "restaurants") => {
       {/* Main feed */}
       {error && <Text style={styles.errorTxt}>{error}</Text>}
 
-      <FlatList
-        data={filteredRestaurants}
-        keyExtractor={(item: Restaurant) => item.id}
-        renderItem={({ item }: { item: Restaurant }) => (
-          <RestaurantTile restaurant={item} />
-        )}
-        ListHeaderComponent={listHeader}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingTop: 16, // Just basic padding since header is now static
-          paddingBottom: 32,
-        }}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No restaurants found</Text>
-              <Text style={styles.emptySubtitle}>
-                Try changing filters or updating your location.
-              </Text>
-            </View>
-          ) : null
-        }
-      />
+      {hasPerm !== false || selectManually ? (
+        <FlatList
+          data={filteredRestaurants}
+          keyExtractor={(item: Restaurant) => item.id}
+          renderItem={renderRestaurantItem}
+          ListHeaderComponent={listHeader}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingTop: 16, // Just basic padding since header is now static
+            paddingBottom: 32,
+          }}
+          // Performance optimizations
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={8}
+          getItemLayout={(data, index) => ({
+            length: 200, // Approximate item height
+            offset: 200 * index,
+            index,
+          })}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No restaurants found</Text>
+                <Text style={styles.emptySubtitle}>
+                  Try changing filters or updating your location.
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.center, { flex: 1 }]}>
+                <Loader />
+              </View>
+            )
+          }
+        />
+      ) : (
+        <View style={{ flex: 1 }} />
+      )}
+
+      {/* Location Prompt Card - Show immediately on load */}
+      {showLocationPrompt && (
+        <>
+          {/* Overlay background */}
+          <View style={styles.locationPromptOverlay} />
+          <LocationPromptCard
+            setHasPerm={setHasPerm}
+            setSelectManually={setSelectManually}
+            setShowLocationPrompt={setShowLocationPrompt}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -1089,12 +1307,87 @@ verticalSwitcherRow: {
   searchSwitcherRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginTop: 10,
+  marginTop: 20,
 },
 
 searchFlex: {
   flex: 1,              // 👈 search takes remaining space
-  marginRight: 10,       // 👈 gap between search & switcher
+  marginRight: 40,       // 👈 gap between search & switcher
+},
+
+/* Location Prompt Card */
+locationPromptOverlay: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "rgba(0, 0, 0, 0.5)",
+  zIndex: 9998,
+},
+locationPromptSheet: {
+  position: "absolute",
+  top: "50%",
+  left: 20,
+  right: 20,
+  transform: [{ translateY: -150 }], // Adjust this value to center properly
+  backgroundColor: "#fff",
+  borderRadius: 24,
+  padding: 20,
+  shadowColor: "#000",
+  shadowOpacity: 0.25,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 15,
+  zIndex: 9999, // Ensure it's on top
+},
+locationPromptHandle: {
+  alignSelf: "center",
+  width: 40,
+  height: 4,
+  borderRadius: 2,
+  backgroundColor: "#ccc",
+  marginBottom: 12,
+},
+locationPromptHeader: { 
+  flexDirection: "row", 
+  alignItems: "center", 
+  marginBottom: 8 
+},
+locationPromptTitle: { 
+  fontSize: 18, 
+  fontWeight: "700", 
+  color: "#333", 
+  marginLeft: 6 
+},
+locationPromptSubtitle: { 
+  fontSize: 14, 
+  color: "#555", 
+  lineHeight: 20, 
+  marginBottom: 20 
+},
+locationPromptBtn: {
+  paddingVertical: 14,
+  borderRadius: 26,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 10,
+},
+locationPromptBtnPrimary: { 
+  backgroundColor: "#00b4a0" 
+},
+locationPromptBtnSecondary: { 
+  backgroundColor: "#e0f2f1" 
+},
+locationPromptBtnTxtPrimary: { 
+  color: "#fff", 
+  fontSize: 16, 
+  fontWeight: "700" 
+},
+locationPromptBtnTxtSecondary: { 
+  color: "#00796b", 
+  fontSize: 16, 
+  fontWeight: "700" 
 },
 
 });

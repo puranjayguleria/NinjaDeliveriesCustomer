@@ -225,8 +225,11 @@ const NinjaEatsTabs = () => {
         },
         // 🔥 PERFORMANCE OPTIMIZATIONS
         lazy: false,                    // Pre-load all tabs for instant switching
-        freezeOnBlur: true,            // Freeze inactive screens to save resources
+        freezeOnBlur: false,           // Keep screens active for faster switching
         tabBarHideOnKeyboard: true,    // Better UX
+        // Optimize animations
+        animationEnabled: true,
+        swipeEnabled: false,           // Disable swipe to prevent accidental switches
       }}
     >
       <Tab.Screen
@@ -546,6 +549,12 @@ function AppTabs() {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "gray",
+            // 🔥 PERFORMANCE OPTIMIZATIONS
+            lazy: false,                    // Pre-load all tabs for instant switching
+            freezeOnBlur: false,           // Keep screens active for faster switching
+            tabBarHideOnKeyboard: true,    // Better UX
+            animationEnabled: true,
+            swipeEnabled: false,           // Disable swipe to prevent accidental switches
             tabBarIcon: ({ color, size }) => (
               <View style={{ width: size, height: size }}>
                 <Ionicons
@@ -816,10 +825,10 @@ const App: React.FC = () => {
 
   /* decide initial route */
   const initialRoute = !user
-    ? "AppTabs"
+    ? "NinjaEatsTabs"
     : termsAccepted === false
     ? "TermsAndConditions"
-    : "AppTabs";
+    : "NinjaEatsTabs";
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -839,9 +848,13 @@ const App: React.FC = () => {
                     screenOptions={{ 
                       headerShown: false,
                       // 🔥 PERFORMANCE OPTIMIZATIONS FOR MODE SWITCHING
-                      animation: 'fade',
-                      animationDuration: 200,
+                      animation: 'simple_push',
+                      animationDuration: 100,
                       gestureEnabled: true,
+                      // Pre-load screens for instant switching
+                      lazy: false,
+                      // Freeze inactive screens to save memory
+                      freezeOnBlur: true,
                     }}
                   >
                     <RootStack.Screen
@@ -850,14 +863,14 @@ const App: React.FC = () => {
                     />
                     <RootStack.Screen name="AppTabs" component={AppTabs} 
                       options={{
-                        animation: 'fade',
-                        animationDuration: 150,
+                        animation: 'simple_push',
+                        animationDuration: 80,
                       }}
                     />
                     <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs}
                       options={{
-                        animation: 'fade', 
-                        animationDuration: 150,
+                        animation: 'simple_push', 
+                        animationDuration: 80,
                       }}
                     />
                     <RootStack.Screen
