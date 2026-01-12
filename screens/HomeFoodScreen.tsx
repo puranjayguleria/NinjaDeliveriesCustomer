@@ -39,7 +39,7 @@ import * as Location from "expo-location";
 const { width } = Dimensions.get("window");
 const H = 16;
 
-const INITIAL_HEADER_HEIGHT = 180; // 👈 taller video
+const INITIAL_HEADER_HEIGHT = 180;
 const COLLAPSED_HEADER_HEIGHT = 120;
 
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
@@ -47,45 +47,55 @@ const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 40 : 30;
 
 const NINJA_ACCENT = "#00b4a0";
 
-const RESTAURANT_SEARCH_PH = [
-  "pizza",
-  "momos",
-  "thali",
-  "burger",
-  "biryani",
-  "pasta",
+const HOME_FOOD_SEARCH_PH = [
+  "homemade dal",
+  "fresh rotis",
+  "mom's special curry",
+  "home-style biryani",
+  "traditional thali",
+  "fresh parathas",
 ];
 
 /* -------------------------------------------------------------------------- */
 /*  TYPES                                                                     */
 /* -------------------------------------------------------------------------- */
 
-type Restaurant = {
+type HomeCook = {
   id: string;
   name: string;
-  heroImageUrl?: string;
-  cuisines?: string[];
+  profileImageUrl?: string;
+  specialties?: string[];
   rating?: number;
   ratingCount?: number;
   deliveryTimeMin?: number;
   deliveryTimeMax?: number;
-  costForTwo?: number;
-  isPureVeg?: boolean;
-  offerText?: string;
+  avgCostPerMeal?: number;
+  isVerified?: boolean;
+  description?: string;
   distanceKm?: number;
-  isPromoted?: boolean;
   isActive?: boolean;
   cityId?: string;
+  kitchenType?: "home" | "cloud";
+  certifications?: string[];
 };
 
-type Cuisine = {
+type HomeMeal = {
   id: string;
   name: string;
-  iconUrl?: string;
-  priority?: number;
+  imageUrl?: string;
+  cookId: string;
+  cookName: string;
+  price: number;
+  description?: string;
+  isVeg?: boolean;
+  category?: string;
+  preparationTime?: number;
+  isAvailable?: boolean;
+  rating?: number;
+  tags?: string[];
 };
 
-type QuickFilterKey = "veg" | "fast" | "rating" | "offers";
+type QuickFilterKey = "veg" | "fast" | "rating" | "verified" | "nearby";
 
 /* -------------------------------------------------------------------------- */
 /*  LOCATION PROMPT CARD COMPONENT                                            */
@@ -100,8 +110,6 @@ const LocationPromptCard: React.FC<{
   const { updateLocation } = useLocationContext();
   const [busy, setBusy] = useState(false);
 
-  console.log('[LocationPromptCard] Rendering location prompt card');
-
   const enableLocation = useCallback(async () => {
     try {
       setBusy(true);
@@ -113,7 +121,7 @@ const LocationPromptCard: React.FC<{
       if (status !== "granted") {
         Alert.alert(
           "Permission needed",
-          "Please allow location access or choose your address manually."
+          "Please allow location access to find home cooks near you."
         );
         return;
       }
@@ -126,12 +134,12 @@ const LocationPromptCard: React.FC<{
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
         address: "",
-        cityId: "dharamshala", // Default city for restaurants
+        cityId: "dharamshala",
       });
 
       setHasPerm(true);
       setSelectManually(true);
-      setShowLocationPrompt(false); // Hide the prompt
+      setShowLocationPrompt(false);
     } catch (err) {
       console.warn("enableLocation error", err);
       Alert.alert("Error", "Could not fetch location. Please try again.");
@@ -143,8 +151,8 @@ const LocationPromptCard: React.FC<{
   const handleManualSelection = () => {
     setHasPerm(true);
     setSelectManually(true);
-    setShowLocationPrompt(false); // Hide the prompt
-    nav.navigate("LocationSelector", { fromScreen: "NinjaEatsHome" });
+    setShowLocationPrompt(false);
+    nav.navigate("LocationSelector", { fromScreen: "HomeFood" });
   };
 
   return (
@@ -152,12 +160,12 @@ const LocationPromptCard: React.FC<{
       <View style={styles.locationPromptHandle} />
       
       <View style={styles.locationPromptHeader}>
-        <MaterialIcons name="location-on" size={26} color="#00b4a0" />
-        <Text style={styles.locationPromptTitle}>Choose your location</Text>
+        <MaterialIcons name="kitchen" size={26} color="#00b4a0" />
+        <Text style={styles.locationPromptTitle}>Find home cooks near you</Text>
       </View>
       
       <Text style={styles.locationPromptSubtitle}>
-        To find the best restaurants and delivery options near you
+        Discover authentic home-cooked meals from verified local cooks
       </Text>
 
       <TouchableOpacity
@@ -182,6 +190,9 @@ const LocationPromptCard: React.FC<{
     </View>
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/*  HEADER COMPONENTS                                                         */
 /* -------------------------------------------------------------------------- */
 
 const Header = memo(() => {
@@ -192,7 +203,7 @@ const Header = memo(() => {
     <Pressable
       style={styles.locationRow}
       onPress={() =>
-        nav.navigate("LocationSelector", { fromScreen: "NinjaEatsHome" })
+        nav.navigate("LocationSelector", { fromScreen: "HomeFood" })
       }
     >
       <MaterialIcons
@@ -203,21 +214,21 @@ const Header = memo(() => {
       />
       <Text style={styles.locationTxt} numberOfLines={1}>
         {location.address
-          ? `Delivering to ${location.address}`
-          : "Set delivery location"}
+          ? `Finding home cooks near ${location.address}`
+          : "Set location to find home cooks"}
       </Text>
       <MaterialIcons name="keyboard-arrow-down" size={18} color="#fff" />
     </Pressable>
   );
 });
 
-const RestaurantSearchBar = memo(({ ph }: { ph: string }) => {
+const HomeFoodSearchBar = memo(({ ph }: { ph: string }) => {
   const nav = useNavigation<any>();
 
   return (
     <Pressable
       style={styles.searchWrapper}
-      onPress={() => nav.navigate("RestaurantSearch")}
+      onPress={() => nav.navigate("HomeFoodSearch")}
     >
       <MaterialIcons
         name="search"
@@ -227,35 +238,158 @@ const RestaurantSearchBar = memo(({ ph }: { ph: string }) => {
       />
       <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
       <View style={styles.searchRightChip}>
-        <MaterialIcons name="restaurant-menu" size={14} color="#555" />
-        <Text style={styles.searchRightTxt}>Dishes & restaurants</Text>
+        <MaterialIcons name="kitchen" size={14} color="#555" />
+        <Text style={styles.searchRightTxt}>Home meals & cooks</Text>
       </View>
     </Pressable>
   );
 });
 
-const RotatingRestaurantSearchBar = () => {
+const RotatingHomeFoodSearchBar = () => {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => {
-      setIdx((prev) => (prev + 1) % RESTAURANT_SEARCH_PH.length);
+      setIdx((prev) => (prev + 1) % HOME_FOOD_SEARCH_PH.length);
     }, 3000);
     return () => clearInterval(id);
   }, []);
 
-  return <RestaurantSearchBar ph={RESTAURANT_SEARCH_PH[idx]} />;
+  return <HomeFoodSearchBar ph={HOME_FOOD_SEARCH_PH[idx]} />;
 };
 
 /* -------------------------------------------------------------------------- */
-/*  QUICK FILTERS + CUISINES STRIP                                           */
+/*  FOOD CATEGORIES STRIP                                                     */
+/* -------------------------------------------------------------------------- */
+
+type FoodCategory = {
+  id: string;
+  name: string;
+  iconUrl?: string;
+  priority?: number;
+};
+
+const FoodCategoriesRow: React.FC<{ categories: FoodCategory[] }> = ({ categories }) => {
+  const nav = useNavigation<any>();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollX = useRef(0);
+  const animationRef = useRef<NodeJS.Timeout>();
+
+  if (!categories.length) return null;
+
+  // Create triple duplicated content for smoother infinite scroll
+  const triplicatedCategories = [...categories, ...categories, ...categories];
+
+  // Smooth auto-scroll effect
+  useEffect(() => {
+    const itemWidth = 92; // 80px width + 12px margin
+    const originalContentWidth = categories.length * itemWidth;
+    
+    const startScrolling = () => {
+      animationRef.current = setInterval(() => {
+        scrollX.current += 0.8; // Smooth scroll speed
+        
+        // Reset seamlessly when we reach the end of the first duplicate
+        if (scrollX.current >= originalContentWidth) {
+          scrollX.current = 0;
+        }
+        
+        scrollViewRef.current?.scrollTo({ 
+          x: scrollX.current, 
+          animated: false 
+        });
+      }, 16); // 60fps for smooth animation
+    };
+
+    // Start scrolling after a small delay
+    const timeout = setTimeout(startScrolling, 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, [categories.length]);
+
+  return (
+    <View style={{ marginTop: 8 }}>
+      <Text style={styles.sectionTitle}>What type of home food?</Text>
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesContainer}
+        scrollEventThrottle={16}
+        onTouchStart={() => {
+          // Pause auto-scroll when user touches
+          if (animationRef.current) {
+            clearInterval(animationRef.current);
+          }
+        }}
+        onTouchEnd={() => {
+          // Resume auto-scroll after user stops touching
+          setTimeout(() => {
+            const itemWidth = 92;
+            const originalContentWidth = categories.length * itemWidth;
+            
+            animationRef.current = setInterval(() => {
+              scrollX.current += 0.8;
+              
+              if (scrollX.current >= originalContentWidth) {
+                scrollX.current = 0;
+              }
+              
+              scrollViewRef.current?.scrollTo({ 
+                x: scrollX.current, 
+                animated: false 
+              });
+            }, 16);
+          }, 2000); // Resume after 2 seconds
+        }}
+      >
+        {triplicatedCategories.map((c, index) => (
+          <Pressable
+            key={`${c.id}-${index}`}
+            style={styles.categoryPill}
+            onPress={() =>
+              nav.navigate("HomeFoodCategoryListing", {
+                categoryId: c.id,
+                categoryName: c.name,
+              })
+            }
+          >
+            <View style={styles.categoryIconWrapper}>
+              {c.iconUrl ? (
+                <Image
+                  source={{ uri: c.iconUrl }}
+                  style={styles.categoryIcon}
+                  contentFit="cover"
+                />
+              ) : (
+                <MaterialIcons name="kitchen" size={20} color="#444" />
+              )}
+            </View>
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {c.name}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  QUICK FILTERS                                                             */
 /* -------------------------------------------------------------------------- */
 
 const QUICK_FILTERS: { key: QuickFilterKey; label: string; icon: string }[] = [
   { key: "veg", label: "Veg only", icon: "eco" },
-  { key: "fast", label: "Fast delivery", icon: "bolt" },
-  { key: "rating", label: "Rating 4.0+", icon: "star-rate" },
-  { key: "offers", label: "Great offers", icon: "local-offer" },
+  { key: "fast", label: "Quick meals", icon: "bolt" },
+  { key: "rating", label: "Top rated", icon: "star-rate" },
+  { key: "verified", label: "Verified cooks", icon: "verified" },
+  { key: "nearby", label: "Nearby", icon: "near-me" },
 ];
 
 const QuickFiltersRow: React.FC<{
@@ -299,126 +433,15 @@ const QuickFiltersRow: React.FC<{
   );
 };
 
-const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
-  const nav = useNavigation<any>();
-  const scrollViewRef = useRef<ScrollView>(null);
-  const scrollX = useRef(0);
-  const animationRef = useRef<NodeJS.Timeout>();
-
-  if (!cuisines.length) return null;
-
-  // Create triple duplicated content for smoother infinite scroll
-  const triplicatedCuisines = [...cuisines, ...cuisines, ...cuisines];
-
-  // Smooth auto-scroll effect
-  useEffect(() => {
-    const itemWidth = 92; // 80px width + 12px margin
-    const originalContentWidth = cuisines.length * itemWidth;
-    
-    const startScrolling = () => {
-      animationRef.current = setInterval(() => {
-        scrollX.current += 0.8; // Smooth scroll speed
-        
-        // Reset seamlessly when we reach the end of the first duplicate
-        if (scrollX.current >= originalContentWidth) {
-          scrollX.current = 0;
-        }
-        
-        scrollViewRef.current?.scrollTo({ 
-          x: scrollX.current, 
-          animated: false 
-        });
-      }, 16); // 60fps for smooth animation
-    };
-
-    // Start scrolling after a small delay
-    const timeout = setTimeout(startScrolling, 1000);
-
-    return () => {
-      clearTimeout(timeout);
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
-    };
-  }, [cuisines.length]);
-
-  return (
-    <View style={{ marginTop: 8 }}>
-      <Text style={styles.sectionTitle}>What&apos;s on your mind?</Text>
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.cuisinesContainer}
-        scrollEventThrottle={16}
-        onTouchStart={() => {
-          // Pause auto-scroll when user touches
-          if (animationRef.current) {
-            clearInterval(animationRef.current);
-          }
-        }}
-        onTouchEnd={() => {
-          // Resume auto-scroll after user stops touching
-          setTimeout(() => {
-            const itemWidth = 92;
-            const originalContentWidth = cuisines.length * itemWidth;
-            
-            animationRef.current = setInterval(() => {
-              scrollX.current += 0.8;
-              
-              if (scrollX.current >= originalContentWidth) {
-                scrollX.current = 0;
-              }
-              
-              scrollViewRef.current?.scrollTo({ 
-                x: scrollX.current, 
-                animated: false 
-              });
-            }, 16);
-          }, 2000); // Resume after 2 seconds
-        }}
-      >
-        {triplicatedCuisines.map((c, index) => (
-          <Pressable
-            key={`${c.id}-${index}`}
-            style={styles.cuisinePill}
-            onPress={() =>
-              nav.navigate("RestaurantCategoryListing", {
-                cuisineId: c.id,
-                cuisineName: c.name,
-              })
-            }
-          >
-            <View style={styles.cuisineIconWrapper}>
-              {c.iconUrl ? (
-                <Image
-                  source={{ uri: c.iconUrl }}
-                  style={styles.cuisineIcon}
-                  contentFit="cover"
-                />
-              ) : (
-                <MaterialIcons name="restaurant" size={20} color="#444" />
-              )}
-            </View>
-            <Text style={styles.cuisineName} numberOfLines={1}>
-              {c.name}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
-  );
-};
-
 /* -------------------------------------------------------------------------- */
-/*  RESTAURANT TILE                                                           */
+/*  HOME COOK TILE                                                            */
 /* -------------------------------------------------------------------------- */
 
-type RestaurantTileProps = {
-  restaurant: Restaurant;
+type HomeCookTileProps = {
+  cook: HomeCook;
 };
 
-const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
+const HomeCookTile: React.FC<HomeCookTileProps> = ({ cook }) => {
   const nav = useNavigation<any>();
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -441,106 +464,87 @@ const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
   };
 
   const onPress = () => {
-    nav.navigate("RestaurantDetails", { restaurantId: restaurant.id });
+    nav.navigate("HomeCookDetails", { cookId: cook.id });
   };
 
   const {
     name,
-    heroImageUrl,
-    cuisines = [],
+    profileImageUrl,
+    specialties = [],
     rating,
     ratingCount,
     deliveryTimeMin,
     deliveryTimeMax,
-    costForTwo,
-    isPureVeg,
-    offerText,
+    avgCostPerMeal,
+    isVerified,
+    description,
     distanceKm,
-    isPromoted,
-  } = restaurant;
+    kitchenType,
+  } = cook;
 
   const etaLabel =
     deliveryTimeMin && deliveryTimeMax
       ? `${deliveryTimeMin}-${deliveryTimeMax} mins`
       : deliveryTimeMin
       ? `${deliveryTimeMin} mins`
-      : "30-40 mins";
+      : "45-60 mins";
 
   const ratingLabel = rating != null ? rating.toFixed(1) : "NEW";
-
   const ratingCountLabel =
     ratingCount != null && ratingCount > 0 ? `(${ratingCount})` : "";
 
-  const cuisinesLabel = cuisines.join(", ");
+  const specialtiesLabel = specialties.join(", ");
   const costLabel =
-    costForTwo != null ? `₹${costForTwo} for two` : "Pocket friendly";
+    avgCostPerMeal != null ? `₹${avgCostPerMeal} avg per meal` : "Affordable";
 
   const distanceLabel =
     distanceKm != null ? `${distanceKm.toFixed(1)} km` : "";
 
   return (
     <Animated.View
-      style={[styles.restaurantCardWrap, { transform: [{ scale }] }]}
+      style={[styles.cookCardWrap, { transform: [{ scale }] }]}
     >
       <Pressable
         onPress={onPress}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
-        style={styles.restaurantCard}
+        style={styles.cookCard}
       >
-        <View style={styles.restaurantImageWrapper}>
-          {heroImageUrl ? (
+        <View style={styles.cookImageWrapper}>
+          {profileImageUrl ? (
             <Image
-              source={{ uri: heroImageUrl }}
-              style={styles.restaurantImage}
+              source={{ uri: profileImageUrl }}
+              style={styles.cookImage}
               contentFit="cover"
               cachePolicy="disk"
               transition={160}
             />
           ) : (
-            <View
-              style={[
-                styles.restaurantImage,
-                styles.restaurantImagePlaceholder,
-              ]}
-            >
-              <MaterialIcons name="restaurant-menu" size={40} color="#ccc" />
+            <View style={[styles.cookImage, styles.cookImagePlaceholder]}>
+              <MaterialIcons name="person" size={40} color="#ccc" />
             </View>
           )}
 
           {/* Top labels */}
-          <View style={styles.restaurantTopLabels}>
-            {isPromoted && (
-              <View style={styles.promotedTag}>
-                <Text style={styles.promotedTagTxt}>PROMOTED</Text>
+          <View style={styles.cookTopLabels}>
+            {isVerified && (
+              <View style={styles.verifiedTag}>
+                <MaterialIcons name="verified" size={12} color="#fff" />
+                <Text style={styles.verifiedTagTxt}>VERIFIED</Text>
               </View>
             )}
-            {isPureVeg && (
-              <View style={styles.vegTag}>
-                <Text style={styles.vegTagTxt}>PURE VEG</Text>
+            {kitchenType === "home" && (
+              <View style={styles.homeKitchenTag}>
+                <MaterialIcons name="home" size={12} color="#fff" />
+                <Text style={styles.homeKitchenTagTxt}>HOME KITCHEN</Text>
               </View>
             )}
           </View>
-
-          {/* Offer ribbon */}
-          {!!offerText && (
-            <View style={styles.offerRibbon}>
-              <MaterialIcons
-                name="local-offer"
-                size={14}
-                color="#fff"
-                style={{ marginRight: 4 }}
-              />
-              <Text numberOfLines={1} style={styles.offerRibbonTxt}>
-                {offerText}
-              </Text>
-            </View>
-          )}
         </View>
 
-        <View style={styles.restaurantInfoBlock}>
-          <View style={styles.restaurantRowTop}>
-            <Text style={styles.restaurantName} numberOfLines={1}>
+        <View style={styles.cookInfoBlock}>
+          <View style={styles.cookRowTop}>
+            <Text style={styles.cookName} numberOfLines={1}>
               {name}
             </Text>
           </View>
@@ -560,9 +564,15 @@ const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
             ) : null}
           </View>
 
-          <Text style={styles.cuisineLine} numberOfLines={1}>
-            {cuisinesLabel || "Multi-cuisine · Himachali · North Indian"}
+          <Text style={styles.specialtiesLine} numberOfLines={1}>
+            {specialtiesLabel || "North Indian · Home-style cooking"}
           </Text>
+
+          {description && (
+            <Text style={styles.descriptionLine} numberOfLines={2}>
+              {description}
+            </Text>
+          )}
 
           <View style={styles.costDistanceRow}>
             <Text style={styles.costDistanceTxt}>{costLabel}</Text>
@@ -580,41 +590,130 @@ const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
 };
 
 /* -------------------------------------------------------------------------- */
+/*  AUTO SCROLL CAROUSEL COMPONENT                                            */
+/* -------------------------------------------------------------------------- */
+
+type AutoScrollCarouselProps<T> = {
+  data: T[];
+  renderItem: (item: T) => React.ReactNode;
+};
+
+const AutoScrollCarousel = <T extends { id: string }>({ 
+  data, 
+  renderItem 
+}: AutoScrollCarouselProps<T>) => {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollX = useRef(0);
+  const animationRef = useRef<NodeJS.Timeout>();
+
+  // Create triple duplicated content for smoother infinite scroll
+  const triplicatedData = [...data, ...data, ...data];
+
+  // Smooth auto-scroll effect
+  useEffect(() => {
+    if (data.length <= 2) return; // Don't scroll if too few items
+
+    const itemWidth = width * 0.75 + 12; // Card width + margin
+    const originalContentWidth = data.length * itemWidth;
+    
+    const startScrolling = () => {
+      animationRef.current = setInterval(() => {
+        scrollX.current += 0.4; // Slower scroll speed for carousels
+        
+        // Reset seamlessly when we reach the end of the first duplicate
+        if (scrollX.current >= originalContentWidth) {
+          scrollX.current = 0;
+        }
+        
+        scrollViewRef.current?.scrollTo({ 
+          x: scrollX.current, 
+          animated: false 
+        });
+      }, 16); // 60fps for smooth animation
+    };
+
+    // Start scrolling after a small delay
+    const timeout = setTimeout(startScrolling, 1500);
+
+    return () => {
+      clearTimeout(timeout);
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, [data.length]);
+
+  return (
+    <ScrollView
+      ref={scrollViewRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.carouselContainer}
+      scrollEventThrottle={16}
+      onTouchStart={() => {
+        // Pause auto-scroll when user touches
+        if (animationRef.current) {
+          clearInterval(animationRef.current);
+        }
+      }}
+      onTouchEnd={() => {
+        // Resume auto-scroll after user stops touching
+        setTimeout(() => {
+          const itemWidth = width * 0.75 + 12;
+          const originalContentWidth = data.length * itemWidth;
+          
+          animationRef.current = setInterval(() => {
+            scrollX.current += 0.4;
+            
+            if (scrollX.current >= originalContentWidth) {
+              scrollX.current = 0;
+            }
+            
+            scrollViewRef.current?.scrollTo({ 
+              x: scrollX.current, 
+              animated: false 
+            });
+          }, 16);
+        }, 3000); // Resume after 3 seconds
+      }}
+    >
+      {triplicatedData.map((item, index) => (
+        <React.Fragment key={`${item.id}-${index}`}>
+          {renderItem(item)}
+        </React.Fragment>
+      ))}
+    </ScrollView>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
 /*  MAIN SCREEN                                                               */
 /* -------------------------------------------------------------------------- */
 
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
-
-export default function NinjaEatsHomeScreen() {
+export default function HomeFoodScreen() {
   const nav = useNavigation<any>();
   const { location } = useLocationContext();
 
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [cuisines, setCuisines] = useState<Cuisine[]>([]);
+  const [homeCooks, setHomeCooks] = useState<HomeCook[]>([]);
+  const [foodCategories, setFoodCategories] = useState<FoodCategory[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeVerticalMode, setActiveVerticalMode] =
-    useState<"grocery" | "restaurants">("restaurants");
   const [activeFilter, setActiveFilter] = useState<QuickFilterKey | null>(null);
 
-  // Permission-based location prompt logic - Show immediately on load
+  // Permission-based location prompt logic
   const [hasPerm, setHasPerm] = useState<boolean | null>(null);
   const [selectManually, setSelectManually] = useState(false);
-  // Show prompt immediately unless user already has a location set
   const [showLocationPrompt, setShowLocationPrompt] = useState(
     !location.lat && !location.lng && !location.address
   );
 
-  // Check location permissions on mount but don't hide prompt based on permissions
+  // Check location permissions on mount
   useEffect(() => {
-    console.log('[NinjaEats] Checking location permissions...');
     Location.getForegroundPermissionsAsync().then((r) => {
-      console.log('[NinjaEats] Permission status:', r.status);
       const hasPermission = r.status === "granted";
       setHasPerm(hasPermission);
-      // Don't automatically hide the prompt - let user choose
     }).catch((error) => {
-      console.error('[NinjaEats] Error checking permissions:', error);
+      console.error('[HomeFood] Error checking permissions:', error);
       setHasPerm(false);
     });
   }, []);
@@ -622,77 +721,16 @@ export default function NinjaEatsHomeScreen() {
   // Hide prompt if user already has location
   useEffect(() => {
     if (location.lat && location.lng) {
-      console.log('[NinjaEats] User has location, hiding prompt');
       setShowLocationPrompt(false);
     }
   }, [location.lat, location.lng]);
 
-  // Debug log for render condition
+  // Fetch home cooks from Firestore
   useEffect(() => {
-    console.log('[NinjaEats] Render state:', {
-      hasPerm,
-      selectManually,
-      showLocationPrompt,
-      shouldShowPrompt: showLocationPrompt,
-      location: {
-        lat: location.lat,
-        lng: location.lng,
-        address: location.address,
-        cityId: location.cityId
-      }
-    });
-  }, [hasPerm, selectManually, showLocationPrompt, location]);
-
-  // Ensure we stay on NinjaEats screen when returning from location selection
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('[NinjaEats] Screen focused - ensuring we stay on restaurants');
-      // Force the vertical switcher to show restaurants mode
-      setActiveVerticalMode("restaurants");
-      
-      // If user is returning from location selection, hide the prompt
-      if (selectManually) {
-        setShowLocationPrompt(false);
-      }
-      
-      return () => {
-        // Cleanup if needed
-      };
-    }, [selectManually])
-  );
-
-  const scrollY = useRef(new Animated.Value(0)).current;
-
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [INITIAL_HEADER_HEIGHT, COLLAPSED_HEADER_HEIGHT],
-    extrapolate: "clamp",
-  });
-
-  const headerPaddingTop = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [INITIAL_PADDING_TOP, COLLAPSED_PADDING_TOP],
-    extrapolate: "clamp",
-  });
-
-  const videoOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [1, 0.2],
-    extrapolate: "clamp",
-  });
-
-  /* ---------------------------- Firestore fetches --------------------------- */
-
-  // Restaurants – city-aware
-  useEffect(() => {
-    // DEV fallback: if cityId not set yet, default to Dharamshala so you see data
     const effectiveCityId = location.cityId || "dharamshala";
 
-    console.log('[NinjaEats] Fetching restaurants for cityId:', effectiveCityId);
-    console.log('[NinjaEats] Current location:', location);
-
     if (!effectiveCityId) {
-      setRestaurants([]);
+      setHomeCooks([]);
       setLoading(false);
       return;
     }
@@ -700,23 +738,22 @@ export default function NinjaEatsHomeScreen() {
     setLoading(true);
 
     const unsub = firestore()
-      .collection("restaurants")
+      .collection("homeCooks")
       .where("isActive", "==", true)
       .where("cityId", "==", effectiveCityId)
       .onSnapshot(
         (snap) => {
-          const list: Restaurant[] = snap.docs.map((d) => ({
+          const list: HomeCook[] = snap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as any),
           }));
-          console.log('[NinjaEats] Loaded restaurants:', list.length);
-          setRestaurants(list);
+          setHomeCooks(list);
           setLoading(false);
           setError(null);
         },
         (e) => {
-          console.warn("[NinjaEats] restaurants error", e);
-          setError("Could not load restaurants.");
+          console.warn("[HomeFood] homeCooks error", e);
+          setError("Could not load home cooks.");
           setLoading(false);
         }
       );
@@ -724,21 +761,21 @@ export default function NinjaEatsHomeScreen() {
     return () => unsub();
   }, [location.cityId]);
 
-  // Cuisines – global (later can filter by city if you want city-specific cuisines)
+  // Food Categories – global
   useEffect(() => {
     const unsub = firestore()
-      .collection("cuisines")
+      .collection("foodCategories")
       .orderBy("priority", "asc")
       .onSnapshot(
         (snap) => {
-          const list: Cuisine[] = snap.docs.map((d) => ({
+          const list: FoodCategory[] = snap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as any),
           }));
-          setCuisines(list);
+          setFoodCategories(list);
         },
         (e) => {
-          console.warn("[NinjaEats] cuisines error", e);
+          console.warn("[HomeFood] foodCategories error", e);
         }
       );
     return () => unsub();
@@ -748,76 +785,43 @@ export default function NinjaEatsHomeScreen() {
 
   const topRated = useMemo(
     () =>
-      [...restaurants]
-        .filter((r) => (r.rating ?? 0) >= 4)
+      [...homeCooks]
+        .filter((c) => (c.rating ?? 0) >= 4.5)
         .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
         .slice(0, 10),
-    [restaurants]
+    [homeCooks]
   );
 
-  const fastDelivery = useMemo(
+  const verified = useMemo(
+    () => homeCooks.filter((c) => c.isVerified).slice(0, 10),
+    [homeCooks]
+  );
+
+  const nearby = useMemo(
     () =>
-      restaurants
-        .filter((r) => (r.deliveryTimeMin ?? 999) <= 30)
+      homeCooks
+        .filter((c) => (c.distanceKm ?? 999) <= 5)
         .slice(0, 10),
-    [restaurants]
+    [homeCooks]
   );
 
-  const budgetFriendly = useMemo(
-    () =>
-      restaurants
-        .filter((r) => (r.costForTwo ?? 999) <= 300)
-        .slice(0, 10),
-    [restaurants]
-  );
-
-  const filteredRestaurants = useMemo(() => {
-    let list = [...restaurants];
+  const filteredHomeCooks = useMemo(() => {
+    let list = [...homeCooks];
 
     if (activeFilter === "veg") {
-      list = list.filter((r) => r.isPureVeg);
+      list = list.filter((c) => c.specialties?.some(s => s.toLowerCase().includes('veg')));
     } else if (activeFilter === "fast") {
-      list = list.filter((r) => (r.deliveryTimeMin ?? 999) <= 30);
+      list = list.filter((c) => (c.deliveryTimeMin ?? 999) <= 30);
     } else if (activeFilter === "rating") {
-      list = list.filter((r) => (r.rating ?? 0) >= 4.0);
-    } else if (activeFilter === "offers") {
-      list = list.filter((r) => !!r.offerText);
+      list = list.filter((c) => (c.rating ?? 0) >= 4.0);
+    } else if (activeFilter === "verified") {
+      list = list.filter((c) => c.isVerified);
+    } else if (activeFilter === "nearby") {
+      list = list.filter((c) => (c.distanceKm ?? 999) <= 5);
     }
 
     return list;
-  }, [restaurants, activeFilter]);
-
-  /* --------------------------- Switcher interactions ------------------------ */
-
-const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
-  if (mode === "grocery") {
-    // Start performance monitoring
-    PerformanceMonitor.startTimer("restaurants-to-grocery");
-    
-    // Immediate visual feedback - update state first
-    setActiveVerticalMode(mode);
-    
-    // Use requestAnimationFrame for smoother transition with longer delay for loader visibility
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        nav.replace("AppTabs", {
-          screen: "HomeTab",
-          params: { screen: "ProductsHome" }
-        });
-        
-        // End performance monitoring after navigation
-        setTimeout(() => {
-          PerformanceMonitor.endTimer("restaurants-to-grocery");
-        }, 100);
-      }, 200); // Increased delay to ensure loader is visible
-    });
-  }
-  // For restaurants mode, we're already here, so just update the state
-  setActiveVerticalMode(mode);
-}, [nav]);
-
-
-
+  }, [homeCooks, activeFilter]);
 
   /* ------------------------------ List header ------------------------------- */
 
@@ -828,79 +832,70 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
         onChange={setActiveFilter}
       />
 
-      <CuisinesRow cuisines={cuisines} />
+      <FoodCategoriesRow categories={foodCategories} />
 
       {topRated.length > 0 && (
         <View style={{ marginTop: 18 }}>
           <View style={styles.carouselHeaderRow}>
-            <Text style={styles.sectionTitle}>Top rated near you</Text>
+            <Text style={styles.sectionTitle}>Top rated home cooks</Text>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContainer}
-          >
-            {topRated.map((r) => (
-              <View key={r.id} style={styles.carouselCardWrapper}>
-                <RestaurantTile restaurant={r} />
+          <AutoScrollCarousel
+            data={topRated}
+            renderItem={(cook) => (
+              <View style={styles.carouselCardWrapper}>
+                <HomeCookTile cook={cook} />
               </View>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       )}
 
-      {fastDelivery.length > 0 && (
+      {verified.length > 0 && (
         <View style={{ marginTop: 18 }}>
           <View style={styles.carouselHeaderRow}>
-            <Text style={styles.sectionTitle}>Lightning-fast delivery</Text>
+            <Text style={styles.sectionTitle}>Verified home cooks</Text>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContainer}
-          >
-            {fastDelivery.map((r) => (
-              <View key={r.id} style={styles.carouselCardWrapper}>
-                <RestaurantTile restaurant={r} />
+          <AutoScrollCarousel
+            data={verified}
+            renderItem={(cook) => (
+              <View style={styles.carouselCardWrapper}>
+                <HomeCookTile cook={cook} />
               </View>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       )}
 
-      {budgetFriendly.length > 0 && (
+      {nearby.length > 0 && (
         <View style={{ marginTop: 18 }}>
           <View style={styles.carouselHeaderRow}>
-            <Text style={styles.sectionTitle}>Budget-friendly eats</Text>
+            <Text style={styles.sectionTitle}>Home cooks near you</Text>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContainer}
-          >
-            {budgetFriendly.map((r) => (
-              <View key={r.id} style={styles.carouselCardWrapper}>
-                <RestaurantTile restaurant={r} />
+          <AutoScrollCarousel
+            data={nearby}
+            renderItem={(cook) => (
+              <View style={styles.carouselCardWrapper}>
+                <HomeCookTile cook={cook} />
               </View>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       )}
 
       <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
-        All restaurants around you
+        All home cooks in your area
       </Text>
     </>
-  ), [activeFilter, setActiveFilter, cuisines, topRated, fastDelivery, budgetFriendly]);
+  ), [activeFilter, setActiveFilter, topRated, verified, nearby]);
 
   // Memoize the render item function for better performance
-  const renderRestaurantItem = useCallback(({ item }: { item: Restaurant }) => (
-    <RestaurantTile restaurant={item} />
+  const renderHomeCookItem = useCallback(({ item }: { item: HomeCook }) => (
+    <HomeCookTile cook={item} />
   ), []);
 
   /* ------------------------------ Loading / UI ------------------------------ */
 
-  if (loading && !restaurants.length) {
+  if (loading && !homeCooks.length) {
     return (
       <View style={[styles.center, { flex: 1 }]}>
         <Loader />
@@ -938,15 +933,7 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
 
           {/* Search bar */}
           <View style={styles.staticSearchRow}>
-            <RotatingRestaurantSearchBar />
-          </View>
-
-          {/* Vertical switcher below search */}
-          <View style={styles.staticSwitcherRow}>
-            <VerticalSwitcher
-              active={activeVerticalMode}
-              onChange={handleModeChange}
-            />
+            <RotatingHomeFoodSearchBar />
           </View>
         </View>
       </View>
@@ -956,14 +943,14 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
 
       {hasPerm !== false || selectManually ? (
         <FlatList
-          data={filteredRestaurants}
-          keyExtractor={(item: Restaurant) => item.id}
-          renderItem={renderRestaurantItem}
+          data={filteredHomeCooks}
+          keyExtractor={(item: HomeCook) => item.id}
+          renderItem={renderHomeCookItem}
           ListHeaderComponent={listHeader}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingTop: 16, // Just basic padding since header is now static
-            paddingBottom: 32,
+            paddingTop: 16,
+            paddingBottom: 100, // Extra padding for bottom tab
           }}
           // Performance optimizations
           removeClippedSubviews={true}
@@ -971,16 +958,17 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
           windowSize={10}
           initialNumToRender={8}
           getItemLayout={(data, index) => ({
-            length: 200, // Approximate item height
-            offset: 200 * index,
+            length: 220, // Approximate item height
+            offset: 220 * index,
             index,
           })}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No restaurants found</Text>
+                <MaterialIcons name="kitchen" size={48} color="#ccc" />
+                <Text style={styles.emptyTitle}>No home cooks found</Text>
                 <Text style={styles.emptySubtitle}>
-                  Try changing filters or updating your location.
+                  Try changing filters or updating your location to find home cooks near you.
                 </Text>
               </View>
             ) : (
@@ -994,10 +982,9 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
         <View style={{ flex: 1 }} />
       )}
 
-      {/* Location Prompt Card - Show immediately on load */}
+      {/* Location Prompt Card */}
       {showLocationPrompt && (
         <>
-          {/* Overlay background */}
           <View style={styles.locationPromptOverlay} />
           <LocationPromptCard
             setHasPerm={setHasPerm}
@@ -1018,7 +1005,7 @@ const styles = StyleSheet.create({
   center: { justifyContent: "center", alignItems: "center" },
 
   staticHeaderWrapper: {
-    height: 180, // Reduced height for smaller video + content
+    height: 180,
     position: "relative",
     zIndex: 999,
     elevation: 20,
@@ -1026,7 +1013,7 @@ const styles = StyleSheet.create({
 
   staticVideoContainer: {
     ...StyleSheet.absoluteFillObject,
-    height: 180, // Matching reduced height
+    height: 180,
   },
 
   staticContentContainer: {
@@ -1038,41 +1025,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 
-  staticSwitcherRow: {
-    alignSelf: "flex-start",
-    marginTop: 12, // Space below search bar
-  },
-
   staticSearchRow: {
     marginTop: 10,
   },
-
-  headerWrapper: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    elevation: 20,
-  },
-  topBg: {
-    paddingHorizontal: H,
-    paddingBottom: 16,
-    backgroundColor: "transparent",
-  },
-
-  searchContainer: {
-  height: 55,              // 👈 fixed height like Grocery
-  justifyContent: "center",
-  marginTop: 6,
-},
-
-verticalSwitcherRow: {
-  position: "absolute",
-  top: Platform.OS === "ios" ? 104 : 92, // below location + search
-  left: 18,          // 👈 move to LEFT
-  zIndex: 1000,
-},
 
   locationRow: {
     flexDirection: "row",
@@ -1154,18 +1109,18 @@ verticalSwitcherRow: {
     color: "#fff",
   },
 
-  /* Cuisines */
-  cuisinesContainer: {
+  /* Food categories */
+  categoriesContainer: {
     paddingHorizontal: H,
     paddingBottom: 4,
     paddingTop: 6,
   },
-  cuisinePill: {
+  categoryPill: {
     width: 80,
     alignItems: "center",
     marginRight: 12,
   },
-  cuisineIconWrapper: {
+  categoryIconWrapper: {
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -1181,12 +1136,12 @@ verticalSwitcherRow: {
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  cuisineIcon: {
+  categoryIcon: {
     width: "100%",
     height: "100%",
     borderRadius: 32,
   },
-  cuisineName: {
+  categoryName: {
     fontSize: 11,
     color: "#444",
     textAlign: "center",
@@ -1216,12 +1171,12 @@ verticalSwitcherRow: {
     marginRight: 12,
   },
 
-  /* Restaurant cards */
-  restaurantCardWrap: {
+  /* Home Cook cards */
+  cookCardWrap: {
     marginHorizontal: H,
     marginTop: 12,
   },
-  restaurantCard: {
+  cookCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
     overflow: "hidden",
@@ -1231,76 +1186,65 @@ verticalSwitcherRow: {
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  restaurantImageWrapper: {
+  cookImageWrapper: {
     position: "relative",
   },
-  restaurantImage: {
+  cookImage: {
     width: "100%",
     height: 170,
     backgroundColor: "#f5f5f5",
   },
-  restaurantImagePlaceholder: {
+  cookImagePlaceholder: {
     justifyContent: "center",
     alignItems: "center",
   },
-  restaurantTopLabels: {
+  cookTopLabels: {
     position: "absolute",
     top: 8,
     left: 8,
     flexDirection: "row",
     gap: 6,
   },
-  promotedTag: {
-    backgroundColor: "rgba(0,0,0,0.75)",
+  verifiedTag: {
+    backgroundColor: "#4caf50",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-  },
-  promotedTagTxt: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  vegTag: {
-    backgroundColor: "#e8f5e9",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  vegTagTxt: {
-    color: "#2e7d32",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  offerRibbon: {
-    position: "absolute",
-    bottom: 8,
-    left: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
     flexDirection: "row",
     alignItems: "center",
   },
-  offerRibbonTxt: {
+  verifiedTagTxt: {
     color: "#fff",
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
+    marginLeft: 2,
+  },
+  homeKitchenTag: {
+    backgroundColor: "#ff9800",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  homeKitchenTagTxt: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    marginLeft: 2,
   },
 
-  restaurantInfoBlock: {
+  cookInfoBlock: {
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10,
   },
-  restaurantRowTop: {
+  cookRowTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  restaurantName: {
+  cookName: {
     flex: 1,
     fontSize: 16,
     fontWeight: "700",
@@ -1338,10 +1282,16 @@ verticalSwitcherRow: {
     marginHorizontal: 5,
   },
 
-  cuisineLine: {
+  specialtiesLine: {
     marginTop: 4,
     fontSize: 12,
     color: "#777",
+  },
+  descriptionLine: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#666",
+    fontStyle: "italic",
   },
   costDistanceRow: {
     flexDirection: "row",
@@ -1357,103 +1307,94 @@ verticalSwitcherRow: {
   emptyState: {
     alignItems: "center",
     marginTop: 40,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: "#333",
     marginBottom: 4,
+    marginTop: 12,
   },
   emptySubtitle: {
     fontSize: 13,
     color: "#777",
     textAlign: "center",
-    paddingHorizontal: 32,
+    lineHeight: 18,
   },
-  searchSwitcherRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginTop: 20,
-},
 
-searchFlex: {
-  flex: 1,              // 👈 search takes remaining space
-  marginRight: 40,       // 👈 gap between search & switcher
-},
-
-/* Location Prompt Card */
-locationPromptOverlay: {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: "rgba(0, 0, 0, 0.5)",
-  zIndex: 9998,
-},
-locationPromptSheet: {
-  position: "absolute",
-  top: "50%",
-  left: 20,
-  right: 20,
-  transform: [{ translateY: -150 }], // Adjust this value to center properly
-  backgroundColor: "#fff",
-  borderRadius: 24,
-  padding: 20,
-  shadowColor: "#000",
-  shadowOpacity: 0.25,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 15,
-  zIndex: 9999, // Ensure it's on top
-},
-locationPromptHandle: {
-  alignSelf: "center",
-  width: 40,
-  height: 4,
-  borderRadius: 2,
-  backgroundColor: "#ccc",
-  marginBottom: 12,
-},
-locationPromptHeader: { 
-  flexDirection: "row", 
-  alignItems: "center", 
-  marginBottom: 8 
-},
-locationPromptTitle: { 
-  fontSize: 18, 
-  fontWeight: "700", 
-  color: "#333", 
-  marginLeft: 6 
-},
-locationPromptSubtitle: { 
-  fontSize: 14, 
-  color: "#555", 
-  lineHeight: 20, 
-  marginBottom: 20 
-},
-locationPromptBtn: {
-  paddingVertical: 14,
-  borderRadius: 26,
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 10,
-},
-locationPromptBtnPrimary: { 
-  backgroundColor: "#00b4a0" 
-},
-locationPromptBtnSecondary: { 
-  backgroundColor: "#e0f2f1" 
-},
-locationPromptBtnTxtPrimary: { 
-  color: "#fff", 
-  fontSize: 16, 
-  fontWeight: "700" 
-},
-locationPromptBtnTxtSecondary: { 
-  color: "#00796b", 
-  fontSize: 16, 
-  fontWeight: "700" 
-},
-
+  /* Location Prompt Card */
+  locationPromptOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    zIndex: 9998,
+  },
+  locationPromptSheet: {
+    position: "absolute",
+    top: "50%",
+    left: 20,
+    right: 20,
+    transform: [{ translateY: -150 }],
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 15,
+    zIndex: 9999,
+  },
+  locationPromptHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#ccc",
+    marginBottom: 12,
+  },
+  locationPromptHeader: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    marginBottom: 8 
+  },
+  locationPromptTitle: { 
+    fontSize: 18, 
+    fontWeight: "700", 
+    color: "#333", 
+    marginLeft: 6 
+  },
+  locationPromptSubtitle: { 
+    fontSize: 14, 
+    color: "#555", 
+    lineHeight: 20, 
+    marginBottom: 20 
+  },
+  locationPromptBtn: {
+    paddingVertical: 14,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  locationPromptBtnPrimary: { 
+    backgroundColor: "#00b4a0" 
+  },
+  locationPromptBtnSecondary: { 
+    backgroundColor: "#e0f2f1" 
+  },
+  locationPromptBtnTxtPrimary: { 
+    color: "#fff", 
+    fontSize: 16, 
+    fontWeight: "700" 
+  },
+  locationPromptBtnTxtSecondary: { 
+    color: "#00796b", 
+    fontSize: 16, 
+    fontWeight: "700" 
+  },
 });

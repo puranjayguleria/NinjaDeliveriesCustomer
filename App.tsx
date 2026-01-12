@@ -90,6 +90,7 @@ import HiddenCouponCard from "./screens/RewardScreen";
 import { Linking } from "react-native";
 import  firebase  from "@react-native-firebase/app";
 import NinjaEatsHomeScreen from './screens/NinjaEatsHomeScreen';
+import HomeFoodScreen from './screens/HomeFoodScreen';
 import NinjaEatsSearchScreen from './screens/NinjaEatsSearchScreen';
 import NinjaEatsOrdersScreen from './screens/NinjaEatsOrdersScreen';
 import NinjaEatsProfileScreen from './screens/NinjaEatsProfileScreen';
@@ -182,9 +183,35 @@ const NinjaEatsOrdersStack = () => (
   </Stack.Navigator>
 );
 
+const HomeFoodStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen
+      name="HomeFoodHome"
+      component={HomeFoodScreen}
+    />
+    <Stack.Screen
+      name="HomeFoodSearch"
+      component={NinjaEatsSearchScreen}
+    />
+    <Stack.Screen
+      name="HomeCookDetails"
+      component={RestaurantDetailsScreen} // You can create a dedicated HomeCookDetailsScreen later
+    />
+    <Stack.Screen
+      name="RestaurantCategoryListing"
+      component={RestaurantCategoryListingScreen}
+    />
+    <Stack.Screen
+      name="RestaurantCheckout"
+      component={RestaurantCheckoutScreen}
+    />
+  </Stack.Navigator>
+);
+
 /**
  * Bottom tabs for Ninja Eats:
  * - Home (with its own stack)
+ * - Home Food
  * - Cuisines
  * - Orders
  * - Profile
@@ -193,6 +220,10 @@ const NinjaEatsTabs = () => {
   // Memoize tab bar icons for better performance
   const HomeIcon = React.useCallback(({ color, size }: any) => (
     <MaterialIcons name="home-filled" size={size} color={color} />
+  ), []);
+
+  const HomeFoodIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="kitchen" size={size} color={color} />
   ), []);
 
   const CuisinesIcon = React.useCallback(({ color, size }: any) => (
@@ -214,14 +245,15 @@ const NinjaEatsTabs = () => {
         tabBarActiveTintColor: "#00b4a0",
         tabBarInactiveTintColor: "#777",
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: "600",
         },
         tabBarStyle: {
           backgroundColor: "#ffffff",
           borderTopColor: "#eee",
           elevation: 8,
-          height: 56,
+          height: 60,
+          paddingBottom: 5,
         },
         // 🔥 PERFORMANCE OPTIMIZATIONS
         lazy: false,                    // Pre-load all tabs for instant switching
@@ -238,6 +270,15 @@ const NinjaEatsTabs = () => {
         options={{
           title: "Home",
           tabBarIcon: HomeIcon,
+        }}
+      />
+
+      <Tab.Screen
+        name="HomeFoodTab"
+        component={HomeFoodStack}
+        options={{
+          title: "Home Food",
+          tabBarIcon: HomeFoodIcon,
         }}
       />
 
