@@ -59,6 +59,7 @@ import { OrderProvider, useOrder } from "./context/OrderContext";
    Screens
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/ProductsHomeScreen";
+import ServicesScreen from "./screens/ServicesScreen";
 import CategoriesScreen from "./screens/CategoriesScreen";
 import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
@@ -481,6 +482,7 @@ function AppTabs() {
             CartFlow: "cart-outline",
             Profile: "person-outline",
             ContactUsTab: "call-outline",
+            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
@@ -534,7 +536,12 @@ function AppTabs() {
           component={CategoriesStack}
           options={{ title: "Categories" }}
         />
-
+        {/* ⿣ Services Tab */}
+        <Tab.Screen
+         name="ServicesTab"
+         component={ServicesScreen}
+         options={{ title: "Services" }}
+         />
         {/* ⿣ Featured Tab */}
         <Tab.Screen
           name="FeaturedTab"
