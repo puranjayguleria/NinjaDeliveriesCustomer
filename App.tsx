@@ -62,6 +62,7 @@ import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import GroceryProfileScreen from "./screens/GroceryProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
 import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
 import OrderTrackingScreen from "./screens/OrderTrackingScreen";
@@ -565,7 +566,7 @@ const CartStack = () => (
 
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="ProfileHome" component={ProfileScreen} />
+    <Stack.Screen name="ProfileHome" component={GroceryProfileScreen} />
     <Stack.Screen
       name="RewardScreen"
       component={HiddenCouponCard}

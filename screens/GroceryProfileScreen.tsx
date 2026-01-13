@@ -1,4 +1,4 @@
-// screens/NinjaEatsProfileScreen.tsx
+// screens/GroceryProfileScreen.tsx
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
@@ -27,11 +27,11 @@ import { CommonActions, useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
 import Loader from "@/components/VideoLoader";
 
-const ninjaOrange = "#FF6B35";
-const pastelOrange = "#FFF4F0";
-const primaryTextColor = "#D84315";
+const groceryGreen = "#4CAF50";
+const pastelGreen = "#e8f5e8";
+const primaryTextColor = "#2E7D32";
 
-interface RestaurantOrder {
+interface Order {
   id: string;
   status: string;
   createdAt: any;
@@ -43,14 +43,21 @@ interface RestaurantOrder {
   }>;
   subtotal?: number;
   discount?: number;
+  productCgst?: number;
+  productSgst?: number;
+  rideCgst?: number;
+  deliveryCharge?: number;
+  rideSgst?: number;
   finalTotal?: number;
+  pickupCoords?: { latitude: number; longitude: number };
+  dropoffCoords?: { latitude: number; longitude: number };
   refundAmount?: number;
-  restaurantName?: string;
-  deliveryAddress?: string;
-  estimatedDeliveryTime?: string;
+  convenienceFee?: number;
+  platformFee?: number;
+  surgeFee?: number;
 }
 
-const NinjaEatsProfileScreen: React.FC = () => {
+const GroceryProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const currentUser = auth().currentUser;
 
@@ -60,8 +67,8 @@ const NinjaEatsProfileScreen: React.FC = () => {
   const [userName, setUserName] = useState<string>("");
   const [dob, setDob] = useState<Date | null>(null);
 
-  // Restaurant Orders
-  const [orders, setOrders] = useState<RestaurantOrder[]>([]);
+  // Orders
+  const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState<boolean>(false);
 
   // For date pickers
@@ -69,7 +76,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
   const [showIosModal, setShowIosModal] = useState<boolean>(false);
 
   // Order details modal
-  const [selectedOrder, setSelectedOrder] = useState<RestaurantOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState<boolean>(false);
 
   // Keep old state for minimal re-renders
@@ -84,10 +91,10 @@ const NinjaEatsProfileScreen: React.FC = () => {
   const [reauthLoading, setReauthLoading] = useState(false);
 
   useEffect(() => {
-    console.log("[NinjaEatsProfileScreen] currentUser:", currentUser?.uid);
+    console.log("[GroceryProfileScreen] currentUser:", currentUser?.uid);
   }, [currentUser?.uid]);
 
-  /** Listen to user doc + restaurant orders */
+  /** Listen to user doc + orders */
   useEffect(() => {
     let unsubscribeUser: any;
     let unsubscribeOrders: any;
@@ -122,15 +129,16 @@ const NinjaEatsProfileScreen: React.FC = () => {
           }
         );
 
-      // 2) Listen to restaurant orders only
+      // 2) Listen to grocery orders only
       setOrdersLoading(true);
       unsubscribeOrders = firestore()
-        .collection("restaurantOrders")
+        .collection("orders")
         .where("orderedBy", "==", currentUser.uid)
+        .where("orderType", "==", "grocery") // Filter for grocery orders only
         .orderBy("createdAt", "desc")
         .onSnapshot(
           (snapshot) => {
-            const fetched: RestaurantOrder[] = [];
+            const fetched: Order[] = [];
             snapshot.forEach((doc) => {
               const data = doc.data();
               fetched.push({
@@ -142,9 +150,26 @@ const NinjaEatsProfileScreen: React.FC = () => {
                 discount: data.discount || 0,
                 finalTotal: data.finalTotal || 0,
                 refundAmount: data.refundAmount || 0,
-                restaurantName: data.restaurantName || "Unknown Restaurant",
-                deliveryAddress: data.deliveryAddress || "",
-                estimatedDeliveryTime: data.estimatedDeliveryTime || "",
+                surgeFee: data.surgeFee || 0,
+                productCgst: data.productCgst || 0,
+                productSgst: data.productSgst || 0,
+                rideCgst: data.rideCgst || 0,
+                rideSgst: data.rideSgst || 0,
+                deliveryCharge: data.deliveryCharge || 0,
+                convenienceFee: data.convenienceFee || 0,
+                platformFee: data.platformFee || 0,
+                pickupCoords: data.pickupCoords
+                  ? {
+                      latitude: data.pickupCoords.latitude,
+                      longitude: data.pickupCoords.longitude,
+                    }
+                  : undefined,
+                dropoffCoords: data.dropoffCoords
+                  ? {
+                      latitude: data.dropoffCoords.latitude,
+                      longitude: data.dropoffCoords.longitude,
+                    }
+                  : undefined,
               });
             });
 
@@ -156,7 +181,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
             setOrdersLoading(false);
           },
           (error) => {
-            Alert.alert("Error", "Failed to fetch your restaurant orders.");
+            Alert.alert("Error", "Failed to fetch your grocery orders.");
             setOrdersLoading(false);
           }
         );
@@ -201,7 +226,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: "NinjaEatsTabs" }],
+          routes: [{ name: "AppTabs" }],
         })
       );
     } catch (error) {
@@ -256,7 +281,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
-        routes: [{ name: "NinjaEatsTabs" }],
+        routes: [{ name: "AppTabs" }],
       })
     );
   };
@@ -273,7 +298,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: "NinjaEatsTabs" }],
+          routes: [{ name: "AppTabs" }],
         })
       );
     } catch (error: any) {
@@ -329,55 +354,6 @@ const NinjaEatsProfileScreen: React.FC = () => {
     );
   };
 
-  /** Reward section animation */
-  const scaleValue = new Animated.Value(1);
-  const rotateValue = new Animated.Value(0);
-
-  useEffect(() => {
-    // Continuous subtle animation
-    Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.spring(scaleValue, {
-            toValue: 1.05,
-            friction: 3,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleValue, {
-            toValue: 1,
-            friction: 5,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.timing(rotateValue, {
-          toValue: 1,
-          duration: 10000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Initial pop effect
-    scaleValue.setValue(0.5);
-    Animated.spring(scaleValue, {
-      toValue: 1,
-      friction: 6,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const rotateInterpolate = rotateValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["-3deg", "3deg"],
-  });
-
-  const handleRewardPress = () => {
-    Vibration.vibrate(50);
-    navigation.navigate("RewardScreen");
-  };
-
   /** For date picking */
   const openDatePicker = () => {
     if (Platform.OS === "ios") {
@@ -394,31 +370,69 @@ const NinjaEatsProfileScreen: React.FC = () => {
 
   const handleIosDone = () => setShowIosModal(false);
 
-  /** Navigate to restaurant order screen based on status */
+  /** Navigate to order screen based on status */
   const navigateToOrderScreen = useCallback(
-    (order: RestaurantOrder) => {
-      const { status, id } = order;
+    (order: Order) => {
+      const {
+        status,
+        id,
+        pickupCoords,
+        dropoffCoords,
+        finalTotal,
+        refundAmount,
+      } = order;
       if (!id) {
         Alert.alert("Error", "Invalid order ID.");
         return;
       }
+      if (!pickupCoords || !dropoffCoords) {
+        Alert.alert("Error", "Order location details are missing.");
+        return;
+      }
 
-      // Navigate to NinjaEats order detail screen
-      navigation.navigate("OrdersTab", {
-        screen: "NinjaEatsOrderDetail",
-        params: { orderId: id },
-      });
+      // Direct which screen to go to
+      if (status === "pending") {
+        navigation.navigate("HomeTab", {
+          screen: "OrderAllocating",
+          params: {
+            orderId: id,
+            pickupCoords,
+            dropoffCoords,
+            totalCost: finalTotal,
+          },
+        });
+      } else if (status === "cancelled") {
+        navigation.navigate("HomeTab", {
+          screen: "OrderCancelled",
+          params: { orderId: id, refundAmount: refundAmount || finalTotal },
+        });
+      } else if (status === "tripEnded") {
+        navigation.navigate("HomeTab", {
+          screen: "RatingScreen",
+          params: { orderId: id },
+        });
+      } else {
+        navigation.navigate("HomeTab", {
+          screen: "OrderTracking",
+          params: {
+            orderId: id,
+            pickupCoords,
+            dropoffCoords,
+            totalCost: finalTotal,
+          },
+        });
+      }
     },
     [navigation]
   );
 
-  const openDetailsModal = (order: RestaurantOrder) => {
+  const openDetailsModal = (order: Order) => {
     setSelectedOrder(order);
     setShowDetailsModal(true);
   };
 
-  /** RENDER RESTAURANT ORDER ITEM */
-  const renderOrderItem = ({ item }: { item: RestaurantOrder }) => {
+  /** RENDER ORDER ITEM */
+  const renderOrderItem = ({ item }: { item: Order }) => {
     const dateObj = item.createdAt?.toDate
       ? item.createdAt.toDate()
       : new Date(item.createdAt);
@@ -428,7 +442,6 @@ const NinjaEatsProfileScreen: React.FC = () => {
     return (
       <View style={styles.orderCard}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.restaurantName}>{item.restaurantName}</Text>
           <Text style={styles.orderId}>Order ID: {item.id}</Text>
           <Text style={styles.orderDate}>
             {dateString} at {timeString}
@@ -441,10 +454,10 @@ const NinjaEatsProfileScreen: React.FC = () => {
           </View>
           <View style={styles.orderActionRow}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: ninjaOrange }]}
+              style={[styles.actionButton, { backgroundColor: groceryGreen }]}
               onPress={() => navigateToOrderScreen(item)}
             >
-              <Text style={styles.actionButtonText}>Track Order</Text>
+              <Text style={styles.actionButtonText}>Go To Order</Text>
               <Ionicons
                 name="arrow-forward"
                 size={16}
@@ -487,12 +500,12 @@ const NinjaEatsProfileScreen: React.FC = () => {
           style={styles.promptImage}
         />
         <Text style={styles.promptText}>
-          Login to view and manage your Ninja Eats profile
+          Login to view and manage your grocery profile
         </Text>
         <Button
           mode="contained"
           onPress={() => navigation.navigate("Login" as never)}
-          style={{ backgroundColor: ninjaOrange, marginTop: 16 }}
+          style={{ backgroundColor: groceryGreen, marginTop: 16 }}
         >
           Login
         </Button>
@@ -507,8 +520,8 @@ const NinjaEatsProfileScreen: React.FC = () => {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         <View style={styles.headerBlock}>
-          <Text style={styles.mainTitle}>Ninja Eats Profile</Text>
-          <MaterialIcons name="restaurant" size={24} color={primaryTextColor} />
+          <Text style={styles.mainTitle}>Grocery Profile</Text>
+          <MaterialIcons name="local-grocery-store" size={24} color={primaryTextColor} />
         </View>
 
         <View style={styles.profileCard}>
@@ -527,7 +540,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
             onChangeText={setUserName}
             mode="outlined"
             style={styles.input}
-            theme={{ colors: { primary: ninjaOrange } }}
+            theme={{ colors: { primary: groceryGreen } }}
           />
 
           <Text style={styles.label}>Date of Birth</Text>
@@ -584,37 +597,31 @@ const NinjaEatsProfileScreen: React.FC = () => {
             mode="contained"
             onPress={handleSave}
             loading={saving}
-            style={[styles.fullWidthButton, { backgroundColor: ninjaOrange }]}
+            style={[styles.fullWidthButton, { backgroundColor: groceryGreen }]}
             labelStyle={{ color: "#fff" }}
           >
             {saving ? "Saving..." : "Save Changes"}
           </Button>
 
-          {/* Restaurant-specific features */}
-          <View style={styles.restaurantFeaturesSection}>
-            <Text style={styles.sectionHeader}>Restaurant Features</Text>
+          {/* Grocery-specific features */}
+          <View style={styles.groceryFeaturesSection}>
+            <Text style={styles.sectionHeader}>Grocery Features</Text>
             
             <TouchableOpacity style={styles.featureButton}>
-              <MaterialIcons name="favorite" size={20} color={ninjaOrange} />
-              <Text style={styles.featureButtonText}>Favorite Restaurants</Text>
+              <MaterialIcons name="shopping-cart" size={20} color={groceryGreen} />
+              <Text style={styles.featureButtonText}>Shopping Lists</Text>
               <Ionicons name="chevron-forward" size={16} color="#666" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.featureButton}>
-              <MaterialIcons name="history" size={20} color={ninjaOrange} />
-              <Text style={styles.featureButtonText}>Order History</Text>
+              <MaterialIcons name="favorite" size={20} color={groceryGreen} />
+              <Text style={styles.featureButtonText}>Favorite Products</Text>
               <Ionicons name="chevron-forward" size={16} color="#666" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.featureButton}>
-              <MaterialIcons name="location-on" size={20} color={ninjaOrange} />
-              <Text style={styles.featureButtonText}>Saved Addresses</Text>
-              <Ionicons name="chevron-forward" size={16} color="#666" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.featureButton}>
-              <MaterialIcons name="payment" size={20} color={ninjaOrange} />
-              <Text style={styles.featureButtonText}>Payment Methods</Text>
+              <MaterialIcons name="schedule" size={20} color={groceryGreen} />
+              <Text style={styles.featureButtonText}>Scheduled Deliveries</Text>
               <Ionicons name="chevron-forward" size={16} color="#666" />
             </TouchableOpacity>
           </View>
@@ -650,44 +657,17 @@ const NinjaEatsProfileScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Premium Reward Section */}
-        <View style={styles.rewardSectionContainer}>
-          <Animated.View
-            style={[
-              styles.rewardButtonContainer,
-              {
-                transform: [
-                  { scale: scaleValue },
-                  { rotate: rotateInterpolate },
-                ],
-              },
-            ]}
-          >
-            <TouchableOpacity
-              onPress={handleRewardPress}
-              activeOpacity={0.7}
-              style={styles.rewardTouchable}
-            >
-              <Image
-                source={require("../assets/rewards.png")}
-                style={styles.rewardIconPremium}
-              />
-            </TouchableOpacity>
-          </Animated.View>
-          <Text style={styles.rewardText}>Rewards</Text>
-        </View>
-
-        {/* My Restaurant Orders Header */}
+        {/* My Grocery Orders Header */}
         <View style={styles.myOrdersHeader}>
-          <Text style={styles.myOrdersTitle}>My Restaurant Orders</Text>
+          <Text style={styles.myOrdersTitle}>My Grocery Orders</Text>
           {ordersLoading && <Loader />}
         </View>
 
         {orders.length === 0 && !ordersLoading ? (
           <View style={styles.noOrdersContainer}>
-            <MaterialIcons name="restaurant" size={48} color="#ccc" />
-            <Text style={styles.noOrdersText}>No restaurant orders yet.</Text>
-            <Text style={styles.noOrdersSubtext}>Order from your favorite restaurants!</Text>
+            <MaterialIcons name="shopping-basket" size={48} color="#ccc" />
+            <Text style={styles.noOrdersText}>No grocery orders yet.</Text>
+            <Text style={styles.noOrdersSubtext}>Start shopping to see your orders here!</Text>
           </View>
         ) : (
           <FlatList
@@ -704,7 +684,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
           />
         )}
 
-        {/* Restaurant Order Details Modal */}
+        {/* Order Details Modal */}
         <Modal
           visible={showDetailsModal}
           transparent
@@ -713,14 +693,11 @@ const NinjaEatsProfileScreen: React.FC = () => {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.bottomSheet}>
-              <Text style={styles.bottomSheetTitle}>Restaurant Order Details</Text>
+              <Text style={styles.bottomSheetTitle}>Grocery Order Details</Text>
 
               {selectedOrder ? (
                 <>
                   <View>
-                    <Text style={styles.sheetSubtitle}>
-                      Restaurant: {selectedOrder.restaurantName}
-                    </Text>
                     <Text style={styles.sheetSubtitle}>
                       Order ID: {selectedOrder.id}
                     </Text>
@@ -735,11 +712,6 @@ const NinjaEatsProfileScreen: React.FC = () => {
                         )}
                       </Text>
                     )}
-                    {selectedOrder.estimatedDeliveryTime && (
-                      <Text style={styles.sheetSubtitle}>
-                        Estimated Delivery: {selectedOrder.estimatedDeliveryTime}
-                      </Text>
-                    )}
                   </View>
 
                   <ScrollView style={{ maxHeight: 300, marginVertical: 8 }}>
@@ -749,7 +721,11 @@ const NinjaEatsProfileScreen: React.FC = () => {
                       selectedOrder.items.map((item: any, idx: number) => {
                         const price = Number(item.price) || 0;
                         const discount = Number(item.discount) || 0;
-                        const realPrice = price - discount;
+                        const cgst = Number(item.CGST) || 0;
+                        const sgst = Number(item.SGST) || 0;
+
+                        const basePrice = price - discount;
+                        const realPrice = basePrice + cgst + sgst;
 
                         return (
                           <View
@@ -777,9 +753,37 @@ const NinjaEatsProfileScreen: React.FC = () => {
                       <View style={styles.billRow}>
                         <Text style={styles.billLabel}>Subtotal</Text>
                         <Text style={styles.billValue}>
-                          ₹{(selectedOrder.subtotal || 0).toFixed(2)}
+                          ₹
+                          {(
+                            (selectedOrder.subtotal || 0) +
+                            (selectedOrder.productCgst || 0) +
+                            (selectedOrder.productSgst || 0)
+                          ).toFixed(2)}
                         </Text>
                       </View>
+
+                      {typeof selectedOrder.deliveryCharge !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Delivery Charge</Text>
+                          <Text style={styles.billValue}>
+                            ₹
+                            {(
+                              (selectedOrder.deliveryCharge || 0) +
+                              (selectedOrder.rideCgst || 0) +
+                              (selectedOrder.rideSgst || 0)
+                            ).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {typeof selectedOrder.convenienceFee !== "undefined" && (
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Convenience Fee</Text>
+                          <Text style={styles.billValue}>
+                            ₹{(selectedOrder.convenienceFee || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
 
                       {typeof selectedOrder.discount !== "undefined" && (
                         <View style={styles.billRow}>
@@ -802,7 +806,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
                   </ScrollView>
 
                   <TouchableOpacity
-                    style={[styles.closeButton, { backgroundColor: ninjaOrange }]}
+                    style={[styles.closeButton, { backgroundColor: groceryGreen }]}
                     onPress={() => setShowDetailsModal(false)}
                   >
                     <Text style={styles.closeButtonText}>Close</Text>
@@ -904,7 +908,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   headerBlock: {
-    backgroundColor: pastelOrange,
+    backgroundColor: pastelGreen,
     paddingVertical: 20,
     paddingHorizontal: 16,
     borderBottomRightRadius: 24,
@@ -965,7 +969,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
   },
-  restaurantFeaturesSection: {
+  groceryFeaturesSection: {
     marginTop: 20,
     marginBottom: 20,
   },
@@ -1003,39 +1007,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 14,
-  },
-  rewardSectionContainer: {
-    justifyContent: "center",
-    alignItems: "flex-start",
-    marginHorizontal: 30,
-    marginVertical: 25,
-    paddingTop: 10,
-  },
-  rewardButtonContainer: {
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 15,
-    marginBottom: 8,
-  },
-  rewardTouchable: {
-    position: "relative",
-  },
-  rewardIconPremium: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "#FFF",
-  },
-  rewardText: {
-    color: "#333",
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    textShadowColor: "rgba(255, 215, 0, 0.3)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   myOrdersHeader: {
     flexDirection: "row",
@@ -1076,15 +1047,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 1,
   },
-  restaurantName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: primaryTextColor,
-    marginBottom: 2,
-  },
   orderId: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: "#333",
   },
   orderDate: {
@@ -1105,7 +1070,7 @@ const styles = StyleSheet.create({
   orderStatusValue: {
     fontSize: 12,
     fontWeight: "600",
-    color: ninjaOrange,
+    color: groceryGreen,
   },
   orderActionRow: {
     flexDirection: "row",
@@ -1174,7 +1139,7 @@ const styles = StyleSheet.create({
   billSummaryContainer: {
     marginTop: 10,
     padding: 8,
-    backgroundColor: pastelOrange,
+    backgroundColor: pastelGreen,
     borderRadius: 6,
   },
   billRow: {
@@ -1219,7 +1184,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 12,
   },
   doneButtonText: {
-    color: ninjaOrange,
+    color: groceryGreen,
     fontSize: 16,
     fontWeight: "600",
   },
@@ -1282,4 +1247,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default NinjaEatsProfileScreen;
+export default GroceryProfileScreen;
