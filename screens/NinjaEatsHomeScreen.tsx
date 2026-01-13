@@ -302,37 +302,42 @@ const QuickFiltersRow: React.FC<{
 const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
   const nav = useNavigation<any>();
   const scrollViewRef = useRef<ScrollView>(null);
-  const scrollX = useRef(0);
+  const currentIndex = useRef(0);
   const animationRef = useRef<NodeJS.Timeout>();
+  const isUserInteracting = useRef(false);
 
   if (!cuisines.length) return null;
 
-  // Create triple duplicated content for smoother infinite scroll
+  // Create triple duplicated content for infinite scroll
   const triplicatedCuisines = [...cuisines, ...cuisines, ...cuisines];
 
-  // Smooth auto-scroll effect
+  // Pause-then-switch carousel effect
   useEffect(() => {
     const itemWidth = 92; // 80px width + 12px margin
-    const originalContentWidth = cuisines.length * itemWidth;
+    const originalLength = cuisines.length;
     
-    const startScrolling = () => {
+    const startCarousel = () => {
       animationRef.current = setInterval(() => {
-        scrollX.current += 0.8; // Smooth scroll speed
+        if (isUserInteracting.current) return;
         
-        // Reset seamlessly when we reach the end of the first duplicate
-        if (scrollX.current >= originalContentWidth) {
-          scrollX.current = 0;
+        currentIndex.current += 1;
+        
+        // Reset to beginning of second set when we reach the end of first duplicate
+        if (currentIndex.current >= originalLength) {
+          currentIndex.current = 0;
         }
         
+        const targetX = currentIndex.current * itemWidth;
+        
         scrollViewRef.current?.scrollTo({ 
-          x: scrollX.current, 
-          animated: false 
+          x: targetX, 
+          animated: true // Smooth animated transition
         });
-      }, 16); // 60fps for smooth animation
+      }, 2500); // 2.5 second pause between switches
     };
 
-    // Start scrolling after a small delay
-    const timeout = setTimeout(startScrolling, 1000);
+    // Start carousel after initial delay
+    const timeout = setTimeout(startCarousel, 1500);
 
     return () => {
       clearTimeout(timeout);
@@ -353,6 +358,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
         scrollEventThrottle={16}
         onTouchStart={() => {
           // Pause auto-scroll when user touches
+          isUserInteracting.current = true;
           if (animationRef.current) {
             clearInterval(animationRef.current);
           }
@@ -360,22 +366,33 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
         onTouchEnd={() => {
           // Resume auto-scroll after user stops touching
           setTimeout(() => {
+            isUserInteracting.current = false;
             const itemWidth = 92;
-            const originalContentWidth = cuisines.length * itemWidth;
+            const originalLength = cuisines.length;
             
             animationRef.current = setInterval(() => {
-              scrollX.current += 0.8;
+              if (isUserInteracting.current) return;
               
-              if (scrollX.current >= originalContentWidth) {
-                scrollX.current = 0;
+              currentIndex.current += 1;
+              
+              if (currentIndex.current >= originalLength) {
+                currentIndex.current = 0;
               }
               
+              const targetX = currentIndex.current * itemWidth;
+              
               scrollViewRef.current?.scrollTo({ 
-                x: scrollX.current, 
-                animated: false 
+                x: targetX, 
+                animated: true
               });
-            }, 16);
-          }, 2000); // Resume after 2 seconds
+            }, 2500);
+          }, 3000); // Resume after 3 seconds
+        }}
+        onMomentumScrollEnd={(event) => {
+          // Update current index based on scroll position
+          const itemWidth = 92;
+          const scrollX = event.nativeEvent.contentOffset.x;
+          currentIndex.current = Math.round(scrollX / itemWidth);
         }}
       >
         {triplicatedCuisines.map((c, index) => (
