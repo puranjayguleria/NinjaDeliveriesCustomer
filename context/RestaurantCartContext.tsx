@@ -14,6 +14,7 @@ export type RestaurantCartItem = {
   price: number;
   isVeg?: boolean;
   imageUrl?: string;
+  description?: string;
   quantity: number;
 };
 
@@ -34,6 +35,12 @@ type RestaurantCartContextType = {
   getItemQty: (menuItemId: string) => number;
   totalItems: number;
   totalAmount: number;
+  // Additional functions for cart screen compatibility
+  cartItems: RestaurantCartItem[];
+  updateQuantity: (itemId: string, quantity: number) => void;
+  removeFromCart: (itemId: string) => void;
+  getCartTotal: () => number;
+  getCartItemsCount: () => number;
 };
 
 const RestaurantCartContext = createContext<
@@ -145,6 +152,54 @@ export const RestaurantCartProvider = ({ children }: { children: ReactNode }) =>
   const getItemQty = (menuItemId: string) =>
     state.items[menuItemId]?.quantity ?? 0;
 
+  // Additional functions for cart screen compatibility
+  const updateQuantity = (itemId: string, quantity: number) => {
+    setState((prev) => {
+      const existing = prev.items[itemId];
+      if (!existing) return prev;
+      
+      if (quantity <= 0) {
+        const cloned = { ...prev.items };
+        delete cloned[itemId];
+        return {
+          ...prev,
+          items: cloned,
+        };
+      }
+      
+      return {
+        ...prev,
+        items: {
+          ...prev.items,
+          [itemId]: {
+            ...existing,
+            quantity,
+          },
+        },
+      };
+    });
+  };
+
+  const removeFromCart = (itemId: string) => {
+    setState((prev) => {
+      const cloned = { ...prev.items };
+      delete cloned[itemId];
+      return {
+        ...prev,
+        items: cloned,
+      };
+    });
+  };
+
+  const getCartTotal = () => totalAmount;
+  
+  const getCartItemsCount = () => totalItems;
+
+  const cartItems = useMemo(
+    () => Object.values(state.items),
+    [state.items]
+  );
+
   const totalItems = useMemo(
     () => Object.values(state.items).reduce((sum, it) => sum + it.quantity, 0),
     [state.items]
@@ -169,8 +224,13 @@ export const RestaurantCartProvider = ({ children }: { children: ReactNode }) =>
       getItemQty,
       totalItems,
       totalAmount,
+      cartItems,
+      updateQuantity,
+      removeFromCart,
+      getCartTotal,
+      getCartItemsCount,
     }),
-    [state, totalItems, totalAmount]
+    [state, totalItems, totalAmount, cartItems]
   );
 
   return (

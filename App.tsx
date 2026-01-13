@@ -96,9 +96,10 @@ import NinjaEatsOrdersScreen from './screens/NinjaEatsOrdersScreen';
 import NinjaEatsProfileScreen from './screens/NinjaEatsProfileScreen';
 import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
-import { RestaurantCartProvider } from './context/RestaurantCartContext';
+import { RestaurantCartProvider, useRestaurantCart } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
 import NinjaEatsOrderDetailScreen from "./screens/NinjaEatsOrderDetailScreen";
+import RestaurantCartScreen from "./screens/RestaurantCartScreen";
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
@@ -183,6 +184,19 @@ const NinjaEatsOrdersStack = () => (
   </Stack.Navigator>
 );
 
+const RestaurantCartStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen
+      name="RestaurantCartHome"
+      component={RestaurantCartScreen}
+    />
+    <Stack.Screen
+      name="RestaurantCheckout"
+      component={RestaurantCheckoutScreen}
+    />
+  </Stack.Navigator>
+);
+
 const HomeFoodStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen
@@ -217,6 +231,9 @@ const HomeFoodStack = () => (
  * - Profile
  */
 const NinjaEatsTabs = () => {
+  const { getCartItemsCount } = useRestaurantCart();
+  const cartItemsCount = getCartItemsCount();
+
   // Memoize tab bar icons for better performance
   const HomeIcon = React.useCallback(({ color, size }: any) => (
     <MaterialIcons name="home-filled" size={size} color={color} />
@@ -229,6 +246,17 @@ const NinjaEatsTabs = () => {
   const CuisinesIcon = React.useCallback(({ color, size }: any) => (
     <MaterialIcons name="restaurant-menu" size={size} color={color} />
   ), []);
+
+  const CartIcon = React.useCallback(({ color, size }: any) => (
+    <View style={{ width: size, height: size }}>
+      <MaterialIcons name="shopping-cart" size={size} color={color} />
+      {cartItemsCount > 0 && (
+        <View style={styles.cartBadgeContainer}>
+          <Text style={styles.cartBadgeText}>{cartItemsCount}</Text>
+        </View>
+      )}
+    </View>
+  ), [cartItemsCount]);
 
   const OrdersIcon = React.useCallback(({ color, size }: any) => (
     <MaterialIcons name="receipt-long" size={size} color={color} />
@@ -288,6 +316,15 @@ const NinjaEatsTabs = () => {
         options={{
           title: "Cuisines",
           tabBarIcon: CuisinesIcon,
+        }}
+      />
+
+      <Tab.Screen
+        name="RestaurantCartTab"
+        component={RestaurantCartStack}
+        options={{
+          title: "Cart",
+          tabBarIcon: CartIcon,
         }}
       />
 
@@ -1000,6 +1037,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+
+  cartBadgeContainer: {
+    position: "absolute",
+    top: -3,
+    right: -8,
+    backgroundColor: "#e74c3c",
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cartBadgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
 
   inProgressBar: {
     position: "absolute",
