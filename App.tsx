@@ -443,6 +443,47 @@ function AppTabs() {
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  /*animation of blink and Side to Side (vibration)*/
+     const blinkAnim = useRef(new Animated.Value(1)).current;
+     const shakeAnim = useRef(new Animated.Value(0)).current;
+
+   useEffect(() => {
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(blinkAnim, {
+            toValue: 0.4,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkAnim, {
+            toValue: 1,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(shakeAnim, {
+            toValue: -3,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 3,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 0,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    ).start();
+  }, []);
+
+
 
   const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
   useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
@@ -487,21 +528,56 @@ function AppTabs() {
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "gray",
-            tabBarIcon: ({ color, size }) => (
-              <View style={{ width: size, height: size }}>
-                <Ionicons
-                  name={iconMap[route.name]}
-                  size={size}
-                  color={color}
-                />
-                {route.name === "CartFlow" && totalItems > 0 && (
-                  <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{totalItems}</Text>
-                  </View>
-                )}
-              </View>
-            ),
+            tabBarInactiveTintColor: "grey",
+            // service icon with shake animation
+            tabBarIcon: ({ color, size }) => {
+  const isService = route.name === "ServicesTab";
+
+  return (
+    <Animated.View
+      style={{
+        width: size + 12,
+        height: size + 12,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: isService ? blinkAnim : 1,
+        transform: isService
+          ? [
+              { translateX: shakeAnim }, // side-to-side shake
+            ]
+          : [],
+      }}
+    >
+      {isService && (
+        <View
+          style={{
+            position: "absolute",
+            top: -8,
+            backgroundColor: "red",
+            paddingHorizontal: 4,
+            borderRadius: 6,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
+            NEW
+          </Text>
+        </View>
+      )}
+
+      <Ionicons
+        name={iconMap[route.name]}
+        size={size}
+        color={isService ? "red" : color}
+      />
+
+      {route.name === "CartFlow" && totalItems > 0 && (
+        <View style={styles.badgeContainer}>
+          <Text style={styles.badgeText}>{totalItems}</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
+},
           };
         }}
       >
@@ -540,7 +616,11 @@ function AppTabs() {
         <Tab.Screen
          name="ServicesTab"
          component={ServicesScreen}
-         options={{ title: "Services" }}
+         options={{ title: "Services",
+         tabBarLabel: ({ focused}) => (
+            <Text style ={{ color: "red", fontSize: 11, fontWeight:"600",}}> service </Text>
+          ),
+          }}
          />
         {/* ⿣ Featured Tab */}
         <Tab.Screen

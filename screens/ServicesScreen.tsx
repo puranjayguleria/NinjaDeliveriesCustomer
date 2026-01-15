@@ -1,42 +1,40 @@
-// screens/ServicesScreen.tsx
+//"services for car wash"
 import React from "react";
 import {
   View,
   Text,
-  StyleSheet,
+  FlatList,
   TouchableOpacity,
+  StyleSheet,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+
+const SERVICES = [
+  {
+    id: "car-wash",
+    title: "Car Wash",
+    subtitle: "Exterior & Interior cleaning",
+    price: "Starting at ₹299",
+  },
+];
 
 export default function ServicesScreen() {
   return (
     <View style={styles.container}>
-      
-      {/* ===== Header ===== */}
-      <View style={styles.header}>
-        <MaterialIcons name="miscellaneous-services" size={64} color="#1E88E5" />
-        <Text style={styles.headerTitle}>Services</Text>
-        <Text style={styles.headerSub}>
-          Book & manage your services easily
-        </Text>
-      </View>
+      <Text style={styles.header}>Our Services</Text>
 
-      {/* ===== Service Cards ===== */}
-      <TouchableOpacity style={styles.card} onPress={() => {}}>
-        <MaterialIcons name="event-available" size={32} color="#1E88E5" />
-        <Text style={styles.cardText}>Book Service</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.card} onPress={() => {}}>
-        <MaterialIcons name="assignment" size={32} color="#43A047" />
-        <Text style={styles.cardText}>My Services</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.card} onPress={() => {}}>
-        <MaterialIcons name="support-agent" size={32} color="#FB8C00" />
-        <Text style={styles.cardText}>Support</Text>
-      </TouchableOpacity>
-
+      <FlatList
+        data={SERVICES}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity style={styles.card}>
+            <View>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.subtitle}>{item.subtitle}</Text>
+              <Text style={styles.price}>{item.price}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      />
     </View>
   );
 }
@@ -44,47 +42,34 @@ export default function ServicesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#fff",
     padding: 16,
   },
-
-  /* Header */
   header: {
-    alignItems: "center",
-    marginBottom: 32,
-    marginTop: 12,
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 16,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    marginTop: 8,
-    color: "#222",
+  card: {
+    backgroundColor: "#f6f6f6",
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 12,
+    elevation: 2,
   },
-  headerSub: {
-    fontSize: 14,
+  title: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  subtitle: {
+    fontSize: 13,
     color: "#666",
     marginTop: 4,
   },
-
-  /* Cards */
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  cardText: {
-    fontSize: 18,
+  price: {
+    fontSize: 14,
+    color: "#00a884",
+    marginTop: 8,
     fontWeight: "600",
-    marginLeft: 16,
-    color: "#333",
   },
 });
