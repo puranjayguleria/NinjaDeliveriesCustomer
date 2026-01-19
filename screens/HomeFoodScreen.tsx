@@ -21,7 +21,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import Video from "react-native-video";
 import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -259,7 +258,7 @@ const RotatingHomeFoodSearchBar = () => {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  FOOD CATEGORIES STRIP                                                     */
+/*  FOOD CATEGORIES STRIP - Swiggy Style                                     */
 /* -------------------------------------------------------------------------- */
 
 type FoodCategory = {
@@ -272,37 +271,40 @@ type FoodCategory = {
 const FoodCategoriesRow: React.FC<{ categories: FoodCategory[] }> = ({ categories }) => {
   const nav = useNavigation<any>();
   const scrollViewRef = useRef<ScrollView>(null);
-  const scrollX = useRef(0);
-  const animationRef = useRef<NodeJS.Timeout>();
+  const currentIndex = useRef(0);
+  const animationRef = useRef<ReturnType<typeof setInterval>>();
+  const isUserInteracting = useRef(false);
 
   if (!categories.length) return null;
 
-  // Create triple duplicated content for smoother infinite scroll
+  // Create triple duplicated content for infinite scroll
   const triplicatedCategories = [...categories, ...categories, ...categories];
 
-  // Smooth auto-scroll effect
+  // Pause-then-switch carousel effect
   useEffect(() => {
-    const itemWidth = 92; // 80px width + 12px margin
-    const originalContentWidth = categories.length * itemWidth;
+    const itemWidth = 140; // Updated width for new design
+    const originalLength = categories.length;
     
-    const startScrolling = () => {
+    const startCarousel = () => {
       animationRef.current = setInterval(() => {
-        scrollX.current += 0.8; // Smooth scroll speed
+        if (isUserInteracting.current) return;
         
-        // Reset seamlessly when we reach the end of the first duplicate
-        if (scrollX.current >= originalContentWidth) {
-          scrollX.current = 0;
+        currentIndex.current += 1;
+        
+        if (currentIndex.current >= originalLength) {
+          currentIndex.current = 0;
         }
         
+        const targetX = currentIndex.current * itemWidth;
+        
         scrollViewRef.current?.scrollTo({ 
-          x: scrollX.current, 
-          animated: false 
+          x: targetX, 
+          animated: true
         });
-      }, 16); // 60fps for smooth animation
+      }, 2500);
     };
 
-    // Start scrolling after a small delay
-    const timeout = setTimeout(startScrolling, 1000);
+    const timeout = setTimeout(startCarousel, 1500);
 
     return () => {
       clearTimeout(timeout);
@@ -313,7 +315,7 @@ const FoodCategoriesRow: React.FC<{ categories: FoodCategory[] }> = ({ categorie
   }, [categories.length]);
 
   return (
-    <View style={{ marginTop: 8 }}>
+    <View style={{ marginTop: 12, marginBottom: 8 }}>
       <Text style={styles.sectionTitle}>What type of home food?</Text>
       <ScrollView
         ref={scrollViewRef}
@@ -322,36 +324,45 @@ const FoodCategoriesRow: React.FC<{ categories: FoodCategory[] }> = ({ categorie
         contentContainerStyle={styles.categoriesContainer}
         scrollEventThrottle={16}
         onTouchStart={() => {
-          // Pause auto-scroll when user touches
+          isUserInteracting.current = true;
           if (animationRef.current) {
             clearInterval(animationRef.current);
           }
         }}
         onTouchEnd={() => {
-          // Resume auto-scroll after user stops touching
           setTimeout(() => {
-            const itemWidth = 92;
-            const originalContentWidth = categories.length * itemWidth;
+            isUserInteracting.current = false;
+            const itemWidth = 140;
+            const originalLength = categories.length;
             
             animationRef.current = setInterval(() => {
-              scrollX.current += 0.8;
+              if (isUserInteracting.current) return;
               
-              if (scrollX.current >= originalContentWidth) {
-                scrollX.current = 0;
+              currentIndex.current += 1;
+              
+              if (currentIndex.current >= originalLength) {
+                currentIndex.current = 0;
               }
               
+              const targetX = currentIndex.current * itemWidth;
+              
               scrollViewRef.current?.scrollTo({ 
-                x: scrollX.current, 
-                animated: false 
+                x: targetX, 
+                animated: true
               });
-            }, 16);
-          }, 2000); // Resume after 2 seconds
+            }, 2500);
+          }, 3000);
+        }}
+        onMomentumScrollEnd={(event) => {
+          const itemWidth = 140;
+          const scrollX = event.nativeEvent.contentOffset.x;
+          currentIndex.current = Math.round(scrollX / itemWidth);
         }}
       >
         {triplicatedCategories.map((c, index) => (
           <Pressable
             key={`${c.id}-${index}`}
-            style={styles.categoryPill}
+            style={styles.categoryTile}
             onPress={() =>
               nav.navigate("HomeFoodCategoryListing", {
                 categoryId: c.id,
@@ -359,18 +370,18 @@ const FoodCategoriesRow: React.FC<{ categories: FoodCategory[] }> = ({ categorie
               })
             }
           >
-            <View style={styles.categoryIconWrapper}>
-              {c.iconUrl ? (
-                <Image
-                  source={{ uri: c.iconUrl }}
-                  style={styles.categoryIcon}
-                  contentFit="cover"
-                />
-              ) : (
-                <MaterialIcons name="kitchen" size={20} color="#444" />
-              )}
-            </View>
-            <Text style={styles.categoryName} numberOfLines={1}>
+            {c.iconUrl ? (
+              <Image
+                source={{ uri: c.iconUrl }}
+                style={styles.categoryTileImage}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.categoryTileImage, styles.categoryTilePlaceholder]}>
+                <MaterialIcons name="kitchen" size={32} color="#999" />
+              </View>
+            )}
+            <Text style={styles.categoryTileName} numberOfLines={2}>
               {c.name}
             </Text>
           </Pressable>
@@ -447,7 +458,7 @@ const HomeCookTile: React.FC<HomeCookTileProps> = ({ cook }) => {
 
   const onPressIn = () => {
     Animated.spring(scale, {
-      toValue: 0.97,
+      toValue: 0.98,
       useNativeDriver: true,
       friction: 5,
       tension: 120,
@@ -490,13 +501,9 @@ const HomeCookTile: React.FC<HomeCookTileProps> = ({ cook }) => {
       : "45-60 mins";
 
   const ratingLabel = rating != null ? rating.toFixed(1) : "NEW";
-  const ratingCountLabel =
-    ratingCount != null && ratingCount > 0 ? `(${ratingCount})` : "";
-
   const specialtiesLabel = specialties.join(", ");
   const costLabel =
     avgCostPerMeal != null ? `₹${avgCostPerMeal} avg per meal` : "Affordable";
-
   const distanceLabel =
     distanceKm != null ? `${distanceKm.toFixed(1)} km` : "";
 
@@ -521,68 +528,74 @@ const HomeCookTile: React.FC<HomeCookTileProps> = ({ cook }) => {
             />
           ) : (
             <View style={[styles.cookImage, styles.cookImagePlaceholder]}>
-              <MaterialIcons name="person" size={40} color="#ccc" />
+              <MaterialIcons name="person" size={48} color="#ddd" />
             </View>
           )}
 
-          {/* Top labels */}
-          <View style={styles.cookTopLabels}>
+          {/* Gradient overlay on image */}
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.1)"]}
+            style={styles.cookImageGradient}
+          />
+
+          {/* Top badges */}
+          <View style={styles.cookTopBadges}>
             {isVerified && (
-              <View style={styles.verifiedTag}>
-                <MaterialIcons name="verified" size={12} color="#fff" />
-                <Text style={styles.verifiedTagTxt}>VERIFIED</Text>
+              <View style={styles.verifiedBadge}>
+                <MaterialIcons name="verified" size={10} color="#4caf50" />
+                <Text style={styles.verifiedBadgeTxt}>VERIFIED</Text>
               </View>
             )}
             {kitchenType === "home" && (
-              <View style={styles.homeKitchenTag}>
-                <MaterialIcons name="home" size={12} color="#fff" />
-                <Text style={styles.homeKitchenTagTxt}>HOME KITCHEN</Text>
+              <View style={styles.homeKitchenBadge}>
+                <MaterialIcons name="home" size={10} color="#ff9800" />
+                <Text style={styles.homeKitchenBadgeTxt}>HOME</Text>
               </View>
             )}
           </View>
+
+          {/* Description banner at bottom of image */}
+          {description && (
+            <View style={styles.descriptionBanner}>
+              <Text numberOfLines={1} style={styles.descriptionBannerTxt}>
+                {description}
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.cookInfoBlock}>
-          <View style={styles.cookRowTop}>
+        <View style={styles.cookInfo}>
+          {/* Cook name */}
+          <View style={styles.cookNameRow}>
             <Text style={styles.cookName} numberOfLines={1}>
               {name}
             </Text>
           </View>
 
-          <View style={styles.ratingEtaRow}>
-            <View style={styles.ratingPill}>
-              <MaterialIcons name="star" size={12} color="#fff" />
-              <Text style={styles.ratingPillTxt}>{ratingLabel}</Text>
+          {/* Rating, time, cost */}
+          <View style={styles.cookMetaRow}>
+            <View style={styles.ratingBadge}>
+              <MaterialIcons name="star" size={13} color="#fff" />
+              <Text style={styles.ratingBadgeTxt}>{ratingLabel}</Text>
             </View>
-            <View style={styles.dot} />
-            <Text style={styles.ratingEtaTxt}>{etaLabel}</Text>
-            {ratingCountLabel ? (
-              <>
-                <View style={styles.dot} />
-                <Text style={styles.ratingEtaTxt}>{ratingCountLabel}</Text>
-              </>
-            ) : null}
+            <Text style={styles.metaDot}>•</Text>
+            <Text style={styles.metaTxt}>{etaLabel}</Text>
+            <Text style={styles.metaDot}>•</Text>
+            <Text style={styles.metaTxt}>{costLabel}</Text>
           </View>
 
-          <Text style={styles.specialtiesLine} numberOfLines={1}>
-            {specialtiesLabel || "North Indian · Home-style cooking"}
+          {/* Specialties */}
+          <Text style={styles.specialtiesText} numberOfLines={1}>
+            {specialtiesLabel || "Home-style cooking"}
           </Text>
 
-          {description && (
-            <Text style={styles.descriptionLine} numberOfLines={2}>
-              {description}
-            </Text>
+          {/* Distance */}
+          {distanceLabel && (
+            <View style={styles.distanceRow}>
+              <MaterialIcons name="location-on" size={12} color="#999" />
+              <Text style={styles.distanceTxt}>{distanceLabel}</Text>
+            </View>
           )}
-
-          <View style={styles.costDistanceRow}>
-            <Text style={styles.costDistanceTxt}>{costLabel}</Text>
-            {distanceLabel ? (
-              <>
-                <View style={styles.dot} />
-                <Text style={styles.costDistanceTxt}>{distanceLabel}</Text>
-              </>
-            ) : null}
-          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -604,7 +617,7 @@ const AutoScrollCarousel = <T extends { id: string }>({
 }: AutoScrollCarouselProps<T>) => {
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollX = useRef(0);
-  const animationRef = useRef<NodeJS.Timeout>();
+  const animationRef = useRef<ReturnType<typeof setInterval>>();
 
   // Create triple duplicated content for smoother infinite scroll
   const triplicatedData = [...data, ...data, ...data];
@@ -905,25 +918,14 @@ export default function HomeFoodScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
-      {/* Static header with video background */}
+      {/* Static header with gradient background */}
       <View style={styles.staticHeaderWrapper}>
-        {/* Background video */}
-        <View style={styles.staticVideoContainer}>
-          <Video
-            source={require("../assets/deliveryBackground.mp4")}
-            style={StyleSheet.absoluteFill}
-            muted
-            repeat
-            resizeMode="cover"
-            rate={1.0}
-            ignoreSilentSwitch="obey"
-          />
-        </View>
-
-        {/* Gradient overlay */}
+        {/* Orange to White Gradient Background */}
         <LinearGradient
-          colors={["rgba(0,0,0,0.7)", "rgba(0,0,0,0.25)", "transparent"]}
+          colors={["#ff6b35", "#ff8c42", "#ffa552", "#ffb366", "#ffffff"]}
           style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
         />
 
         {/* Static content */}
@@ -1009,11 +1011,6 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 999,
     elevation: 20,
-  },
-
-  staticVideoContainer: {
-    ...StyleSheet.absoluteFillObject,
-    height: 180,
   },
 
   staticContentContainer: {
@@ -1109,42 +1106,34 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  /* Food categories */
+  /* Food categories - Swiggy Style */
   categoriesContainer: {
     paddingHorizontal: H,
-    paddingBottom: 4,
-    paddingTop: 6,
+    paddingBottom: 8,
+    paddingTop: 8,
   },
-  categoryPill: {
-    width: 80,
+  categoryTile: {
+    width: 130,
+    marginRight: 16,
     alignItems: "center",
-    marginRight: 12,
   },
-  categoryIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#eee",
+  categoryTileImage: {
+    width: 130,
+    height: 150,
+    borderRadius: 16,
+    backgroundColor: "#f5f5f5",
+    marginBottom: 8,
+  },
+  categoryTilePlaceholder: {
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
-  categoryIcon: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 32,
-  },
-  categoryName: {
-    fontSize: 11,
-    color: "#444",
+  categoryTileName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
     textAlign: "center",
+    lineHeight: 18,
   },
 
   sectionTitle: {
@@ -1171,136 +1160,160 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
-  /* Home Cook cards */
+  /* Home Cook cards - Swiggy Style */
   cookCardWrap: {
     marginHorizontal: H,
-    marginTop: 12,
+    marginBottom: 20,
   },
   cookCard: {
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   cookImageWrapper: {
     position: "relative",
+    width: "100%",
+    height: 180,
   },
   cookImage: {
     width: "100%",
-    height: 170,
-    backgroundColor: "#f5f5f5",
+    height: "100%",
+    backgroundColor: "#f8f8f8",
   },
   cookImagePlaceholder: {
     justifyContent: "center",
     alignItems: "center",
   },
-  cookTopLabels: {
+  cookImageGradient: {
     position: "absolute",
-    top: 8,
-    left: 8,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+  },
+  cookTopBadges: {
+    position: "absolute",
+    top: 10,
+    left: 10,
     flexDirection: "row",
     gap: 6,
   },
-  verifiedTag: {
-    backgroundColor: "#4caf50",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  verifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 3,
   },
-  verifiedTagTxt: {
-    color: "#fff",
-    fontSize: 10,
+  verifiedBadgeTxt: {
+    color: "#333",
+    fontSize: 9,
     fontWeight: "700",
-    marginLeft: 2,
+    letterSpacing: 0.5,
   },
-  homeKitchenTag: {
-    backgroundColor: "#ff9800",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  homeKitchenBadge: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 3,
   },
-  homeKitchenTagTxt: {
-    color: "#fff",
-    fontSize: 10,
+  homeKitchenBadgeTxt: {
+    color: "#333",
+    fontSize: 9,
     fontWeight: "700",
-    marginLeft: 2,
+    letterSpacing: 0.5,
+  },
+  descriptionBanner: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,107,53,0.1)",
+  },
+  descriptionBannerTxt: {
+    color: "#666",
+    fontSize: 12,
+    fontStyle: "italic",
   },
 
-  cookInfoBlock: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 10,
+  cookInfo: {
+    padding: 12,
   },
-  cookRowTop: {
+  cookNameRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 6,
   },
   cookName: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    color: "#222",
+    color: "#1c1c1c",
+    letterSpacing: -0.3,
   },
 
-  ratingEtaRow: {
+  cookMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginBottom: 6,
   },
-  ratingPill: {
+  ratingBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1b5e20",
-    borderRadius: 10,
+    backgroundColor: "#1c8a5c",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 2,
   },
-  ratingPillTxt: {
+  ratingBadgeTxt: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    marginLeft: 3,
   },
-  ratingEtaTxt: {
-    fontSize: 11,
-    color: "#555",
+  metaDot: {
+    color: "#999",
+    fontSize: 14,
+    marginHorizontal: 6,
+    fontWeight: "700",
   },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "#777",
-    marginHorizontal: 5,
+  metaTxt: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
   },
 
-  specialtiesLine: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#777",
+  specialtiesText: {
+    fontSize: 13,
+    color: "#888",
+    marginBottom: 4,
+    lineHeight: 18,
   },
-  descriptionLine: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#666",
-    fontStyle: "italic",
-  },
-  costDistanceRow: {
+
+  distanceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 2,
   },
-  costDistanceTxt: {
+  distanceTxt: {
     fontSize: 12,
-    color: "#555",
+    color: "#999",
+    marginLeft: 2,
   },
 
   /* Empty state */

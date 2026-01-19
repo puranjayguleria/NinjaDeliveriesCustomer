@@ -105,6 +105,8 @@ import RestaurantCartScreen from "./screens/RestaurantCartScreen";
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
+import CuisineDetailScreen from "./screens/CuisineDetailScreen";
+
 const NinjaEatsStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen
@@ -116,6 +118,11 @@ const NinjaEatsStack = () => (
     <Stack.Screen
       name="RestaurantSearch"
       component={NinjaEatsSearchScreen}
+    />
+
+    <Stack.Screen
+      name="CuisineDetail"
+      component={CuisineDetailScreen}
     />
 
     <Stack.Screen
@@ -148,6 +155,14 @@ const CuisinesStack = () => (
     <Stack.Screen
       name="CuisinesHome"
       component={CuisinesScreen}
+    />
+    
+    <Stack.Screen
+      name="CuisineDetail"
+      component={CuisineDetailScreen}
+      options={{
+        gestureEnabled: true,
+      }}
     />
     
     <Stack.Screen
@@ -207,6 +222,10 @@ const HomeFoodStack = () => (
     <Stack.Screen
       name="HomeFoodSearch"
       component={NinjaEatsSearchScreen}
+    />
+    <Stack.Screen
+      name="CuisineDetail"
+      component={CuisineDetailScreen}
     />
     <Stack.Screen
       name="HomeCookDetails"

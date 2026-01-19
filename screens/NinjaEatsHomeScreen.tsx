@@ -21,7 +21,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import Video from "react-native-video";
 import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -84,6 +83,34 @@ type Cuisine = {
   iconUrl?: string;
   priority?: number;
 };
+
+// Demo cuisines with actual images
+const DEMO_CUISINES: Cuisine[] = [
+  {
+    id: "pizza",
+    name: "Pizza",
+    iconUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&h=400&fit=crop",
+    priority: 1,
+  },
+  {
+    id: "burger",
+    name: "Burger",
+    iconUrl: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=400&fit=crop",
+    priority: 2,
+  },
+  {
+    id: "chole-bhature",
+    name: "Chole Bhature",
+    iconUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&h=400&fit=crop",
+    priority: 3,
+  },
+  {
+    id: "desserts",
+    name: "Desserts",
+    iconUrl: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=400&fit=crop",
+    priority: 4,
+  },
+];
 
 type QuickFilterKey = "veg" | "fast" | "rating" | "offers";
 
@@ -303,7 +330,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
   const nav = useNavigation<any>();
   const scrollViewRef = useRef<ScrollView>(null);
   const currentIndex = useRef(0);
-  const animationRef = useRef<NodeJS.Timeout>();
+  const animationRef = useRef<ReturnType<typeof setInterval>>();
   const isUserInteracting = useRef(false);
 
   if (!cuisines.length) return null;
@@ -313,7 +340,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
 
   // Pause-then-switch carousel effect
   useEffect(() => {
-    const itemWidth = 92; // 80px width + 12px margin
+    const itemWidth = 140; // Updated width for new design
     const originalLength = cuisines.length;
     
     const startCarousel = () => {
@@ -348,7 +375,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
   }, [cuisines.length]);
 
   return (
-    <View style={{ marginTop: 8 }}>
+    <View style={{ marginTop: 12, marginBottom: 8 }}>
       <Text style={styles.sectionTitle}>What&apos;s on your mind?</Text>
       <ScrollView
         ref={scrollViewRef}
@@ -367,7 +394,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
           // Resume auto-scroll after user stops touching
           setTimeout(() => {
             isUserInteracting.current = false;
-            const itemWidth = 92;
+            const itemWidth = 140;
             const originalLength = cuisines.length;
             
             animationRef.current = setInterval(() => {
@@ -390,7 +417,7 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
         }}
         onMomentumScrollEnd={(event) => {
           // Update current index based on scroll position
-          const itemWidth = 92;
+          const itemWidth = 140;
           const scrollX = event.nativeEvent.contentOffset.x;
           currentIndex.current = Math.round(scrollX / itemWidth);
         }}
@@ -398,26 +425,27 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
         {triplicatedCuisines.map((c, index) => (
           <Pressable
             key={`${c.id}-${index}`}
-            style={styles.cuisinePill}
+            style={styles.cuisineTile}
             onPress={() =>
-              nav.navigate("RestaurantCategoryListing", {
+              nav.navigate("CuisineDetail", {
                 cuisineId: c.id,
                 cuisineName: c.name,
+                cuisineImage: c.iconUrl,
               })
             }
           >
-            <View style={styles.cuisineIconWrapper}>
-              {c.iconUrl ? (
-                <Image
-                  source={{ uri: c.iconUrl }}
-                  style={styles.cuisineIcon}
-                  contentFit="cover"
-                />
-              ) : (
-                <MaterialIcons name="restaurant" size={20} color="#444" />
-              )}
-            </View>
-            <Text style={styles.cuisineName} numberOfLines={1}>
+            {c.iconUrl ? (
+              <Image
+                source={{ uri: c.iconUrl }}
+                style={styles.cuisineTileImage}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
+                <MaterialIcons name="restaurant" size={32} color="#999" />
+              </View>
+            )}
+            <Text style={styles.cuisineTileName} numberOfLines={2}>
               {c.name}
             </Text>
           </Pressable>
@@ -441,7 +469,7 @@ const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
 
   const onPressIn = () => {
     Animated.spring(scale, {
-      toValue: 0.97,
+      toValue: 0.98,
       useNativeDriver: true,
       friction: 5,
       tension: 120,
@@ -521,75 +549,79 @@ const RestaurantTile: React.FC<RestaurantTileProps> = ({ restaurant }) => {
                 styles.restaurantImagePlaceholder,
               ]}
             >
-              <MaterialIcons name="restaurant-menu" size={40} color="#ccc" />
+              <MaterialIcons name="restaurant-menu" size={48} color="#ddd" />
             </View>
           )}
 
-          {/* Top labels */}
-          <View style={styles.restaurantTopLabels}>
+          {/* Gradient overlay on image */}
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.1)"]}
+            style={styles.restaurantImageGradient}
+          />
+
+          {/* Top badges */}
+          <View style={styles.restaurantTopBadges}>
             {isPromoted && (
-              <View style={styles.promotedTag}>
-                <Text style={styles.promotedTagTxt}>PROMOTED</Text>
-              </View>
-            )}
-            {isPureVeg && (
-              <View style={styles.vegTag}>
-                <Text style={styles.vegTagTxt}>PURE VEG</Text>
+              <View style={styles.promotedBadge}>
+                <MaterialIcons name="star" size={10} color="#ffd700" />
+                <Text style={styles.promotedBadgeTxt}>PROMOTED</Text>
               </View>
             )}
           </View>
 
-          {/* Offer ribbon */}
+          {/* Offer banner at bottom of image */}
           {!!offerText && (
-            <View style={styles.offerRibbon}>
+            <View style={styles.offerBanner}>
               <MaterialIcons
                 name="local-offer"
-                size={14}
-                color="#fff"
+                size={12}
+                color="#ff6b35"
                 style={{ marginRight: 4 }}
               />
-              <Text numberOfLines={1} style={styles.offerRibbonTxt}>
+              <Text numberOfLines={1} style={styles.offerBannerTxt}>
                 {offerText}
               </Text>
             </View>
           )}
         </View>
 
-        <View style={styles.restaurantInfoBlock}>
-          <View style={styles.restaurantRowTop}>
+        <View style={styles.restaurantInfo}>
+          {/* Restaurant name and veg badge */}
+          <View style={styles.restaurantNameRow}>
             <Text style={styles.restaurantName} numberOfLines={1}>
               {name}
             </Text>
+            {isPureVeg && (
+              <View style={styles.vegBadge}>
+                <View style={styles.vegDot} />
+              </View>
+            )}
           </View>
 
-          <View style={styles.ratingEtaRow}>
-            <View style={styles.ratingPill}>
-              <MaterialIcons name="star" size={12} color="#fff" />
-              <Text style={styles.ratingPillTxt}>{ratingLabel}</Text>
+          {/* Rating, time, cost */}
+          <View style={styles.restaurantMetaRow}>
+            <View style={styles.ratingBadge}>
+              <MaterialIcons name="star" size={13} color="#fff" />
+              <Text style={styles.ratingBadgeTxt}>{ratingLabel}</Text>
             </View>
-            <View style={styles.dot} />
-            <Text style={styles.ratingEtaTxt}>{etaLabel}</Text>
-            {ratingCountLabel ? (
-              <>
-                <View style={styles.dot} />
-                <Text style={styles.ratingEtaTxt}>{ratingCountLabel}</Text>
-              </>
-            ) : null}
+            <Text style={styles.metaDot}>•</Text>
+            <Text style={styles.metaTxt}>{etaLabel}</Text>
+            <Text style={styles.metaDot}>•</Text>
+            <Text style={styles.metaTxt}>{costLabel}</Text>
           </View>
 
-          <Text style={styles.cuisineLine} numberOfLines={1}>
-            {cuisinesLabel || "Multi-cuisine · Himachali · North Indian"}
+          {/* Cuisines */}
+          <Text style={styles.cuisinesText} numberOfLines={1}>
+            {cuisinesLabel || "Multi-cuisine"}
           </Text>
 
-          <View style={styles.costDistanceRow}>
-            <Text style={styles.costDistanceTxt}>{costLabel}</Text>
-            {distanceLabel ? (
-              <>
-                <View style={styles.dot} />
-                <Text style={styles.costDistanceTxt}>{distanceLabel}</Text>
-              </>
-            ) : null}
-          </View>
+          {/* Distance */}
+          {distanceLabel && (
+            <View style={styles.distanceRow}>
+              <MaterialIcons name="location-on" size={12} color="#999" />
+              <Text style={styles.distanceTxt}>{distanceLabel}</Text>
+            </View>
+          )}
         </View>
       </Pressable>
     </Animated.View>
@@ -607,7 +639,7 @@ export default function NinjaEatsHomeScreen() {
   const { location } = useLocationContext();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [cuisines, setCuisines] = useState<Cuisine[]>([]);
+  const [cuisines, setCuisines] = useState<Cuisine[]>(DEMO_CUISINES); // Use demo cuisines
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVerticalMode, setActiveVerticalMode] =
@@ -741,7 +773,9 @@ export default function NinjaEatsHomeScreen() {
     return () => unsub();
   }, [location.cityId]);
 
-  // Cuisines – global (later can filter by city if you want city-specific cuisines)
+  // Cuisines – Use demo data (no Firestore fetch needed)
+  // Commenting out the Firestore fetch since we're using DEMO_CUISINES
+  /*
   useEffect(() => {
     const unsub = firestore()
       .collection("cuisines")
@@ -760,6 +794,7 @@ export default function NinjaEatsHomeScreen() {
       );
     return () => unsub();
   }, []);
+  */
 
   /* ---------------------------- Derived groupings --------------------------- */
 
@@ -927,25 +962,14 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fdfdfd" }}>
-      {/* Static header with video background */}
+      {/* Static header with gradient background */}
       <View style={styles.staticHeaderWrapper}>
-        {/* Background video */}
-        <View style={styles.staticVideoContainer}>
-          <Video
-            source={require("../assets/deliveryBackground.mp4")}
-            style={StyleSheet.absoluteFill}
-            muted
-            repeat
-            resizeMode="cover"
-            rate={1.0}
-            ignoreSilentSwitch="obey"
-          />
-        </View>
-
-        {/* Gradient overlay */}
+        {/* Orange to White Gradient Background */}
         <LinearGradient
-          colors={["rgba(0,0,0,0.7)", "rgba(0,0,0,0.25)", "transparent"]}
+          colors={["#ff6b35", "#ff8c42", "#ffa552", "#ffb366", "#ffffff"]}
           style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
         />
 
         {/* Static content */}
@@ -1035,15 +1059,10 @@ const styles = StyleSheet.create({
   center: { justifyContent: "center", alignItems: "center" },
 
   staticHeaderWrapper: {
-    height: 180, // Reduced height for smaller video + content
+    height: 180, // Reduced height for smaller content
     position: "relative",
     zIndex: 999,
     elevation: 20,
-  },
-
-  staticVideoContainer: {
-    ...StyleSheet.absoluteFillObject,
-    height: 180, // Matching reduced height
   },
 
   staticContentContainer: {
@@ -1171,42 +1190,34 @@ verticalSwitcherRow: {
     color: "#fff",
   },
 
-  /* Cuisines */
+  /* Cuisines - Swiggy Style */
   cuisinesContainer: {
     paddingHorizontal: H,
-    paddingBottom: 4,
-    paddingTop: 6,
+    paddingBottom: 8,
+    paddingTop: 8,
   },
-  cuisinePill: {
-    width: 80,
+  cuisineTile: {
+    width: 130,
+    marginRight: 16,
     alignItems: "center",
-    marginRight: 12,
   },
-  cuisineIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#eee",
+  cuisineTileImage: {
+    width: 130,
+    height: 150,
+    borderRadius: 16,
+    backgroundColor: "#f5f5f5",
+    marginBottom: 8,
+  },
+  cuisineTilePlaceholder: {
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
-  cuisineIcon: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 32,
-  },
-  cuisineName: {
-    fontSize: 11,
-    color: "#444",
+  cuisineTileName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
     textAlign: "center",
+    lineHeight: 18,
   },
 
   sectionTitle: {
@@ -1233,141 +1244,164 @@ verticalSwitcherRow: {
     marginRight: 12,
   },
 
-  /* Restaurant cards */
+  /* Restaurant cards - Swiggy Style */
   restaurantCardWrap: {
     marginHorizontal: H,
-    marginTop: 12,
+    marginBottom: 20,
   },
   restaurantCard: {
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   restaurantImageWrapper: {
     position: "relative",
+    width: "100%",
+    height: 180,
   },
   restaurantImage: {
     width: "100%",
-    height: 170,
-    backgroundColor: "#f5f5f5",
+    height: "100%",
+    backgroundColor: "#f8f8f8",
   },
   restaurantImagePlaceholder: {
     justifyContent: "center",
     alignItems: "center",
   },
-  restaurantTopLabels: {
+  restaurantImageGradient: {
     position: "absolute",
-    top: 8,
-    left: 8,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+  },
+  restaurantTopBadges: {
+    position: "absolute",
+    top: 10,
+    left: 10,
     flexDirection: "row",
     gap: 6,
   },
-  promotedTag: {
-    backgroundColor: "rgba(0,0,0,0.75)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  promotedTagTxt: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  vegTag: {
-    backgroundColor: "#e8f5e9",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  vegTagTxt: {
-    color: "#2e7d32",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  offerRibbon: {
-    position: "absolute",
-    bottom: 8,
-    left: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  promotedBadge: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 3,
   },
-  offerRibbonTxt: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "600",
+  promotedBadgeTxt: {
+    color: "#333",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  offerBanner: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,107,53,0.1)",
+  },
+  offerBannerTxt: {
+    color: "#ff6b35",
+    fontSize: 12,
+    fontWeight: "700",
+    flex: 1,
   },
 
-  restaurantInfoBlock: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 10,
+  restaurantInfo: {
+    padding: 12,
   },
-  restaurantRowTop: {
+  restaurantNameRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 6,
   },
   restaurantName: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    color: "#222",
+    color: "#1c1c1c",
+    letterSpacing: -0.3,
+  },
+  vegBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    borderColor: "#0f8a65",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 6,
+  },
+  vegDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#0f8a65",
   },
 
-  ratingEtaRow: {
+  restaurantMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginBottom: 6,
   },
-  ratingPill: {
+  ratingBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1b5e20",
-    borderRadius: 10,
+    backgroundColor: "#1c8a5c",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 2,
   },
-  ratingPillTxt: {
+  ratingBadgeTxt: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    marginLeft: 3,
   },
-  ratingEtaTxt: {
-    fontSize: 11,
-    color: "#555",
+  metaDot: {
+    color: "#999",
+    fontSize: 14,
+    marginHorizontal: 6,
+    fontWeight: "700",
   },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "#777",
-    marginHorizontal: 5,
+  metaTxt: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
   },
 
-  cuisineLine: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#777",
+  cuisinesText: {
+    fontSize: 13,
+    color: "#888",
+    marginBottom: 4,
+    lineHeight: 18,
   },
-  costDistanceRow: {
+
+  distanceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 2,
   },
-  costDistanceTxt: {
+  distanceTxt: {
     fontSize: 12,
-    color: "#555",
+    color: "#999",
+    marginLeft: 2,
   },
 
   /* Empty state */

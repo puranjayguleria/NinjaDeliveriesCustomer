@@ -6,25 +6,85 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
+  Dimensions,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import { useLocationContext } from "@/context/LocationContext";
 import { firestoreCache, CACHE_KEYS } from "@/utils/firestoreCache";
+
+const { width } = Dimensions.get("window");
+const H = 16;
 
 type CuisineCategory = {
   id: string;
   name: string;
   iconEmoji?: string;
+  iconUrl?: string;
   priority?: number;
 };
+
+// Demo cuisines with restaurant images
+const DEMO_CUISINES: CuisineCategory[] = [
+  {
+    id: "italian",
+    name: "Italian",
+    iconUrl: "https://images.unsplash.com/photo-1595295333158-4742f28fbd85?w=400&h=400&fit=crop",
+    priority: 1,
+  },
+  {
+    id: "chinese",
+    name: "Chinese",
+    iconUrl: "https://images.unsplash.com/photo-1525755662778-989d0524087e?w=400&h=400&fit=crop",
+    priority: 2,
+  },
+  {
+    id: "indian",
+    name: "Indian",
+    iconUrl: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400&h=400&fit=crop",
+    priority: 3,
+  },
+  {
+    id: "mexican",
+    name: "Mexican",
+    iconUrl: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&h=400&fit=crop",
+    priority: 4,
+  },
+  {
+    id: "japanese",
+    name: "Japanese",
+    iconUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=400&fit=crop",
+    priority: 5,
+  },
+  {
+    id: "thai",
+    name: "Thai",
+    iconUrl: "https://images.unsplash.com/photo-1559314809-0d155014e29e?w=400&h=400&fit=crop",
+    priority: 6,
+  },
+  {
+    id: "american",
+    name: "American",
+    iconUrl: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&h=400&fit=crop",
+    priority: 7,
+  },
+  {
+    id: "mediterranean",
+    name: "Mediterranean",
+    iconUrl: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=400&fit=crop",
+    priority: 8,
+  },
+];
 
 const CuisinesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { location, setCityId } = useLocationContext();
-  const [cuisines, setCuisines] = useState<CuisineCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cuisines, setCuisines] = useState<CuisineCategory[]>(DEMO_CUISINES); // Use demo data
+  const [loading, setLoading] = useState(false); // Start with demo data loaded
   const [error, setError] = useState<string | null>(null);
 
   // Initialize cityId if not set
@@ -35,6 +95,8 @@ const CuisinesScreen: React.FC = () => {
   }, [location.cityId, setCityId]);
 
   // Optimized Firestore listener with caching and error handling
+  // Commented out to use demo data
+  /*
   useFocusEffect(
     useCallback(() => {
       // Check cache first
@@ -82,6 +144,7 @@ const CuisinesScreen: React.FC = () => {
       return () => unsub();
     }, [])
   );
+  */
 
   // Optimized navigation handler with immediate feedback
   const handleCuisinePress = useCallback((item: CuisineCategory) => {
@@ -104,17 +167,26 @@ const CuisinesScreen: React.FC = () => {
     }
   }, [navigation]);
 
-  // Memoized render item for better performance
+  // Memoized render item for better performance - Swiggy Style
   const renderItem = useCallback(({ item }: { item: CuisineCategory }) => (
     <TouchableOpacity
-      style={styles.card}
+      style={styles.cuisineTile}
       onPress={() => handleCuisinePress(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={styles.iconCircle}>
-        <Text style={styles.iconText}>{item.iconEmoji || "🍽️"}</Text>
-      </View>
-      <Text style={styles.cardTitle} numberOfLines={1}>
+      {item.iconUrl ? (
+        <Image
+          source={{ uri: item.iconUrl }}
+          style={styles.cuisineTileImage}
+          contentFit="cover"
+          cachePolicy="disk"
+        />
+      ) : (
+        <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
+          <Text style={styles.cuisineEmoji}>{item.iconEmoji || "🍽️"}</Text>
+        </View>
+      )}
+      <Text style={styles.cuisineTileName} numberOfLines={2}>
         {item.name}
       </Text>
     </TouchableOpacity>
@@ -151,39 +223,53 @@ const CuisinesScreen: React.FC = () => {
     </View>
   ), [error]);
 
-  // Pull to refresh handler
+  // Pull to refresh handler - disabled for demo
   const handleRefresh = useCallback(() => {
-    firestoreCache.delete(CACHE_KEYS.CUISINES);
-    setError(null);
-    setLoading(true);
+    // Demo data doesn't need refresh
+    // firestoreCache.delete(CACHE_KEYS.CUISINES);
+    // setError(null);
+    // setLoading(true);
   }, []);
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Cuisines</Text>
-      </View>
+      {/* Header with gradient background */}
+      <LinearGradient
+        colors={["#ff6b35", "#ff8c42", "#ffa552", "#ffb366", "#ffffff"]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <MaterialIcons name="restaurant-menu" size={28} color="#fff" />
+          <Text style={styles.headerTitle}>Explore Cuisines</Text>
+        </View>
+        <Text style={styles.headerSubtitle}>
+          Discover restaurants by your favorite cuisine
+        </Text>
+      </LinearGradient>
 
       {loading && !cuisines.length ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#00b4a0" />
+          <ActivityIndicator size="large" color="#ff6b35" />
           <Text style={styles.loadingText}>Loading cuisines...</Text>
         </View>
       ) : (
         <FlatList
           data={cuisines}
           keyExtractor={keyExtractor}
-          numColumns={3}
+          numColumns={2}
           contentContainerStyle={styles.listContainer}
           columnWrapperStyle={styles.columnWrapper}
           renderItem={renderItem}
           ListEmptyComponent={EmptyComponent}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={9}
+          maxToRenderPerBatch={6}
           windowSize={10}
-          initialNumToRender={9}
+          initialNumToRender={6}
           refreshing={loading && cuisines.length > 0}
           onRefresh={handleRefresh}
+          showsVerticalScrollIndicator={false}
         />
       )}
     </View>
@@ -198,22 +284,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#fdfdfd" 
   },
   header: {
+    paddingTop: Platform.OS === "ios" ? 50 : 40,
+    paddingBottom: 20,
+    paddingHorizontal: H,
+  },
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
-    backgroundColor: "#fff",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    marginBottom: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#222",
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#fff",
+    marginLeft: 8,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.95)",
+    fontWeight: "500",
+    marginLeft: 36,
   },
   loader: {
     flex: 1,
@@ -226,42 +317,45 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   listContainer: {
-    padding: 16,
+    padding: H,
+    paddingBottom: 32,
   },
   columnWrapper: {
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 16,
   },
-  card: {
-    width: "31%",
+  cuisineTile: {
+    width: (width - H * 3) / 2, // 2 columns with spacing
     backgroundColor: "#fff",
-    borderRadius: 12,
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    borderRadius: 16,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    elevation: 3,
   },
-  iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#e0f7f5",
-    alignItems: "center",
+  cuisineTileImage: {
+    width: "100%",
+    height: 160,
+    backgroundColor: "#f5f5f5",
+  },
+  cuisineTilePlaceholder: {
     justifyContent: "center",
-    marginBottom: 6,
+    alignItems: "center",
   },
-  iconText: { 
-    fontSize: 22 
+  cuisineEmoji: {
+    fontSize: 48,
   },
-  cardTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#333",
+  cuisineTileName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1c1c1c",
     textAlign: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    lineHeight: 20,
+    letterSpacing: -0.3,
   },
   emptyState: {
     flex: 1,
@@ -271,26 +365,32 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     color: "#333",
-    marginBottom: 4,
+    marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#777",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 24,
+    lineHeight: 20,
   },
   retryButton: {
-    backgroundColor: "#00b4a0",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    backgroundColor: "#ff6b35",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: "#ff6b35",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   retryText: {
     color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

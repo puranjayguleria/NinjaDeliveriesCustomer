@@ -3,7 +3,6 @@ import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
-  ActivityIndicator,
   StyleSheet,
   Image,
   TouchableOpacity,
@@ -18,10 +17,6 @@ import MapView, { Marker, Polyline, LatLng } from "react-native-maps";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useOrder } from "../context/OrderContext";
-
-import riderIcon from "../assets/rider-icon-1.png";
-import pickupMarker from "../assets/pickup-marker.png";
-import dropoffMarker from "../assets/dropoff-marker.png";
 import Loader from "@/components/VideoLoader";
 
 // ------------------ TYPES ------------------
@@ -195,7 +190,8 @@ const OrderTrackingScreen: React.FC = () => {
       hasNavigatedToRatingRef.current = true;
       setActiveOrder(null);
 
-      navigation.navigate("RatingScreen" as never, { orderId } as never);
+      // @ts-ignore - Navigation type issue
+      navigation.navigate("RatingScreen", { orderId });
     }
     if (orderStatus === "cancelled") {
       setActiveOrder(null);
@@ -225,18 +221,6 @@ const OrderTrackingScreen: React.FC = () => {
     }
   };
 
-  // ------------- RENDERING ORDER ITEMS -------------
-  const renderOrderItem = ({ item }: { item: OrderItem }) => {
-    const finalPrice = item.discount ? item.price - item.discount : item.price;
-    return (
-      <View style={styles.orderItemRow}>
-        <Text style={styles.orderItemName}>{item.name}</Text>
-        <Text style={styles.orderItemQty}>x{item.quantity}</Text>
-        <Text style={styles.orderItemPrice}>₹{finalPrice.toFixed(2)}</Text>
-      </View>
-    );
-  };
-
   // ------------------ RENDER ------------------
   if (isLoading) {
     return (
@@ -264,18 +248,24 @@ const OrderTrackingScreen: React.FC = () => {
           {/* Rider Marker */}
           {riderLocation && (
             <Marker coordinate={riderLocation} title="Rider's Location">
-              <Image source={riderIcon} style={{ width: 35, height: 50 }} />
+              <View style={styles.markerContainer}>
+                <Ionicons name="bicycle" size={30} color="#2196F3" />
+              </View>
             </Marker>
           )}
 
           {/* Pickup Marker */}
           <Marker coordinate={pickupCoords} title="Pickup Location">
-            <Image source={pickupMarker} style={{ width: 35, height: 50 }} />
+            <View style={styles.markerContainer}>
+              <Ionicons name="location" size={30} color="#4CAF50" />
+            </View>
           </Marker>
 
           {/* Dropoff Marker */}
           <Marker coordinate={dropoffCoords} title="Dropoff Location">
-            <Image source={dropoffMarker} style={{ width: 35, height: 50 }} />
+            <View style={styles.markerContainer}>
+              <Ionicons name="home" size={30} color="#FF5722" />
+            </View>
           </Marker>
 
           {/* Path */}
@@ -319,7 +309,9 @@ const OrderTrackingScreen: React.FC = () => {
         {riderId && (
           <View style={styles.riderCard}>
             <View style={styles.riderCardLeft}>
-              <Image source={riderIcon} style={styles.riderImage} />
+              <View style={styles.riderIconCircle}>
+                <Ionicons name="person" size={24} color="#2196F3" />
+              </View>
               <View>
                 <Text style={styles.riderName}>{riderInfo.riderName}</Text>
                 <Text style={styles.riderLabel}>Delivery Partner</Text>
@@ -482,6 +474,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  markerContainer: {
+    backgroundColor: "#fff",
+    padding: 8,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
 
   bottomContainer: {
     backgroundColor: "#fff",
@@ -536,6 +540,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+  },
+  riderIconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#E3F2FD",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
   riderImage: {
     width: 40,
