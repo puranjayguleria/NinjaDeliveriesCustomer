@@ -60,6 +60,8 @@ import { OrderProvider, useOrder } from "./context/OrderContext";
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/ProductsHomeScreen";
 import ServicesScreen from "./screens/ServicesScreen";
+import ServicesStack from "./navigation/ServicesStack";
+
 import CategoriesScreen from "./screens/CategoriesScreen";
 import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
@@ -615,7 +617,8 @@ function AppTabs() {
         {/* ⿣ Services Tab */}
         <Tab.Screen
          name="ServicesTab"
-         component={ServicesScreen}
+         component={ServicesStack}
+
          options={{ title: "Services",
          tabBarLabel: ({ focused}) => (
             <Text style ={{ color: "red", fontSize: 11, fontWeight:"600",}}> service </Text>
