@@ -15,7 +15,7 @@ export default function ServiceCategoryScreen() {
 
   const { serviceTitle } = route.params;
 
-  const issues = [
+  const electricianIssues = [
     {
       id: "1",
       title: "Fan Not Working",
@@ -40,20 +40,65 @@ export default function ServiceCategoryScreen() {
       id: "5",
       title: "Other Issue",
       icon: require("../assets/images/icon_cleaning.png"),
+      isOther: true,
     },
   ];
+
+  const plumberIssues = [
+    {
+      id: "1",
+      title: "Tap Leakage",
+      icon: require("../assets/images/icon_home_repair.png"),
+    },
+    {
+      id: "2",
+      title: "Pipe Leakage",
+      icon: require("../assets/images/icon_cleaning.png"),
+    },
+    {
+      id: "3",
+      title: "Flush Repair",
+      icon: require("../assets/images/icon_car_bike.png"),
+    },
+    {
+      id: "4",
+      title: "Blocked Drain",
+      icon: require("../assets/images/icon_home_repair.png"),
+    },
+    {
+      id: "5",
+      title: "Other Issue",
+      icon: require("../assets/images/icon_cleaning.png"),
+      isOther: true,
+    },
+  ];
+
+  const issues =
+    serviceTitle?.toLowerCase() === "plumber" ? plumberIssues : electricianIssues;
+
+  const handlePress = (item: any) => {
+    // Other Issue -> Open AddOn screen for custom description
+    if (item.isOther) {
+      navigation.navigate("ServiceAddOn", {
+        serviceTitle,
+        issueTitle: item.title,
+      });
+      return;
+    }
+
+    // Normal issue -> Select Date Time
+    navigation.navigate("SelectDateTime", {
+      serviceTitle,
+      issueTitle: item.title,
+    });
+  };
 
   const renderItem = ({ item }: any) => {
     return (
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.9}
-        onPress={() =>
-          navigation.navigate("SelectDateTime", {
-            serviceTitle,
-            issueTitle: item.title,
-          })
-        }
+        onPress={() => handlePress(item)}
       >
         <Image source={item.icon} style={styles.icon} />
 
@@ -78,6 +123,7 @@ export default function ServiceCategoryScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );

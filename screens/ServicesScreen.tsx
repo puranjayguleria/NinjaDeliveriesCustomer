@@ -16,18 +16,24 @@ const SERVICES = [
     title: "Home Repair",
     subtitle: "Electrician, plumber, etc.",
     icon: require("../assets/images/icon_home_repair.png"),
+    screen: "ServiceCategory",
+    params: { serviceTitle: "Electrician" },
   },
   {
-    id: "car-bike",
-    title: "Car & Bike",
-    subtitle: "Car wash, bike wash",
-    icon: require("../assets/images/icon_car_bike.png"),
-  },
-  {
-    id: "cleaning",
-    title: "Cleaning",
-    subtitle: "Home & office cleaning",
+    id: "health",
+    title: "Health",
+    subtitle: "Physio, yoga, gym",
     icon: require("../assets/images/icon_cleaning.png"),
+    screen: "HealthCategory",
+    params: { serviceTitle: "Health" },
+  },
+  {
+    id: "daily-wages",
+    title: "Daily Wages",
+    subtitle: "Half day / Full day",
+    icon: require("../assets/images/icon_car_bike.png"),
+    screen: "DailyWagesCategory",
+    params: { serviceTitle: "Daily Wages" },
   },
 ];
 
@@ -36,92 +42,159 @@ const POPULAR = [
     id: "electrician",
     title: "Electrician",
     image: require("../assets/images/card_electrician.png"),
+    screen: "ServiceCategory",
+    params: { serviceTitle: "Electrician" },
+  },
+  {
+    id: "plumber",
+    title: "Plumber",
+    image: require("../assets/images/card_acrepair.png"),
+    screen: "ServiceCategory",
+    params: { serviceTitle: "Plumber" },
+  },
+  {
+    id: "cleaning",
+    title: "Cleaning",
+    image: require("../assets/images/icon_cleaning.png"), // ✅ FIXED (file exists)
+    screen: "CleaningCategory",
+    params: { serviceTitle: "Cleaning" },
   },
   {
     id: "car-wash",
     title: "Car Wash",
     image: require("../assets/images/car_wash.jpg"),
+    screen: "CarWashCategory",
+    params: { serviceTitle: "Car Wash" },
+  },
+];
+
+const ALL_SERVICES = [
+  {
+    id: "1",
+    title: "Electrician",
+    screen: "ServiceCategory",
+    params: { serviceTitle: "Electrician" },
   },
   {
-    id: "ac-repair",
-    title: "AC Repair",
-    image: require("../assets/images/card_acrepair.png"),
+    id: "2",
+    title: "Plumber",
+    screen: "ServiceCategory",
+    params: { serviceTitle: "Plumber" },
+  },
+  {
+    id: "3",
+    title: "Health",
+    screen: "HealthCategory",
+    params: { serviceTitle: "Health" },
+  },
+  {
+    id: "4",
+    title: "Cleaning",
+    screen: "CleaningCategory",
+    params: { serviceTitle: "Cleaning" },
+  },
+  {
+    id: "5",
+    title: "Daily Wages",
+    screen: "DailyWagesCategory",
+    params: { serviceTitle: "Daily Wages" },
+  },
+  {
+    id: "6",
+    title: "Car Wash",
+    screen: "CarWashCategory",
+    params: { serviceTitle: "Car Wash" },
   },
 ];
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
 
+  const goTo = (screen: string, params: any) => {
+    navigation.navigate(screen, params);
+  };
+
+  const HeaderUI = () => {
+    return (
+      <View>
+        <Text style={styles.header}>Services</Text>
+
+        {/* Banner */}
+        <ImageBackground
+          source={require("../assets/images/service_banner.jpg")}
+          style={styles.banner}
+          imageStyle={styles.bannerImage}
+        >
+          <View style={styles.bannerOverlay} />
+          <Text style={styles.bannerTitle}>Monsoon Special</Text>
+          <Text style={styles.bannerSubTitle}>Leak Proofing & Geyser Repair</Text>
+        </ImageBackground>
+
+        {/* Categories Row */}
+        <View style={styles.categoryRow}>
+          {SERVICES.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.categoryCard}
+              activeOpacity={0.9}
+              onPress={() => goTo(item.screen, item.params)}
+            >
+              <Image source={item.icon} style={styles.categoryIcon} />
+              <Text style={styles.categoryText}>{item.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Popular Near You */}
+        <Text style={styles.sectionTitle}>Popular Near You</Text>
+
+        <View style={styles.popularRow}>
+          {POPULAR.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.popularCard}
+              activeOpacity={0.9}
+              onPress={() => goTo(item.screen, item.params)}
+            >
+              <ImageBackground
+                source={item.image}
+                style={styles.popularBg}
+                imageStyle={styles.popularBgImage}
+              >
+                <View style={styles.popularOverlay} />
+                <Text style={styles.popularTitle}>{item.title}</Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* All Services Title */}
+        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>
+          All Services
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Services</Text>
-
-      {/* Banner */}
-      <ImageBackground
-        source={require("../assets/images/service_banner.jpg")}
-        style={styles.banner}
-        imageStyle={styles.bannerImage}
-      >
-        <View style={styles.bannerOverlay} />
-        <Text style={styles.bannerTitle}>Monsoon Special</Text>
-        <Text style={styles.bannerSubTitle}>Leak Proofing & Geyser Repair</Text>
-      </ImageBackground>
-
-      {/* Categories Row */}
-      <View style={styles.categoryRow}>
-        {SERVICES.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.categoryCard}>
-            <Image source={item.icon} style={styles.categoryIcon} />
-            <Text style={styles.categoryText}>{item.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Popular Near You */}
-      <Text style={styles.sectionTitle}>Popular Near You</Text>
-
-      <View style={styles.popularRow}>
-        {POPULAR.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.popularCard}
-            onPress={() =>
-              navigation.navigate("ServiceCategory", {
-                serviceTitle: item.title,
-              })
-            }
-          >
-            <ImageBackground
-              source={item.image}
-              style={styles.popularBg}
-              imageStyle={styles.popularBgImage}
-            >
-              <View style={styles.popularOverlay} />
-              <Text style={styles.popularTitle}>{item.title}</Text>
-            </ImageBackground>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* नीचे list भी चाहिए तो */}
-      <Text style={[styles.sectionTitle, { marginTop: 16 }]}>All Services</Text>
-
+      {/* Full screen scroll */}
       <FlatList
-        data={POPULAR}
+        data={ALL_SERVICES}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={HeaderUI}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.listCard}
-            onPress={() =>
-              navigation.navigate("ServiceCategory", {
-                serviceTitle: item.title,
-              })
-            }
+            activeOpacity={0.9}
+            onPress={() => goTo(item.screen, item.params)}
           >
             <Text style={styles.listTitle}>{item.title}</Text>
-            <Text style={styles.listSub}>Tap to select slot</Text>
+            <Text style={styles.listSub}>Tap to continue</Text>
           </TouchableOpacity>
         )}
+        contentContainerStyle={{ paddingBottom: 30 }}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
@@ -166,10 +239,12 @@ const styles = StyleSheet.create({
 
   popularRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     marginTop: 12,
+    gap: 10,
   },
-  popularCard: { width: "31%", height: 90 },
+  popularCard: { width: "48%", height: 90 },
   popularBg: {
     flex: 1,
     borderRadius: 14,
