@@ -17,6 +17,32 @@ import { Image } from "expo-image";
 import { useLocationContext } from "@/context/LocationContext";
 import { firestoreCache, CACHE_KEYS } from "@/utils/firestoreCache";
 
+// Helper function to validate image URL
+const isValidImageUrl = (url: string): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Check if it's a valid URL format
+  try {
+    new URL(url);
+  } catch {
+    return false;
+  }
+  
+  // Check if it's likely an image (not SVG which causes issues)
+  const lowercaseUrl = url.toLowerCase();
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+  const hasValidExtension = validExtensions.some(ext => lowercaseUrl.includes(ext));
+  const isSvg = lowercaseUrl.includes('.svg') || lowercaseUrl.includes('svg');
+  
+  // Allow if it has valid extension or if it's from a known image service (even without extension)
+  const isImageService = lowercaseUrl.includes('unsplash.com') || 
+                         lowercaseUrl.includes('cloudinary.com') || 
+                         lowercaseUrl.includes('firebase') ||
+                         lowercaseUrl.includes('googleapis.com');
+  
+  return !isSvg && (hasValidExtension || isImageService);
+};
+
 const { width } = Dimensions.get("window");
 const H = 16;
 
@@ -24,68 +50,17 @@ type CuisineCategory = {
   id: string;
   name: string;
   iconEmoji?: string;
-  iconUrl?: string;
+  imageurl?: string; // Match Firebase field name
   priority?: number;
 };
-
-// Demo cuisines with restaurant images
-const DEMO_CUISINES: CuisineCategory[] = [
-  {
-    id: "italian",
-    name: "Italian",
-    iconUrl: "https://images.unsplash.com/photo-1595295333158-4742f28fbd85?w=400&h=400&fit=crop",
-    priority: 1,
-  },
-  {
-    id: "chinese",
-    name: "Chinese",
-    iconUrl: "https://images.unsplash.com/photo-1525755662778-989d0524087e?w=400&h=400&fit=crop",
-    priority: 2,
-  },
-  {
-    id: "indian",
-    name: "Indian",
-    iconUrl: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400&h=400&fit=crop",
-    priority: 3,
-  },
-  {
-    id: "mexican",
-    name: "Mexican",
-    iconUrl: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&h=400&fit=crop",
-    priority: 4,
-  },
-  {
-    id: "japanese",
-    name: "Japanese",
-    iconUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=400&fit=crop",
-    priority: 5,
-  },
-  {
-    id: "thai",
-    name: "Thai",
-    iconUrl: "https://images.unsplash.com/photo-1559314809-0d155014e29e?w=400&h=400&fit=crop",
-    priority: 6,
-  },
-  {
-    id: "american",
-    name: "American",
-    iconUrl: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&h=400&fit=crop",
-    priority: 7,
-  },
-  {
-    id: "mediterranean",
-    name: "Mediterranean",
-    iconUrl: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=400&fit=crop",
-    priority: 8,
-  },
-];
 
 const CuisinesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { location, setCityId } = useLocationContext();
-  const [cuisines, setCuisines] = useState<CuisineCategory[]>(DEMO_CUISINES); // Use demo data
-  const [loading, setLoading] = useState(false); // Start with demo data loaded
+  const [cuisines, setCuisines] = useState<CuisineCategory[]>([]); // Start empty, fetch from Firebase
+  const [loading, setLoading] = useState(true); // Start loading
   const [error, setError] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set()); // Track failed image URLs
 
   // Initialize cityId if not set
   useEffect(() => {
@@ -94,15 +69,16 @@ const CuisinesScreen: React.FC = () => {
     }
   }, [location.cityId, setCityId]);
 
-  // Optimized Firestore listener with caching and error handling
-  // Commented out to use demo data
-  /*
+  // Fetch cuisines from Firebase with caching and error handling
   useFocusEffect(
     useCallback(() => {
+      console.log('[CuisinesScreen] Fetching cuisines from Firebase...');
+      
       // Check cache first
       const cachedCuisines = firestoreCache.get<CuisineCategory[]>(CACHE_KEYS.CUISINES);
       
       if (cachedCuisines) {
+        console.log('[CuisinesScreen] Using cached cuisines:', cachedCuisines.length);
         setCuisines(cachedCuisines);
         setLoading(false);
         setError(null);
@@ -118,10 +94,22 @@ const CuisinesScreen: React.FC = () => {
         .onSnapshot(
           (snap) => {
             try {
-              const list: CuisineCategory[] = snap.docs.map((d) => ({
-                id: d.id,
-                ...(d.data() as any),
-              }));
+              const list: CuisineCategory[] = snap.docs.map((d) => {
+                const data = d.data();
+                console.log('[CuisinesScreen] Cuisine data:', {
+                  id: d.id,
+                  name: data.name,
+                  imageurl: data.imageurl,
+                  isValidUrl: data.imageurl ? isValidImageUrl(data.imageurl) : false,
+                  priority: data.priority
+                });
+                return {
+                  id: d.id,
+                  ...(data as any),
+                };
+              });
+              
+              console.log('[CuisinesScreen] Loaded cuisines from Firebase:', list.length);
               
               // Cache the results
               firestoreCache.set(CACHE_KEYS.CUISINES, list, 10 * 60 * 1000); // 10 minutes TTL
@@ -131,12 +119,14 @@ const CuisinesScreen: React.FC = () => {
             } catch (err) {
               console.error("[CuisinesScreen] Error processing data:", err);
               setError("Failed to load cuisines");
+              setCuisines([]); // No fallback data
               setLoading(false);
             }
           },
           (err) => {
             console.error("[CuisinesScreen] Firestore error:", err);
             setError("Failed to load cuisines");
+            setCuisines([]); // No fallback data
             setLoading(false);
           }
         );
@@ -144,7 +134,6 @@ const CuisinesScreen: React.FC = () => {
       return () => unsub();
     }, [])
   );
-  */
 
   // Optimized navigation handler with immediate feedback
   const handleCuisinePress = useCallback((item: CuisineCategory) => {
@@ -168,29 +157,40 @@ const CuisinesScreen: React.FC = () => {
   }, [navigation]);
 
   // Memoized render item for better performance - Swiggy Style
-  const renderItem = useCallback(({ item }: { item: CuisineCategory }) => (
-    <TouchableOpacity
-      style={styles.cuisineTile}
-      onPress={() => handleCuisinePress(item)}
-      activeOpacity={0.8}
-    >
-      {item.iconUrl ? (
-        <Image
-          source={{ uri: item.iconUrl }}
-          style={styles.cuisineTileImage}
-          contentFit="cover"
-          cachePolicy="disk"
-        />
-      ) : (
-        <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
-          <Text style={styles.cuisineEmoji}>{item.iconEmoji || "🍽️"}</Text>
-        </View>
-      )}
-      <Text style={styles.cuisineTileName} numberOfLines={2}>
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  ), [handleCuisinePress]);
+  const renderItem = useCallback(({ item }: { item: CuisineCategory }) => {
+    const shouldShowImage = item.imageurl && 
+                           isValidImageUrl(item.imageurl) && 
+                           !failedImages.has(item.imageurl);
+    
+    return (
+      <TouchableOpacity
+        style={styles.cuisineTile}
+        onPress={() => handleCuisinePress(item)}
+        activeOpacity={0.8}
+      >
+        {shouldShowImage ? (
+          <Image
+            source={{ uri: item.imageurl }}
+            style={styles.cuisineTileImage}
+            contentFit="cover"
+            cachePolicy="disk"
+            onError={() => {
+              console.error('[CuisinesScreen] Failed to load image for:', item.name, 'URL:', item.imageurl);
+              // Add to failed images set to show placeholder next time
+              setFailedImages(prev => new Set(prev).add(item.imageurl!));
+            }}
+          />
+        ) : (
+          <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
+            <Text style={styles.cuisineEmoji}>{item.iconEmoji || "🍽️"}</Text>
+          </View>
+        )}
+        <Text style={styles.cuisineTileName} numberOfLines={2}>
+          {item.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  }, [handleCuisinePress, failedImages]);
 
   // Memoized key extractor
   const keyExtractor = useCallback((item: CuisineCategory) => item.id, []);
@@ -223,12 +223,12 @@ const CuisinesScreen: React.FC = () => {
     </View>
   ), [error]);
 
-  // Pull to refresh handler - disabled for demo
+  // Pull to refresh handler
   const handleRefresh = useCallback(() => {
-    // Demo data doesn't need refresh
-    // firestoreCache.delete(CACHE_KEYS.CUISINES);
-    // setError(null);
-    // setLoading(true);
+    console.log('[CuisinesScreen] Refreshing cuisines...');
+    firestoreCache.delete(CACHE_KEYS.CUISINES);
+    setError(null);
+    setLoading(true);
   }, []);
 
   return (

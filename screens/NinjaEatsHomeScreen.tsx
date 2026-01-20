@@ -31,6 +31,32 @@ import Loader from "@/components/VideoLoader";
 import { PerformanceMonitor } from "@/utils/PerformanceMonitor";
 import * as Location from "expo-location";
 
+// Helper function to validate image URL
+const isValidImageUrl = (url: string): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Check if it's a valid URL format
+  try {
+    new URL(url);
+  } catch {
+    return false;
+  }
+  
+  // Check if it's likely an image (not SVG which causes issues)
+  const lowercaseUrl = url.toLowerCase();
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+  const hasValidExtension = validExtensions.some(ext => lowercaseUrl.includes(ext));
+  const isSvg = lowercaseUrl.includes('.svg') || lowercaseUrl.includes('svg');
+  
+  // Allow if it has valid extension or if it's from a known image service (even without extension)
+  const isImageService = lowercaseUrl.includes('unsplash.com') || 
+                         lowercaseUrl.includes('cloudinary.com') || 
+                         lowercaseUrl.includes('firebase') ||
+                         lowercaseUrl.includes('googleapis.com');
+  
+  return !isSvg && (hasValidExtension || isImageService);
+};
+
 /* -------------------------------------------------------------------------- */
 /*  CONSTANTS                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -80,37 +106,9 @@ type Restaurant = {
 type Cuisine = {
   id: string;
   name: string;
-  iconUrl?: string;
+  imageurl?: string; // Match Firebase field name
   priority?: number;
 };
-
-// Demo cuisines with actual images
-const DEMO_CUISINES: Cuisine[] = [
-  {
-    id: "pizza",
-    name: "Pizza",
-    iconUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&h=400&fit=crop",
-    priority: 1,
-  },
-  {
-    id: "burger",
-    name: "Burger",
-    iconUrl: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=400&fit=crop",
-    priority: 2,
-  },
-  {
-    id: "chole-bhature",
-    name: "Chole Bhature",
-    iconUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&h=400&fit=crop",
-    priority: 3,
-  },
-  {
-    id: "desserts",
-    name: "Desserts",
-    iconUrl: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=400&fit=crop",
-    priority: 4,
-  },
-];
 
 type QuickFilterKey = "veg" | "fast" | "rating" | "offers";
 
@@ -126,8 +124,6 @@ const LocationPromptCard: React.FC<{
   const nav = useNavigation<any>();
   const { updateLocation } = useLocationContext();
   const [busy, setBusy] = useState(false);
-
-  console.log('[LocationPromptCard] Rendering location prompt card');
 
   const enableLocation = useCallback(async () => {
     try {
@@ -326,20 +322,20 @@ const QuickFiltersRow: React.FC<{
   );
 };
 
-const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
+const CuisinesRow: React.FC<{ cuisines: Cuisine[]; failedImages: Set<string>; setFailedImages: React.Dispatch<React.SetStateAction<Set<string>>> }> = ({ cuisines, failedImages, setFailedImages }) => {
   const nav = useNavigation<any>();
   const scrollViewRef = useRef<ScrollView>(null);
   const currentIndex = useRef(0);
-  const animationRef = useRef<ReturnType<typeof setInterval>>();
+  const animationRef = useRef<any>(null);
   const isUserInteracting = useRef(false);
-
-  if (!cuisines.length) return null;
 
   // Create triple duplicated content for infinite scroll
   const triplicatedCuisines = [...cuisines, ...cuisines, ...cuisines];
 
   // Pause-then-switch carousel effect
   useEffect(() => {
+    if (!cuisines.length) return; // Early return inside useEffect is fine
+    
     const itemWidth = 140; // Updated width for new design
     const originalLength = cuisines.length;
     
@@ -373,6 +369,9 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
       }
     };
   }, [cuisines.length]);
+
+  // Return null if no cuisines after all hooks have been called
+  if (!cuisines.length) return null;
 
   return (
     <View style={{ marginTop: 12, marginBottom: 8 }}>
@@ -422,34 +421,45 @@ const CuisinesRow: React.FC<{ cuisines: Cuisine[] }> = ({ cuisines }) => {
           currentIndex.current = Math.round(scrollX / itemWidth);
         }}
       >
-        {triplicatedCuisines.map((c, index) => (
-          <Pressable
-            key={`${c.id}-${index}`}
-            style={styles.cuisineTile}
-            onPress={() =>
-              nav.navigate("CuisineDetail", {
-                cuisineId: c.id,
-                cuisineName: c.name,
-                cuisineImage: c.iconUrl,
-              })
-            }
-          >
-            {c.iconUrl ? (
-              <Image
-                source={{ uri: c.iconUrl }}
-                style={styles.cuisineTileImage}
-                contentFit="cover"
-              />
-            ) : (
-              <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
-                <MaterialIcons name="restaurant" size={32} color="#999" />
-              </View>
-            )}
-            <Text style={styles.cuisineTileName} numberOfLines={2}>
-              {c.name}
-            </Text>
-          </Pressable>
-        ))}
+        {triplicatedCuisines.map((c, index) => {
+          const shouldShowImage = c.imageurl && 
+                                 isValidImageUrl(c.imageurl) && 
+                                 !failedImages.has(c.imageurl);
+          
+          return (
+            <Pressable
+              key={`${c.id}-${index}`}
+              style={styles.cuisineTile}
+              onPress={() =>
+                nav.navigate("CuisineDetail", {
+                  cuisineId: c.id,
+                  cuisineName: c.name,
+                  cuisineImage: c.imageurl,
+                })
+              }
+            >
+              {shouldShowImage ? (
+                <Image
+                  source={{ uri: c.imageurl }}
+                  style={styles.cuisineTileImage}
+                  contentFit="cover"
+                  onError={() => {
+                    console.error('[NinjaEats] Failed to load image for:', c.name, 'URL:', c.imageurl);
+                    // Add to failed images set to show placeholder next time
+                    setFailedImages((prev: Set<string>) => new Set(prev).add(c.imageurl!));
+                  }}
+                />
+              ) : (
+                <View style={[styles.cuisineTileImage, styles.cuisineTilePlaceholder]}>
+                  <MaterialIcons name="restaurant" size={32} color="#999" />
+                </View>
+              )}
+              <Text style={styles.cuisineTileName} numberOfLines={2}>
+                {c.name}
+              </Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -639,9 +649,10 @@ export default function NinjaEatsHomeScreen() {
   const { location } = useLocationContext();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [cuisines, setCuisines] = useState<Cuisine[]>(DEMO_CUISINES); // Use demo cuisines
+  const [cuisines, setCuisines] = useState<Cuisine[]>([]); // Fetch from Firebase
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set()); // Track failed image URLs
   const [activeVerticalMode, setActiveVerticalMode] =
     useState<"grocery" | "restaurants">("restaurants");
   const [activeFilter, setActiveFilter] = useState<QuickFilterKey | null>(null);
@@ -656,9 +667,7 @@ export default function NinjaEatsHomeScreen() {
 
   // Check location permissions on mount but don't hide prompt based on permissions
   useEffect(() => {
-    console.log('[NinjaEats] Checking location permissions...');
     Location.getForegroundPermissionsAsync().then((r) => {
-      console.log('[NinjaEats] Permission status:', r.status);
       const hasPermission = r.status === "granted";
       setHasPerm(hasPermission);
       // Don't automatically hide the prompt - let user choose
@@ -671,31 +680,13 @@ export default function NinjaEatsHomeScreen() {
   // Hide prompt if user already has location
   useEffect(() => {
     if (location.lat && location.lng) {
-      console.log('[NinjaEats] User has location, hiding prompt');
       setShowLocationPrompt(false);
     }
   }, [location.lat, location.lng]);
 
-  // Debug log for render condition
-  useEffect(() => {
-    console.log('[NinjaEats] Render state:', {
-      hasPerm,
-      selectManually,
-      showLocationPrompt,
-      shouldShowPrompt: showLocationPrompt,
-      location: {
-        lat: location.lat,
-        lng: location.lng,
-        address: location.address,
-        cityId: location.cityId
-      }
-    });
-  }, [hasPerm, selectManually, showLocationPrompt, location]);
-
   // Ensure we stay on NinjaEats screen when returning from location selection
   useFocusEffect(
     React.useCallback(() => {
-      console.log('[NinjaEats] Screen focused - ensuring we stay on restaurants');
       // Force the vertical switcher to show restaurants mode
       setActiveVerticalMode("restaurants");
       
@@ -737,9 +728,6 @@ export default function NinjaEatsHomeScreen() {
     // DEV fallback: if cityId not set yet, default to Dharamshala so you see data
     const effectiveCityId = location.cityId || "dharamshala";
 
-    console.log('[NinjaEats] Fetching restaurants for cityId:', effectiveCityId);
-    console.log('[NinjaEats] Current location:', location);
-
     if (!effectiveCityId) {
       setRestaurants([]);
       setLoading(false);
@@ -758,7 +746,6 @@ export default function NinjaEatsHomeScreen() {
             id: d.id,
             ...(d.data() as any),
           }));
-          console.log('[NinjaEats] Loaded restaurants:', list.length);
           setRestaurants(list);
           setLoading(false);
           setError(null);
@@ -773,28 +760,30 @@ export default function NinjaEatsHomeScreen() {
     return () => unsub();
   }, [location.cityId]);
 
-  // Cuisines – Use demo data (no Firestore fetch needed)
-  // Commenting out the Firestore fetch since we're using DEMO_CUISINES
-  /*
+  // Cuisines – Fetch from Firebase
   useEffect(() => {
     const unsub = firestore()
       .collection("cuisines")
       .orderBy("priority", "asc")
       .onSnapshot(
         (snap) => {
-          const list: Cuisine[] = snap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as any),
-          }));
+          const list: Cuisine[] = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              ...(data as any),
+            };
+          });
           setCuisines(list);
         },
         (e) => {
           console.warn("[NinjaEats] cuisines error", e);
+          // No fallback data - show empty state
+          setCuisines([]);
         }
       );
     return () => unsub();
   }, []);
-  */
 
   /* ---------------------------- Derived groupings --------------------------- */
 
@@ -880,7 +869,7 @@ const handleModeChange = useCallback((mode: "grocery" | "restaurants") => {
         onChange={setActiveFilter}
       />
 
-      <CuisinesRow cuisines={cuisines} />
+      <CuisinesRow cuisines={cuisines} failedImages={failedImages} setFailedImages={setFailedImages} />
 
       {topRated.length > 0 && (
         <View style={{ marginTop: 18 }}>
