@@ -414,11 +414,8 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         setPlaceLabel("");
         setShowSaveForm(true);
       } else if (fromScreen === "NinjaEatsHome") {
-        // Navigate back to NinjaEats screen
-        navigation.navigate("NinjaEatsTabs", { 
-          screen: "NinjaEatsHomeTab",
-          params: { screen: "NinjaEatsHome" }
-        });
+        // Navigate back to NinjaEats screen - stay in the same tab structure
+        navigation.goBack();
       } else {
         navigation.navigate("AppTabs", { screen: "Home" });
       }
@@ -528,11 +525,8 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           },
         });
       } else if (fromScreen === "NinjaEatsHome") {
-        // Navigate back to NinjaEats screen
-        navigation.navigate("NinjaEatsTabs", { 
-          screen: "NinjaEatsHomeTab",
-          params: { screen: "NinjaEatsHome" }
-        });
+        // Navigate back to NinjaEats screen - stay in the same tab structure
+        navigation.goBack();
       } else {
         navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
       }
