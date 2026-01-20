@@ -304,7 +304,7 @@ const NinjaEatsTabs = () => {
           paddingBottom: 5,
         },
         // 🔥 PERFORMANCE OPTIMIZATIONS
-        lazy: false,                    // Pre-load all tabs for instant switching
+        lazy: true,                    // Lazy load tabs to prevent immediate loading of all screens
         freezeOnBlur: false,           // Keep screens active for faster switching
         tabBarHideOnKeyboard: true,    // Better UX
         // Optimize animations

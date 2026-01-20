@@ -91,13 +91,18 @@ const NinjaEatsProfileScreen: React.FC = () => {
   useEffect(() => {
     let unsubscribeUser: any;
     let unsubscribeOrders: any;
+    let timeoutId: NodeJS.Timeout;
 
-    if (currentUser) {
-      // 1) Listen to user doc
-      unsubscribeUser = firestore()
-        .collection("users")
-        .doc(currentUser.uid)
-        .onSnapshot(
+    // Add a small delay to ensure Firebase auth is fully initialized
+    timeoutId = setTimeout(() => {
+      if (currentUser && currentUser.uid) {
+        console.log("[NinjaEatsProfileScreen] Setting up listeners for user:", currentUser.uid);
+        
+        // 1) Listen to user doc
+        unsubscribeUser = firestore()
+          .collection("users")
+          .doc(currentUser.uid)
+          .onSnapshot(
           (doc) => {
             if (doc.exists) {
               const data = doc.data();
@@ -156,15 +161,26 @@ const NinjaEatsProfileScreen: React.FC = () => {
             setOrdersLoading(false);
           },
           (error) => {
-            Alert.alert("Error", "Failed to fetch your restaurant orders.");
+            console.error("[NinjaEatsProfileScreen] Orders fetch error:", error);
+            console.error("[NinjaEatsProfileScreen] Error code:", error.code);
+            console.error("[NinjaEatsProfileScreen] Error message:", error.message);
+            
+            // Only show alert if it's not a permission issue or missing collection (common for new users)
+            if (error.code !== 'permission-denied' && error.code !== 'failed-precondition' && error.code !== 'not-found') {
+              Alert.alert("Error", "Failed to fetch your restaurant orders.");
+            } else {
+              console.log("[NinjaEatsProfileScreen] Expected error for new user - no orders collection or permissions:", error.code);
+            }
             setOrdersLoading(false);
           }
         );
-    } else {
-      setLoading(false);
-    }
+      } else {
+        setLoading(false);
+      }
+    }, 500); // 500ms delay to ensure Firebase is ready
 
     return () => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeOrders) unsubscribeOrders();
     };
