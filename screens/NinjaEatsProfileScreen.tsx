@@ -132,7 +132,7 @@ const NinjaEatsProfileScreen: React.FC = () => {
       unsubscribeOrders = firestore()
         .collection("restaurantOrders")
         .where("orderedBy", "==", currentUser.uid)
-        .orderBy("createdAt", "desc")
+        // .orderBy("createdAt", "desc") // Temporarily commented out until Firestore index is created
         .onSnapshot(
           (snapshot) => {
             const fetched: RestaurantOrder[] = [];
@@ -151,6 +151,13 @@ const NinjaEatsProfileScreen: React.FC = () => {
                 deliveryAddress: data.deliveryAddress || "",
                 estimatedDeliveryTime: data.estimatedDeliveryTime || "",
               });
+            });
+
+            // Sort by createdAt on client side since we can't use orderBy without index
+            fetched.sort((a, b) => {
+              const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+              const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+              return bTime - aTime; // Descending order (newest first)
             });
 
             const newOrdersString = JSON.stringify(fetched);
@@ -507,7 +514,10 @@ const NinjaEatsProfileScreen: React.FC = () => {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate("Login" as never)}
+          onPress={() => navigation.navigate("AppTabs", { 
+            screen: "HomeTab", 
+            params: { screen: "LoginInHomeStack" } 
+          })}
           style={{ backgroundColor: ninjaOrange, marginTop: 16 }}
         >
           Login

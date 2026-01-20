@@ -504,7 +504,10 @@ const GroceryProfileScreen: React.FC = () => {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate("Login" as never)}
+          onPress={() => navigation.navigate("AppTabs", { 
+            screen: "HomeTab", 
+            params: { screen: "LoginInHomeStack" } 
+          })}
           style={{ backgroundColor: groceryGreen, marginTop: 16 }}
         >
           Login

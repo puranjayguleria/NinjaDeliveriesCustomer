@@ -41,6 +41,8 @@ interface Order {
     price: number;
     discount?: number;
     quantity: number;
+    CGST?: number;
+    SGST?: number;
   }>;
   subtotal?: number;
   discount?: number;
@@ -56,10 +58,24 @@ interface Order {
   convenienceFee?: number;
   platformFee?: number;
   surgeFee?: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  deliveryAddress?: string;
+  mobile?: string;
+  storeName?: string;
+}
+
+interface OrderItem {
+  name: string;
+  price: number;
+  discount?: number;
+  quantity: number;
+  CGST?: number;
+  SGST?: number;
 }
 
 const ProfileScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const currentUser = auth().currentUser;
 
   // Profile UI state
@@ -101,13 +117,18 @@ const ProfileScreen: React.FC = () => {
   useEffect(() => {
     let unsubscribeUser: any;
     let unsubscribeOrders: any;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    if (currentUser) {
-      // 1) Listen to user doc
-      unsubscribeUser = firestore()
-        .collection("users")
-        .doc(currentUser.uid)
-        .onSnapshot(
+    // Add a small delay to ensure Firebase auth is fully initialized
+    timeoutId = setTimeout(() => {
+      if (currentUser && currentUser.uid) {
+        console.log("[ProfileScreen] Setting up listeners for user:", currentUser.uid);
+        
+        // 1) Listen to user doc
+        unsubscribeUser = firestore()
+          .collection("users")
+          .doc(currentUser.uid)
+          .onSnapshot(
           (doc) => {
             if (doc.exists) {
               const data = doc.data();
@@ -192,16 +213,27 @@ const ProfileScreen: React.FC = () => {
             }
             setOrdersLoading(false);
           },
-          (error) => {
-            Alert.alert("Error", "Failed to fetch your orders.");
+          (error: any) => {
+            console.error("[ProfileScreen] Orders fetch error:", error);
+            console.error("[ProfileScreen] Error code:", error.code);
+            console.error("[ProfileScreen] Error message:", error.message);
+            
+            // Only show alert if it's not a permission issue or missing collection (common for new users)
+            if (error.code !== 'permission-denied' && error.code !== 'failed-precondition' && error.code !== 'not-found') {
+              Alert.alert("Error", "Failed to fetch your orders.");
+            } else {
+              console.log("[ProfileScreen] Expected error for new user - no orders collection or permissions:", error.code);
+            }
             setOrdersLoading(false);
           }
         );
-    } else {
-      setLoading(false);
-    }
+      } else {
+        setLoading(false);
+      }
+    }, 500); // 500ms delay to ensure Firebase is ready
 
     return () => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeOrders) unsubscribeOrders();
     };
@@ -566,7 +598,26 @@ const ProfileScreen: React.FC = () => {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate("Login" as never)}
+          onPress={() => navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [
+                {
+                  name: "AppTabs",
+                  state: {
+                    routes: [
+                      {
+                        name: "HomeTab",
+                        state: {
+                          routes: [{ name: "LoginInHomeStack" }]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            })
+          )}
           style={{ backgroundColor: "#FF7043", marginTop: 16 }}
         >
           Login

@@ -406,7 +406,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           {
             text: "Log In",
             onPress: () =>
-              navigation.navigate("HomeTab", { screen: "LoginInHomeStack" }),
+              navigation.navigate("AppTabs", { 
+                screen: "HomeTab", 
+                params: { screen: "LoginInHomeStack" } 
+              }),
           },
         ]
       );
@@ -626,7 +629,10 @@ function AppTabs() {
       {
         text: "Continue",
         onPress: () =>
-          navigation.navigate("HomeTab", { screen: "LoginInHomeStack" }),
+          navigation.navigate("AppTabs", { 
+            screen: "HomeTab", 
+            params: { screen: "LoginInHomeStack" } 
+          }),
       },
     ]);
 

@@ -175,11 +175,11 @@ if (__DEV__ && Platform.OS === "ios") {
 
         const hasAccepted = userDoc.data()?.hasAcceptedTerms === true;
         if (hasAccepted) {
-          console.log("User has accepted terms, navigating to AppTabs");
+          console.log("User has accepted terms, navigating to NinjaEatsTabs");
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
-              routes: [{ name: "AppTabs" }],
+              routes: [{ name: "NinjaEatsTabs" }],
             })
           );
         } else {

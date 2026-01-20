@@ -11,7 +11,10 @@ const HomeScreen: React.FC = () => {
     try {
       await auth().signOut();
       await AsyncStorage.removeItem('user');
-      navigation.navigate('Login'); // Navigate back to login screen on logout
+      navigation.navigate("AppTabs", { 
+        screen: "HomeTab", 
+        params: { screen: "LoginInHomeStack" } 
+      }); // Navigate back to login screen on logout
     } catch (error) {
       console.error('Error logging out:', error);
     }
