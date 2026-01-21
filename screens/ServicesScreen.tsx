@@ -117,7 +117,13 @@ export default function ServicesScreen() {
   const HeaderUI = () => {
     return (
       <View>
-        <Text style={styles.header}>Services</Text>
+        <View style={styles.topHeader}>
+      <Text style={styles.header}>Services</Text>
+      <Text style={styles.headerSub}>
+    Book trusted professionals near you
+  </Text>
+</View>
+
 
         {/* Banner */}
         <ImageBackground
@@ -201,9 +207,35 @@ export default function ServicesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: "yellow",//background color of service screen
+    paddingHorizontal: 16,
+    paddingTop: 28,
+  },
 
-  header: { fontSize: 22, fontWeight: "800", marginBottom: 12 },
+  topHeader: {
+    marginBottom: 14,
+  },
+
+  city: {
+    fontSize: 14,
+    color: "#777",
+    fontWeight: "600",
+  },
+
+  header: {
+    fontSize: 28,
+    fontWeight: "900",
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+
+  headerSub: {
+    color: "#777",
+    fontSize: 13,
+    marginTop: 2,
+  },
 
   banner: {
     height: 150,
@@ -212,6 +244,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     padding: 14,
   },
+
   bannerImage: { borderRadius: 18 },
   bannerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -226,13 +259,28 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   categoryCard: {
-    width: "31%",
-    backgroundColor: "#f4f4f4",
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  categoryIcon: { width: 34, height: 34, marginBottom: 6 },
+  width: "31%",
+  backgroundColor: "#fafafa",
+  borderRadius: 18,
+  paddingVertical: 16,
+  alignItems: "center",
+
+  // Android shadow
+  elevation: 3,
+
+  // iOS shadow
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowOffset: { width: 0, height: 4 },
+  shadowRadius: 6,
+},
+
+categoryIcon: {
+  width: 40,
+  height: 40,
+  marginBottom: 8,
+},
+
   categoryText: { fontSize: 12, fontWeight: "700" },
 
   sectionTitle: { fontSize: 16, fontWeight: "800", marginTop: 16 },

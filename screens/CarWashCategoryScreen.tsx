@@ -367,14 +367,14 @@ export default function CarWashCategoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
+  container: { flex: 1, backgroundColor: "#f2f4f8", paddingTop: 36, paddingHorizontal: 16 },
 
   header: { fontSize: 22, fontWeight: "900" },
   subHeader: { marginTop: 4, color: "#666", fontSize: 13, fontWeight: "600" },
 
   topRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   smallBtn: {
-    backgroundColor: "#f6f6f6",
+    backgroundColor: "white",
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 14,
