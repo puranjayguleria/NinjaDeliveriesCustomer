@@ -105,6 +105,9 @@ import RestaurantCartScreen from "./screens/RestaurantCartScreen";
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
+import RestaurantListScreen from './screens/RestaurantListScreen';
+import RestaurantMenuScreen from './screens/RestaurantMenuScreen';
+import ProductDetailScreen from './screens/ProductDetailScreen';
 import CuisineDetailScreen from "./screens/CuisineDetailScreen";
 
 const NinjaEatsStack = () => (
@@ -136,13 +139,18 @@ const NinjaEatsStack = () => (
     />
 
     <Stack.Screen
+      name="ProductDetail"
+      component={ProductDetailScreen}
+    />
+
+    <Stack.Screen
       name="RestaurantCheckout"
       component={RestaurantCheckoutScreen}
     />
   </Stack.Navigator>
 );
 
-const CuisinesStack = () => (
+const RestaurantStack = () => (
   <Stack.Navigator 
     screenOptions={{ 
       headerShown: false,
@@ -152,6 +160,41 @@ const CuisinesStack = () => (
       gestureDirection: 'horizontal',
     }}
   >
+    <Stack.Screen
+      name="RestaurantList"
+      component={RestaurantListScreen}
+    />
+    
+    <Stack.Screen
+      name="RestaurantDetails"
+      component={RestaurantDetailsScreen}
+      options={{
+        gestureEnabled: true,
+      }}
+    />
+
+    <Stack.Screen
+      name="RestaurantMenu"
+      component={RestaurantMenuScreen}
+      options={{
+        gestureEnabled: true,
+      }}
+    />
+
+    <Stack.Screen
+      name="ProductDetail"
+      component={ProductDetailScreen}
+      options={{
+        gestureEnabled: true,
+      }}
+    />
+
+    <Stack.Screen
+      name="RestaurantCheckout"
+      component={RestaurantCheckoutScreen}
+    />
+    
+    {/* Keep existing screens for backward compatibility */}
     <Stack.Screen
       name="CuisinesHome"
       component={CuisinesScreen}
@@ -172,16 +215,6 @@ const CuisinesStack = () => (
         // Optimize for back navigation
         gestureEnabled: true,
       }}
-    />
-
-    <Stack.Screen
-      name="RestaurantDetails"
-      component={RestaurantDetailsScreen}
-    />
-
-    <Stack.Screen
-      name="RestaurantCheckout"
-      component={RestaurantCheckoutScreen}
     />
   </Stack.Navigator>
 );
@@ -236,6 +269,10 @@ const HomeFoodStack = () => (
       component={RestaurantCategoryListingScreen}
     />
     <Stack.Screen
+      name="ProductDetail"
+      component={ProductDetailScreen}
+    />
+    <Stack.Screen
       name="RestaurantCheckout"
       component={RestaurantCheckoutScreen}
     />
@@ -246,7 +283,7 @@ const HomeFoodStack = () => (
  * Bottom tabs for Ninja Eats:
  * - Home (with its own stack)
  * - Home Food
- * - Cuisines
+ * - Restaurant
  * - Orders
  * - Profile
  */
@@ -263,8 +300,8 @@ const NinjaEatsTabs = () => {
     <MaterialIcons name="kitchen" size={size} color={color} />
   ), []);
 
-  const CuisinesIcon = React.useCallback(({ color, size }: any) => (
-    <MaterialIcons name="restaurant-menu" size={size} color={color} />
+  const RestaurantIcon = React.useCallback(({ color, size }: any) => (
+    <MaterialIcons name="restaurant" size={size} color={color} />
   ), []);
 
   const CartIcon = React.useCallback(({ color, size }: any) => (
@@ -331,11 +368,11 @@ const NinjaEatsTabs = () => {
       />
 
       <Tab.Screen
-        name="CuisinesTab"
-        component={CuisinesStack}
+        name="RestaurantTab"
+        component={RestaurantStack}
         options={{
-          title: "Cuisines",
-          tabBarIcon: CuisinesIcon,
+          title: "Restaurant",
+          tabBarIcon: RestaurantIcon,
         }}
       />
 

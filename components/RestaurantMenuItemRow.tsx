@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { useRestaurantCart } from "@/context/RestaurantCartContext";
 
 export type RestaurantMenuItem = {
@@ -23,10 +24,12 @@ export type RestaurantMenuItem = {
 
 type Props = {
   restaurantId: string;
+  restaurantName?: string;
   item: RestaurantMenuItem;
 };
 
-const RestaurantMenuItemRow: React.FC<Props> = ({ restaurantId, item }) => {
+const RestaurantMenuItemRow: React.FC<Props> = ({ restaurantId, restaurantName, item }) => {
+  const navigation = useNavigation<any>();
   const { addItem, increase, decrease, getItemQty } = useRestaurantCart();
 
   const qty = getItemQty(item.id);
@@ -66,8 +69,23 @@ const RestaurantMenuItemRow: React.FC<Props> = ({ restaurantId, item }) => {
     });
   };
 
+  const handleItemPress = () => {
+    navigation.navigate("ProductDetail", {
+      restaurantId,
+      restaurantName: restaurantName || "Restaurant",
+      item: {
+        id: item.id,
+        name: item.name,
+        description,
+        price,
+        isVeg,
+        imageUrl: img,
+      },
+    });
+  };
+
   return (
-    <View style={styles.container}>
+    <TouchableOpacity style={styles.container} onPress={handleItemPress} activeOpacity={0.8}>
       {/* Left: veg icon + text */}
       <View style={{ flex: 1, paddingRight: 8 }}>
         <View style={styles.vegRow}>
@@ -129,7 +147,7 @@ const RestaurantMenuItemRow: React.FC<Props> = ({ restaurantId, item }) => {
           </View>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 

@@ -111,7 +111,11 @@ const RestaurantDetailsScreen: React.FC = () => {
   };
 
   const renderMenuItem = ({ item }: { item: MenuItem }) => (
-    <RestaurantMenuItemRow restaurantId={restaurantId} item={item} />
+    <RestaurantMenuItemRow 
+      restaurantId={restaurantId} 
+      restaurantName={effectiveName}
+      item={item} 
+    />
   );
 
   if (loading) {
