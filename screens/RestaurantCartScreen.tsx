@@ -62,6 +62,25 @@ const CartItem: React.FC<CartItemProps> = ({ item, onUpdateQuantity, onRemoveIte
           </Text>
         )}
 
+        {/* Customization Details */}
+        {(item.size || (item.addOns && item.addOns.length > 0) || item.specialInstructions) && (
+          <View style={styles.customizationContainer}>
+            {item.size && item.size !== "Regular" && (
+              <Text style={styles.customizationText}>Size: {item.size}</Text>
+            )}
+            {item.addOns && item.addOns.length > 0 && (
+              <Text style={styles.customizationText}>
+                Add-ons: {item.addOns.map(addon => addon.name).join(", ")}
+              </Text>
+            )}
+            {item.specialInstructions && (
+              <Text style={styles.customizationText} numberOfLines={2}>
+                Note: {item.specialInstructions}
+              </Text>
+            )}
+          </View>
+        )}
+
         <View style={styles.priceQuantityRow}>
           <Text style={styles.itemPrice}>₹{item.price}</Text>
           
@@ -296,6 +315,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#777',
     marginBottom: 8,
+  },
+  customizationContainer: {
+    marginBottom: 8,
+  },
+  customizationText: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 2,
   },
   priceQuantityRow: {
     flexDirection: 'row',

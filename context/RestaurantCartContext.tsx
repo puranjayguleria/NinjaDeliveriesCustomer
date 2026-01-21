@@ -16,6 +16,10 @@ export type RestaurantCartItem = {
   imageUrl?: string;
   description?: string;
   quantity: number;
+  size?: string;
+  addOns?: Array<{ name: string; price: number; selected: boolean }>;
+  specialInstructions?: string;
+  baseItemId?: string;
 };
 
 type RestaurantCartState = {

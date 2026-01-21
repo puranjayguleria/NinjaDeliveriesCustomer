@@ -7,6 +7,8 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  TextInput,
+  Modal,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -14,6 +16,12 @@ import { Image } from "expo-image";
 import { useRestaurantCart } from "@/context/RestaurantCartContext";
 
 const { width } = Dimensions.get("window");
+
+type AddOn = {
+  name: string;
+  price: number;
+  selected: boolean;
+};
 
 type RouteParams = {
   restaurantId: string;
@@ -35,6 +43,16 @@ const ProductDetailScreen: React.FC = () => {
   
   const { addItem, increase, decrease, getItemQty } = useRestaurantCart();
   const [selectedSize, setSelectedSize] = useState<string>("Regular");
+  const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>([
+    { name: "Extra Cheese", price: 45, selected: false },
+    { name: "Extra Spicy", price: 20, selected: false },
+    { name: "Less Oil", price: 10, selected: false },
+    { name: "Extra Sauce", price: 25, selected: false },
+    { name: "Double Portion", price: 120, selected: false },
+    { name: "Red Chilli", price: 50, selected: false },
+  ]);
+  const [specialInstructions, setSpecialInstructions] = useState<string>("");
+  const [showInstructionsModal, setShowInstructionsModal] = useState<boolean>(false);
   
   const qty = getItemQty(item.id);
   const price = item.price || 0;
@@ -43,29 +61,45 @@ const ProductDetailScreen: React.FC = () => {
   // Mock data for customization options
   const sizes = [
     { name: "Regular", price: price, selected: selectedSize === "Regular" },
-    { name: "Large", price: price + 50, selected: selectedSize === "Large" },
+    { name: "Medium", price: price + 40, selected: selectedSize === "Medium" },
+    { name: "Large", price: price + 80, selected: selectedSize === "Large" },
   ];
 
-  const addOns = [
-    { name: "Extra Cheese", price: 30, selected: false },
-    { name: "Extra Spicy", price: 0, selected: false },
-    { name: "Less Oil", price: 0, selected: false },
-  ];
+  const toggleAddOn = (index: number) => {
+    const updatedAddOns = [...selectedAddOns];
+    updatedAddOns[index].selected = !updatedAddOns[index].selected;
+    setSelectedAddOns(updatedAddOns);
+  };
 
   const getCurrentPrice = () => {
     const sizePrice = sizes.find(s => s.name === selectedSize)?.price || price;
-    return sizePrice;
+    const addOnsPrice = selectedAddOns
+      .filter(addon => addon.selected)
+      .reduce((total, addon) => total + addon.price, 0);
+    return sizePrice + addOnsPrice;
+  };
+
+  const getSelectedAddOnsText = () => {
+    const selected = selectedAddOns.filter(addon => addon.selected);
+    return selected.length > 0 ? selected.map(addon => addon.name).join(", ") : "";
   };
 
   const handleAdd = () => {
     if (!restaurantId) return;
-    addItem(restaurantId, {
-      id: item.id,
+    
+    const itemWithCustomizations = {
+      id: `${item.id}_${selectedSize}_${getSelectedAddOnsText()}_${specialInstructions}`,
       name: item.name,
       price: getCurrentPrice(),
       isVeg,
       imageUrl: item.imageUrl,
-    });
+      size: selectedSize,
+      addOns: selectedAddOns.filter(addon => addon.selected),
+      specialInstructions: specialInstructions.trim(),
+      baseItemId: item.id,
+    };
+    
+    addItem(restaurantId, itemWithCustomizations);
   };
 
   const handleAddToCart = () => {
@@ -160,17 +194,31 @@ const ProductDetailScreen: React.FC = () => {
           {/* Add-ons */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Customize (Optional)</Text>
-            {addOns.map((addon, index) => (
-              <TouchableOpacity key={index} style={styles.optionRow}>
+            {selectedAddOns.map((addon, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={[
+                  styles.optionRow,
+                  addon.selected && styles.optionRowSelected,
+                ]}
+                onPress={() => toggleAddOn(index)}
+              >
                 <View style={styles.optionLeft}>
                   <View style={styles.checkbox}>
-                    <MaterialIcons name="check-box-outline-blank" size={20} color="#ccc" />
+                    <MaterialIcons 
+                      name={addon.selected ? "check-box" : "check-box-outline-blank"} 
+                      size={20} 
+                      color={addon.selected ? "#00b4a0" : "#ccc"} 
+                    />
                   </View>
                   <Text style={styles.optionName}>{addon.name}</Text>
                 </View>
-                {addon.price > 0 && (
-                  <Text style={styles.optionPrice}>+₹{addon.price}</Text>
-                )}
+                <Text style={[
+                  styles.optionPrice,
+                  addon.price === 0 && styles.freePrice
+                ]}>
+                  {addon.price > 0 ? `+₹${addon.price}` : "Free"}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -178,14 +226,57 @@ const ProductDetailScreen: React.FC = () => {
           {/* Special Instructions */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Special Instructions</Text>
-            <TouchableOpacity style={styles.instructionsBox}>
-              <Text style={styles.instructionsPlaceholder}>
-                Any specific requests? (Optional)
+            <TouchableOpacity 
+              style={styles.instructionsBox}
+              onPress={() => setShowInstructionsModal(true)}
+            >
+              <Text style={[
+                styles.instructionsPlaceholder,
+                specialInstructions && styles.instructionsText
+              ]}>
+                {specialInstructions || "Any specific requests? (Optional)"}
               </Text>
+              <MaterialIcons name="edit" size={16} color="#999" />
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
+
+      {/* Special Instructions Modal */}
+      <Modal
+        visible={showInstructionsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowInstructionsModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowInstructionsModal(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Special Instructions</Text>
+            <TouchableOpacity onPress={() => setShowInstructionsModal(false)}>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalContent}>
+            <TextInput
+              style={styles.instructionsInput}
+              placeholder="Add any special requests for your order..."
+              placeholderTextColor="#999"
+              value={specialInstructions}
+              onChangeText={setSpecialInstructions}
+              multiline
+              textAlignVertical="top"
+              maxLength={200}
+            />
+            <Text style={styles.characterCount}>
+              {specialInstructions.length}/200 characters
+            </Text>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       {/* Bottom Add to Cart */}
       <View style={styles.bottomContainer}>
@@ -358,17 +449,27 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
+  freePrice: {
+    color: "#2e7d32",
+    fontWeight: "500",
+  },
   instructionsBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderWidth: 1,
     borderColor: "#eee",
     borderRadius: 8,
     padding: 12,
     minHeight: 50,
-    justifyContent: "center",
   },
   instructionsPlaceholder: {
     fontSize: 14,
     color: "#999",
+    flex: 1,
+  },
+  instructionsText: {
+    color: "#333",
   },
   bottomContainer: {
     flexDirection: "row",
@@ -410,5 +511,53 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: "#666",
+  },
+  modalDoneText: {
+    fontSize: 16,
+    color: "#00b4a0",
+    fontWeight: "600",
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  instructionsInput: {
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: "#333",
+    height: 120,
+    backgroundColor: "#f9f9f9",
+    textAlignVertical: "top",
+  },
+  characterCount: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "right",
+    marginTop: 8,
   },
 });
