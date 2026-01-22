@@ -114,24 +114,26 @@ export default function SelectAgencyScreen() {
           return (
             <TouchableOpacity
               style={[styles.card, active && styles.cardActive]}
-              activeOpacity={0.9}
+              activeOpacity={0.7}
               onPress={() => setSelectedAgencyId(item.id)}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.sub}>
-                  ⭐ {item.rating} • {item.experience}
-                </Text>
-                <Text style={styles.price}>Starting ₹{item.price}</Text>
-              </View>
-
-              {active ? (
-                <View style={styles.selectedBadge}>
-                  <Text style={styles.selectedBadgeText}>Selected</Text>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardLeft}>
+                  <Text style={styles.title}>{item.name}</Text>
+                  <Text style={styles.sub}>
+                    ⭐ {item.rating} • {item.experience}
+                  </Text>
+                  <Text style={styles.price}>Starting ₹{item.price}</Text>
                 </View>
-              ) : (
-                <Text style={styles.selectText}>Select</Text>
-              )}
+
+                {active ? (
+                  <View style={styles.selectedBadge}>
+                    <Text style={styles.selectedBadgeText}>Selected</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.selectText}>Select</Text>
+                )}
+              </View>
             </TouchableOpacity>
           );
         }}
@@ -153,90 +155,180 @@ export default function SelectAgencyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fafbfc",
+  },
 
-  header: { fontSize: 22, fontWeight: "900" },
+  header: { 
+    fontSize: 28, 
+    fontWeight: "600",
+    color: "#0f172a",
+    letterSpacing: -0.6,
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 8,
+  },
 
   infoCard: {
-    marginTop: 12,
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 14,
+    marginTop: 16,
+    marginBottom: 24,
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  infoTitle: { fontSize: 14, fontWeight: "900", color: "#111" },
+  
+  infoTitle: { 
+    fontSize: 18, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
 
   companyText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#4C1D95",
-    fontWeight: "800",
+    fontSize: 14,
+    color: "#2563eb",
+    fontWeight: "500",
+    marginBottom: 8,
   },
 
   slotText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#111",
-    fontWeight: "800",
+    fontSize: 14,
+    color: "#0f172a",
+    fontWeight: "500",
+    marginBottom: 12,
   },
 
-  infoSub: { marginTop: 6, fontSize: 12, color: "#666", fontWeight: "800" },
+  infoSub: { 
+    fontSize: 14, 
+    color: "#64748b", 
+    fontWeight: "500",
+    marginBottom: 8,
+  },
 
   issueLine: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#111",
-    fontWeight: "700",
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "400",
+    marginBottom: 4,
+    paddingLeft: 8,
   },
 
   card: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 16,
+    marginHorizontal: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  
+  cardActive: {
+    borderColor: "#2563eb",
+    backgroundColor: "#f8faff",
+    elevation: 1,
+    shadowOpacity: 0.08,
+  },
+
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  cardActive: {
-    backgroundColor: "#F3E8FF",
-    borderWidth: 1,
-    borderColor: "#6D28D9",
+    marginBottom: 16,
   },
 
-  title: { fontSize: 14, fontWeight: "900", color: "#111" },
-  sub: { marginTop: 6, fontSize: 12, color: "#666", fontWeight: "700" },
-  price: { marginTop: 6, fontSize: 12, color: "#111", fontWeight: "900" },
+  cardLeft: {
+    flex: 1,
+  },
+
+  title: { 
+    fontSize: 18, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    letterSpacing: -0.3,
+    marginBottom: 8,
+  },
+  
+  sub: { 
+    fontSize: 14, 
+    color: "#64748b", 
+    fontWeight: "400",
+    marginBottom: 4,
+  },
+  
+  price: { 
+    fontSize: 16, 
+    color: "#0f172a", 
+    fontWeight: "600",
+  },
 
   selectText: {
-    fontWeight: "900",
-    color: "#6D28D9",
-    fontSize: 12,
+    fontWeight: "500",
+    color: "#2563eb",
+    fontSize: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    borderRadius: 8,
+    textAlign: "center",
+    minWidth: 80,
   },
 
   selectedBadge: {
-    backgroundColor: "#6D28D9",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: "center",
   },
-  selectedBadgeText: { color: "#fff", fontWeight: "900", fontSize: 11 },
+  
+  selectedBadgeText: { 
+    color: "#fff", 
+    fontWeight: "500", 
+    fontSize: 14,
+  },
 
   bottomBar: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 16,
+    backgroundColor: "white",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
   },
 
   confirmBtn: {
-    backgroundColor: "#6D28D9",
-    paddingVertical: 14,
-    borderRadius: 16,
+    backgroundColor: "#2563eb",
+    paddingVertical: 16,
+    borderRadius: 12,
+    elevation: 0,
+    shadowColor: '#2563eb',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
+  
   confirmText: {
     color: "white",
-    fontWeight: "900",
+    fontWeight: "500",
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 16,
+    letterSpacing: -0.2,
   },
 });

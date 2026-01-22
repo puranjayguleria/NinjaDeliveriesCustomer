@@ -192,11 +192,14 @@ export default function ServicesScreen() {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.listCard}
-            activeOpacity={0.9}
+            activeOpacity={0.7}
             onPress={() => goTo(item.screen, item.params)}
           >
-            <Text style={styles.listTitle}>{item.title}</Text>
-            <Text style={styles.listSub}>Tap to continue</Text>
+            <View>
+              <Text style={styles.listTitle}>{item.title}</Text>
+              <Text style={styles.listSub}>Professional service providers</Text>
+            </View>
+            <Text style={styles.listArrow}>→</Text>
           </TouchableOpacity>
         )}
         contentContainerStyle={{ paddingBottom: 30 }}
@@ -209,110 +212,191 @@ export default function ServicesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "yellow",//background color of service screen
-    paddingHorizontal: 16,
-    paddingTop: 28,
+    backgroundColor: "#fafbfc",
   },
 
   topHeader: {
-    marginBottom: 14,
-  },
-
-  city: {
-    fontSize: 14,
-    color: "#777",
-    fontWeight: "600",
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 20,
+    backgroundColor: "white",
   },
 
   header: {
-    fontSize: 28,
-    fontWeight: "900",
-    marginTop: 2,
-    letterSpacing: 0.5,
+    fontSize: 32,
+    fontWeight: "600",
+    color: "#0f172a",
+    letterSpacing: -0.8,
+    marginBottom: 4,
   },
 
   headerSub: {
-    color: "#777",
-    fontSize: 13,
-    marginTop: 2,
+    color: "#64748b",
+    fontSize: 16,
+    fontWeight: "400",
+    lineHeight: 24,
   },
 
   banner: {
-    height: 150,
-    borderRadius: 18,
+    height: 180,
+    borderRadius: 16,
     overflow: "hidden",
     justifyContent: "flex-end",
-    padding: 14,
+    padding: 24,
+    marginHorizontal: 24,
+    marginTop: 20,
+    marginBottom: 32,
   },
 
-  bannerImage: { borderRadius: 18 },
+  bannerImage: { 
+    borderRadius: 16 
+  },
+  
   bannerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
   },
-  bannerTitle: { color: "white", fontSize: 18, fontWeight: "800" },
-  bannerSubTitle: { color: "white", marginTop: 4, fontSize: 13 },
+  
+  bannerTitle: { 
+    color: "white", 
+    fontSize: 22, 
+    fontWeight: "600",
+    letterSpacing: -0.4,
+    marginBottom: 4,
+  },
+  
+  bannerSubTitle: { 
+    color: "rgba(255,255,255,0.9)", 
+    fontSize: 15,
+    fontWeight: "400",
+    lineHeight: 22,
+  },
 
   categoryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 14,
+    paddingHorizontal: 24,
+    marginBottom: 40,
   },
+
   categoryCard: {
-  width: "31%",
-  backgroundColor: "#fafafa",
-  borderRadius: 18,
-  paddingVertical: 16,
-  alignItems: "center",
+    width: "30%",
+    backgroundColor: "white",
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
 
-  // Android shadow
-  elevation: 3,
+  categoryIcon: {
+    width: 48,
+    height: 48,
+    marginBottom: 16,
+  },
 
-  // iOS shadow
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowOffset: { width: 0, height: 4 },
-  shadowRadius: 6,
-},
+  categoryText: { 
+    fontSize: 14, 
+    fontWeight: "500",
+    color: "#334155",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
-categoryIcon: {
-  width: 40,
-  height: 40,
-  marginBottom: 8,
-},
-
-  categoryText: { fontSize: 12, fontWeight: "700" },
-
-  sectionTitle: { fontSize: 16, fontWeight: "800", marginTop: 16 },
+  sectionTitle: { 
+    fontSize: 20, 
+    fontWeight: "600", 
+    color: "#0f172a",
+    paddingHorizontal: 24,
+    marginBottom: 20,
+    letterSpacing: -0.3,
+  },
 
   popularRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginTop: 12,
-    gap: 10,
+    gap: 16,
+    paddingHorizontal: 24,
+    marginBottom: 40,
   },
-  popularCard: { width: "48%", height: 90 },
+
+  popularCard: { 
+    width: "47%", 
+    height: 120,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+  },
+
   popularBg: {
     flex: 1,
-    borderRadius: 14,
-    overflow: "hidden",
     justifyContent: "flex-end",
-    padding: 8,
+    padding: 20,
   },
-  popularBgImage: { borderRadius: 14 },
+
+  popularBgImage: { 
+    borderRadius: 16 
+  },
+
   popularOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: "rgba(15, 23, 42, 0.3)",
   },
-  popularTitle: { color: "white", fontWeight: "800", fontSize: 12 },
+
+  popularTitle: { 
+    color: "white", 
+    fontWeight: "500", 
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
 
   listCard: {
-    marginTop: 12,
-    backgroundColor: "#f6f6f6",
-    padding: 14,
-    borderRadius: 14,
+    marginBottom: 12,
+    backgroundColor: "white",
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginHorizontal: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  listTitle: { fontSize: 15, fontWeight: "800" },
-  listSub: { marginTop: 4, color: "#666", fontSize: 12 },
+
+  listTitle: { 
+    fontSize: 16, 
+    fontWeight: "500",
+    color: "#0f172a",
+    letterSpacing: -0.2,
+  },
+
+  listSub: { 
+    marginTop: 4, 
+    color: "#64748b", 
+    fontSize: 14,
+    fontWeight: "400",
+  },
+
+  listArrow: {
+    fontSize: 18,
+    color: "#94a3b8",
+    fontWeight: "400",
+  },
 });

@@ -5,7 +5,6 @@ import ServicesScreen from "../screens/ServicesScreen";
 import ServiceCategoryScreen from "../screens/ServiceCategoryScreen";
 import CompanySelectionScreen from "../screens/CompanySelectionScreen";
 import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
-import SelectAgencyScreen from "../screens/SelectAgencyScreen";
 import PaymentScreen from "../screens/PaymentScreen";
 import BookingDetailsScreen from "../screens/BookingDetailsScreen";
 import BookingHistoryScreen from "../screens/BookingHistoryScreen";
@@ -27,7 +26,6 @@ export default function ServicesStack() {
       <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />
       <Stack.Screen name="CompanySelection" component={CompanySelectionScreen} />
       <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
-      <Stack.Screen name="SelectAgency" component={SelectAgencyScreen} />
       <Stack.Screen name="Payment" component={PaymentScreen} />
 
       {/* Booking Screens */}

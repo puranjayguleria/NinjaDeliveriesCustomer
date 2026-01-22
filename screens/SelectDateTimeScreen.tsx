@@ -13,110 +13,127 @@ export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  // ✅ UPDATED params
   const { serviceTitle, issues, company } = route.params;
 
-  const [date, setDate] = useState("Today");
   const [time, setTime] = useState("1:00 PM - 3:00 PM");
 
   const slots = [
     "9:00 AM - 11:00 AM",
-    "11:00 AM - 1:00 PM",
+    "11:00 AM - 1:00 PM", 
     "1:00 PM - 3:00 PM",
     "3:00 PM - 5:00 PM",
     "5:00 PM - 7:00 PM",
+    "7:00 PM - 9:00 PM",
   ];
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Select Date & Time</Text>
+      {/* Header Section */}
+      <View style={styles.headerSection}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        
+        <Text style={styles.header}>Select Time Slot</Text>
+        <Text style={styles.subHeader}>Choose your preferred time</Text>
+      </View>
 
-      {/* Info Card */}
+      {/* Service Info Card */}
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>{serviceTitle}</Text>
+        <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
 
-        {company?.name ? (
+        {company?.name && (
           <Text style={styles.companyText}>
-            Company: {company.name} • ₹{company.price}
+            {company.name} • ₹{company.price}
           </Text>
-        ) : null}
+        )}
 
-        {/* ✅ Show multi issues */}
-        {Array.isArray(issues) && issues.length > 0 ? (
-          <View style={{ marginTop: 10 }}>
-            <Text style={styles.infoSub}>Selected Issues:</Text>
-
-            {/* Scroll if issues are too many */}
-            <ScrollView style={{ maxHeight: 90 }} showsVerticalScrollIndicator={false}>
-              {issues.map((x: string, i: number) => (
-                <Text key={i} style={styles.issueLine}>
-                  • {x}
-                </Text>
+        {Array.isArray(issues) && issues.length > 0 && (
+          <View style={styles.issuesSection}>
+            <Text style={styles.issuesTitle}>Selected Issues:</Text>
+            <ScrollView 
+              style={styles.issuesScroll} 
+              showsVerticalScrollIndicator={false}
+            >
+              {issues.map((issue: string, index: number) => (
+                <View key={index} style={styles.issueTag}>
+                  <Text style={styles.issueText}>{issue}</Text>
+                </View>
               ))}
             </ScrollView>
           </View>
-        ) : (
-          <Text style={styles.infoSub}>No issues selected</Text>
         )}
       </View>
 
-      {/* Date pills */}
-      <View style={styles.pillRow}>
-        {["Today", "Tomorrow"].map((d) => {
-          const active = date === d;
-          return (
-            <TouchableOpacity
-              key={d}
-              style={[styles.pill, active && styles.pillActive]}
-              onPress={() => setDate(d)}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                {d}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* Available Time Slots */}
+      <View style={styles.slotsSection}>
+        <Text style={styles.sectionTitle}>Available Time Slots</Text>
+        
+        <FlatList
+          data={slots}
+          keyExtractor={(item) => item}
+          renderItem={({ item }) => {
+            const isSelected = time === item;
+            return (
+              <TouchableOpacity
+                style={[styles.slotCard, isSelected && styles.slotCardSelected]}
+                onPress={() => setTime(item)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.slotContent}>
+                  <Text style={[styles.slotText, isSelected && styles.slotTextSelected]}>
+                    {item}
+                  </Text>
+                  <Text style={[styles.slotSubText, isSelected && styles.slotSubTextSelected]}>
+                    Available
+                  </Text>
+                </View>
+                
+                {isSelected && (
+                  <View style={styles.selectedBadge}>
+                    <Text style={styles.selectedText}>✓</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
       </View>
 
-      {/* Time slots */}
-      <FlatList
-        style={{ marginTop: 12 }}
-        data={slots}
-        keyExtractor={(item) => item}
-        renderItem={({ item }) => {
-          const active = time === item;
-          return (
-            <TouchableOpacity
-              style={[styles.slotCard, active && styles.slotCardActive]}
-              onPress={() => setTime(item)}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.slotText, active && styles.slotTextActive]}>
-                {item}
-              </Text>
-              {active && <Text style={styles.selectedTag}>Selected</Text>}
-            </TouchableOpacity>
-          );
-        }}
-        contentContainerStyle={{ paddingBottom: 120 }} // ✅ space for bottom button
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* ✅ FIXED Bottom Button */}
+      {/* Bottom Action Bar */}
       <View style={styles.bottomBar}>
+        <View style={styles.selectedInfo}>
+          <Text style={styles.selectedSlotTitle}>Selected Slot</Text>
+          <Text style={styles.selectedSlotTime}>{time}</Text>
+        </View>
+        
         <TouchableOpacity
           style={styles.confirmBtn}
-          activeOpacity={0.9}
-          onPress={() =>
-            navigation.navigate("SelectAgency", {
+          activeOpacity={0.7}
+          onPress={() => {
+            const bookingId = "BK" + Date.now().toString().slice(-6);
+            const currentDate = new Date().toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            });
+
+            navigation.navigate("Payment", {
+              bookingId,
+              amount: company?.price || 99,
               serviceTitle,
-              issues,
+              issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
               company,
-              date,
+              date: currentDate,
               time,
-            })
-          }
+            });
+          }}
         >
           <Text style={styles.confirmText}>Confirm Slot</Text>
         </TouchableOpacity>
@@ -126,87 +143,246 @@ export default function SelectDateTimeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
-
-  header: { fontSize: 22, fontWeight: "900" },
-
-  infoCard: {
-    marginTop: 12,
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 14,
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fafbfc",
   },
-  infoTitle: { fontSize: 14, fontWeight: "900", color: "#111" },
+
+  // Header Section
+  headerSection: {
+    backgroundColor: "white",
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+
+  backButtonText: {
+    color: "#2563eb",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+
+  header: { 
+    fontSize: 28, 
+    fontWeight: "600",
+    color: "#0f172a",
+    letterSpacing: -0.6,
+    marginBottom: 8,
+  },
+
+  subHeader: { 
+    color: "#64748b", 
+    fontSize: 16, 
+    fontWeight: "400",
+    lineHeight: 24,
+  },
+
+  // Service Info Card
+  infoCard: {
+    backgroundColor: "white",
+    marginHorizontal: 24,
+    marginTop: 20,
+    marginBottom: 32,
+    borderRadius: 16,
+    padding: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  
+  infoTitle: { 
+    fontSize: 18, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
 
   companyText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#4C1D95",
-    fontWeight: "800",
+    fontSize: 14,
+    color: "#2563eb",
+    fontWeight: "500",
+    marginBottom: 16,
   },
 
-  infoSub: { marginTop: 8, fontSize: 12, color: "#666", fontWeight: "800" },
-
-  issueLine: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#111",
-    fontWeight: "700",
+  issuesSection: {
+    marginTop: 8,
   },
 
-  pillRow: { flexDirection: "row", gap: 10, marginTop: 14 },
-
-  pill: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: "#e5e5e5",
+  issuesTitle: { 
+    fontSize: 14, 
+    color: "#64748b", 
+    fontWeight: "500",
+    marginBottom: 12,
   },
-  pillActive: { backgroundColor: "#6D28D9" },
 
-  pillText: { fontWeight: "800", color: "#111", fontSize: 12 },
-  pillTextActive: { color: "white" },
+  issuesScroll: {
+    maxHeight: 120,
+  },
+
+  issueTag: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    alignSelf: "flex-start",
+  },
+
+  issueText: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "500",
+  },
+
+  // Slots Section
+  slotsSection: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "500",
+    color: "#0f172a",
+    letterSpacing: -0.3,
+    marginBottom: 20,
+  },
+
+  listContent: {
+    paddingBottom: 120,
+  },
 
   slotCard: {
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: "#f6f6f6",
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-  },
-  slotCardActive: {
-    backgroundColor: "#F3E8FF",
+    justifyContent: "space-between",
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
     borderWidth: 1,
-    borderColor: "#6D28D9",
+    borderColor: "#e2e8f0",
+  },
+  
+  slotCardSelected: { 
+    backgroundColor: "#f8faff", 
+    borderWidth: 2, 
+    borderColor: "#2563eb",
+    elevation: 1,
+    shadowOpacity: 0.08,
   },
 
-  slotText: { fontSize: 13, fontWeight: "800", color: "#111" },
-  slotTextActive: { color: "#4C1D95" },
-
-  selectedTag: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#6D28D9",
+  slotContent: {
+    flex: 1,
   },
 
+  slotText: { 
+    fontSize: 16, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  
+  slotTextSelected: { 
+    color: "#2563eb" 
+  },
+
+  slotSubText: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  slotSubTextSelected: {
+    color: "#2563eb",
+  },
+
+  selectedBadge: {
+    backgroundColor: "#2563eb",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  selectedText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  // Bottom Action Bar
   bottomBar: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 16,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  selectedInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+
+  selectedSlotTitle: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+
+  selectedSlotTime: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#0f172a",
+    letterSpacing: -0.2,
   },
 
   confirmBtn: {
-    backgroundColor: "#6D28D9",
-    paddingVertical: 14,
-    borderRadius: 16,
+    backgroundColor: "#2563eb",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    elevation: 0,
+    shadowColor: '#2563eb',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
+  
   confirmText: {
     color: "white",
-    fontWeight: "900",
-    textAlign: "center",
-    fontSize: 14,
+    fontWeight: "500",
+    fontSize: 16,
+    letterSpacing: -0.2,
   },
 });

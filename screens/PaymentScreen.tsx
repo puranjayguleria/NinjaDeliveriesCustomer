@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
 export default function PaymentScreen() {
@@ -12,21 +12,21 @@ export default function PaymentScreen() {
     serviceTitle,
     issues,
     company,
-    agency,
     date,
     time,
   } = route.params || {};
 
-  const issuesText =
-    Array.isArray(issues) && issues.length > 0 ? issues.join(", ") : "N/A";
+  // Format issues for display
+  const displayIssues = Array.isArray(issues) && issues.length > 0 
+    ? issues.join(", ") 
+    : "No issues selected";
 
   const onPay = () => {
     navigation.navigate("BookingDetails", {
       bookingId,
       serviceTitle,
-      issues,     // ✅ array
-      company,    // ✅ object
-      agency,     // ✅ object
+      issues,
+      company,
       amount,
       date,
       time,
@@ -35,189 +35,376 @@ export default function PaymentScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Payment</Text>
-
-      {/* Top Banner Card */}
-      <View style={styles.bannerCard}>
-        <Image
-          source={require("../assets/images/icon_home_repair.png")}
-          style={styles.bannerIcon}
-        />
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.bannerTitle}>Secure Your Slot</Text>
-          <Text style={styles.bannerSub}>
-            Pay small advance to confirm booking
-          </Text>
-        </View>
+      {/* Header Section */}
+      <View style={styles.headerSection}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        
+        <Text style={styles.header}>Payment</Text>
+        <Text style={styles.subHeader}>Review and confirm your booking</Text>
       </View>
 
-      {/* Booking Summary */}
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Booking Summary</Text>
+      {/* Scrollable Content */}
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Secure Booking Banner */}
+        <View style={styles.bannerCard}>
+          <Image
+            source={require("../assets/images/icon_home_repair.png")}
+            style={styles.bannerIcon}
+          />
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Service</Text>
-          <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
+          <View style={styles.bannerContent}>
+            <Text style={styles.bannerTitle}>Secure Your Slot</Text>
+            <Text style={styles.bannerSub}>
+              Pay advance amount to confirm your booking
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Issues</Text>
-          <Text style={styles.valueRight}>{issuesText}</Text>
+        {/* Booking Summary */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Booking Summary</Text>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Service</Text>
+            <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Issues</Text>
+            <Text style={styles.valueMultiline}>{displayIssues}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Provider</Text>
+            <Text style={styles.value}>
+              {company?.name || "Service Provider"}
+            </Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Time Slot</Text>
+            <Text style={styles.value}>{time || "N/A"}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Date</Text>
+            <Text style={styles.value}>{date || "Today"}</Text>
+          </View>
         </View>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Company</Text>
-          <Text style={styles.value}>
-            {company?.name ? `${company.name} (₹${company.price})` : "N/A"}
+        {/* Payment Details */}
+        <View style={styles.paymentCard}>
+          <Text style={styles.paymentTitle}>Payment Details</Text>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Booking ID</Text>
+            <Text style={styles.value}>{bookingId || "N/A"}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Service Charge</Text>
+            <Text style={styles.amount}>₹{company?.price || amount || 0}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Advance Amount</Text>
+            <Text style={styles.advanceAmount}>₹{Math.min(99, company?.price || amount || 99)}</Text>
+          </View>
+
+          <View style={styles.noteBox}>
+            <Text style={styles.noteTitle}>💡 Payment Note</Text>
+            <Text style={styles.noteText}>
+              Pay advance amount to secure your slot. Remaining payment will be collected after service completion.
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Fixed Bottom Section */}
+      <View style={styles.bottomSection}>
+        <TouchableOpacity 
+          style={styles.payBtn} 
+          activeOpacity={0.7} 
+          onPress={onPay}
+        >
+          <Text style={styles.payBtnText}>
+            Pay ₹{Math.min(99, company?.price || amount || 99)} & Confirm
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Slot</Text>
-          <Text style={styles.value}>
-            {date || "N/A"} • {time || "N/A"}
-          </Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Agency</Text>
-          <Text style={styles.value}>{agency?.name || "N/A"}</Text>
-        </View>
+        <TouchableOpacity 
+          style={styles.backBtn} 
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Payment Details Card */}
-      <View style={styles.payCard}>
-        <Text style={styles.payTitle}>Pay Now</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Booking ID</Text>
-          <Text style={styles.value}>{bookingId || "N/A"}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Advance Amount</Text>
-          <Text style={styles.amount}>₹{amount || 0}</Text>
-        </View>
-
-        <View style={styles.noteBox}>
-          <Text style={styles.noteTitle}>Note</Text>
-          <Text style={styles.noteText}>
-            This amount confirms your slot. Remaining payment will be collected
-            after service completion.
-          </Text>
-        </View>
-      </View>
-
-      {/* Pay Button */}
-      <TouchableOpacity style={styles.payBtn} activeOpacity={0.9} onPress={onPay}>
-        <Text style={styles.payBtnText}>Pay ₹{amount || 0} & Confirm</Text>
-      </TouchableOpacity>
-
-      {/* Back */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>Go Back</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fafbfc",
+  },
 
-  header: { fontSize: 22, fontWeight: "800", marginBottom: 14 },
+  // Header Section
+  headerSection: {
+    backgroundColor: "white",
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
 
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+
+  backButtonText: {
+    color: "#2563eb",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+
+  header: { 
+    fontSize: 28, 
+    fontWeight: "600",
+    color: "#0f172a",
+    letterSpacing: -0.6,
+    marginBottom: 8,
+  },
+
+  subHeader: { 
+    color: "#64748b", 
+    fontSize: 16, 
+    fontWeight: "400",
+    lineHeight: 24,
+  },
+
+  // Scroll View
+  scrollView: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    paddingBottom: 20,
+  },
+
+  // Banner Card
   bannerCard: {
-    backgroundColor: "#F3E8FF",
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 16,
+    padding: 20,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 14,
+    gap: 16,
+    marginHorizontal: 24,
+    marginTop: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
   },
 
   bannerIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 56,
+    height: 56,
+    borderRadius: 12,
     backgroundColor: "#fff",
   },
 
-  bannerTitle: { fontSize: 16, fontWeight: "900", color: "#4C1D95" },
-  bannerSub: { marginTop: 4, fontSize: 12, color: "#6B21A8" },
+  bannerContent: {
+    flex: 1,
+  },
 
+  bannerTitle: { 
+    fontSize: 18, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  
+  bannerSub: { 
+    fontSize: 14, 
+    color: "#64748b",
+    fontWeight: "400",
+    lineHeight: 20,
+  },
+
+  // Summary Card
   summaryCard: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    marginBottom: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  summaryTitle: { fontSize: 16, fontWeight: "900", marginBottom: 12 },
-
-  payCard: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 16,
+  
+  summaryTitle: { 
+    fontSize: 20, 
+    fontWeight: "600", 
+    marginBottom: 20,
+    color: "#0f172a",
+    letterSpacing: -0.3,
   },
 
-  payTitle: { fontSize: 16, fontWeight: "900", marginBottom: 12 },
-
-  row: {
+  summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
-    gap: 12,
+    alignItems: "flex-start",
+    marginBottom: 16,
+    gap: 16,
   },
 
-  label: { fontSize: 13, color: "#666", fontWeight: "700", width: "35%" },
-  value: { fontSize: 13, color: "#111", fontWeight: "800", flex: 1 },
-
-  valueRight: {
-    fontSize: 13,
-    color: "#111",
-    fontWeight: "800",
+  label: { 
+    fontSize: 14, 
+    color: "#64748b", 
+    fontWeight: "500", 
+    width: "35%",
+  },
+  
+  value: { 
+    fontSize: 14, 
+    color: "#0f172a", 
+    fontWeight: "500", 
     flex: 1,
     textAlign: "right",
   },
 
-  amount: { fontSize: 16, color: "#16A34A", fontWeight: "900" },
-
-  noteBox: {
-    marginTop: 12,
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 14,
+  valueMultiline: {
+    fontSize: 14,
+    color: "#0f172a",
+    fontWeight: "500",
+    flex: 1,
+    textAlign: "right",
+    lineHeight: 20,
   },
 
-  noteTitle: { fontWeight: "900", marginBottom: 4, color: "#111" },
-  noteText: { fontSize: 12, color: "#444", lineHeight: 16 },
+  // Payment Card
+  paymentCard: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    marginBottom: 24,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  paymentTitle: { 
+    fontSize: 20, 
+    fontWeight: "600", 
+    marginBottom: 20,
+    color: "#0f172a",
+    letterSpacing: -0.3,
+  },
+
+  amount: { 
+    fontSize: 16, 
+    color: "#0f172a", 
+    fontWeight: "600",
+    letterSpacing: -0.2,
+  },
+
+  advanceAmount: { 
+    fontSize: 20, 
+    color: "#059669", 
+    fontWeight: "600",
+    letterSpacing: -0.3,
+  },
+
+  noteBox: {
+    marginTop: 20,
+    backgroundColor: "#f8fafc",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  noteTitle: { 
+    fontWeight: "500", 
+    marginBottom: 8, 
+    color: "#0f172a",
+    fontSize: 14,
+  },
+  
+  noteText: { 
+    fontSize: 13, 
+    color: "#64748b", 
+    lineHeight: 20,
+    fontWeight: "400",
+  },
+
+  // Fixed Bottom Section
+  bottomSection: {
+    backgroundColor: "white",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    paddingBottom: 32,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
 
   payBtn: {
-    marginTop: 18,
-    backgroundColor: "#6D28D9",
-    paddingVertical: 14,
-    borderRadius: 16,
+    backgroundColor: "#2563eb",
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 0,
+    shadowColor: '#2563eb',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
 
   payBtnText: {
     color: "white",
-    fontWeight: "900",
+    fontWeight: "500",
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 16,
+    letterSpacing: -0.2,
   },
 
   backBtn: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#e2e8f0",
+    backgroundColor: "white",
   },
 
   backText: {
     textAlign: "center",
-    fontWeight: "800",
-    color: "#333",
+    fontWeight: "500",
+    color: "#64748b",
+    fontSize: 16,
   },
 });

@@ -129,17 +129,19 @@ export default function ServiceCategoryScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.card}
-        activeOpacity={0.9}
+        style={[styles.card, checked && styles.cardSelected]}
+        activeOpacity={0.7}
         onPress={() => toggleSelect(item.id)}
       >
-        <Image source={issueIcon} style={styles.icon} />
+        <View style={styles.cardContent}>
+          <Image source={issueIcon} style={styles.icon} />
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.subTitle}>
-            {checked ? "Selected" : "Tap to select"}
-          </Text>
+          <View style={styles.textContainer}>
+            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.subTitle}>
+              {checked ? "Selected for service" : "Tap to select this issue"}
+            </Text>
+          </View>
         </View>
 
         <View style={[styles.checkbox, checked ? styles.checkboxActive : null]}>
@@ -190,74 +192,166 @@ export default function ServiceCategoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 16 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fafbfc",
+  },
 
-  header: { fontSize: 22, fontWeight: "900" },
-  subHeader: { marginTop: 4, color: "#666", fontSize: 13, fontWeight: "600" },
+  header: { 
+    fontSize: 28, 
+    fontWeight: "600",
+    color: "#0f172a",
+    letterSpacing: -0.6,
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 8,
+  },
+  
+  subHeader: { 
+    color: "#64748b", 
+    fontSize: 16, 
+    fontWeight: "400",
+    paddingHorizontal: 24,
+    marginBottom: 32,
+    lineHeight: 24,
+  },
 
   card: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: "white",
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     marginBottom: 12,
+    marginHorizontal: 24,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  cardSelected: {
+    borderColor: "#2563eb",
+    backgroundColor: "#f8faff",
+    elevation: 1,
+    shadowOpacity: 0.08,
+  },
+
+  cardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
   },
 
   icon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#fff",
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    marginRight: 16,
   },
 
-  title: { fontSize: 14, fontWeight: "900", color: "#111" },
+  textContainer: {
+    flex: 1,
+  },
+
+  title: { 
+    fontSize: 16, 
+    fontWeight: "500", 
+    color: "#0f172a",
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
 
   subTitle: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "600",
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "400",
+    lineHeight: 20,
   },
 
   checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: "#bbb",
+    borderColor: "#cbd5e1",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "white",
   },
+  
   checkboxActive: {
-    backgroundColor: "#6D28D9",
-    borderColor: "#6D28D9",
+    backgroundColor: "#2563eb",
+    borderColor: "#2563eb",
   },
-  checkText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  
+  checkText: { 
+    color: "#fff", 
+    fontWeight: "600", 
+    fontSize: 12,
+  },
 
   otherBox: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 14,
-    marginTop: 10,
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    marginTop: 16,
+    elevation: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  otherTitle: { fontWeight: "900", fontSize: 14, color: "#111" },
+  
+  otherTitle: { 
+    fontWeight: "500", 
+    fontSize: 16, 
+    color: "#0f172a",
+    letterSpacing: -0.2,
+    marginBottom: 16,
+  },
+  
   input: {
-    marginTop: 10,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 12,
-    minHeight: 60,
-    fontWeight: "700",
-    color: "#111",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 16,
+    minHeight: 100,
+    fontWeight: "400",
+    color: "#0f172a",
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    textAlignVertical: "top",
   },
 
   btn: {
-    marginTop: 14,
-    backgroundColor: "#6D28D9",
-    padding: 14,
-    borderRadius: 16,
+    backgroundColor: "#2563eb",
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginHorizontal: 24,
+    marginTop: 24,
+    marginBottom: 32,
+    elevation: 0,
+    shadowColor: '#2563eb',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
-  btnText: { color: "#fff", textAlign: "center", fontWeight: "900" },
+  
+  btnText: { 
+    color: "#fff", 
+    textAlign: "center", 
+    fontWeight: "500",
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
 });
