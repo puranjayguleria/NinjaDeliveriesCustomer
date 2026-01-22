@@ -16,6 +16,40 @@ export default function SelectDateTimeScreen() {
   const { serviceTitle, issues, company } = route.params;
 
   const [time, setTime] = useState("1:00 PM - 3:00 PM");
+  const [selectedDate, setSelectedDate] = useState(() => {
+  const d = new Date();
+  return d.toISOString().split("T")[0];
+});
+
+const getNext7Days = () => {
+  const days = [];
+  const today = new Date();
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+
+    days.push({
+      key: d.toISOString().split("T")[0],
+      label: {
+        day: d.toLocaleDateString("en-US", { weekday: "short" }), // Mon, Tue
+        date: d.toLocaleDateString("en-US", { day: "numeric", month: "short" }), // 22 Jan
+      },
+      full: d.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    });
+  }
+
+  return days;
+};
+
+
+const dates = getNext7Days();
+
 
   const slots = [
     "9:00 AM - 11:00 AM",
@@ -69,42 +103,87 @@ export default function SelectDateTimeScreen() {
       </View>
 
       {/* Available Time Slots */}
-      <View style={styles.slotsSection}>
-        <Text style={styles.sectionTitle}>Available Time Slots</Text>
-        
-        <FlatList
-          data={slots}
-          keyExtractor={(item) => item}
-          renderItem={({ item }) => {
-            const isSelected = time === item;
-            return (
-              <TouchableOpacity
-                style={[styles.slotCard, isSelected && styles.slotCardSelected]}
-                onPress={() => setTime(item)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.slotContent}>
-                  <Text style={[styles.slotText, isSelected && styles.slotTextSelected]}>
-                    {item}
-                  </Text>
-                  <Text style={[styles.slotSubText, isSelected && styles.slotSubTextSelected]}>
-                    Available
-                  </Text>
-                </View>
-                
-                {isSelected && (
-                  <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedText}>✓</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          }}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
+      {/* Date Selection */}
+{/* Slots Section */}
+<View style={styles.slotsSection}>
+  {/* Date Selection */}
+  <Text style={styles.sectionTitle}>Select Date</Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+  {dates.map((d) => (
+    <TouchableOpacity
+      key={d.key}
+      onPress={() => setSelectedDate(d.key)}
+      style={[
+        styles.dateCard,
+        selectedDate === d.key && styles.dateCardActive,
+      ]}
+    >
+      <Text
+        style={[
+          styles.dateDay,
+          selectedDate === d.key && styles.dateDayActive,
+        ]}
+      >
+        {d.label.day}
+      </Text>
 
+      <Text
+        style={[
+          styles.dateText,
+          selectedDate === d.key && styles.dateTextActive,
+        ]}
+      >
+        {d.label.date}
+      </Text>
+    </TouchableOpacity>
+  ))}
+</ScrollView>
+
+  {/* Time Slots */}
+  <Text style={styles.sectionTitle}>Available Time Slots</Text>
+
+  <FlatList
+    data={slots}
+    keyExtractor={(item) => item}
+    renderItem={({ item }) => {
+      const isSelected = time === item;
+      return (
+        <TouchableOpacity
+          style={[styles.slotCard, isSelected && styles.slotCardSelected]}
+          onPress={() => setTime(item)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.slotContent}>
+            <Text
+              style={[
+                styles.slotText,
+                isSelected && styles.slotTextSelected,
+              ]}
+            >
+              {item}
+            </Text>
+            <Text
+              style={[
+                styles.slotSubText,
+                isSelected && styles.slotSubTextSelected,
+              ]}
+            >
+              Available
+            </Text>
+          </View>
+
+          {isSelected && (
+            <View style={styles.selectedBadge}>
+              <Text style={styles.selectedText}>✓</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    }}
+    contentContainerStyle={styles.listContent}
+    showsVerticalScrollIndicator={false}
+  />
+</View>
       {/* Bottom Action Bar */}
       <View style={styles.bottomBar}>
         <View style={styles.selectedInfo}>
@@ -116,24 +195,20 @@ export default function SelectDateTimeScreen() {
           style={styles.confirmBtn}
           activeOpacity={0.7}
           onPress={() => {
-            const bookingId = "BK" + Date.now().toString().slice(-6);
-            const currentDate = new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            });
+  const bookingId = "BK" + Date.now().toString().slice(-6);
+  const selected = dates.find(d => d.key === selectedDate);
 
-            navigation.navigate("Payment", {
-              bookingId,
-              amount: company?.price || 99,
-              serviceTitle,
-              issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
-              company,
-              date: currentDate,
-              time,
-            });
-          }}
+  navigation.navigate("Payment", {
+    bookingId,
+    amount: company?.price || 99,
+    serviceTitle,
+    issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
+    company,
+    date: selected?.full,
+    time,
+  });
+}}
+
         >
           <Text style={styles.confirmText}>Confirm Slot</Text>
         </TouchableOpacity>
@@ -147,6 +222,45 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: "#fafbfc",
   },
+// Date card styles
+ dateCard: {
+  width: 64,
+  height: 64,
+  paddingVertical: 6,
+  paddingHorizontal: 8,
+  marginRight: 10,
+  borderRadius: 12,
+  backgroundColor: "#ffffff",
+  borderWidth: 1,
+  borderColor: "#e2e8f0",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+dateCardActive: {
+  borderColor: "#2563eb",
+  backgroundColor: "#f8faff",
+},
+
+dateDay: {
+  fontSize: 10,
+  fontWeight: "600",
+  color: "#0f172a",
+},
+
+dateDayActive: {
+  color: "#2563eb",
+},
+
+dateText: {
+  fontSize: 10,
+  color: "#64748b",
+  marginTop: 1,
+},
+
+dateTextActive: {
+  color: "#2563eb",
+},
 
   // Header Section
   headerSection: {
@@ -269,7 +383,7 @@ const styles = StyleSheet.create({
   slotCard: {
     backgroundColor: "white",
     borderRadius: 16,
-    padding: 20,
+    padding: 12,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
@@ -280,11 +394,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 3,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "white",
   },
   
   slotCardSelected: { 
-    backgroundColor: "#f8faff", 
+    backgroundColor: "white", 
     borderWidth: 2, 
     borderColor: "#2563eb",
     elevation: 1,
