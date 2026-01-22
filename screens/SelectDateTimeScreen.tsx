@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
+  ScrollView,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
@@ -12,7 +13,8 @@ export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  const { serviceTitle, issueTitle } = route.params;
+  // ✅ UPDATED params
+  const { serviceTitle, issues, company } = route.params;
 
   const [date, setDate] = useState("Today");
   const [time, setTime] = useState("1:00 PM - 3:00 PM");
@@ -29,9 +31,33 @@ export default function SelectDateTimeScreen() {
     <View style={styles.container}>
       <Text style={styles.header}>Select Date & Time</Text>
 
+      {/* Info Card */}
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>{serviceTitle}</Text>
-        <Text style={styles.infoSub}>{issueTitle}</Text>
+
+        {company?.name ? (
+          <Text style={styles.companyText}>
+            Company: {company.name} • ₹{company.price}
+          </Text>
+        ) : null}
+
+        {/* ✅ Show multi issues */}
+        {Array.isArray(issues) && issues.length > 0 ? (
+          <View style={{ marginTop: 10 }}>
+            <Text style={styles.infoSub}>Selected Issues:</Text>
+
+            {/* Scroll if issues are too many */}
+            <ScrollView style={{ maxHeight: 90 }} showsVerticalScrollIndicator={false}>
+              {issues.map((x: string, i: number) => (
+                <Text key={i} style={styles.issueLine}>
+                  • {x}
+                </Text>
+              ))}
+            </ScrollView>
+          </View>
+        ) : (
+          <Text style={styles.infoSub}>No issues selected</Text>
+        )}
       </View>
 
       {/* Date pills */}
@@ -73,24 +99,28 @@ export default function SelectDateTimeScreen() {
             </TouchableOpacity>
           );
         }}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 120 }} // ✅ space for bottom button
+        showsVerticalScrollIndicator={false}
       />
 
-      {/* Confirm Button */}
-      <TouchableOpacity
-        style={styles.confirmBtn}
-        activeOpacity={0.9}
-        onPress={() =>
-          navigation.navigate("SelectAgency", {
-            serviceTitle,
-            issueTitle,
-            date,
-            time,
-          })
-        }
-      >
-        <Text style={styles.confirmText}>Confirm Slot</Text>
-      </TouchableOpacity>
+      {/* ✅ FIXED Bottom Button */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity
+          style={styles.confirmBtn}
+          activeOpacity={0.9}
+          onPress={() =>
+            navigation.navigate("SelectAgency", {
+              serviceTitle,
+              issues,
+              company,
+              date,
+              time,
+            })
+          }
+        >
+          <Text style={styles.confirmText}>Confirm Slot</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -107,7 +137,22 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   infoTitle: { fontSize: 14, fontWeight: "900", color: "#111" },
-  infoSub: { marginTop: 6, fontSize: 12, color: "#666", fontWeight: "600" },
+
+  companyText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#4C1D95",
+    fontWeight: "800",
+  },
+
+  infoSub: { marginTop: 8, fontSize: 12, color: "#666", fontWeight: "800" },
+
+  issueLine: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#111",
+    fontWeight: "700",
+  },
 
   pillRow: { flexDirection: "row", gap: 10, marginTop: 14 },
 
@@ -131,7 +176,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  slotCardActive: { backgroundColor: "#F3E8FF", borderWidth: 1, borderColor: "#6D28D9" },
+  slotCardActive: {
+    backgroundColor: "#F3E8FF",
+    borderWidth: 1,
+    borderColor: "#6D28D9",
+  },
 
   slotText: { fontSize: 13, fontWeight: "800", color: "#111" },
   slotTextActive: { color: "#4C1D95" },
@@ -142,8 +191,14 @@ const styles = StyleSheet.create({
     color: "#6D28D9",
   },
 
+  bottomBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+  },
+
   confirmBtn: {
-    marginTop: 10,
     backgroundColor: "#6D28D9",
     paddingVertical: 14,
     borderRadius: 16,

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
 export default function BookingDetailsScreen() {
@@ -9,9 +9,9 @@ export default function BookingDetailsScreen() {
   const {
     bookingId,
     serviceTitle,
-    issueTitle,
-    agencyName,
-    rating,
+    issues,
+    company,
+    agency,
     amount,
     date,
     time,
@@ -23,28 +23,67 @@ export default function BookingDetailsScreen() {
 
       <View style={styles.card}>
         <Text style={styles.bookingTitle}>
-          {serviceTitle || "-"} - {issueTitle || "-"}
+          {serviceTitle || "-"}
         </Text>
 
-        <Text style={styles.subText}>📅 {date || "Today"} | ⏰ {time || "-"}</Text>
+        {/* Booking ID */}
+        <Text style={styles.subText}>🧾 Booking ID: {bookingId || "-"}</Text>
 
+        {/* Slot */}
         <Text style={styles.subText}>
-          👨‍🔧 Agency: {agencyName || "-"} ({rating ? `⭐ ${rating}` : "⭐ -"})
+          📅 {date || "-"} | ⏰ {time || "-"}
         </Text>
 
-        <Text style={styles.subText}>Starts at ₹{amount || "-"}</Text>
-        <Text style={styles.subText}>Paid Amount: ₹{amount || "-"}</Text>
+        {/* Company */}
+        {company?.name ? (
+          <Text style={styles.subText}>
+            🏢 Company: {company.name} • ₹{company.price}
+          </Text>
+        ) : (
+          <Text style={styles.subText}>🏢 Company: -</Text>
+        )}
+
+        {/* Agency */}
+        {agency?.name ? (
+          <Text style={styles.subText}>
+            👨‍🔧 Agency: {agency.name} ({agency.rating ? `⭐ ${agency.rating}` : "⭐ -"})
+          </Text>
+        ) : (
+          <Text style={styles.subText}>👨‍🔧 Agency: -</Text>
+        )}
+
+        {/* Issues list */}
+        <Text style={[styles.subText, { marginTop: 10, fontWeight: "800" }]}>
+          🛠 Selected Issues:
+        </Text>
+
+        {Array.isArray(issues) && issues.length > 0 ? (
+          <ScrollView style={{ maxHeight: 90 }} showsVerticalScrollIndicator={false}>
+            {issues.map((x: string, i: number) => (
+              <Text key={i} style={styles.issueLine}>
+                • {x}
+              </Text>
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={styles.issueLine}>-</Text>
+        )}
+
+        {/* Payment */}
+        <Text style={[styles.subText, { marginTop: 10 }]}>
+          💰 Advance Paid: ₹{amount || "-"}
+        </Text>
 
         <Text style={styles.statusText}>Status: Ongoing</Text>
       </View>
 
       {/* Buttons Row */}
       <View style={styles.row}>
-        <TouchableOpacity style={styles.callBtn}>
+        <TouchableOpacity style={styles.callBtn} activeOpacity={0.9}>
           <Text style={styles.callText}>Call Agency</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.trackBtn}>
+        <TouchableOpacity style={styles.trackBtn} activeOpacity={0.9}>
           <Text style={styles.trackText}>Track Booking</Text>
         </TouchableOpacity>
       </View>
@@ -52,6 +91,7 @@ export default function BookingDetailsScreen() {
       {/* Booking History Button */}
       <TouchableOpacity
         style={styles.historyBtn}
+        activeOpacity={0.9}
         onPress={() => navigation.navigate("BookingHistory")}
       >
         <Text style={styles.historyText}>Go to Booking History</Text>
@@ -78,7 +118,7 @@ const styles = StyleSheet.create({
   },
   bookingTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
     marginBottom: 10,
     color: "#111827",
   },
@@ -86,10 +126,19 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginTop: 6,
     fontSize: 14,
+    fontWeight: "700",
   },
+
+  issueLine: {
+    marginTop: 4,
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   statusText: {
-    marginTop: 10,
-    fontWeight: "800",
+    marginTop: 12,
+    fontWeight: "900",
     fontSize: 15,
     color: "green",
   },

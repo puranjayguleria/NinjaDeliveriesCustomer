@@ -6,7 +6,32 @@ export default function PaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  const { bookingId, amount } = route.params;
+  const {
+    bookingId,
+    amount,
+    serviceTitle,
+    issues,
+    company,
+    agency,
+    date,
+    time,
+  } = route.params || {};
+
+  const issuesText =
+    Array.isArray(issues) && issues.length > 0 ? issues.join(", ") : "N/A";
+
+  const onPay = () => {
+    navigation.navigate("BookingDetails", {
+      bookingId,
+      serviceTitle,
+      issues,     // ✅ array
+      company,    // ✅ object
+      agency,     // ✅ object
+      amount,
+      date,
+      time,
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -27,18 +52,52 @@ export default function PaymentScreen() {
         </View>
       </View>
 
+      {/* Booking Summary */}
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Booking Summary</Text>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Service</Text>
+          <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Issues</Text>
+          <Text style={styles.valueRight}>{issuesText}</Text>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Company</Text>
+          <Text style={styles.value}>
+            {company?.name ? `${company.name} (₹${company.price})` : "N/A"}
+          </Text>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Slot</Text>
+          <Text style={styles.value}>
+            {date || "N/A"} • {time || "N/A"}
+          </Text>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Agency</Text>
+          <Text style={styles.value}>{agency?.name || "N/A"}</Text>
+        </View>
+      </View>
+
       {/* Payment Details Card */}
       <View style={styles.payCard}>
         <Text style={styles.payTitle}>Pay Now</Text>
 
         <View style={styles.row}>
           <Text style={styles.label}>Booking ID</Text>
-          <Text style={styles.value}>{bookingId}</Text>
+          <Text style={styles.value}>{bookingId || "N/A"}</Text>
         </View>
 
         <View style={styles.row}>
           <Text style={styles.label}>Advance Amount</Text>
-          <Text style={styles.amount}>₹{amount}</Text>
+          <Text style={styles.amount}>₹{amount || 0}</Text>
         </View>
 
         <View style={styles.noteBox}>
@@ -51,31 +110,12 @@ export default function PaymentScreen() {
       </View>
 
       {/* Pay Button */}
- <TouchableOpacity
-  style={styles.payBtn}
-  activeOpacity={0.9}
-  onPress={() =>
-    navigation.navigate("BookingDetails", {
-      bookingId,
-      serviceTitle: "Electrician",
-      issueTitle: "Switchboard Repair",
-      agencyName: "Fixit Experts",
-      rating: 4.5,
-      amount,
-      date: "Today",
-      time: "1:00 PM - 3:00 PM",
-    })
-  }
->
-  <Text style={styles.payBtnText}>Pay ₹{amount} & Confirm</Text>
-</TouchableOpacity>
+      <TouchableOpacity style={styles.payBtn} activeOpacity={0.9} onPress={onPay}>
+        <Text style={styles.payBtnText}>Pay ₹{amount || 0} & Confirm</Text>
+      </TouchableOpacity>
 
-
-      {/* Skip / Back */}
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => navigation.goBack()}
-      >
+      {/* Back */}
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
         <Text style={styles.backText}>Go Back</Text>
       </TouchableOpacity>
     </View>
@@ -107,6 +147,14 @@ const styles = StyleSheet.create({
   bannerTitle: { fontSize: 16, fontWeight: "900", color: "#4C1D95" },
   bannerSub: { marginTop: 4, fontSize: 12, color: "#6B21A8" },
 
+  summaryCard: {
+    backgroundColor: "#f6f6f6",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+  summaryTitle: { fontSize: 16, fontWeight: "900", marginBottom: 12 },
+
   payCard: {
     backgroundColor: "#f6f6f6",
     borderRadius: 18,
@@ -119,10 +167,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 10,
+    gap: 12,
   },
 
-  label: { fontSize: 13, color: "#666", fontWeight: "700" },
-  value: { fontSize: 13, color: "#111", fontWeight: "800" },
+  label: { fontSize: 13, color: "#666", fontWeight: "700", width: "35%" },
+  value: { fontSize: 13, color: "#111", fontWeight: "800", flex: 1 },
+
+  valueRight: {
+    fontSize: 13,
+    color: "#111",
+    fontWeight: "800",
+    flex: 1,
+    textAlign: "right",
+  },
 
   amount: { fontSize: 16, color: "#16A34A", fontWeight: "900" },
 

@@ -1,38 +1,35 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  Image,
+  ScrollView,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
 const AGENCIES = [
   {
     id: "1",
-    name: "Fixit Experts",
-    rating: 4.5,
-    price: 299,
-    verified: true,
-    image: require("../assets/images/icon_home_repair.png"),
+    name: "Ninja Verified Technician",
+    rating: 4.8,
+    experience: "5+ yrs",
+    price: 199,
   },
   {
     id: "2",
-    name: "Himalaya Repairs",
-    rating: 4.3,
-    price: 349,
-    verified: true,
-    image: require("../assets/images/icon_cleaning.png"),
+    name: "Quick Fix Expert",
+    rating: 4.6,
+    experience: "3+ yrs",
+    price: 249,
   },
   {
     id: "3",
-    name: "Quick Care Services",
+    name: "Home Repair Pro",
     rating: 4.7,
-    price: 399,
-    verified: false,
-    image: require("../assets/images/icon_car_bike.png"),
+    experience: "4+ yrs",
+    price: 299,
   },
 ];
 
@@ -40,80 +37,117 @@ export default function SelectAgencyScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  const { serviceTitle, issueTitle, date, time } = route.params;
+  const { serviceTitle, issues, company, date, time } = route.params;
 
-  const renderAgency = ({ item }: any) => {
-    return (
-      <View style={styles.card}>
-        {/* Left Image */}
-        <View style={styles.leftRow}>
-          <Image source={item.image} style={styles.avatar} />
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null);
 
-          <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name}>{item.name}</Text>
+  const selectedAgency = AGENCIES.find((x) => x.id === selectedAgencyId);
 
-              {item.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>Verified</Text>
-                </View>
-              )}
-            </View>
+  const onContinue = () => {
+    if (!selectedAgency) return;
 
-            <Text style={styles.metaText}>
-              ⭐ {item.rating} • Starts at ₹{item.price}
-            </Text>
+    // ✅ Auto bookingId generate
+    const bookingId = "BK" + Date.now();
 
-            <Text style={styles.smallText}>
-              {serviceTitle} • {issueTitle}
-            </Text>
-          </View>
-        </View>
+    // ✅ amount = selected agency price (advance amount)
+    const amount = selectedAgency.price;
 
-        {/* Right Select Button */}
-        <TouchableOpacity
-          style={styles.selectBtn}
-          activeOpacity={0.9}
-          onPress={() => {
-            const bookingId = "BK" + Date.now().toString().slice(-6);
-
-            navigation.navigate("Payment", {
-              bookingId,
-              amount: 99,
-              serviceTitle,
-              issueTitle,
-              date,
-              time,
-              agencyName: item.name,
-              agencyPrice: item.price,
-              agencyRating: item.rating,
-            });
-          }}
-        >
-          <Text style={styles.selectText}>Select</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    navigation.navigate("Payment", {
+      bookingId,
+      amount,
+      serviceTitle,
+      issues,
+      company,
+      agency: selectedAgency,
+      date,
+      time,
+    });
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Select an Agency</Text>
+      <Text style={styles.header}>Select Agency</Text>
 
-      <Text style={styles.subHeader}>
-        {serviceTitle} - {issueTitle}
-      </Text>
+      {/* Top Info Card */}
+      <View style={styles.infoCard}>
+        <Text style={styles.infoTitle}>{serviceTitle}</Text>
 
-      <Text style={styles.subHeader2}>
-        {date} | {time}
-      </Text>
+        {company?.name ? (
+          <Text style={styles.companyText}>
+            Company: {company.name} • ₹{company.price}
+          </Text>
+        ) : null}
 
+        <Text style={styles.slotText}>
+          Slot: {date} • {time}
+        </Text>
+
+        {/* Selected Issues */}
+        {Array.isArray(issues) && issues.length > 0 ? (
+          <View style={{ marginTop: 8 }}>
+            <Text style={styles.infoSub}>Selected Issues:</Text>
+
+            <ScrollView
+              style={{ maxHeight: 80 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {issues.map((x: string, i: number) => (
+                <Text key={i} style={styles.issueLine}>
+                  • {x}
+                </Text>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+      </View>
+
+      {/* Agency List */}
       <FlatList
+        style={{ marginTop: 14 }}
         data={AGENCIES}
         keyExtractor={(item) => item.id}
-        renderItem={renderAgency}
-        contentContainerStyle={{ paddingBottom: 20, marginTop: 14 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => {
+          const active = item.id === selectedAgencyId;
+
+          return (
+            <TouchableOpacity
+              style={[styles.card, active && styles.cardActive]}
+              activeOpacity={0.9}
+              onPress={() => setSelectedAgencyId(item.id)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>{item.name}</Text>
+                <Text style={styles.sub}>
+                  ⭐ {item.rating} • {item.experience}
+                </Text>
+                <Text style={styles.price}>Starting ₹{item.price}</Text>
+              </View>
+
+              {active ? (
+                <View style={styles.selectedBadge}>
+                  <Text style={styles.selectedBadgeText}>Selected</Text>
+                </View>
+              ) : (
+                <Text style={styles.selectText}>Select</Text>
+              )}
+            </TouchableOpacity>
+          );
+        }}
       />
+
+      {/* Bottom Button */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity
+          style={[styles.confirmBtn, !selectedAgency && { opacity: 0.5 }]}
+          disabled={!selectedAgency}
+          activeOpacity={0.9}
+          onPress={onContinue}
+        >
+          <Text style={styles.confirmText}>Continue to Payment</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -121,83 +155,88 @@ export default function SelectAgencyScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", padding: 16 },
 
-  header: { fontSize: 22, fontWeight: "800" },
-  subHeader: { marginTop: 6, color: "#666", fontSize: 13 },
-  subHeader2: { marginTop: 2, color: "#666", fontSize: 13 },
+  header: { fontSize: 22, fontWeight: "900" },
+
+  infoCard: {
+    marginTop: 12,
+    backgroundColor: "#f6f6f6",
+    borderRadius: 18,
+    padding: 14,
+  },
+  infoTitle: { fontSize: 14, fontWeight: "900", color: "#111" },
+
+  companyText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#4C1D95",
+    fontWeight: "800",
+  },
+
+  slotText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#111",
+    fontWeight: "800",
+  },
+
+  infoSub: { marginTop: 6, fontSize: 12, color: "#666", fontWeight: "800" },
+
+  issueLine: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#111",
+    fontWeight: "700",
+  },
 
   card: {
     backgroundColor: "#f6f6f6",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-
-  leftRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-    paddingRight: 10,
+  cardActive: {
+    backgroundColor: "#F3E8FF",
+    borderWidth: 1,
+    borderColor: "#6D28D9",
   },
 
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#fff",
+  title: { fontSize: 14, fontWeight: "900", color: "#111" },
+  sub: { marginTop: 6, fontSize: 12, color: "#666", fontWeight: "700" },
+  price: { marginTop: 6, fontSize: 12, color: "#111", fontWeight: "900" },
+
+  selectText: {
+    fontWeight: "900",
+    color: "#6D28D9",
+    fontSize: 12,
   },
 
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  name: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#111",
-  },
-
-  verifiedBadge: {
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  selectedBadge: {
+    backgroundColor: "#6D28D9",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
   },
-  verifiedText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#166534",
+  selectedBadgeText: { color: "#fff", fontWeight: "900", fontSize: 11 },
+
+  bottomBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
   },
 
-  metaText: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#333",
-  },
-
-  smallText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "600",
-  },
-
-  selectBtn: {
+  confirmBtn: {
     backgroundColor: "#6D28D9",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
   },
-  selectText: {
+  confirmText: {
     color: "white",
-    fontWeight: "800",
-    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+    fontSize: 14,
   },
 });
