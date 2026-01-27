@@ -9,6 +9,8 @@ import {
   Image,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { useServiceCart } from "../context/ServiceCartContext";
 
 const SERVICES = [
   {
@@ -109,20 +111,40 @@ const ALL_SERVICES = [
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
+  const { totalItems, hasServices } = useServiceCart();
 
   const goTo = (screen: string, params: any) => {
     navigation.navigate(screen, params);
+  };
+
+  const goToCart = () => {
+    navigation.navigate("ServiceCart");
   };
 
   const HeaderUI = () => {
     return (
       <View>
         <View style={styles.topHeader}>
-      <Text style={styles.header}>Services</Text>
-      <Text style={styles.headerSub}>
-    Book trusted professionals near you
-  </Text>
-</View>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.header}>Services</Text>
+              <Text style={styles.headerSub}>
+                Book trusted professionals near you
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.cartButton}
+              onPress={goToCart}
+            >
+              <Ionicons name="cart-outline" size={24} color="#0f172a" />
+              {hasServices && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{totalItems}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
 
 
         {/* Banner */}
@@ -220,6 +242,40 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 20,
     backgroundColor: "white",
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+
+  headerTextContainer: {
+    flex: 1,
+  },
+
+  cartButton: {
+    position: "relative",
+    padding: 8,
+    marginTop: 4,
+  },
+
+  cartBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: "#FF6B6B",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  cartBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
   },
 
   header: {

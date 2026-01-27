@@ -8,6 +8,8 @@ import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
 import PaymentScreen from "../screens/PaymentScreen";
 import BookingDetailsScreen from "../screens/BookingDetailsScreen";
 import BookingHistoryScreen from "../screens/BookingHistoryScreen";
+import ServiceCartScreen from "../screens/ServiceCartScreen";
+import ServiceCheckoutScreen from "../screens/ServiceCheckoutScreen";
 
 // ✅ Single-file flows
 import DailyWagesCategoryScreen from "../screens/DailyWagesCategoryScreen";
@@ -21,6 +23,10 @@ export default function ServicesStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+
+      {/* Service Cart */}
+      <Stack.Screen name="ServiceCart" component={ServiceCartScreen} />
+      <Stack.Screen name="ServiceCheckout" component={ServiceCheckoutScreen} />
 
       {/* Electrician / Plumber Flow */}
       <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />

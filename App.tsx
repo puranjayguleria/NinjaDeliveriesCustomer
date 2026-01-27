@@ -54,6 +54,7 @@ import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider } from "./context/LocationContext";
 import { OrderProvider, useOrder } from "./context/OrderContext";
+import { ServiceCartProvider } from "./context/ServiceCartContext";
 
 /* ──────────────────────────────────────────────────────────
    Screens
@@ -858,10 +859,10 @@ const App: React.FC = () => {
       <CustomerProvider>
         <CartProvider>
           <RestaurantCartProvider>
-
-          <LocationProvider>
-            <WeatherProvider>
-              <OrderProvider>
+            <ServiceCartProvider>
+              <LocationProvider>
+                <WeatherProvider>
+                  <OrderProvider>
                 <NavigationContainer>
                   <GlobalCongrats />
                   <RootStack.Navigator
@@ -891,10 +892,10 @@ const App: React.FC = () => {
                     />
                   </RootStack.Navigator>
                 </NavigationContainer>
-                
-              </OrderProvider>
-            </WeatherProvider>
-          </LocationProvider>
+                  </OrderProvider>
+                </WeatherProvider>
+              </LocationProvider>
+            </ServiceCartProvider>
           </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
