@@ -1,6 +1,12 @@
 // screens/CartScreen.tsx
+// ✅ ONLINE payment (Razorpay TEST) added using hardcoded Cloud Function URLs (change later to ENV in prod)
+// ✅ Existing functionality preserved: delivery window checks, store-change clears cart, hotspots fee,
+//    promos, weather surge, stock batch update, orders paused modal, etc.
+// ✅ Safe payment flow: create Razorpay order (server) -> open Razorpay -> verify (server) -> create Firestore order
+// ✅ COD flow unchanged (still creates order directly)
+// ✅ Fixed: "Pay Now" button is truly disabled when paused/loading (disabled + onPress no-op guard)
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,34 +21,54 @@ import {
   Animated,
   InteractionManager,
 } from "react-native";
-import { useFocusEffect, useIsFocused } from "@react-navigation/native";
-import { useCallback } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
-import auth from "@react-native-firebase/auth";
-import { LinearGradient } from "expo-linear-gradient";
-import firestore, {
-  firebase,
-  FirebaseFirestoreTypes,
-} from "@react-native-firebase/firestore";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
-import ConfettiCannon from "react-native-confetti-cannon";
-import { useCart } from "../context/CartContext";
 import {
-  CommonActions,
+  useFocusEffect,
+  useIsFocused,
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-
+import { SafeAreaView } from "react-native-safe-area-context";
+import auth from "@react-native-firebase/auth";
+import firestore, { firebase } from "@react-native-firebase/firestore";
+import { MaterialIcons, Ionicons } from "@expo/vector-icons";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { useCart } from "../context/CartContext";
 import { GOOGLE_PLACES_API_KEY } from "@env";
-import ErrorModal from "../components/ErrorModal"; // <-- NEW Import for error modal
+import ErrorModal from "../components/ErrorModal";
 import { findNearestStore } from "../utils/findNearestStore";
 import { useLocationContext } from "@/context/LocationContext";
 import NotificationModal from "../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
-import { useWeather } from "../context/WeatherContext"; // adjust path if needed
+import { useWeather } from "../context/WeatherContext";
+
+
+
+
+// ✅ Razorpay SDK
+import RazorpayCheckout from "react-native-razorpay";
+const api = axios.create({
+  timeout: 20000,
+  headers: { "Content-Type": "application/json" },
+});
+
+const getAuthHeaders = async () => {
+  const user = auth().currentUser;
+  if (!user) throw new Error("Not logged in");
+  const token = await user.getIdToken(true);
+  return { Authorization: `Bearer ${token}` };
+};
+/** -------------------------
+ *  HARD-CODED (TESTING ONLY)
+ *  -------------------------
+ *  Later in production: move to @env
+ */
+const CLOUD_FUNCTIONS_BASE_URL =
+  "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net"; // <-- change if region/project differs
+const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
+const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+
 
 /**
  * Returns true if the current time is inside the delivery window.
@@ -55,36 +81,30 @@ const checkDeliveryWindow = async (): Promise<boolean> => {
       .doc("timingData")
       .get();
 
-    if (!doc.exists) return true; // no timing data ⇒ allow
+    if (!doc.exists) return true;
 
-    // normalise both fields to 0-23 integers
     const { fromTime, toTime } = doc.data() as {
       fromTime: number | string;
       toTime: number | string;
     };
-    const from = Number(fromTime); // "08" ➜ 8
-    const to = Number(toTime); // "20" ➜ 20
-    const now = new Date().getHours(); // 0-23
+
+    const from = Number(fromTime);
+    const to = Number(toTime);
+    const now = new Date().getHours();
 
     if (Number.isNaN(from) || Number.isNaN(to)) return true;
+    if (from === to) return true;
 
-    if (from === to) return true; // 24 × 7
-
-    // same-day window (e.g. 8 → 20)
     if (from < to) return now >= from && now < to;
-
-    // overnight window (e.g. 22 → 6)
     return now >= from || now < to;
   } catch (e) {
     console.error("[checkDeliveryWindow]", e);
-    return true; // fail-open on error
+    return true;
   }
 };
+
 let storeChangeSerial = 0;
 
-/**
- * Firestore product doc now can have CGST, SGST, plus optional 'cess' per product.
- */
 type Product = {
   id: string;
   name: string;
@@ -96,38 +116,31 @@ type Product = {
   CGST?: number;
   SGST?: number;
   cess?: number;
+
+  // ✅ you already use matchingProducts in fetchRecommended
+  matchingProducts?: string[];
+  storeId?: string;
 };
 
 type Hotspot = {
   id: string;
   name: string;
-  center: firebase.firestore.GeoPoint; // Firestore GeoPoint
-  radiusKm: number; // e.g. 3  (kilometres)
-  convenienceCharge: number; // e.g. 25
-  reasons: string[]; // UI bullet list
+  center: firebase.firestore.GeoPoint;
+  radiusKm: number;
+  convenienceCharge: number;
+  reasons: string[];
 };
 
 type ConvenienceResult = {
-  hotspot: Hotspot | null; // null → not in any hotspot
-  fee: number; // 0 if not in hotspot
+  hotspot: Hotspot | null;
+  fee: number;
 };
-type GoogleWeatherData = {
-  precipitation?: {
-    qpf?: { quantity: number; unit: string };
-  };
-  wind?: {
-    speed?: { value: number; unit: string };
-  };
-  thunderstormProbability?: number;
-  uvIndex?: number;
-  weatherCondition?: {
-    type: string;
-  };
-};
+
 type WeatherThreshold = {
   precipMmPerHr: number;
   windSpeedKph: number;
 };
+
 type PromoCode = {
   id: string;
   code: string;
@@ -137,6 +150,10 @@ type PromoCode = {
   description?: string;
   isActive: boolean;
 
+  // NOTE: your UI uses minValue; include it so TS doesn’t break
+  minValue?: number;
+
+  storeId?: string;
   usedBy?: string[];
   usedByIds?: string[];
   usedByPhones?: string[];
@@ -146,7 +163,7 @@ type FareData = {
   additionalCostPerKm: number;
   baseDeliveryCharge: number;
   distanceThreshold: number;
-  gstPercentage: number; // ride-level GST
+  gstPercentage: number;
   platformFee: number;
   surgeFee?: number;
   fixedPickupLocation?: {
@@ -160,21 +177,31 @@ type FareData = {
   weatherThreshold?: WeatherThreshold;
 };
 
+type RazorpayPaymentMeta = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
 const RECO_CARD_WIDTH = 140;
 const RECO_GAP = 12;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
+const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
+
 const CartScreen: React.FC = () => {
-  const navigation = useNavigation();
-  const route = useRoute();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const isFocused = useIsFocused();
-  const { location, updateLocation } = useLocationContext(); // already have this in Categories – add here too
+
+  const { location, updateLocation } = useLocationContext();
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
+
   const [recommended, setRecommended] = useState<Product[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [convenienceFee, setConvenienceFee] = useState<number>(0);
- 
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
+
   const {
     cart,
     increaseQuantity,
@@ -183,18 +210,18 @@ const CartScreen: React.FC = () => {
     clearCart,
     addToCart,
   } = useCart();
-  // ----- CART ITEMS / LOADING -----
+
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true); // initial load ke liye
-  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<boolean | null>(null); // null = loading // for initial screen load
-  const [refreshingCartItems, setRefreshingCartItems] = useState(false); // for cart updates
-  console.log(location.storeId);
-  // ----- PROMO -----
+  const [loading, setLoading] = useState(true);
+  const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<
+    boolean | null
+  >(null);
+  const [refreshingCartItems, setRefreshingCartItems] = useState(false);
+
   const [promos, setPromos] = useState<PromoCode[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
 
-  // ----- PRICE BREAKDOWN -----
-  const [subtotal, setSubtotal] = useState<number>(0); // <-- Renamed from productSubtotal
+  const [subtotal, setSubtotal] = useState<number>(0);
   const [productCgst, setProductCgst] = useState<number>(0);
   const [productSgst, setProductSgst] = useState<number>(0);
   const [productCess, setProductCess] = useState<number>(0);
@@ -209,14 +236,12 @@ const CartScreen: React.FC = () => {
   const [platformFee, setPlatformFee] = useState<number>(0);
   const [finalTotal, setFinalTotal] = useState<number>(0);
 
-  // Fare data from Firestore
   const [fareData, setFareData] = useState<FareData | null>(null);
-  const [promoMinVal, setPromoMinVal] = useState(Number);
-  // Confetti
+
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
-  const unseenChangeId = useRef<number | null>(null); // queued id
-  const lastSeenChangeId = useRef<number>(0); // already shown
-  // Location
+  const unseenChangeId = useRef<number | null>(null);
+  const lastSeenChangeId = useRef<number>(0);
+
   const [userLocations, setUserLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
@@ -224,27 +249,26 @@ const CartScreen: React.FC = () => {
     useState(false);
   const [notificationModalMessage, setNotificationModalMessage] = useState("");
 
-  // Modals
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
   const [showPaymentSheet, setShowPaymentSheet] = useState<boolean>(false);
-  // Show a small modal when orders are paused (set from handleCheckout)
   const [showPausedModal, setShowPausedModal] = useState<boolean>(false);
 
-  // Navigation
   const [navigating, setNavigating] = useState<boolean>(false);
 
-  // Animations
   const colorAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
-  const cartJustCleared = useRef(false);
 
-  // --- NEW: Delivery Timing Error Modal State ---
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
-  const { isBadWeather, weatherData } = useWeather();
+
+  const { isBadWeather } = useWeather();
   const [loadingCartUpdate, setLoadingCartUpdate] = useState(false);
 
-  console.log(isBadWeather, weatherData);
+  const n = (x: any, dflt = 0) => {
+    const v = Number(x);
+    return Number.isFinite(v) ? v : dflt;
+  };
+
   const maybeShowNotice = () => {
     if (
       unseenChangeId.current !== null &&
@@ -253,8 +277,8 @@ const CartScreen: React.FC = () => {
       !showPaymentSheet &&
       isFocused
     ) {
-      lastSeenChangeId.current = unseenChangeId.current; // mark as seen
-      unseenChangeId.current = null; // consume
+      lastSeenChangeId.current = unseenChangeId.current;
+      unseenChangeId.current = null;
       InteractionManager.runAfterInteractions(() =>
         setNotificationModalVisible(true)
       );
@@ -265,13 +289,12 @@ const CartScreen: React.FC = () => {
    * Animate Checkout Button
    ***************************************/
   useEffect(() => {
-    // Button color animation
     Animated.timing(colorAnim, {
       toValue: selectedLocation ? 1 : 0,
       duration: 600,
       useNativeDriver: false,
     }).start();
-    // Shake animation if location is selected
+
     if (selectedLocation) {
       Animated.sequence([
         Animated.timing(shakeAnim, {
@@ -303,49 +326,46 @@ const CartScreen: React.FC = () => {
     } else {
       shakeAnim.setValue(0);
     }
-  }, [selectedLocation]);
+  }, [selectedLocation, colorAnim, shakeAnim]);
 
   useEffect(() => {
     const currentStore = location.storeId ?? null;
 
-    /* ─────────── first mount – just remember the store ─────────── */
     if (prevStoreIdRef.current === null && currentStore !== null) {
       prevStoreIdRef.current = currentStore;
       return;
     }
 
-    /* ─────────── real change detected ─────────── */
     if (currentStore && currentStore !== prevStoreIdRef.current) {
-      /* 1️⃣  wipe data tied to the old store */
       clearCart();
       setSelectedLocation(null);
       setShowLocationSheet(false);
       setShowPaymentSheet(false);
       prevStoreIdRef.current = currentStore;
 
-      /* 2️⃣  surface the “cart-emptied” notice only if Cart
-           is the **active** screen right now                      */
       if (isFocused) {
         storeChangeSerial += 1;
         unseenChangeId.current = storeChangeSerial;
         setNotificationModalMessage(
-          "Looks like you’ve switched to another store. " +
-            "Your cart has been emptied—please add items again."
+          "Looks like you’ve switched to another store. Your cart has been emptied—please add items again."
         );
-        maybeShowNotice(); // tries to pop the banner immediately
+        maybeShowNotice();
       }
     }
-  }, [location.storeId, isFocused]);
+  }, [location.storeId, isFocused, clearCart]);
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["rgb(231,76,60)", "rgb(40,167,69)"], // Red -> Green
+    outputRange: ["rgb(231,76,60)", "rgb(40,167,69)"],
   });
   const shakeTranslate = shakeAnim.interpolate({
     inputRange: [-1, 1],
     outputRange: [-10, 10],
   });
-  // ⬇ paste just ABOVE the big “Fetch Data On Mount” useEffect
+
+  /***************************************
+   * Hotspots
+   ***************************************/
   const fetchHotspots = async (storeId: string | null) => {
     if (!storeId) {
       setHotspots([]);
@@ -358,8 +378,6 @@ const CartScreen: React.FC = () => {
       .get();
 
     const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Hotspot) }));
-    console.log(list);
-
     setHotspots(list);
   };
 
@@ -369,37 +387,42 @@ const CartScreen: React.FC = () => {
   useEffect(() => {
     fetchFareData(location.storeId ?? null);
     fetchHotspots(location.storeId ?? null);
-    fetchCartItems();
+    fetchCartItems(true);
     watchPromos();
     const unsubscribe = watchUserLocations();
-    setLoading(false)
+    setLoading(false);
     return () => {
       if (unsubscribe) unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   useEffect(() => {
     fetchCartItems(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart]);
-useEffect(() => {
-  if (!location?.storeId) return;
 
-  const unsubscribe = firestore()
-    .collection("delivery_zones")   // ✅ correct collection
-    .doc(location.storeId)          // ✅ correct document
-    .onSnapshot(doc => {
-      if (doc.exists) {
-        const data = doc.data();
-        const isActive = data?.isActive ?? true;
+  // ✅ paused orders watcher (kept)
+  useEffect(() => {
+    if (!location?.storeId) return;
 
-        // isActive false → orders paused
-        setIsOrderAcceptancePaused(!isActive);
-      }
-    });
+    const unsubscribe = firestore()
+      .collection("delivery_zones")
+      .doc(location.storeId)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          const isActive = data?.isActive ?? true;
+          setIsOrderAcceptancePaused(!isActive);
+        } else {
+          setIsOrderAcceptancePaused(false);
+        }
+      });
 
-  return () => unsubscribe();
-}, [location?.storeId]);
+    return () => unsubscribe();
+  }, [location?.storeId]);
 
-  // If user selected location
+  // location param (kept)
   useEffect(() => {
     if (route.params?.selectedLocation) {
       (async () => {
@@ -412,11 +435,10 @@ useEffect(() => {
         } else {
           setSelectedLocation(route.params.selectedLocation);
         }
-        // clear the param so it doesn’t fire again
         navigation.setParams({ selectedLocation: null });
       })();
     }
-  }, [route.params?.selectedLocation]);
+  }, [route.params?.selectedLocation, navigation]);
 
   useEffect(() => {
     fetchFareData(location.storeId ?? null);
@@ -445,29 +467,19 @@ useEffect(() => {
    ***************************************/
   const fetchFareData = async (storeId: string | null) => {
     if (!storeId) {
-      // if we don’t know the store yet
       setFareData(null);
       return;
     }
 
     try {
-      // ❶  *If doc-ID == storeId*   (simplest)
-      // const snap = await firestore()
-      //   .collection("orderSetting")
-      //   .doc(storeId)
-      //   .get();
-
-      // ❷  *If you kept a normal collection with a storeId field*:
       const snap = await firestore()
         .collection("orderSetting")
         .where("storeId", "==", storeId)
         .limit(1)
         .get();
 
-      if (!snap.empty /* use branch ❷ */ && snap.docs[0].exists) {
+      if (!snap.empty && snap.docs[0].exists) {
         setFareData(snap.docs[0].data() as FareData);
-      } else if (snap.exists) {
-        setFareData(snap.data() as unknown as FareData);
       } else {
         console.warn("No orderSetting found for store", storeId);
         setFareData(null);
@@ -481,46 +493,35 @@ useEffect(() => {
   useEffect(() => {
     if (cartItems.length > 0) calculateTotals();
     else resetTotals();
-  }, [
-    cartItems,
-    cart,
-    selectedPromo,
-    selectedLocation,
-    fareData,
-    convenienceFee,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems, cart, selectedPromo, selectedLocation, fareData, convenienceFee]);
 
-  const n = (x: any, dflt = 0) => {
-    const v = Number(x);
-    return Number.isFinite(v) ? v : dflt;
-  };
   const fetchCartItems = async (showLoader = true) => {
     try {
       if (showLoader) {
         setLoading(true);
         setRefreshingCartItems(true);
       }
+
       const productIds = Object.keys(cart);
       if (productIds.length === 0) {
         setCartItems([]);
         return;
       }
 
-      // Fetch from both collections in parallel
       const batchPromises: Promise<firebase.firestore.QuerySnapshot>[] = [];
-
-      // Split productIds into batches of 10 for Firestore 'in' query limit
       const tempIds = [...productIds];
+
       while (tempIds.length > 0) {
         const batchIds = tempIds.splice(0, 10);
-        // Query products collection
+
         batchPromises.push(
           firestore()
             .collection("products")
             .where(firestore.FieldPath.documentId(), "in", batchIds)
             .get()
         );
-        // Query saleProducts collection
+
         batchPromises.push(
           firestore()
             .collection("saleProducts")
@@ -529,25 +530,18 @@ useEffect(() => {
         );
       }
 
-      // Execute all queries
       const snapshots = await Promise.all(batchPromises);
 
-      // Merge and deduplicate results
       const productsData: Product[] = [];
       snapshots.forEach((snap) => {
         snap.forEach((doc) => {
           const data = doc.data() as Product;
-          // Only add if quantity > 0 and not already included
           if ((data.quantity ?? 0) > 0) {
             const existing = productsData.find((p) => p.id === doc.id);
             if (!existing) {
               productsData.push({ id: doc.id, ...data });
             } else {
-              // Update with latest data if saleProducts has a discount
-              if (
-                doc.ref.parent.path.includes("saleProducts") &&
-                data.discount
-              ) {
+              if (doc.ref.parent.path.includes("saleProducts") && data.discount) {
                 productsData[productsData.indexOf(existing)] = {
                   id: doc.id,
                   ...data,
@@ -558,11 +552,9 @@ useEffect(() => {
         });
       });
 
-      // Filter to only items with quantity > 0 in cart
       const visible = productsData.filter((p) => (cart[p.id] ?? 0) > 0);
       setCartItems(visible);
 
-      // Fetch recommended items based on visible cart items
       await fetchRecommended(visible);
     } catch (error) {
       console.error("Error fetching cart items:", error);
@@ -578,32 +570,17 @@ useEffect(() => {
   useFocusEffect(
     useCallback(() => {
       maybeShowNotice();
-      // on focus → nothing special
-      return () => {
-        // on blur  → make sure the banner is gone
-        setNotificationModalVisible(false);
-      };
+      return () => setNotificationModalVisible(false);
     }, [showLocationSheet, showPaymentSheet])
   );
 
-  /**
-   * Pull “people also bought” items into state.recommended
-   * – only if they’re in-stock for the current store.
-   */
-  /**
-   * Pull up to 10 “people also ordered” products that are:
-   *   • referenced in the current cart items’ matchingProducts[]
-   *   • belong to the same store as the cart
-   *   • have quantity > 0   (filtered client-side to avoid composite-index errors)
-   */
   const fetchRecommended = async (baseItems: Product[]) => {
     try {
-      /* ---------- 1. Collect candidate IDs, skip bad values ---------- */
       const wanted = new Set<string>();
 
       baseItems.forEach((p) => {
         (p.matchingProducts ?? []).forEach((id) => wanted.add(id));
-        wanted.delete(p.id); // don’t recommend what’s already in the cart
+        wanted.delete(p.id);
       });
 
       const idList = Array.from(wanted).filter(
@@ -611,45 +588,36 @@ useEffect(() => {
       );
 
       if (idList.length === 0 || !location.storeId) {
-        setRecommended([]); // nothing to fetch
+        setRecommended([]);
         return;
       }
 
-      /* ---------- 2. Fetch in chunks of ≤10 IDs (Firestore limit) ----- */
       const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
-
       for (let i = 0; i < idList.length; i += 10) {
         const chunk = idList.slice(i, i + 10);
-        console.log(chunk);
         reads.push(
           firestore()
             .collection("products")
             .where(firestore.FieldPath.documentId(), "in", chunk)
-            .where("storeId", "==", location.storeId) // stay inside the same store
-            /* 🔸 NO quantity filter here – avoid “range + in” restriction */
+            .where("storeId", "==", location.storeId)
             .get()
         );
       }
 
       const snapshots = await Promise.all(reads);
 
-      /* ---------- 3. Merge & client-side filter for stock ------------ */
       const recs: Product[] = [];
-
       snapshots.forEach((snap) =>
         snap.forEach((doc) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) > 0) {
-            // only keep in-stock items
-            recs.push({ id: doc.id, ...data });
-          }
+          if ((data.quantity ?? 0) > 0) recs.push({ id: doc.id, ...data });
         })
       );
 
-      setRecommended(recs.slice(0, 10)); // cap UI to 10 items
+      setRecommended(recs.slice(0, 10));
     } catch (err) {
       console.error("[fetchRecommended]", err);
-      setRecommended([]); // silent fallback
+      setRecommended([]);
     }
   };
 
@@ -668,6 +636,7 @@ useEffect(() => {
       (err) => console.error("Error watching user locations:", err)
     );
   };
+
   const watchPromos = () => {
     const currentUser = auth().currentUser;
     if (!currentUser) return () => {};
@@ -684,7 +653,6 @@ useEffect(() => {
 
           const phone = currentUser.phoneNumber ?? "";
           const uid = currentUser.uid;
-          const userDoc = await firestore().collection("users").doc(uid).get();
           const userStoreId = location.storeId ?? null;
 
           const filtered = raw.filter((promo) => {
@@ -706,6 +674,7 @@ useEffect(() => {
         (err) => console.error("Error listening to promos:", err)
       );
   };
+
   /***************************************
    * Distance from Google
    ***************************************/
@@ -745,7 +714,6 @@ useEffect(() => {
   ): Promise<ConvenienceResult> => {
     if (!spots.length) return { hotspot: null, fee: 0 };
 
-    // create “lat,lng|lat,lng|…” list for Google
     const destinations = spots
       .map((h) => `${h.center.latitude},${h.center.longitude}`)
       .join("|");
@@ -782,6 +750,7 @@ useEffect(() => {
       return { hotspot: null, fee: 0 };
     }
   };
+
   /***************************************
    * Calculate Totals
    ***************************************/
@@ -798,13 +767,11 @@ useEffect(() => {
       const realPrice = item.discount ? item.price - item.discount : item.price;
 
       _subtotal += realPrice * qty;
-
       if (item.CGST) _productCgst += item.CGST * qty;
       if (item.SGST) _productSgst += item.SGST * qty;
       if (item.cess) _productCess += item.cess * qty;
     });
 
-    // 2) Promo discount
     let _discount = 0;
     if (selectedPromo) {
       if (selectedPromo.discountType === "flat") {
@@ -817,7 +784,6 @@ useEffect(() => {
 
     const itemsTotal = _subtotal - _discount;
 
-    // 3) Distance
     let distanceInKm = 0;
     if (selectedLocation?.lat && selectedLocation?.lng) {
       const pickupLat =
@@ -832,7 +798,6 @@ useEffect(() => {
       );
     }
 
-    // 4) Delivery
     let _deliveryCharge = 0;
     if (distanceInKm <= n(fareData.distanceThreshold)) {
       _deliveryCharge = n(fareData.baseDeliveryCharge);
@@ -843,23 +808,18 @@ useEffect(() => {
         extraKms * n(fareData.additionalCostPerKm);
     }
 
-    // 5) Ride CGST/SGST
     const totalGstOnDelivery =
       (_deliveryCharge * n(fareData.gstPercentage)) / 100;
     const _rideCgst = totalGstOnDelivery / 2;
     const _rideSgst = totalGstOnDelivery / 2;
 
-    // 6) Platform fee
     const _platformFee = n(fareData.platformFee);
 
-    // 7) Bad Weather SurgeFee
-    let surgeFee = 0;
+    const surgeFee = isBadWeather ? fareData?.surgeFee ?? 0 : 0;
 
-    surgeFee = isBadWeather ? fareData?.surgeFee ?? 0 : 0;
-
-    // 7) Final total
     const _conFee = n(convenienceFee);
-    const _final =  
+
+    const _final =
       itemsTotal +
       _productCgst +
       _productSgst +
@@ -870,7 +830,7 @@ useEffect(() => {
       _platformFee +
       surgeFee +
       _conFee;
-    // Update states
+
     setSubtotal(_subtotal);
     setProductCgst(_productCgst);
     setProductSgst(_productSgst);
@@ -886,7 +846,6 @@ useEffect(() => {
     setFinalTotal(_final);
   };
 
-  // Reset totals if cart is empty
   const resetTotals = () => {
     setSubtotal(0);
     setProductCgst(0);
@@ -911,24 +870,28 @@ useEffect(() => {
     setSelectedPromo(promo);
     setShowConfetti(true);
   };
-  const clearPromo = () => {
-    setSelectedPromo(null);
-  };
+  const clearPromo = () => setSelectedPromo(null);
 
   /***************************************
-   * CART ACTIONS
+   * CHECKOUT
    ***************************************/
   const handleCheckout = async () => {
-  if (isOrderAcceptancePaused === true) {
-  setShowPausedModal(true);
-  
-  return;
-}
-    // NEW: Delivery timing check
+    // ✅ block while paused status unknown
+    if (isOrderAcceptancePaused === null) {
+      Alert.alert("Please wait", "Checking store availability...");
+      return;
+    }
+
+    if (isOrderAcceptancePaused === true) {
+      setShowPausedModal(true);
+      return;
+    }
+
+    // delivery timing check (kept)
     try {
       const timingDoc = await firestore()
         .collection("delivery_timing")
-        .doc("timingData") // or whichever doc name you use
+        .doc("timingData")
         .get();
 
       if (timingDoc.exists) {
@@ -947,15 +910,13 @@ useEffect(() => {
       }
     } catch (err) {
       console.error("Error checking delivery timing:", err);
-      // If doc doesn't exist or any error, we won't block the user.
-      // Or handle as needed
     }
 
-    // Existing flow
     if (cartItems.length === 0) {
       Alert.alert("Cart is Empty", "Please add some products to your cart.");
       return;
     }
+
     if (!selectedLocation && userLocations.length === 0) {
       navigation.navigate("LocationSelector", { fromScreen: "Cart" });
     } else if (!selectedLocation && userLocations.length > 0) {
@@ -966,10 +927,101 @@ useEffect(() => {
   };
 
   /***************************************
+   * RAZORPAY (TEST) - helpers
+   ***************************************/
+ const createRazorpayOrderOnServer = async (amountRupees: number) => {
+  const user = auth().currentUser;
+  if (!user) throw new Error("Not logged in");
+
+  const amountPaise = toPaise(amountRupees);
+  const headers = await getAuthHeaders();
+
+  const { data } = await api.post(
+    CREATE_RZP_ORDER_URL,
+    {
+      amountPaise,
+      currency: "INR",
+      receipt: `rcpt_${user.uid}_${Date.now()}`,
+      notes: { uid: user.uid, storeId: location.storeId || "" },
+    },
+    { headers }
+  );
+
+  // ✅ these keys match the function response
+  if (!data?.orderId || !data?.keyId) {
+    throw new Error(data?.error || "Failed to create Razorpay order");
+  }
+
+  return {
+    orderId: String(data.orderId),
+    keyId: String(data.keyId),
+    amountPaise: Number(data.amountPaise ?? amountPaise),
+    currency: String(data.currency ?? "INR"),
+  };
+};
+
+
+
+ const verifyRazorpayPaymentOnServer = async (meta: RazorpayPaymentMeta) => {
+  const headers = await getAuthHeaders();
+
+  const { data } = await api.post(VERIFY_RZP_PAYMENT_URL, meta, { headers });
+
+  if (!data?.verified) throw new Error(data?.error || "Payment verification failed");
+  return true;
+};
+
+
+ const openRazorpayCheckout = async (
+  keyId: string,
+  orderId: string,
+  amountPaise: number,
+  currency: string
+) => {
+  const user = auth().currentUser;
+  if (!user) throw new Error("Not logged in");
+
+  const contact = (user.phoneNumber || "").replace("+91", "");
+
+  const options: any = {
+    key: keyId,
+    order_id: orderId,
+    amount: String(amountPaise),
+    currency: currency || "INR",
+    name: "Ninja Deliveries",
+    description: "Order payment",
+
+    prefill: {
+      contact,
+      email: "",
+      name: "",
+      method: "upi", // ✅ this is the correct way on mobile :contentReference[oaicite:1]{index=1}
+    },
+
+    theme: { color: "#00C853" },
+  };
+
+  return RazorpayCheckout.open(options) as Promise<{
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }>;
+};
+
+
+
+  /***************************************
    * PAYMENT
    ***************************************/
+
+  const isUserCancelledRazorpay = (e: any) => {
+  const msg = String(e?.description || e?.message || "").toLowerCase();
+  return msg.includes("cancel") || msg.includes("dismiss") || msg.includes("closed");
+};
   const handlePaymentOption = async (option: "cod" | "online") => {
     setShowPaymentSheet(false);
+
+    // ✅ COD unchanged
     if (option === "cod") {
       try {
         setNavigating(true);
@@ -982,6 +1034,7 @@ useEffect(() => {
           const { orderId, pickupCoords } = result;
           clearCart();
           setSelectedLocation(null);
+
           navigation.navigate("OrderAllocating", {
             orderId,
             pickupCoords: {
@@ -1001,19 +1054,88 @@ useEffect(() => {
       } finally {
         setNavigating(false);
       }
+      return;
     }
-    // else if (option === "online") { ... }
+
+    // ✅ ONLINE Razorpay TEST
+    try {
+      if (!selectedLocation) {
+        Alert.alert("Select address", "Please select a delivery address first.");
+        return;
+      }
+      if (!fareData) {
+        Alert.alert("Please wait", "Pricing details are still loading.");
+        return;
+      }
+      
+
+      setNavigating(true);
+
+      // 1) Create server order
+      const serverOrder = await createRazorpayOrderOnServer(finalTotal);
+
+const meta = await openRazorpayCheckout(
+  serverOrder.keyId,
+  serverOrder.orderId,
+  serverOrder.amountPaise,
+  serverOrder.currency
+);
+
+
+      // 3) Verify on server
+      await verifyRazorpayPaymentOnServer(meta);
+
+      // 4) Create Firestore order after verified
+      const result = await handleCreateOrder("online", meta,serverOrder);
+
+      if (result) {
+        if (selectedPromo) {
+          setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
+          setSelectedPromo(null);
+        }
+
+        const { orderId, pickupCoords } = result;
+        clearCart();
+        setSelectedLocation(null);
+
+        navigation.navigate("OrderAllocating", {
+          orderId,
+          pickupCoords: {
+            latitude: Number(pickupCoords?.latitude) || 0,
+            longitude: Number(pickupCoords?.longitude) || 0,
+          },
+          dropoffCoords: {
+            latitude: Number(selectedLocation?.lat) || 0,
+            longitude: Number(selectedLocation?.lng) || 0,
+          },
+          totalCost: finalTotal,
+        });
+      }
+    } catch (e: any) {
+  console.error("[ONLINE PAYMENT]", e);
+  const msg =
+    e?.description ||
+    e?.error?.description ||
+    e?.message ||
+    "Payment was not completed. If money was deducted, it will be auto-refunded by your bank.";
+  Alert.alert("Payment Failed", msg);
+} finally {
+  setNavigating(false);
+}
   };
 
   /***************************************
    * CREATE ORDER
    ***************************************/
-  const handleCreateOrder = async (paymentMethod: "cod" | "online") => {
+  const handleCreateOrder = async (
+  paymentMethod: "cod" | "online",
+  razorpayMeta?: RazorpayPaymentMeta,
+  serverOrder?: { orderId: string; amountPaise: number; currency: string; keyId: string }
+) => {
     try {
       const user = auth().currentUser;
       if (!user || !selectedLocation || !fareData) return null;
 
-      // Build items array
       const items = cartItems.map((item) => {
         const qty = cart[item.id] || 0;
         return {
@@ -1028,14 +1150,14 @@ useEffect(() => {
         };
       });
 
-      // Check & update product quantity via batch
+      // stock batch (kept)
       const batch = firestore().batch();
       for (let i = 0; i < items.length; i++) {
         const { productId, quantity } = items[i];
-        let productRef = firestore().collection("saleProducts").doc(productId); // Check saleProducts first
+
+        let productRef = firestore().collection("saleProducts").doc(productId);
         let productSnap = await productRef.get();
 
-        // If not in saleProducts, check products
         if (!productSnap.exists) {
           productRef = firestore().collection("products").doc(productId);
           productSnap = await productRef.get();
@@ -1048,20 +1170,21 @@ useEffect(() => {
         if (!data || typeof data.quantity !== "number") {
           throw new Error(`Invalid product data for ID ${productId}`);
         }
+
         const currentQty = data.quantity || 0;
         if (currentQty < quantity) {
           throw new Error(
             `Not enough stock for product: ${data.name || `ID` + productId}`
           );
         }
+
         const newQty = currentQty - quantity;
         batch.update(productRef, { quantity: newQty < 0 ? 0 : newQty });
       }
 
       await batch.commit();
 
-      // Build pickup coords from fareData
-      let usedPickupCoords = null;
+      let usedPickupCoords: any = null;
       if (fareData.fixedPickupLocation) {
         usedPickupCoords = {
           latitude: Number(fareData.fixedPickupLocation.coordinates.latitude),
@@ -1069,8 +1192,7 @@ useEffect(() => {
         };
       }
 
-      // Create order data in Firestore
-      const orderData = {
+      const orderData: any = {
         orderedBy: user.uid,
         pickupCoords: usedPickupCoords,
         dropoffCoords: {
@@ -1079,7 +1201,7 @@ useEffect(() => {
         },
         items,
         distance,
-        subtotal, // <-- renamed from productSubtotal
+        subtotal,
         productCgst,
         productSgst,
         productCess,
@@ -1095,20 +1217,34 @@ useEffect(() => {
         createdAt: firestore.FieldValue.serverTimestamp(),
         usedPromo: selectedPromo ? selectedPromo.id : null,
         storeId: location.storeId,
-        convenienceFee, // new field
+        convenienceFee,
         hotspotId: activeHotspot?.id || null,
+
+        // ✅ online metadata
+       payment: {
+  method: paymentMethod,
+  status: paymentMethod === "online" ? "paid" : "pending",
+  amountPaise: toPaise(finalTotal),
+  currency: "INR",
+  ...(paymentMethod === "online"
+    ? {
+        razorpay: {
+          orderId: razorpayMeta?.razorpay_order_id, // or serverOrder.orderId if you pass it in
+          paymentId: razorpayMeta?.razorpay_payment_id,
+          signature: razorpayMeta?.razorpay_signature,
+        },
+      }
+    : {}),
+},
+
       };
 
       const orderRef = await firestore().collection("orders").add(orderData);
-      console.log("Order created with ID:", orderRef.id);
 
-      // Mark promo as used if applicable
-      // Mark promo as used if applicable
+      // promo usage (kept)
       if (selectedPromo) {
         const updates: Record<string, any> = {
-          // keep legacy field so old docs still work
           usedBy: firestore.FieldValue.arrayUnion(user.uid),
-          // new explicit fields
           usedByIds: firestore.FieldValue.arrayUnion(user.uid),
         };
         if (user.phoneNumber) {
@@ -1125,19 +1261,17 @@ useEffect(() => {
       return { orderId: orderRef.id, pickupCoords: usedPickupCoords };
     } catch (err: any) {
       console.error("Error creating order:", err);
-      Alert.alert("Stock Error", err.message);
+      Alert.alert("Stock Error", err.message || "Unable to create order.");
       return null;
     }
   };
 
   /***************************************
-   * RENDER
+   * RENDER HELPERS
    ***************************************/
   const renderCartItem = ({ item }: { item: Product }) => {
     const quantity = cart[item.id] || 0;
-    if (quantity == 0) {
-      return;
-    }
+    if (quantity === 0) return null as any;
 
     const itemPrice = Number(item.discount)
       ? Number(item.price) - Number(item.discount)
@@ -1155,6 +1289,7 @@ useEffect(() => {
         <View style={styles.cartItemDetails}>
           <Text style={styles.cartItemName}>{item.name}</Text>
           <Text style={styles.cartItemPrice}>₹{realPrice.toFixed(2)}</Text>
+
           <View style={styles.quantityControl}>
             <TouchableOpacity
               onPress={() => decreaseQuantity(item.id)}
@@ -1162,7 +1297,9 @@ useEffect(() => {
             >
               <MaterialIcons name="remove" size={18} color="#fff" />
             </TouchableOpacity>
+
             <Text style={styles.quantityText}>{quantity}</Text>
+
             <TouchableOpacity
               onPress={() => {
                 increaseQuantity(item.id, item.quantity);
@@ -1173,10 +1310,12 @@ useEffect(() => {
               <MaterialIcons name="add" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
+
           <Text style={styles.cartItemTotal}>
             Item: ₹{totalPrice.toFixed(2)}
           </Text>
         </View>
+
         <TouchableOpacity
           onPress={() => removeFromCart(item.id)}
           style={styles.removeButton}
@@ -1190,11 +1329,13 @@ useEffect(() => {
   const renderPromoItem = ({ item }: { item: PromoCode }) => {
     const promoIcon =
       item.discountType === "flat" ? "pricetag-outline" : "gift-outline";
+    const minValue = n(item.minValue);
+
     return (
       <TouchableOpacity
         style={styles.promoCard}
-        onPress={() => subtotal >= item.minValue && selectPromo(item)}
-        disabled={subtotal < item.minValue}
+        onPress={() => subtotal >= minValue && selectPromo(item)}
+        disabled={subtotal < minValue}
       >
         <View style={styles.promoHeader}>
           <Ionicons
@@ -1207,12 +1348,14 @@ useEffect(() => {
             {item.label || item.code}
           </Text>
         </View>
+
         {item.description && (
           <Text style={styles.promoDescription} numberOfLines={2}>
             {item.description}
           </Text>
         )}
-        {subtotal < item.minValue && (
+
+        {subtotal < minValue && (
           <View style={styles.promoOverlay}>
             <View style={styles.lockContainer}>
               <View style={styles.lockIcon}>
@@ -1222,69 +1365,13 @@ useEffect(() => {
                   color="#ffffff"
                 />
               </View>
-              <Text style={styles.lockText}>Min ₹{item.minValue}</Text>
+              <Text style={styles.lockText}>Min ₹{minValue}</Text>
             </View>
           </View>
         )}
       </TouchableOpacity>
     );
   };
-
-  const renderSavedAddressItem = ({ item }: { item: any }) => (
-    <View style={styles.addressItemRow}>
-      <TouchableOpacity
-        style={styles.addressItemLeft}
-        onPress={async () => {
-          try {
-            /* 1️⃣  Block if we’re outside the delivery window */
-            const ok = await checkDeliveryWindow();
-            if (!ok) {
-              Alert.alert(
-                "Closed for deliveries",
-                "Sorry, we’re not delivering right now. Please try again during our next delivery window."
-              );
-              return; // don’t close the sheet, don’t change the address
-            }
-
-            /* 2️⃣  Continue with the existing nearest-store logic */
-            const nearest = await findNearestStore(item.lat, item.lng);
-            if (!nearest) {
-              Alert.alert(
-                "Unavailable",
-                "We don’t deliver to that address yet – try another address."
-              );
-              return;
-            }
-
-            const fullLocation = {
-              ...item,
-              lat: item.lat,
-              lng: item.lng,
-              storeId: nearest.id,
-            };
-
-            setSelectedLocation(fullLocation);
-            updateLocation(fullLocation);
-            setShowLocationSheet(false); // close the bottom sheet
-          } catch (e) {
-            console.error("[findNearestStore]", e);
-            Alert.alert("Error", "Couldn’t validate that address.");
-          }
-        }}
-      >
-        <Text style={styles.addressItemLabel}>
-          {item.placeLabel} - {item.houseNo}
-        </Text>
-        <Text style={styles.addressItemAddress}>{item.address}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.deleteLocationButton}
-        onPress={() => handleDeleteLocation(item)}
-      >
-        <Ionicons name="trash" size={20} color="#e74c3c" />
-      </TouchableOpacity>
-    </View>
-  );
 
   const handleDeleteLocation = async (locToDelete: any) => {
     try {
@@ -1303,17 +1390,74 @@ useEffect(() => {
     }
   };
 
+  const renderSavedAddressItem = ({ item }: { item: any }) => (
+    <View style={styles.addressItemRow}>
+      <TouchableOpacity
+        style={styles.addressItemLeft}
+        onPress={async () => {
+          try {
+            const ok = await checkDeliveryWindow();
+            if (!ok) {
+              Alert.alert(
+                "Closed for deliveries",
+                "Sorry, we’re not delivering right now. Please try again during our next delivery window."
+              );
+              return;
+            }
+
+            const nearest = await findNearestStore(item.lat, item.lng);
+            if (!nearest) {
+              Alert.alert(
+                "Unavailable",
+                "We don’t deliver to that address yet – try another address."
+              );
+              return;
+            }
+
+            const fullLocation = {
+              ...item,
+              lat: item.lat,
+              lng: item.lng,
+              storeId: nearest.id,
+            };
+
+            setSelectedLocation(fullLocation);
+            updateLocation(fullLocation);
+            setShowLocationSheet(false);
+          } catch (e) {
+            console.error("[findNearestStore]", e);
+            Alert.alert("Error", "Couldn’t validate that address.");
+          }
+        }}
+      >
+        <Text style={styles.addressItemLabel}>
+          {item.placeLabel} - {item.houseNo}
+        </Text>
+        <Text style={styles.addressItemAddress}>{item.address}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.deleteLocationButton}
+        onPress={() => handleDeleteLocation(item)}
+      >
+        <Ionicons name="trash" size={20} color="#e74c3c" />
+      </TouchableOpacity>
+    </View>
+  );
+
   const handleAddMoreItems = () => {
     navigation.navigate("HomeTab", { screen: "ProductsHome" });
   };
-  //REMOVE CGST AND SGST
+
   const updatedProductSubtotal = subtotal + productCgst + productSgst;
   const updatedDeliveryCharge = deliveryCharge + rideCgst + rideSgst;
+
+  const checkoutDisabled =
+    isOrderAcceptancePaused === null || isOrderAcceptancePaused === true;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Confetti Cannon */}
         {showConfetti && (
           <View style={styles.confettiContainer}>
             <ConfettiCannon
@@ -1328,7 +1472,6 @@ useEffect(() => {
           </View>
         )}
 
-        {/* Loader or empty cart check */}
         {loading || navigating ? (
           <View style={styles.loaderContainer}>
             <Loader />
@@ -1345,7 +1488,6 @@ useEffect(() => {
               </View>
             )}
 
-            {/* HEADER */}
             <View style={styles.headerBlock}>
               <Text style={styles.cartItemsHeader}>Your Cart</Text>
               <Text style={styles.headerSubtitle}>
@@ -1353,7 +1495,6 @@ useEffect(() => {
               </Text>
             </View>
 
-            {/* MAIN CONTENT */}
             <ScrollView
               style={styles.scrollView}
               contentContainerStyle={styles.scrollContent}
@@ -1383,6 +1524,7 @@ useEffect(() => {
                   <Text style={styles.addMoreRowText}>Add More Items</Text>
                 </TouchableOpacity>
               </View>
+
               {recommended.length > 0 && (
                 <>
                   <View style={styles.recoHeader}>
@@ -1434,12 +1576,9 @@ useEffect(() => {
                 </>
               )}
 
-              {/* LOCATION SECTION */}
               {userLocations.length === 0 ? (
                 <View style={styles.locationSection}>
-                  <Text style={styles.locationTitle}>
-                    No saved addresses yet.
-                  </Text>
+                  <Text style={styles.locationTitle}>No saved addresses yet.</Text>
                   <TouchableOpacity
                     style={styles.selectAddressButton}
                     onPress={() =>
@@ -1477,7 +1616,6 @@ useEffect(() => {
                 </View>
               )}
 
-              {/* PROMO SECTION */}
               <View style={styles.promoSection}>
                 <Text style={styles.sectionTitle}>Promotions & Offers</Text>
                 {selectedPromo ? (
@@ -1516,11 +1654,9 @@ useEffect(() => {
                 )}
               </View>
 
-              {/* SUMMARY */}
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>Summary</Text>
 
-                {/* Product Subtotal (incl. CGST + SGST) */}
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Product Subtotal</Text>
                   <Text style={styles.summaryValue}>
@@ -1528,7 +1664,6 @@ useEffect(() => {
                   </Text>
                 </View>
 
-                {/* Discount */}
                 {discount > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Discount</Text>
@@ -1538,7 +1673,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Product CESS */}
                 {productCess > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Product CESS</Text>
@@ -1548,7 +1682,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Distance */}
                 {distance > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Distance (KM)</Text>
@@ -1558,7 +1691,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Delivery Charge (incl. Ride CGST + SGST) */}
                 {updatedDeliveryCharge > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Delivery Charge</Text>
@@ -1568,7 +1700,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Convenience Fee */}
                 {convenienceFee > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Convenience Fee</Text>
@@ -1578,7 +1709,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Platform Fee */}
                 {platformFee > 0 && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Platform Fee</Text>
@@ -1588,17 +1718,15 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* Surge Fee */}
                 {surgeLine > 0 && (
                   <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel]}>Weather Surge</Text>
-                    <Text style={[styles.summaryValue]}>
+                    <Text style={styles.summaryLabel}>Weather Surge</Text>
+                    <Text style={styles.summaryValue}>
                       ₹{surgeLine.toFixed(2)}
                     </Text>
                   </View>
                 )}
 
-                {/* Promo Type */}
                 {selectedPromo && (
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Promo Type</Text>
@@ -1608,7 +1736,6 @@ useEffect(() => {
                   </View>
                 )}
 
-                {/* GRAND TOTAL (highlighted) */}
                 <View style={[styles.summaryRow, styles.grandTotalRow]}>
                   <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>
                     Grand Total
@@ -1618,6 +1745,7 @@ useEffect(() => {
                   </Text>
                 </View>
               </View>
+
               <View style={styles.infoBanner}>
                 <Ionicons
                   name="information-circle"
@@ -1632,7 +1760,6 @@ useEffect(() => {
               </View>
             </ScrollView>
 
-            {/* FOOTER */}
             <View style={styles.footerBar}>
               <View style={styles.footerLeft}>
                 <Text style={styles.footerTotalLabel}>Total:</Text>
@@ -1640,43 +1767,42 @@ useEffect(() => {
                   ₹{finalTotal.toFixed(2)}
                 </Text>
               </View>
-<AnimatedTouchable
-  style={[
-    styles.footerCheckoutButton,
-    {
-      backgroundColor:
-        isOrderAcceptancePaused === null || isOrderAcceptancePaused === true
-          ? "#95a5a6" // grey when paused/loading
-          : animatedButtonColor,
-      transform: [{ translateX: shakeTranslate }],
-      opacity: isOrderAcceptancePaused === null || isOrderAcceptancePaused === true ? 0.6 : 1, // reduced opacity for disabled look
-    },
-    // Optional: extra style for disabled look 
-    (isOrderAcceptancePaused === null || isOrderAcceptancePaused === true) && styles.disabledButton,
-  ]}
-  onPress={handleCheckout} // clickable 
->
-  <Ionicons
-    name={selectedLocation ? "cash-outline" : "cart-outline"}
-    size={16}
-    color="#ffffffff"
-    style={{ marginRight: 6 }}
-  />
-  <Text style={styles.footerCheckoutText}>
-    {isOrderAcceptancePaused === null
-      ? "Loading..."
-      : isOrderAcceptancePaused
-      ? "Orders Paused"
-      : selectedLocation
-      ? "Pay Now"
-      : "Checkout"}
-  </Text>
-</AnimatedTouchable>
+
+              <AnimatedTouchable
+                disabled={checkoutDisabled} // ✅ REAL disable
+                style={[
+                  styles.footerCheckoutButton,
+                  {
+                    backgroundColor: checkoutDisabled
+                      ? "#95a5a6"
+                      : (animatedButtonColor as any),
+                    transform: [{ translateX: shakeTranslate }],
+                    opacity: checkoutDisabled ? 0.6 : 1,
+                  },
+                  checkoutDisabled && styles.disabledButton,
+                ]}
+                onPress={checkoutDisabled ? undefined : handleCheckout} // ✅ no-op when disabled
+              >
+                <Ionicons
+                  name={selectedLocation ? "cash-outline" : "cart-outline"}
+                  size={16}
+                  color="#ffffffff"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.footerCheckoutText}>
+                  {isOrderAcceptancePaused === null
+                    ? "Loading..."
+                    : isOrderAcceptancePaused
+                    ? "Orders Paused"
+                    : selectedLocation
+                    ? "Pay Now"
+                    : "Checkout"}
+                </Text>
+              </AnimatedTouchable>
             </View>
           </>
         )}
 
-        {/* LOCATION PICKER MODAL */}
         {/* PAUSED ORDERS MODAL */}
         <Modal
           visible={showPausedModal}
@@ -1686,11 +1812,14 @@ useEffect(() => {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.pausedModalBox}>
-              <Text style={styles.pausedModalTitle}>Orders Temporarily Paused</Text>
+              <Text style={styles.pausedModalTitle}>
+                Orders Temporarily Paused
+              </Text>
               <Text style={styles.pausedModalMessage}>
                 We’re not accepting new orders right now. You can change your
                 location or try again later.
               </Text>
+
               <TouchableOpacity
                 style={styles.pausedModalButton}
                 onPress={() => {
@@ -1700,15 +1829,25 @@ useEffect(() => {
               >
                 <Text style={styles.pausedModalButtonText}>Change Location</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.pausedModalButton, styles.pausedModalClose]}
                 onPress={() => setShowPausedModal(false)}
               >
-                <Text style={[styles.pausedModalButtonText, styles.pausedModalCloseText]}>Close</Text>
+                <Text
+                  style={[
+                    styles.pausedModalButtonText,
+                    styles.pausedModalCloseText,
+                  ]}
+                >
+                  Close
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
+
+        {/* LOCATION PICKER MODAL */}
         <Modal
           visible={showLocationSheet}
           transparent
@@ -1717,17 +1856,23 @@ useEffect(() => {
           onRequestClose={() => setShowLocationSheet(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.bottomSheet, showLocationSheet && styles.bottomSheetOpen]}>
+            <View
+              style={[
+                styles.bottomSheet,
+                showLocationSheet && styles.bottomSheetOpen,
+              ]}
+            >
               <Text style={styles.bottomSheetTitle}>Choose Address</Text>
               <FlatList
                 data={userLocations}
                 keyExtractor={(_, idx) => String(idx)}
                 renderItem={renderSavedAddressItem}
-                style={{ maxHeight: Dimensions.get('window').height * 0.4 }}
+                style={{ maxHeight: Dimensions.get("window").height * 0.4 }}
                 ListEmptyComponent={
                   <Text style={{ textAlign: "center" }}>No addresses.</Text>
                 }
               />
+
               <TouchableOpacity
                 style={styles.addNewLocationButton}
                 onPress={() => {
@@ -1737,9 +1882,7 @@ useEffect(() => {
                   });
                 }}
               >
-                <Text style={styles.addNewLocationText}>
-                  + Add New Location
-                </Text>
+                <Text style={styles.addNewLocationText}>+ Add New Location</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1753,7 +1896,12 @@ useEffect(() => {
         </Modal>
 
         {/* PAYMENT OPTIONS MODAL */}
-        <Modal visible={showPaymentSheet} transparent animationType="slide">
+        <Modal
+          visible={showPaymentSheet}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowPaymentSheet(false)}
+        >
           <View style={styles.modalOverlay}>
             <View style={styles.bottomSheet}>
               <Text style={styles.bottomSheetTitle}>Payment Options</Text>
@@ -1769,14 +1917,23 @@ useEffect(() => {
                 <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
               </TouchableOpacity>
 
-              {/* If you add online payment, uncomment this:
-            <TouchableOpacity
-              style={[styles.paymentOptionButton, { backgroundColor: "#6fdccf" }]}
-              onPress={() => handlePaymentOption("online")}
-            >
-              <Text style={styles.paymentOptionText}>Pay Online</Text>
-            </TouchableOpacity>
-            */}
+              {/* ✅ ONLINE */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentOptionButton,
+                  { backgroundColor: "#00C853" },
+                ]}
+                onPress={() => handlePaymentOption("online")}
+              >
+                <Text
+                  style={[
+                    styles.paymentOptionText,
+                    { color: "#fff", fontWeight: "800" },
+                  ]}
+                >
+                  Pay Online (Razorpay - Test)
+                </Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -1794,7 +1951,6 @@ useEffect(() => {
           onClose={() => setNotificationModalVisible(false)}
         />
 
-        {/* NEW: Delivery Timing Error Modal */}
         <ErrorModal
           visible={errorModalVisible}
           message={errorModalMessage}
@@ -1812,137 +1968,68 @@ const pastelGreen = "#e7f8f6";
 const { width } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f2f2f2",
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#fefefe",
-  },
+  safeArea: { flex: 1, backgroundColor: "#f2f2f2" },
+  container: { flex: 1, backgroundColor: "#fefefe" },
+
   infoBanner: {
     flexDirection: "row",
     alignItems: "center",
-
-    backgroundColor: "#e0f2f1", // light teal
+    backgroundColor: "#e0f2f1",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-
     alignSelf: "center",
     marginTop: 8,
     marginBottom: 14,
     maxWidth: "90%",
   },
-  infoIcon: {
-    marginRight: 6,
-  },
-  infoText: {
-    flexShrink: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#00695c",
-  },
-  recoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
+  infoIcon: { marginRight: 6 },
+  infoText: { flexShrink: 1, fontSize: 12, lineHeight: 16, color: "#00695c" },
 
-  /* badge —  subtle Blinkit-green pill */
+  recoHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   recoBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#00C853", // Blinkit green
+    backgroundColor: "#00C853",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 12,
     marginRight: 6,
   },
-  recoBadgeTxt: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    marginLeft: 2,
-  },
+  recoBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700", marginLeft: 2 },
+  recoTitle: { fontSize: 14, fontWeight: "700", color: "#333" },
+  recoList: { paddingVertical: 6, paddingLeft: 2, columnGap: RECO_GAP },
 
-  /* title text that follows the badge */
-  recoTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-  },
-
-  /* --- new: list container gives left padding & gap between cards --- */
-  recoList: {
-    paddingVertical: 6,
-    paddingLeft: 2, // align with other content
-    columnGap: RECO_GAP,
-  },
   confettiContainer: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     zIndex: 1000,
     justifyContent: "center",
     alignItems: "center",
     pointerEvents: "none",
   },
-  loaderContainer: {
-    flex: 1,
+
+  loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loaderOverlay: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: "center",
     alignItems: "center",
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 16,
-    color: "#999",
-  },
-  headerBlock: {
-    backgroundColor: pastelGreen,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-  },
-  cartItemsHeader: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#666",
-  },
-  codNote: {
-    marginTop: 8,
-    marginBottom: 20,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#1f4f4f",
-    textAlign: "center",
-    alignSelf: "center",
-    maxWidth: "90%",
-  },
-  scrollView: {
-    flex: 1,
-    marginBottom: 60,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  itemListContainer: {
-    paddingBottom: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.5)",
+    zIndex: 10,
   },
 
-  /** CART ITEM **/
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyText: { fontSize: 16, color: "#999" },
+
+  headerBlock: { backgroundColor: pastelGreen, paddingVertical: 20, paddingHorizontal: 16 },
+  cartItemsHeader: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 5 },
+  headerSubtitle: { fontSize: 13, color: "#666" },
+
+  scrollView: { flex: 1, marginBottom: 60 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
+  itemListContainer: { paddingBottom: 8 },
+
   cartItemContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1958,316 +2045,74 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  cartItemImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 6,
-    marginRight: 8,
-    backgroundColor: "#f9f9f9",
-  },
-  cartItemDetails: {
-    flex: 1,
-  },
-  cartItemName: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-  },
-  cartItemPrice: {
-    marginTop: 2,
-    fontSize: 12,
-    color: "#555",
-  },
-  cartItemTotal: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#333",
-  },
-  quantityControl: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  controlButton: {
-    backgroundColor: "#E67E22",
-    borderRadius: 8,
-    padding: 5,
-    marginHorizontal: 2,
-  },
-  quantityText: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginHorizontal: 4,
-    color: "#333",
-  },
-  removeButton: {
-    padding: 5,
-  },
+  cartItemImage: { width: 50, height: 50, borderRadius: 6, marginRight: 8, backgroundColor: "#f9f9f9" },
+  cartItemDetails: { flex: 1 },
+  cartItemName: { fontSize: 14, fontWeight: "700", color: "#333" },
+  cartItemPrice: { marginTop: 2, fontSize: 12, color: "#555" },
+  cartItemTotal: { marginTop: 4, fontSize: 12, fontWeight: "600", color: "#333" },
 
-  /** DIVIDER **/
-  dottedDivider: {
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderStyle: "dotted",
-    borderRadius: 1,
-  },
+  quantityControl: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  controlButton: { backgroundColor: "#E67E22", borderRadius: 8, padding: 5, marginHorizontal: 2 },
+  quantityText: { fontSize: 13, fontWeight: "600", marginHorizontal: 4, color: "#333" },
 
-  missedSomethingRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  missedText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-  },
-  addMoreRowButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#3498db",
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  addIcon: {
-    marginRight: 4,
-  },
-  addMoreRowText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#fff",
-  },
+  removeButton: { padding: 5 },
 
-  /** LOCATION SECTION **/
-  locationSection: {
-    backgroundColor: "#fff",
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 20,
-    borderColor: "#eee",
-    borderWidth: 1,
-  },
-  locationTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 6,
-  },
-  loaderOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.5)", // optional dim
-    zIndex: 10,
-  },
+  dottedDivider: { marginVertical: 10, borderWidth: 1, borderColor: "#ccc", borderStyle: "dotted", borderRadius: 1 },
 
-  selectAddressButton: {
-    backgroundColor: "#FF7043",
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  selectAddressButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  changeLocationButton: {
-    marginTop: 4,
-    alignSelf: "flex-start",
-    backgroundColor: "#f39c12",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  changeLocationText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  selectedLocationHighlight: {
-    backgroundColor: "#e1f8e6",
-    borderColor: "#2ecc71",
-    borderWidth: 1,
-  },
+  missedSomethingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  missedText: { fontSize: 14, fontWeight: "600", color: "#333" },
+  addMoreRowButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#3498db", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
+  addIcon: { marginRight: 4 },
+  addMoreRowText: { fontSize: 12, fontWeight: "600", color: "#fff" },
 
-  /** PROMO SECTION **/
-  promoSection: {
-    backgroundColor: "#fff",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#eee",
-    padding: 10,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 6,
-  },
-  selectedPromoContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 6,
-    padding: 8,
-  },
-  selectedPromoLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#333",
-  },
-  selectedPromoDescription: {
-    fontSize: 11,
-    color: "#555",
-    marginTop: 3,
-  },
-  promoTypeText: {
-    marginTop: 3,
-    fontSize: 11,
-    color: "#2ecc71",
-  },
-  clearPromoText: {
-    fontSize: 12,
-    color: "#e74c3c",
-    fontWeight: "600",
-  },
-  promoListWrapper: {
-    marginTop: 4,
-  },
-  promoHorizontalList: {
-    paddingRight: 6,
-  },
-  promoCard: {
-    width: 120,
-    backgroundColor: "#fafafa",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#eee",
-    padding: 6,
-    marginRight: 10,
-    alignItems: "flex-start",
-    shadowColor: "#000",
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  promoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 2,
-    width: "100%",
-  },
-  promoIcon: {
-    marginRight: 4,
-  },
-  promoLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#2c3e50",
-    flexShrink: 1,
-    flexWrap: "wrap",
-  },
-  promoDescription: {
-    fontSize: 10,
-    color: "#555",
-    marginTop: 2,
-    flexWrap: "wrap",
-  },
-  noPromoText: {
-    fontSize: 12,
-    color: "#999",
-    textAlign: "center",
-  },
+  locationSection: { backgroundColor: "#fff", borderRadius: 6, padding: 10, marginBottom: 20, borderColor: "#eee", borderWidth: 1 },
+  locationTitle: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 6 },
 
-  /** SUMMARY CARD **/
-  summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#eee",
-    padding: 10,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  summaryTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 8,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#333",
-  },
-  summaryValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#333",
-  },
-  discountValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#e74c3c",
-  },
-  grandTotalRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopColor: "#ccc",
-    borderTopWidth: 1,
-  },
-  grandTotalLabel: {
-    fontSize: 14,
-    color: "#000",
-  },
-  grandTotalValue: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#000",
-  },
+  selectAddressButton: { backgroundColor: "#FF7043", borderRadius: 8, paddingVertical: 8, alignItems: "center" },
+  selectAddressButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  changeLocationButton: { marginTop: 4, alignSelf: "flex-start", backgroundColor: "#f39c12", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  changeLocationText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  selectedLocationHighlight: { backgroundColor: "#e1f8e6", borderColor: "#2ecc71", borderWidth: 1 },
+
+  promoSection: { backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 10, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  sectionTitle: { fontSize: 15, fontWeight: "700", color: "#333", marginBottom: 6 },
+  selectedPromoContainer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f5f5f5", borderRadius: 6, padding: 8 },
+  selectedPromoLabel: { fontSize: 13, fontWeight: "600", color: "#333" },
+  selectedPromoDescription: { fontSize: 11, color: "#555", marginTop: 3 },
+  promoTypeText: { marginTop: 3, fontSize: 11, color: "#2ecc71" },
+  clearPromoText: { fontSize: 12, color: "#e74c3c", fontWeight: "600" },
+  promoListWrapper: { marginTop: 4 },
+  promoHorizontalList: { paddingRight: 6 },
+  promoCard: { width: 120, backgroundColor: "#fafafa", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 6, marginRight: 10, alignItems: "flex-start", shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  promoHeader: { flexDirection: "row", alignItems: "center", marginBottom: 2, width: "100%" },
+  promoIcon: { marginRight: 4 },
+  promoLabel: { fontSize: 12, fontWeight: "600", color: "#2c3e50", flexShrink: 1, flexWrap: "wrap" },
+  promoDescription: { fontSize: 10, color: "#555", marginTop: 2, flexWrap: "wrap" },
+  noPromoText: { fontSize: 12, color: "#999", textAlign: "center" },
+
+  summaryCard: { backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 10, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  summaryTitle: { fontSize: 15, fontWeight: "700", color: "#333", marginBottom: 8 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
+  summaryLabel: { fontSize: 13, fontWeight: "600", color: "#333" },
+  summaryValue: { fontSize: 13, fontWeight: "600", color: "#333" },
+  discountValue: { fontSize: 13, fontWeight: "600", color: "#e74c3c" },
+  grandTotalRow: { marginTop: 8, paddingTop: 8, borderTopColor: "#ccc", borderTopWidth: 1 },
+  grandTotalLabel: { fontSize: 14, color: "#000" },
+  grandTotalValue: { fontSize: 15, fontWeight: "bold", color: "#000" },
+
   disabledButton: {
-  backgroundColor: "#95a5a6", // gray color (disable look)
-  // ensure disabled state shows visually and prevents interactions feel
-  opacity: 0.85,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.12,
-  shadowRadius: 2,
-  elevation: 0,
-},
+    backgroundColor: "#95a5a6",
+    opacity: 0.85,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 0,
+  },
 
-  /** FOOTER BAR **/
   footerBar: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 0, left: 0, right: 0,
     flexDirection: "row",
     backgroundColor: "#fff",
     padding: 12,
@@ -2277,21 +2122,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     elevation: 4,
   },
-  footerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  footerTotalLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#333",
-    marginRight: 6,
-  },
-  footerTotalValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#16a085",
-  },
+  footerLeft: { flexDirection: "row", alignItems: "center" },
+  footerTotalLabel: { fontSize: 15, fontWeight: "700", color: "#333", marginRight: 6 },
+  footerTotalValue: { fontSize: 16, fontWeight: "700", color: "#16a085" },
   footerCheckoutButton: {
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -2300,28 +2133,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minWidth: 130,
-    // elevation + shadow for raised button look
     elevation: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
     shadowRadius: 6,
   },
-  footerCheckoutText: {
-    fontSize: 15,
-    color: "#fff",
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  recoTitleLight: { fontWeight: "400" },
+  footerCheckoutText: { fontSize: 15, color: "#fff", fontWeight: "700", textAlign: "center" },
 
-  /** MODAL OVERLAYS **/
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-
-  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center" },
   bottomSheet: {
     backgroundColor: pastelGreen,
     borderTopLeftRadius: 50,
@@ -2339,88 +2159,45 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 50,
     borderBottomRightRadius: 50,
   },
-  bottomSheetTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 10,
-    color: "#333",
-  },
-  /* Paused orders modal */
+  bottomSheetTitle: { fontSize: 16, fontWeight: "700", marginBottom: 10, color: "#333" },
+
   pausedModalBox: {
     marginHorizontal: 28,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 18,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 10,
   },
-  pausedModalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  pausedModalMessage: {
-    fontSize: 14,
-    color: '#444',
-    textAlign: 'center',
-    marginBottom: 14,
-    lineHeight: 20,
-  },
+  pausedModalTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginBottom: 8, textAlign: "center" },
+  pausedModalMessage: { fontSize: 14, color: "#444", textAlign: "center", marginBottom: 14, lineHeight: 20 },
   pausedModalButton: {
-    backgroundColor: '#2310ccff',
+    backgroundColor: "#2310ccff",
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 18,
     minWidth: 160,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 8,
   },
-  pausedModalButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  pausedModalClose: {
-    backgroundColor: '#eef0f1',
-  },
-  pausedModalCloseText: {
-    color: '#333',
-  },
-  addNewLocationButton: {
-    backgroundColor: "#3498db",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  addNewLocationText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  cancelButton: {
-    backgroundColor: "#fff",
-    borderColor: "#ccc",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  cancelButtonText: {
-    color: "#333",
-    fontWeight: "600",
-  },
+  pausedModalButtonText: { color: "#fff", fontWeight: "700" },
+  pausedModalClose: { backgroundColor: "#eef0f1" },
+  pausedModalCloseText: { color: "#333" },
+
+  addNewLocationButton: { backgroundColor: "#3498db", borderRadius: 8, paddingVertical: 10, alignItems: "center", marginTop: 10 },
+  addNewLocationText: { color: "#fff", fontWeight: "600" },
+  cancelButton: { backgroundColor: "#fff", borderColor: "#ccc", borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: "center", marginTop: 12 },
+  cancelButtonText: { color: "#333", fontWeight: "600" },
+
   addressItemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#fff",
-    // borderRadius: 5,
     padding: 5,
     borderWidth: 1,
     borderColor: "#eee",
@@ -2428,23 +2205,11 @@ const styles = StyleSheet.create({
     borderBottomColor: "#FF7043",
     marginBottom: 10,
   },
-  addressItemLeft: {
-    flex: 1,
-  },
-  deleteLocationButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  addressItemLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#333",
-  },
-  addressItemAddress: {
-    fontSize: 12,
-    color: "#777",
-    // marginTop: 2,
-  },
+  addressItemLeft: { flex: 1 },
+  deleteLocationButton: { paddingHorizontal: 8, paddingVertical: 4 },
+  addressItemLabel: { fontSize: 13, fontWeight: "700", color: "#333" },
+  addressItemAddress: { fontSize: 12, color: "#777" },
+
   paymentOptionButton: {
     backgroundColor: "#6fdccf",
     borderRadius: 8,
@@ -2452,66 +2217,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  alternateButton: {
-    padding: 9,
-    backgroundColor: "#f0f0f09a",
-    borderRadius: 5,
-    marginTop: 5,
-    alignItems: "center",
-    position: "absolute",
-    height: "100%",
-    width: "100%",
-    alignSelf: "center",
-  },
+  paymentOptionText: { color: "#1f4f4f", fontSize: 14, fontWeight: "600" },
 
-  alternateButtonText: {
-    color: "#d32f2f",
-    fontSize: 13,
-    fontWeight: "600",
-    opacity: 0.8,
-  },
-  paymentOptionText: {
-    color: "#1f4f4f",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  promoOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 10,
-  },
-
-  lockContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 251, 251, 0.63)",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 4,
-    backdropFilter: "blur(15px)",
-  },
-  lockIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#d5470fff",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 8,
-  },
-  lockText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#d5470fff",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
+  promoOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 8, justifyContent: "center", alignItems: "center", zIndex: 10 },
+  lockContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 251, 251, 0.63)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 4 },
+  lockIcon: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#d5470fff", justifyContent: "center", alignItems: "center", marginRight: 8 },
+  lockText: { fontSize: 11, fontWeight: "600", color: "#d5470fff", letterSpacing: 0.5, textTransform: "uppercase" },
 });
 
 export default CartScreen;
+
+/**
+ * NOTE (for later):
+ * - Replace hardcoded CLOUD_FUNCTIONS_BASE_URL + RAZORPAY_KEY_ID with @env
+ * - Keep server-side order creation + signature verification in Cloud Functions only
+ */

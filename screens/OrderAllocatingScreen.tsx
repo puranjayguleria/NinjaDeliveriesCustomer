@@ -28,6 +28,12 @@ import dropoffMarker from "../assets/dropoff-marker.png";
 import { useOrder } from "@/context/OrderContext";
 import { Ionicons } from "@expo/vector-icons";
 import Loader from "@/components/VideoLoader";
+import axios from "axios";
+import auth from "@react-native-firebase/auth";
+
+const CLOUD_FUNCTIONS_BASE_URL =
+  "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+const CANCEL_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/refundRazorpayPayment`;
 
 type StackParamList = {
   OrderAllocating: {
@@ -81,6 +87,7 @@ const OrderAllocatingScreen: React.FC = () => {
   const [nearbyRiders, setNearbyRiders] = useState<any[]>([]);
   const [orderAccepted, setOrderAccepted] = useState(false);
   const [orderData, setOrderData] = useState<any>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Animation Refs
   const markerAnimation = useRef(new Animated.Value(1)).current;
@@ -227,45 +234,126 @@ const OrderAllocatingScreen: React.FC = () => {
   // --------------------------------------------------
   // CANCEL ORDER LOGIC (if user manually cancels)
   // --------------------------------------------------
-  const cancelOrder = async () => {
-    try {
-      const orderRef = firestore().collection("orders").doc(orderId);
-      const snap = await orderRef.get();
-      if (!snap.exists) {
-        Alert.alert("Error", "Order not found. Please contact support.");
-        return;
-      }
-      const data = snap.data();
-      const existingCost = data?.finalTotal || 0;
-      const refundAmount = existingCost;
+ const cancelOrder = async () => {
+  if (isCancelling) return;
 
-      // Mark as cancelled
-      await orderRef.update({
-        status: "cancelled",
-        refundAmount,
-      });
+  Alert.alert(
+    "Cancel Order?",
+    "Are you sure you want to cancel this order?",
+    [
+      { text: "No", style: "cancel" },
+      {
+        text: "Yes, Cancel",
+        style: "destructive",
+        onPress: async () => {
+          setIsCancelling(true);
+          try {
+            const orderRef = firestore().collection("orders").doc(orderId);
+            const snap = await orderRef.get();
+            if (!snap.exists) {
+              Alert.alert("Error", "Order not found. Please contact support.");
+              return;
+            }
 
-      // (Optional) Clear from context
-      setActiveOrder?.(null);
+            const data = snap.data() || {};
+            const paymentMethod = String(
+              data.paymentMethod || data?.payment?.method || "cod"
+            );
+            const refundAmount = Number(data.finalTotal || 0);
 
-      Alert.alert("Order Cancelled", `Your order has been cancelled.`, [
-        {
-          text: "OK",
-          onPress: () =>
+            const isOnlinePaid =
+              paymentMethod === "online" &&
+              !!(
+                data?.razorpay?.razorpay_payment_id ||
+                data?.payment?.razorpay?.paymentId
+              );
+
+            // ✅ COD: cancel only
+            if (paymentMethod === "cod") {
+              await orderRef.update({
+                status: "cancelled",
+                cancelledBy: "user",
+                cancelledAt: firestore.FieldValue.serverTimestamp(),
+                refundAmount: 0,
+                refundStatus: "not_applicable",
+              });
+
+              setActiveOrder?.(null);
+
+              navigation.navigate(
+                "HomeTab" as never,
+                { screen: "OrderCancelled", params: { orderId, refundAmount: 0 } } as never
+              );
+              return;
+            }
+
+            // ✅ ONLINE but not paid: cancel only
+            if (paymentMethod === "online" && !isOnlinePaid) {
+              await orderRef.update({
+                status: "cancelled",
+                cancelledBy: "user",
+                cancelledAt: firestore.FieldValue.serverTimestamp(),
+                refundAmount: 0,
+                refundStatus: "not_paid",
+              });
+
+              setActiveOrder?.(null);
+
+              navigation.navigate(
+                "HomeTab" as never,
+                { screen: "OrderCancelled", params: { orderId, refundAmount: 0 } } as never
+              );
+              return;
+            }
+
+            // ✅ ONLINE + paid: call server refund function
+            const user = auth().currentUser;
+            const token = await user?.getIdToken();
+            if (!token) throw new Error("User not logged in");
+
+            const resp = await axios.post(
+              CANCEL_ORDER_URL,
+              { orderId },
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+
+            const refunded =
+              typeof resp?.data?.refundAmount === "number"
+                ? resp.data.refundAmount
+                : typeof resp?.data?.refundAmountPaise === "number"
+                  ? resp.data.refundAmountPaise / 100
+                  : refundAmount;
+
+            setActiveOrder?.(null);
+
             navigation.navigate(
               "HomeTab" as never,
-              {
-                screen: "OrderCancelled",
-                params: { orderId, refundAmount },
-              } as never
-            ),
+              { screen: "OrderCancelled", params: { orderId, refundAmount: refunded } } as never
+            );
+          } catch (e: any) {
+            console.error("cancel/refund error:", e);
+            const msg =
+              e?.response?.data?.error ||
+              e?.message ||
+              "Cancellation failed. Please try again.";
+            Alert.alert("Cancel Failed", msg);
+          } finally {
+            setIsCancelling(false);
+          }
         },
-      ]);
-    } catch (error) {
-      console.error("Error cancelling the order:", error);
-      Alert.alert("Error", "Failed to cancel the order.");
-    }
-  };
+      },
+    ]
+  );
+};
+
+
+
+
 
   // --------------------------------------------------
   // OTHER HANDLERS
@@ -306,6 +394,19 @@ const OrderAllocatingScreen: React.FC = () => {
       </View>
     );
   };
+const CancellingOverlay = () => {
+  if (!isCancelling) return null;
+  return (
+    <View style={styles.cancellingOverlay}>
+      <View style={styles.cancellingCard}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.cancellingText}>
+          Cancelling your order...
+        </Text>
+      </View>
+    </View>
+  );
+};
 
   // --------------------------------------------------
   // RENDER
@@ -313,6 +414,8 @@ const OrderAllocatingScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Close Button (top-right) */}
+      <CancellingOverlay />
+
       <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
         <Ionicons name="close" size={24} color="#e74c3c" />
       </TouchableOpacity>
@@ -425,11 +528,15 @@ const OrderAllocatingScreen: React.FC = () => {
               orderData?.status === "accepted") &&
               !orderAccepted && (
                 <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={cancelOrder}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel Order</Text>
-                </TouchableOpacity>
+  style={[styles.cancelButton, isCancelling && { opacity: 0.6 }]}
+  onPress={cancelOrder}
+  disabled={isCancelling}
+>
+  <Text style={styles.cancelButtonText}>
+    {isCancelling ? "Cancelling..." : "Cancel Order"}
+  </Text>
+</TouchableOpacity>
+
               )}
 
             {/* Order Details Card */}
@@ -601,6 +708,29 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     height: "100%", // fills the bottomScroll container
   },
+  cancellingOverlay: {
+  ...StyleSheet.absoluteFillObject,
+  backgroundColor: "rgba(0,0,0,0.35)",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 9999,
+},
+cancellingCard: {
+  backgroundColor: "#fff",
+  paddingVertical: 18,
+  paddingHorizontal: 22,
+  borderRadius: 12,
+  alignItems: "center",
+  width: "80%",
+},
+cancellingText: {
+  marginTop: 10,
+  fontSize: 14,
+  color: "#333",
+  textAlign: "center",
+  fontWeight: "600",
+},
+
   header: {
     fontSize: 18,
     fontWeight: "700",
