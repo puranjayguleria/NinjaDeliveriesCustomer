@@ -250,7 +250,6 @@ const CartScreen: React.FC = () => {
   const [notificationModalMessage, setNotificationModalMessage] = useState("");
 
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
-  const [showPaymentSheet, setShowPaymentSheet] = useState<boolean>(false);
   const [showPausedModal, setShowPausedModal] = useState<boolean>(false);
 
   const [navigating, setNavigating] = useState<boolean>(false);
@@ -274,7 +273,6 @@ const CartScreen: React.FC = () => {
       unseenChangeId.current !== null &&
       unseenChangeId.current > lastSeenChangeId.current &&
       !showLocationSheet &&
-      !showPaymentSheet &&
       isFocused
     ) {
       lastSeenChangeId.current = unseenChangeId.current;
@@ -340,7 +338,6 @@ const CartScreen: React.FC = () => {
       clearCart();
       setSelectedLocation(null);
       setShowLocationSheet(false);
-      setShowPaymentSheet(false);
       prevStoreIdRef.current = currentStore;
 
       if (isFocused) {
@@ -571,7 +568,7 @@ const CartScreen: React.FC = () => {
     useCallback(() => {
       maybeShowNotice();
       return () => setNotificationModalVisible(false);
-    }, [showLocationSheet, showPaymentSheet])
+    }, [showLocationSheet])
   );
 
   const fetchRecommended = async (baseItems: Product[]) => {
@@ -922,7 +919,34 @@ const CartScreen: React.FC = () => {
     } else if (!selectedLocation && userLocations.length > 0) {
       setShowLocationSheet(true);
     } else {
-      setShowPaymentSheet(true);
+      // Navigate to CartPaymentScreen instead of showing payment modal
+      console.log("Navigating to CartPayment with data:", {
+        cartItems: cartItems.length,
+        finalTotal,
+        selectedLocation: selectedLocation?.placeLabel,
+        storeId: selectedLocation?.storeId,
+      });
+      
+      navigation.navigate("TestPayment", {
+        paymentData: {
+          cartItems,
+          subtotal,
+          discount,
+          deliveryCharge,
+          platformFee,
+          convenienceFee,
+          surgeFee: surgeLine,
+          finalTotal,
+          selectedLocation,
+          selectedPromo,
+          productCgst,
+          productSgst,
+          productCess,
+          rideCgst,
+          rideSgst,
+        },
+        onPaymentComplete: handlePaymentComplete,
+      });
     }
   };
 
@@ -1011,92 +1035,38 @@ const CartScreen: React.FC = () => {
 
 
   /***************************************
-   * PAYMENT
+   * PAYMENT COMPLETION HANDLER
    ***************************************/
-
-  const isUserCancelledRazorpay = (e: any) => {
-  const msg = String(e?.description || e?.message || "").toLowerCase();
-  return msg.includes("cancel") || msg.includes("dismiss") || msg.includes("closed");
-};
-  const handlePaymentOption = async (option: "cod" | "online") => {
-    setShowPaymentSheet(false);
-
-    // ✅ COD unchanged
-    if (option === "cod") {
-      try {
-        setNavigating(true);
-        const result = await handleCreateOrder("cod");
-        if (result) {
-          if (selectedPromo) {
-            setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
-            setSelectedPromo(null);
-          }
-          const { orderId, pickupCoords } = result;
-          clearCart();
-          setSelectedLocation(null);
-
-          navigation.navigate("OrderAllocating", {
-            orderId,
-            pickupCoords: {
-              latitude: Number(pickupCoords?.latitude) || 0,
-              longitude: Number(pickupCoords?.longitude) || 0,
-            },
-            dropoffCoords: {
-              latitude: Number(selectedLocation?.lat) || 0,
-              longitude: Number(selectedLocation?.lng) || 0,
-            },
-            totalCost: finalTotal,
-          });
-        }
-      } catch (error) {
-        console.error("Error during checkout:", error);
-        Alert.alert("Error", "Unable to complete checkout. Please try again.");
-      } finally {
-        setNavigating(false);
-      }
-      return;
-    }
-
-    // ✅ ONLINE Razorpay TEST
+  const handlePaymentComplete = async (
+    paymentMethod: "cod" | "online",
+    razorpayMeta?: RazorpayPaymentMeta,
+    serverOrder?: { orderId: string; amountPaise: number; currency: string; keyId: string }
+  ) => {
+    console.log("Payment completion handler called:", { paymentMethod, razorpayMeta, serverOrder });
     try {
-      if (!selectedLocation) {
-        Alert.alert("Select address", "Please select a delivery address first.");
-        return;
-      }
-      if (!fareData) {
-        Alert.alert("Please wait", "Pricing details are still loading.");
-        return;
-      }
-      
-
       setNavigating(true);
-
-      // 1) Create server order
-      const serverOrder = await createRazorpayOrderOnServer(finalTotal);
-
-const meta = await openRazorpayCheckout(
-  serverOrder.keyId,
-  serverOrder.orderId,
-  serverOrder.amountPaise,
-  serverOrder.currency
-);
-
-
-      // 3) Verify on server
-      await verifyRazorpayPaymentOnServer(meta);
-
-      // 4) Create Firestore order after verified
-      const result = await handleCreateOrder("online", meta,serverOrder);
-
+      const result = await handleCreateOrder(paymentMethod, razorpayMeta, serverOrder);
+      console.log("Order creation result:", result);
+      
       if (result) {
         if (selectedPromo) {
           setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
           setSelectedPromo(null);
         }
-
+        
         const { orderId, pickupCoords } = result;
         clearCart();
         setSelectedLocation(null);
+
+        console.log("Navigating to OrderAllocating with:", {
+          orderId,
+          pickupCoords,
+          dropoffCoords: {
+            latitude: Number(selectedLocation?.lat) || 0,
+            longitude: Number(selectedLocation?.lng) || 0,
+          },
+          totalCost: finalTotal,
+        });
 
         navigation.navigate("OrderAllocating", {
           orderId,
@@ -1111,17 +1081,13 @@ const meta = await openRazorpayCheckout(
           totalCost: finalTotal,
         });
       }
-    } catch (e: any) {
-  console.error("[ONLINE PAYMENT]", e);
-  const msg =
-    e?.description ||
-    e?.error?.description ||
-    e?.message ||
-    "Payment was not completed. If money was deducted, it will be auto-refunded by your bank.";
-  Alert.alert("Payment Failed", msg);
-} finally {
-  setNavigating(false);
-}
+    } catch (error) {
+      console.error("Error during checkout:", error);
+      Alert.alert("Error", "Unable to complete checkout. Please try again.");
+      throw error; // Re-throw to let CartPaymentScreen handle the error display
+    } finally {
+      setNavigating(false);
+    }
   };
 
   /***************************************
@@ -1795,7 +1761,7 @@ const meta = await openRazorpayCheckout(
                     : isOrderAcceptancePaused
                     ? "Orders Paused"
                     : selectedLocation
-                    ? "Pay Now"
+                    ? "Proceed to Payment"
                     : "Checkout"}
                 </Text>
               </AnimatedTouchable>
@@ -1888,56 +1854,6 @@ const meta = await openRazorpayCheckout(
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setShowLocationSheet(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
-        {/* PAYMENT OPTIONS MODAL */}
-        <Modal
-          visible={showPaymentSheet}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowPaymentSheet(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.bottomSheet}>
-              <Text style={styles.bottomSheetTitle}>Payment Options</Text>
-
-              {/* COD */}
-              <TouchableOpacity
-                style={[
-                  styles.paymentOptionButton,
-                  { backgroundColor: "#6fdccf" },
-                ]}
-                onPress={() => handlePaymentOption("cod")}
-              >
-                <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
-              </TouchableOpacity>
-
-              {/* ✅ ONLINE */}
-              <TouchableOpacity
-                style={[
-                  styles.paymentOptionButton,
-                  { backgroundColor: "#00C853" },
-                ]}
-                onPress={() => handlePaymentOption("online")}
-              >
-                <Text
-                  style={[
-                    styles.paymentOptionText,
-                    { color: "#fff", fontWeight: "800" },
-                  ]}
-                >
-                  Pay Online (Razorpay - Test)
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowPaymentSheet(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
@@ -2209,15 +2125,6 @@ const styles = StyleSheet.create({
   deleteLocationButton: { paddingHorizontal: 8, paddingVertical: 4 },
   addressItemLabel: { fontSize: 13, fontWeight: "700", color: "#333" },
   addressItemAddress: { fontSize: 12, color: "#777" },
-
-  paymentOptionButton: {
-    backgroundColor: "#6fdccf",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  paymentOptionText: { color: "#1f4f4f", fontSize: 14, fontWeight: "600" },
 
   promoOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 8, justifyContent: "center", alignItems: "center", zIndex: 10 },
   lockContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 251, 251, 0.63)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 4 },

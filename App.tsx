@@ -67,6 +67,8 @@ import CategoriesScreen from "./screens/CategoriesScreen";
 import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
+import CartPaymentScreen from "./screens/CartPaymentScreen";
+import TestPaymentScreen from "./screens/TestPaymentScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
 import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
@@ -418,6 +420,8 @@ function FeaturedStack() {
 const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="CartHome" component={CartScreen} />
+    <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
+    <Stack.Screen name="TestPayment" component={TestPaymentScreen} />
     <Stack.Screen
       name="OrderAllocating"
       component={OrderAllocatingScreen}

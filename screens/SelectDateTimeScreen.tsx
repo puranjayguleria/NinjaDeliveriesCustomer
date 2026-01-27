@@ -239,7 +239,7 @@ const dates = getNext7Days();
               `${serviceTitle} service has been added to your cart.`,
               [
                 {
-                  text: "Continue Shopping",
+                  text: "Continue Services",
                   onPress: () => navigation.navigate("ServicesHome"),
                 },
                 {
