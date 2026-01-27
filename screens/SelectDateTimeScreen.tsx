@@ -6,12 +6,19 @@ import {
   StyleSheet,
   FlatList,
   ScrollView,
+  Alert,
+  Dimensions,
+  Platform,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useServiceCart } from "../context/ServiceCartContext";
+
+const { height: screenHeight } = Dimensions.get('window');
 
 export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { addService } = useServiceCart();
 
   const { serviceTitle, issues, company } = route.params;
 
@@ -75,119 +82,128 @@ const dates = getNext7Days();
         <Text style={styles.subHeader}>Choose your preferred time</Text>
       </View>
 
-      {/* Service Info Card */}
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
-
-        {company?.name && (
-          <Text style={styles.companyText}>
-            {company.name} • ₹{company.price}
-          </Text>
-        )}
-
-        {Array.isArray(issues) && issues.length > 0 && (
-          <View style={styles.issuesSection}>
-            <Text style={styles.issuesTitle}>Selected Issues:</Text>
-            <ScrollView 
-              style={styles.issuesScroll} 
-              showsVerticalScrollIndicator={false}
-            >
-              {issues.map((issue: string, index: number) => (
-                <View key={index} style={styles.issueTag}>
-                  <Text style={styles.issueText}>{issue}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </View>
-
-      {/* Available Time Slots */}
-      {/* Date Selection */}
-{/* Slots Section */}
-<View style={styles.slotsSection}>
-  {/* Date Selection */}
-  <Text style={styles.sectionTitle}>Select Date</Text>
-  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-  {dates.map((d) => (
-    <TouchableOpacity
-      key={d.key}
-      onPress={() => setSelectedDate(d.key)}
-      style={[
-        styles.dateCard,
-        selectedDate === d.key && styles.dateCardActive,
-      ]}
-    >
-      <Text
-        style={[
-          styles.dateDay,
-          selectedDate === d.key && styles.dateDayActive,
-        ]}
+      <ScrollView 
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {d.label.day}
-      </Text>
+        {/* Service Info Card */}
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
 
-      <Text
-        style={[
-          styles.dateText,
-          selectedDate === d.key && styles.dateTextActive,
-        ]}
-      >
-        {d.label.date}
-      </Text>
-    </TouchableOpacity>
-  ))}
-</ScrollView>
-
-  {/* Time Slots */}
-  <Text style={styles.sectionTitle}>Available Time Slots</Text>
-
-  <FlatList
-    data={slots}
-    keyExtractor={(item) => item}
-    renderItem={({ item }) => {
-      const isSelected = time === item;
-      return (
-        <TouchableOpacity
-          style={[styles.slotCard, isSelected && styles.slotCardSelected]}
-          onPress={() => setTime(item)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.slotContent}>
-            <Text
-              style={[
-                styles.slotText,
-                isSelected && styles.slotTextSelected,
-              ]}
-            >
-              {item}
+          {company?.name && (
+            <Text style={styles.companyText}>
+              {company.name} • ₹{company.price}
             </Text>
-            <Text
-              style={[
-                styles.slotSubText,
-                isSelected && styles.slotSubTextSelected,
-              ]}
-            >
-              Available
-            </Text>
-          </View>
+          )}
 
-          {isSelected && (
-            <View style={styles.selectedBadge}>
-              <Text style={styles.selectedText}>✓</Text>
+          {Array.isArray(issues) && issues.length > 0 && (
+            <View style={styles.issuesSection}>
+              <Text style={styles.issuesTitle}>Selected Issues:</Text>
+              <ScrollView 
+                style={styles.issuesScroll} 
+                showsVerticalScrollIndicator={false}
+              >
+                {issues.map((issue: string, index: number) => (
+                  <View key={index} style={styles.issueTag}>
+                    <Text style={styles.issueText}>{issue}</Text>
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           )}
-        </TouchableOpacity>
-      );
-    }}
-    contentContainerStyle={styles.listContent}
-    showsVerticalScrollIndicator={false}
-  />
-</View>
+        </View>
+
+        {/* Slots Section */}
+        <View style={styles.slotsSection}>
+          {/* Date Selection */}
+          <Text style={styles.sectionTitle}>Select Date</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.dateScrollContainer}
+            contentContainerStyle={styles.dateScrollContent}
+          >
+            {dates.map((d) => (
+              <TouchableOpacity
+                key={d.key}
+                onPress={() => setSelectedDate(d.key)}
+                style={[
+                  styles.dateCard,
+                  selectedDate === d.key && styles.dateCardActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dateDay,
+                    selectedDate === d.key && styles.dateDayActive,
+                  ]}
+                >
+                  {d.label.day}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.dateText,
+                    selectedDate === d.key && styles.dateTextActive,
+                  ]}
+                >
+                  {d.label.date}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Time Slots */}
+          <Text style={[styles.sectionTitle, styles.timeSlotsTitle]}>Available Time Slots</Text>
+
+          <FlatList
+            data={slots}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => {
+              const isSelected = time === item;
+              return (
+                <TouchableOpacity
+                  style={[styles.slotCard, isSelected && styles.slotCardSelected]}
+                  onPress={() => setTime(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.slotContent}>
+                    <Text
+                      style={[
+                        styles.slotText,
+                        isSelected && styles.slotTextSelected,
+                      ]}
+                    >
+                      {item}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.slotSubText,
+                        isSelected && styles.slotSubTextSelected,
+                      ]}
+                    >
+                      Available
+                    </Text>
+                  </View>
+
+                  {isSelected && (
+                    <View style={styles.selectedBadge}>
+                      <Text style={styles.selectedText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+            scrollEnabled={false}
+            contentContainerStyle={styles.listContent}
+          />
+        </View>
+      </ScrollView>
+
       {/* Bottom Action Bar */}
       <View style={styles.bottomBar}>
         <View style={styles.selectedInfo}>
-          <Text style={styles.selectedSlotTitle}>Selected Slot</Text>
           <Text style={styles.selectedSlotTime}>{time}</Text>
         </View>
         
@@ -195,22 +211,46 @@ const dates = getNext7Days();
           style={styles.confirmBtn}
           activeOpacity={0.7}
           onPress={() => {
-  const bookingId = "BK" + Date.now().toString().slice(-6);
-  const selected = dates.find(d => d.key === selectedDate);
+            const selected = dates.find(d => d.key === selectedDate);
+            
+            // Determine booking type based on service title
+            let bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash' = 'electrician';
+            const lowerTitle = serviceTitle?.toLowerCase() || '';
+            
+            if (lowerTitle.includes('plumber')) bookingType = 'plumber';
+            else if (lowerTitle.includes('cleaning')) bookingType = 'cleaning';
+            else if (lowerTitle.includes('health')) bookingType = 'health';
+            else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
+            else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
-  navigation.navigate("Payment", {
-    bookingId,
-    amount: company?.price || 99,
-    serviceTitle,
-    issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
-    company,
-    date: selected?.full,
-    time,
-  });
-}}
+            // Add service to cart
+            addService({
+              serviceTitle,
+              issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
+              company,
+              selectedDate: selected?.full || selectedDate,
+              selectedTime: time,
+              bookingType,
+              totalPrice: company?.price || 99,
+            });
 
+            Alert.alert(
+              "Added to Cart",
+              `${serviceTitle} service has been added to your cart.`,
+              [
+                {
+                  text: "Continue Shopping",
+                  onPress: () => navigation.navigate("ServicesHome"),
+                },
+                {
+                  text: "View Cart",
+                  onPress: () => navigation.navigate("ServiceCart"),
+                },
+              ]
+            );
+          }}
         >
-          <Text style={styles.confirmText}>Confirm Slot</Text>
+          <Text style={styles.confirmText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -220,53 +260,71 @@ const dates = getNext7Days();
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#fafbfc",
+    backgroundColor: "#f8fafc",
   },
-// Date card styles
- dateCard: {
-  width: 64,
-  height: 64,
-  paddingVertical: 6,
-  paddingHorizontal: 8,
-  marginRight: 10,
-  borderRadius: 12,
-  backgroundColor: "#ffffff",
-  borderWidth: 1,
-  borderColor: "#e2e8f0",
-  alignItems: "center",
-  justifyContent: "center",
-},
 
-dateCardActive: {
-  borderColor: "#2563eb",
-  backgroundColor: "#f8faff",
-},
+  // Scroll container styles
+  scrollContainer: {
+    flex: 1,
+  },
 
-dateDay: {
-  fontSize: 10,
-  fontWeight: "600",
-  color: "#0f172a",
-},
+  scrollContent: {
+    paddingBottom: 100, // Space for bottom bar
+  },
 
-dateDayActive: {
-  color: "#2563eb",
-},
+  // Date card styles
+  dateCard: {
+    width: 64,
+    height: 64,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginRight: 10,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-dateText: {
-  fontSize: 10,
-  color: "#64748b",
-  marginTop: 1,
-},
+  dateCardActive: {
+    borderColor: "#2563eb",
+    backgroundColor: "#f8faff",
+  },
 
-dateTextActive: {
-  color: "#2563eb",
-},
+  dateDay: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+
+  dateDayActive: {
+    color: "#2563eb",
+  },
+
+  dateText: {
+    fontSize: 10,
+    color: "#64748b",
+    marginTop: 1,
+  },
+
+  dateTextActive: {
+    color: "#2563eb",
+  },
+
+  dateScrollContainer: {
+    marginBottom: 32,
+  },
+
+  dateScrollContent: {
+    paddingHorizontal: 4,
+  },
 
   // Header Section
   headerSection: {
     backgroundColor: "white",
     paddingHorizontal: 24,
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingBottom: 24,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
@@ -364,8 +422,8 @@ dateTextActive: {
 
   // Slots Section
   slotsSection: {
-    flex: 1,
     paddingHorizontal: 24,
+    paddingBottom: 20,
   },
 
   sectionTitle: {
@@ -376,8 +434,12 @@ dateTextActive: {
     marginBottom: 20,
   },
 
+  timeSlotsTitle: {
+    marginTop: 8,
+  },
+
   listContent: {
-    paddingBottom: 120,
+    paddingBottom: 20,
   },
 
   slotCard: {
@@ -452,9 +514,10 @@ dateTextActive: {
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "white",
+    backgroundColor: "#cce1e7ff",
     paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingVertical: 16,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 16,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
     flexDirection: "row",
@@ -468,14 +531,14 @@ dateTextActive: {
   },
 
   selectedSlotTitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#64748b",
     fontWeight: "500",
-    marginBottom: 4,
+    marginBottom: 2,
   },
 
   selectedSlotTime: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "500",
     color: "#0f172a",
     letterSpacing: -0.2,
@@ -483,9 +546,9 @@ dateTextActive: {
 
   confirmBtn: {
     backgroundColor: "#2563eb",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     elevation: 0,
     shadowColor: '#2563eb',
     shadowOpacity: 0.2,
@@ -496,7 +559,7 @@ dateTextActive: {
   confirmText: {
     color: "white",
     fontWeight: "500",
-    fontSize: 16,
+    fontSize: 14,
     letterSpacing: -0.2,
   },
 });

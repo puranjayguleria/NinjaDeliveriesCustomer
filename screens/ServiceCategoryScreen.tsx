@@ -20,6 +20,7 @@ export default function ServiceCategoryScreen() {
   // ✅ Multi-select states
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [otherText, setOtherText] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   // ✅ Electrician + Plumber Issues (Different)
   const issues = useMemo(() => {
@@ -72,6 +73,13 @@ export default function ServiceCategoryScreen() {
     if (serviceTitle?.toLowerCase() === "plumber") return plumberIssues;
     return electricianIssues;
   }, [serviceTitle]);
+
+  const displayedIssues = useMemo(() => {
+    if (showAll) return issues;
+    return issues.slice(0, 5);
+  }, [issues, showAll]);
+
+  const hasMoreItems = issues.length > 5;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -152,18 +160,42 @@ export default function ServiceCategoryScreen() {
   };
 
   const ListFooter = () => {
-    if (!isOtherSelected) return <View style={{ height: 80 }} />;
-
     return (
-      <View style={styles.otherBox}>
-        <Text style={styles.otherTitle}>Describe Other Issue</Text>
-        <TextInput
-          value={otherText}
-          onChangeText={setOtherText}
-          placeholder="Write your issue..."
-          style={styles.input}
-          multiline
-        />
+      <View>
+        {/* View More Button */}
+        {hasMoreItems && !showAll && (
+          <TouchableOpacity 
+            style={styles.viewMoreBtn} 
+            onPress={() => setShowAll(true)}
+          >
+            <Text style={styles.viewMoreText}>View More Services</Text>
+          </TouchableOpacity>
+        )}
+        
+        {/* Show Less Button */}
+        {showAll && hasMoreItems && (
+          <TouchableOpacity 
+            style={styles.viewLessBtn} 
+            onPress={() => setShowAll(false)}
+          >
+            <Text style={styles.viewLessText}>Show Less</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Other Issue Input */}
+        {isOtherSelected && (
+          <View style={styles.otherBox}>
+            <Text style={styles.otherTitle}>Describe Other Issue</Text>
+            <TextInput
+              value={otherText}
+              onChangeText={setOtherText}
+              placeholder="Write your issue..."
+              style={styles.input}
+              multiline
+            />
+          </View>
+        )}
+        
         <View style={{ height: 80 }} />
       </View>
     );
@@ -176,7 +208,7 @@ export default function ServiceCategoryScreen() {
 
       <FlatList
         style={{ marginTop: 14 }}
-        data={issues}
+        data={displayedIssues}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ListFooterComponent={ListFooter}
@@ -353,5 +385,43 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 16,
     letterSpacing: -0.2,
+  },
+
+  viewMoreBtn: {
+    backgroundColor: "#f8faff",
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginHorizontal: 24,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+
+  viewMoreText: {
+    color: "#2563eb",
+    textAlign: "center",
+    fontWeight: "500",
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
+
+  viewLessBtn: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginHorizontal: 24,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  viewLessText: {
+    color: "#64748b",
+    textAlign: "center",
+    fontWeight: "400",
+    fontSize: 14,
+    letterSpacing: -0.1,
   },
 });
