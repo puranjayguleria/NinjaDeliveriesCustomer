@@ -69,6 +69,7 @@ import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
 import CartPaymentScreen from "./screens/CartPaymentScreen";
 import TestPaymentScreen from "./screens/TestPaymentScreen";
+import RazorpayWebView from "./screens/RazorpayWebView";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
 import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
@@ -422,6 +423,7 @@ const CartStack = () => (
     <Stack.Screen name="CartHome" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
     <Stack.Screen name="TestPayment" component={TestPaymentScreen} />
+    <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen
       name="OrderAllocating"
       component={OrderAllocatingScreen}

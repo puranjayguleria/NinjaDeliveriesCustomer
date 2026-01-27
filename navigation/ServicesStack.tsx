@@ -6,6 +6,7 @@ import ServiceCategoryScreen from "../screens/ServiceCategoryScreen";
 import CompanySelectionScreen from "../screens/CompanySelectionScreen";
 import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
 import PaymentScreen from "../screens/PaymentScreen";
+import RazorpayWebView from "../screens/RazorpayWebView";
 import BookingDetailsScreen from "../screens/BookingDetailsScreen";
 import BookingHistoryScreen from "../screens/BookingHistoryScreen";
 import ServiceCartScreen from "../screens/ServiceCartScreen";
@@ -33,6 +34,7 @@ export default function ServicesStack() {
       <Stack.Screen name="CompanySelection" component={CompanySelectionScreen} />
       <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
       <Stack.Screen name="Payment" component={PaymentScreen} />
+      <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
 
       {/* Booking Screens */}
       <Stack.Screen name="BookingDetails" component={BookingDetailsScreen} />

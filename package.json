@@ -80,7 +80,6 @@
     "react-native-modal-datetime-picker": "^18.0.0",
     "react-native-paper": "^5.12.5",
     "react-native-ratings": "^8.1.0",
-    "react-native-razorpay": "^2.3.1",
     "react-native-reanimated": "~3.17.4",
     "react-native-responsive-fontsize": "^0.5.1",
     "react-native-safe-area-context": "5.4.0",
@@ -97,6 +96,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@react-native-community/cli": "^20.1.0",
     "@types/jest": "^29.5.12",
     "@types/react": "~19.0.10",
     "@types/react-native-html-to-pdf": "^0.8.3",

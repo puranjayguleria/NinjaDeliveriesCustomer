@@ -46,8 +46,8 @@ import { useWeather } from "../context/WeatherContext";
 
 
 
-// ✅ Razorpay SDK
-import RazorpayCheckout from "react-native-razorpay";
+// ✅ WebView Razorpay Integration - No native module needed
+console.log("🚀 Cart system initialized - WebView Razorpay Integration");
 const api = axios.create({
   timeout: 20000,
   headers: { "Content-Type": "application/json" },

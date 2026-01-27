@@ -12,12 +12,10 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
-import RazorpayCheckout from "react-native-razorpay";
 import axios from "axios";
 
-// Verify Razorpay is available
-console.log("RazorpayCheckout available:", !!RazorpayCheckout);
-console.log("RazorpayCheckout.open available:", !!RazorpayCheckout?.open);
+// WebView Razorpay Integration - No native module needed
+console.log("🚀 Cart Payment system initialized - WebView Razorpay Integration");
 
 // Types
 type CartItem = {
@@ -155,18 +153,13 @@ export default function CartPaymentScreen() {
     return true;
   };
 
-  const openRazorpayCheckout = async (
+  const openRazorpayWebView = async (
     keyId: string,
     orderId: string,
     amountPaise: number,
     currency: string
   ) => {
-    console.log("Opening Razorpay checkout with:", { keyId, orderId, amountPaise, currency });
-    
-    // Check if Razorpay is available
-    if (!RazorpayCheckout || !RazorpayCheckout.open) {
-      throw new Error("Razorpay is not available. Please ensure the app is properly configured.");
-    }
+    console.log("Opening Razorpay WebView with:", { keyId, orderId, amountPaise, currency });
     
     const user = auth().currentUser;
     if (!user) throw new Error("Not logged in");
@@ -174,10 +167,11 @@ export default function CartPaymentScreen() {
     const contact = (user.phoneNumber || "").replace("+91", "");
     console.log("User contact:", contact);
 
-    const options: any = {
-      key: keyId,
-      order_id: orderId,
-      amount: String(amountPaise),
+    // Navigate to WebView payment
+    navigation.navigate("RazorpayWebView", {
+      orderId,
+      amount: amountPaise / 100, // Convert back to rupees for display
+      keyId,
       currency: currency || "INR",
       name: "Ninja Deliveries",
       description: "Order payment",
@@ -185,26 +179,34 @@ export default function CartPaymentScreen() {
         contact,
         email: "",
         name: "",
-        method: "upi",
       },
-      theme: { color: "#00C853" },
-    };
-
-    console.log("Razorpay options:", options);
-
-    try {
-      console.log("Calling RazorpayCheckout.open...");
-      const result = await RazorpayCheckout.open(options);
-      console.log("Razorpay checkout result:", result);
-      return result as {
-        razorpay_order_id: string;
-        razorpay_payment_id: string;
-        razorpay_signature: string;
-      };
-    } catch (error) {
-      console.error("Razorpay checkout error:", error);
-      throw error;
-    }
+      onSuccess: async (response: any) => {
+        try {
+          console.log("Payment successful:", response);
+          
+          // Verify payment on server
+          await verifyRazorpayPaymentOnServer(response);
+          
+          console.log("Payment verified, calling completion callback...");
+          if (onPaymentComplete) {
+            onPaymentComplete("success", response);
+          }
+        } catch (error) {
+          console.error("Payment verification failed:", error);
+          Alert.alert("Payment Verification Failed", "Please contact support.");
+          if (onPaymentComplete) {
+            onPaymentComplete("failed", { error: "Verification failed" });
+          }
+        }
+      },
+      onFailure: (error: any) => {
+        console.log("Payment failed:", error);
+        Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+        if (onPaymentComplete) {
+          onPaymentComplete("failed", error);
+        }
+      },
+    });
   };
 
   const handlePaymentMethod = async (method: "cod" | "online") => {
@@ -231,26 +233,17 @@ export default function CartPaymentScreen() {
         const serverOrder = await createRazorpayOrderOnServer(finalTotal);
         console.log("Server order created:", serverOrder);
 
-        // Open Razorpay checkout
-        console.log("Opening Razorpay checkout...");
-        const meta = await openRazorpayCheckout(
+        // Open Razorpay WebView
+        console.log("Opening Razorpay WebView...");
+        await openRazorpayWebView(
           serverOrder.keyId,
           serverOrder.orderId,
           serverOrder.amountPaise,
           serverOrder.currency
         );
-        console.log("Razorpay payment completed:", meta);
-
-        // Verify payment
-        console.log("Verifying payment on server...");
-        await verifyRazorpayPaymentOnServer(meta);
-        console.log("Payment verified successfully");
-
-        // Call completion handler with payment metadata
-        if (onPaymentComplete) {
-          console.log("Calling payment completion handler...");
-          await onPaymentComplete(method, meta, serverOrder);
-        }
+        
+        // Note: Payment completion will be handled by WebView callbacks
+        // The onSuccess/onFailure callbacks in openRazorpayWebView will handle the rest
       } else {
         // COD payment
         console.log("Processing COD payment...");
