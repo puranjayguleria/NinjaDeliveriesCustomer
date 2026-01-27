@@ -11,6 +11,7 @@ import BookingDetailsScreen from "../screens/BookingDetailsScreen";
 import BookingHistoryScreen from "../screens/BookingHistoryScreen";
 import ServiceCartScreen from "../screens/ServiceCartScreen";
 import ServiceCheckoutScreen from "../screens/ServiceCheckoutScreen";
+import UnifiedCartScreen from "../screens/UnifiedCartScreen";
 
 // ✅ Single-file flows
 import DailyWagesCategoryScreen from "../screens/DailyWagesCategoryScreen";
@@ -22,11 +23,15 @@ const Stack = createNativeStackNavigator();
 
 export default function ServicesStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator 
+      screenOptions={{ headerShown: false }}
+      initialRouteName="ServicesHome"
+    >
       <Stack.Screen name="ServicesHome" component={ServicesScreen} />
 
       {/* Service Cart */}
       <Stack.Screen name="ServiceCart" component={ServiceCartScreen} />
+      <Stack.Screen name="UnifiedCart" component={UnifiedCartScreen} />
       <Stack.Screen name="ServiceCheckout" component={ServiceCheckoutScreen} />
 
       {/* Electrician / Plumber Flow */}
