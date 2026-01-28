@@ -247,10 +247,11 @@ export default function ServicesScreen() {
       setLoading(true);
       setError(null);
       const categories = await FirestoreService.getServiceCategories();
-      setServiceCategories(categories);
+      setServiceCategories(categories || []); // Ensure it's always an array
     } catch (error) {
       console.error('Error fetching service categories:', error);
       setError('Failed to load services. Please try again.');
+      setServiceCategories([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -263,13 +264,13 @@ export default function ServicesScreen() {
   // Search functionality - simplified without useMemo to avoid React null error
   const getFilteredCategories = () => {
     if (!searchQuery.trim()) {
-      return serviceCategories;
+      return serviceCategories || [];
     }
     
     const query = searchQuery.toLowerCase().trim();
-    return serviceCategories.filter(category =>
-      category.name.toLowerCase().includes(query) ||
-      category.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, ''))
+    return (serviceCategories || []).filter(category =>
+      (category && category.name && category.name.toLowerCase().includes(query)) ||
+      (category && category.name && category.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, '')))
     );
   };
 
@@ -304,12 +305,19 @@ export default function ServicesScreen() {
     setSearchQuery('');
   };
 
-  // Data slices
-  const topCategories = searchQuery ? filteredCategories.slice(0, 3) : serviceCategories.slice(0, 3);
-  const listCategories = searchQuery ? filteredCategories.slice(0, 20) : serviceCategories.slice(0, 6);
+  // Data slices with null checks
+  const topCategories = searchQuery 
+    ? (filteredCategories || []).slice(0, 3) 
+    : (serviceCategories || []).slice(0, 3);
+    
+  const listCategories = searchQuery 
+    ? (filteredCategories || []).slice(0, 20) 
+    : (serviceCategories || []).slice(0, 6);
 
   // Render functions
   const renderCategoryCard = ({ item, index }: { item: ServiceCategory; index: number }) => {
+    if (!item || !item.name) return null; // Safety check
+    
     const categoryStyle = getCategoryStyle(item.name, index);
     return (
       <TouchableOpacity
@@ -328,6 +336,8 @@ export default function ServicesScreen() {
   };
 
   const renderListItem = ({ item, index }: { item: ServiceCategory; index: number }) => {
+    if (!item || !item.name) return null; // Safety check
+    
     const categoryStyle = getCategoryStyle(item.name, index);
     return (
       <TouchableOpacity
@@ -354,39 +364,43 @@ export default function ServicesScreen() {
     );
   };
 
-  const renderPopularCard = (item: any) => (
-    <TouchableOpacity
-      key={item.id}
-      style={styles.popularCard}
-      activeOpacity={0.9}
-      onPress={() => goTo(item.screen, item.params)}
-    >
-      <ImageBackground
-        source={item.image}
-        style={styles.popularBg}
-        imageStyle={styles.popularBgImage}
+  const renderPopularCard = (item: any) => {
+    if (!item || !item.id) return null; // Safety check
+    
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={styles.popularCard}
+        activeOpacity={0.9}
+        onPress={() => goTo(item.screen, item.params)}
       >
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={styles.popularGradient}
+        <ImageBackground
+          source={item.image}
+          style={styles.popularBg}
+          imageStyle={styles.popularBgImage}
         >
-          <View style={styles.popularContent}>
-            <View style={styles.popularStats}>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>⭐</Text>
-                <Text style={styles.statText}>{item.rating}</Text>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            style={styles.popularGradient}
+          >
+            <View style={styles.popularContent}>
+              <View style={styles.popularStats}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statIcon}>⭐</Text>
+                  <Text style={styles.statText}>{item.rating}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statText}>{item.bookings}</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statText}>{item.bookings}</Text>
-              </View>
+              <Text style={styles.popularTitle}>{item.title}</Text>
+              <Text style={styles.popularSubtitle}>{item.subtitle}</Text>
             </View>
-            <Text style={styles.popularTitle}>{item.title}</Text>
-            <Text style={styles.popularSubtitle}>{item.subtitle}</Text>
-          </View>
-        </LinearGradient>
-      </ImageBackground>
-    </TouchableOpacity>
-  );
+          </LinearGradient>
+        </ImageBackground>
+      </TouchableOpacity>
+    );
+  };
 
   const HeaderUI = () => {
     return (
@@ -434,9 +448,9 @@ export default function ServicesScreen() {
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              {filteredCategories.length} service{filteredCategories.length !== 1 ? 's' : ''} found for "{searchQuery}"
+              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found for "{searchQuery}"
             </Text>
-            {filteredCategories.length === 0 && (
+            {(filteredCategories || []).length === 0 && (
               <Text style={styles.noResultsText}>
                 Try searching for "electrician", "plumber", "cleaning", etc.
               </Text>
@@ -503,7 +517,7 @@ export default function ServicesScreen() {
                 </View>
               ) : (
                 <View style={styles.categoryRow}>
-                  {topCategories.map((item, index) => renderCategoryCard({ item, index }))}
+                  {(topCategories || []).filter(Boolean).map((item, index) => renderCategoryCard({ item, index }))}
                 </View>
               )}
             </View>
@@ -521,7 +535,7 @@ export default function ServicesScreen() {
               </View>
 
               <View style={styles.popularRow}>
-                {POPULAR.map(renderPopularCard)}
+                {(POPULAR || []).filter(Boolean).map(renderPopularCard)}
               </View>
             </View>
 
@@ -545,51 +559,59 @@ export default function ServicesScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={loading ? [] : listCategories}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={HeaderUI}
-        renderItem={renderListItem}
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.emptyLoadingContainer}>
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text style={styles.emptyLoadingText}>Loading services...</Text>
-            </View>
-          ) : error ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>{error}</Text>
-              <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
-                <Text style={styles.retryText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : searchQuery.length > 0 && filteredCategories.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
-              <Text style={styles.emptyText}>No services found</Text>
-              <Text style={styles.emptySubText}>Try searching with different keywords</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No services available</Text>
-            </View>
-          )
-        }
-        contentContainerStyle={{ paddingBottom: 30 }}
-        showsVerticalScrollIndicator={false}
-        refreshing={loading}
-        onRefresh={fetchServiceCategories}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        initialNumToRender={searchQuery ? 20 : 6}
-        getItemLayout={(data, index) => ({
-          length: 100, // Approximate item height
-          offset: 100 * index,
-          index,
-        })}
-        keyboardShouldPersistTaps="handled"
-      />
+      {/* Add safety check for initial render */}
+      {!serviceCategories && loading ? (
+        <View style={styles.emptyLoadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.emptyLoadingText}>Loading services...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={loading ? [] : (listCategories || [])}
+          keyExtractor={(item) => item?.id || Math.random().toString()}
+          ListHeaderComponent={HeaderUI}
+          renderItem={renderListItem}
+          ListEmptyComponent={
+            loading ? (
+              <View style={styles.emptyLoadingContainer}>
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text style={styles.emptyLoadingText}>Loading services...</Text>
+              </View>
+            ) : error ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>{error}</Text>
+                <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
+                  <Text style={styles.retryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
+                <Text style={styles.emptyText}>No services found</Text>
+                <Text style={styles.emptySubText}>Try searching with different keywords</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No services available</Text>
+              </View>
+            )
+          }
+          contentContainerStyle={{ paddingBottom: 30 }}
+          showsVerticalScrollIndicator={false}
+          refreshing={loading}
+          onRefresh={fetchServiceCategories}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={searchQuery ? 20 : 6}
+          getItemLayout={(data, index) => ({
+            length: 100, // Approximate item height
+            offset: 100 * index,
+            index,
+          })}
+          keyboardShouldPersistTaps="handled"
+        />
+      )}
     </View>
   );
 }

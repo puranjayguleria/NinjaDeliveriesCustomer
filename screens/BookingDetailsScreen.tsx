@@ -83,7 +83,7 @@ export default function BookingDetailsScreen() {
           <View style={styles.issuesSection}>
             <Text style={styles.sectionTitle}>🛠 Selected Issues:</Text>
             <ScrollView style={styles.issuesScroll} showsVerticalScrollIndicator={false}>
-              {extractedData.issues.map((issue: string, i: number) => (
+              {(extractedData.issues || []).map((issue: string, i: number) => (
                 <Text key={i} style={styles.issueLine}>
                   • {issue}
                 </Text>

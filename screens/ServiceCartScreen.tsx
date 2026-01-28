@@ -76,7 +76,7 @@ export default function ServiceCartScreen() {
       <View style={styles.serviceDetails}>
         <Text style={styles.detailsTitle}>Selected Issues:</Text>
         <View style={styles.issuesContainer}>
-          {item.issues.map((issue, index) => (
+          {(item.issues || []).map((issue, index) => (
             <View key={index} style={styles.issueTag}>
               <Text style={styles.issueText}>{issue}</Text>
             </View>
@@ -108,7 +108,7 @@ export default function ServiceCartScreen() {
       <View style={styles.specialtiesContainer}>
         <Text style={styles.specialtiesTitle}>Specialties:</Text>
         <View style={styles.specialtiesList}>
-          {item.company.specialties.map((specialty, index) => (
+          {(item.company?.specialties || []).map((specialty, index) => (
             <Text key={index} style={styles.specialtyText}>
               • {specialty}
             </Text>

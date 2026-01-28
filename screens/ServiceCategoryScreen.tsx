@@ -61,6 +61,7 @@ export default function ServiceCategoryScreen() {
 
   // ✅ Remove the old hardcoded issues logic and replace with dynamic data
   const displayedIssues = useMemo(() => {
+    if (!issues || !Array.isArray(issues)) return [];
     if (showAll) return issues;
     return issues.slice(0, 5);
   }, [issues, showAll]);
@@ -85,6 +86,8 @@ export default function ServiceCategoryScreen() {
   const isOtherSelected = selectedIds.includes("other");
 
   const selectedIssueTitles = useMemo(() => {
+    if (!issues || !Array.isArray(issues)) return [];
+    
     const list = issues
       .filter((x) => selectedIds.includes(x.id))
       .map((x) => x.name);
