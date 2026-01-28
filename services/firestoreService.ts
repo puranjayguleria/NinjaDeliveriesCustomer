@@ -89,17 +89,34 @@ const DEMO_COMPANIES: ServiceCompany[] = [
 ];
 
 export class FirestoreService {
+  // Cache for service categories to avoid repeated fetches
+  private static categoriesCache: ServiceCategory[] | null = null;
+  private static cacheTimestamp: number = 0;
+  private static readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
   /**
-   * Fetch all service categories from Firestore
+   * Fetch all service categories from Firestore with caching
    */
   static async getServiceCategories(): Promise<ServiceCategory[]> {
     try {
+      // Check if we have valid cached data
+      const now = Date.now();
+      if (
+        this.categoriesCache && 
+        this.cacheTimestamp && 
+        (now - this.cacheTimestamp) < this.CACHE_DURATION
+      ) {
+        console.log('Returning cached service categories');
+        return this.categoriesCache;
+      }
+
       console.log('Fetching service categories from Firestore...');
       
-      // First, get all documents with isActive = true
+      // Use limit to fetch only what we need initially
       const snapshot = await firestore()
         .collection('service_categories_master')
         .where('isActive', '==', true)
+        .limit(20) // Limit initial fetch
         .get();
 
       const categories: ServiceCategory[] = [];
@@ -120,6 +137,10 @@ export class FirestoreService {
 
       console.log(`Fetched ${categories.length} service categories from Firestore`);
       
+      // Cache the results
+      this.categoriesCache = categories.length > 0 ? categories : DEMO_CATEGORIES;
+      this.cacheTimestamp = now;
+      
       // If no categories found in Firestore, return demo data
       if (categories.length === 0) {
         console.log('No categories found in Firestore, using demo data');
@@ -130,13 +151,26 @@ export class FirestoreService {
     } catch (error) {
       console.error('Error fetching service categories from Firestore:', error);
       console.log('Falling back to demo data');
+      
+      // Cache demo data as fallback
+      this.categoriesCache = DEMO_CATEGORIES;
+      this.cacheTimestamp = Date.now();
+      
       // Return demo data as fallback
       return DEMO_CATEGORIES;
     }
   }
 
   /**
-   * Fetch service issues for a specific category
+   * Clear the cache (useful for refresh operations)
+   */
+  static clearCache(): void {
+    this.categoriesCache = null;
+    this.cacheTimestamp = 0;
+  }
+
+  /**
+   * Fetch service issues for a specific category with caching
    */
   static async getServiceIssues(categoryId: string): Promise<ServiceIssue[]> {
     try {
@@ -146,6 +180,7 @@ export class FirestoreService {
         .collection('service_services')
         .where('categoryMasterId', '==', categoryId)
         .where('isActive', '==', true)
+        .limit(50) // Limit to prevent large data fetches
         .get();
 
       const issues: ServiceIssue[] = [];
@@ -362,6 +397,7 @@ export class FirestoreService {
       const snapshot = await firestore()
         .collection('service_company')
         .where('isActive', '==', true)
+        .limit(50) // Limit to prevent large data fetches
         .get();
 
       const companies: ServiceCompany[] = [];

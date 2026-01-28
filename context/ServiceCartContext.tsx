@@ -151,7 +151,7 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
       totalAmount,
       hasServices,
     }),
-    [state, totalItems, totalAmount, hasServices]
+    [state]
   );
 
   return (

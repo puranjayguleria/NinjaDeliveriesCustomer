@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,11 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ImageBackground,
-  Image,
   StatusBar,
   Dimensions,
   ActivityIndicator,
-  Alert,
+  TextInput,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
@@ -63,12 +62,6 @@ const getCategoryStyle = (categoryName: string, index: number) => {
     color = "#06B6D4";
     bgColor = "#ECFEFF";
   } 
-  // Laundry / Dry Cleaning (more specific)
-  else if (name.includes("laundry") || name.includes("dry clean") || name.includes("iron") || name.includes("cloth") || name.includes("garment")) {
-    icon = "shirt-outline";
-    color = "#8B5CF6";
-    bgColor = "#F3E8FF";
-  } 
   // Health & Fitness
   else if (name.includes("health") || name.includes("fitness") || name.includes("yoga") || name.includes("physio") || name.includes("massage") || name.includes("therapy")) {
     icon = "fitness-outline";
@@ -81,149 +74,11 @@ const getCategoryStyle = (categoryName: string, index: number) => {
     color = "#8B5CF6";
     bgColor = "#F3E8FF";
   } 
-  // Car Wash / Vehicle Services
-  else if (name.includes("car") || name.includes("wash") || name.includes("vehicle") || name.includes("auto") || name.includes("bike")) {
-    icon = "car-outline";
-    color = "#EF4444";
-    bgColor = "#FEF2F2";
-  } 
   // AC / Cooling Services
   else if (name.includes("ac") || name.includes("air") || name.includes("condition") || name.includes("cooling") || name.includes("hvac")) {
     icon = "snow-outline";
     color = "#0EA5E9";
     bgColor = "#F0F9FF";
-  } 
-  // Appliance Repair
-  else if (name.includes("appliance") || name.includes("refrigerat") || name.includes("washing") || name.includes("microwave") || name.includes("oven")) {
-    icon = "tv-outline";
-    color = "#DC2626";
-    bgColor = "#FEF2F2";
-  } 
-  // Painting Services
-  else if (name.includes("paint") || name.includes("wall") || name.includes("interior") || name.includes("exterior")) {
-    icon = "brush-outline";
-    color = "#7C3AED";
-    bgColor = "#F3E8FF";
-  } 
-  // Gardening / Landscaping
-  else if (name.includes("garden") || name.includes("landscap") || name.includes("plant") || name.includes("lawn")) {
-    icon = "leaf-outline";
-    color = "#059669";
-    bgColor = "#ECFDF5";
-  } 
-  // Security Services
-  else if (name.includes("security") || name.includes("guard") || name.includes("watchman") || name.includes("cctv")) {
-    icon = "shield-checkmark-outline";
-    color = "#DC2626";
-    bgColor = "#FEF2F2";
-  } 
-  // Pest Control
-  else if (name.includes("pest") || name.includes("control") || name.includes("termite") || name.includes("cockroach")) {
-    icon = "bug-outline";
-    color = "#B45309";
-    bgColor = "#FFFBEB";
-  } 
-  // Home Services / General Repair
-  else if (name.includes("home") || name.includes("house") || name.includes("repair") || name.includes("maintenance")) {
-    icon = "home-outline";
-    color = "#3B82F6";
-    bgColor = "#EFF6FF";
-  } 
-  // Carpentry / Furniture
-  else if (name.includes("carpen") || name.includes("furniture") || name.includes("wood") || name.includes("cabinet")) {
-    icon = "hammer-outline";
-    color = "#92400E";
-    bgColor = "#FFFBEB";
-  } 
-  // Beauty / Salon Services
-  else if (name.includes("beauty") || name.includes("salon") || name.includes("hair") || name.includes("facial") || name.includes("makeup")) {
-    icon = "cut-outline";
-    color = "#EC4899";
-    bgColor = "#FDF2F8";
-  } 
-  // Tutoring / Education
-  else if (name.includes("tutor") || name.includes("teach") || name.includes("education") || name.includes("study")) {
-    icon = "book-outline";
-    color = "#7C3AED";
-    bgColor = "#F3E8FF";
-  } 
-  // Moving / Packers
-  else if (name.includes("moving") || name.includes("packer") || name.includes("relocation") || name.includes("shifting")) {
-    icon = "cube-outline";
-    color = "#059669";
-    bgColor = "#ECFDF5";
-  } 
-  // Laundry / Dry Cleaning
-  else if (name.includes("laundry") || name.includes("dry") || name.includes("iron") || name.includes("cloth")) {
-    icon = "shirt-outline";
-    color = "#0EA5E9";
-    bgColor = "#F0F9FF";
-  } 
-  // Photography / Videography
-  else if (name.includes("photo") || name.includes("video") || name.includes("camera") || name.includes("shoot")) {
-    icon = "camera-outline";
-    color = "#7C2D12";
-    bgColor = "#FEF7ED";
-  } 
-  // Catering / Food Services
-  else if (name.includes("cater") || name.includes("food") || name.includes("cook") || name.includes("chef")) {
-    icon = "restaurant-outline";
-    color = "#DC2626";
-    bgColor = "#FEF2F2";
-  } 
-  // Event Management
-  else if (name.includes("event") || name.includes("party") || name.includes("wedding") || name.includes("decoration")) {
-    icon = "balloon-outline";
-    color = "#EC4899";
-    bgColor = "#FDF2F8";
-  } 
-  // IT / Computer Services
-  else if (name.includes("computer") || name.includes("laptop") || name.includes("software") || name.includes("tech")) {
-    icon = "laptop-outline";
-    color = "#4338CA";
-    bgColor = "#EEF2FF";
-  } 
-  // Delivery Services
-  else if (name.includes("delivery") || name.includes("courier") || name.includes("transport") || name.includes("logistics")) {
-    icon = "bicycle-outline";
-    color = "#059669";
-    bgColor = "#ECFDF5";
-  } 
-  // Solar / Renewable Energy
-  else if (name.includes("solar") || name.includes("panel") || name.includes("renewable") || name.includes("energy")) {
-    icon = "sunny-outline";
-    color = "#F59E0B";
-    bgColor = "#FFFBEB";
-  } 
-  // Welding / Metal Work
-  else if (name.includes("weld") || name.includes("metal") || name.includes("steel") || name.includes("iron")) {
-    icon = "flame-outline";
-    color = "#DC2626";
-    bgColor = "#FEF2F2";
-  } 
-  // Glass / Window Services
-  else if (name.includes("glass") || name.includes("window") || name.includes("mirror") || name.includes("glazing")) {
-    icon = "square-outline";
-    color = "#0EA5E9";
-    bgColor = "#F0F9FF";
-  } 
-  // Locksmith Services
-  else if (name.includes("lock") || name.includes("key") || name.includes("door") || name.includes("safe")) {
-    icon = "key-outline";
-    color = "#92400E";
-    bgColor = "#FFFBEB";
-  } 
-  // Tile / Flooring
-  else if (name.includes("tile") || name.includes("floor") || name.includes("marble") || name.includes("ceramic")) {
-    icon = "grid-outline";
-    color = "#7C3AED";
-    bgColor = "#F3E8FF";
-  } 
-  // Roofing Services
-  else if (name.includes("roof") || name.includes("ceiling") || name.includes("waterproof") || name.includes("leak")) {
-    icon = "triangle-outline";
-    color = "#B45309";
-    bgColor = "#FFFBEB";
   } 
   else {
     // Fallback to index-based colors for unknown categories
@@ -320,92 +175,112 @@ const POPULAR = [
   },
 ];
 
-const ALL_SERVICES = [
-  {
-    id: "1",
-    title: "Electrician",
-    subtitle: "Wiring, repairs & installations",
-    screen: "ServiceCategory",
-    params: { serviceTitle: "Electrician" },
-    icon: "flash-outline",
-    availability: "Available 24/7",
-  },
-  {
-    id: "2",
-    title: "Plumber",
-    subtitle: "Pipe repairs & water solutions",
-    screen: "ServiceCategory",
-    params: { serviceTitle: "Plumber" },
-    icon: "water-outline",
-    availability: "Emergency service",
-  },
-  {
-    id: "3",
-    title: "Health",
-    subtitle: "Wellness & fitness services",
-    screen: "HealthCategory",
-    params: { serviceTitle: "Health" },
-    icon: "fitness-outline",
-    availability: "Book sessions",
-  },
-  {
-    id: "4",
-    title: "Cleaning",
-    subtitle: "Deep cleaning & maintenance",
-    screen: "CleaningCategory",
-    params: { serviceTitle: "Cleaning" },
-    icon: "sparkles-outline",
-    availability: "Same day service",
-  },
-  {
-    id: "5",
-    title: "Daily Wages",
-    subtitle: "Skilled workers for hire",
-    screen: "DailyWagesCategory",
-    params: { serviceTitle: "Daily Wages" },
-    icon: "people-outline",
-    availability: "Flexible hours",
-  },
-  {
-    id: "6",
-    title: "Car Wash",
-    subtitle: "Premium car care services",
-    screen: "CarWashCategory",
-    params: { serviceTitle: "Car Wash" },
-    icon: "car-outline",
-    availability: "Doorstep service",
-  },
-];
+// Remove unused constants
+// const ALL_SERVICES = [
+//   {
+//     id: "1",
+//     title: "Electrician",
+//     subtitle: "Wiring, repairs & installations",
+//     screen: "ServiceCategory",
+//     params: { serviceTitle: "Electrician" },
+//     icon: "flash-outline",
+//     availability: "Available 24/7",
+//   },
+//   {
+//     id: "2",
+//     title: "Plumber",
+//     subtitle: "Pipe repairs & water solutions",
+//     screen: "ServiceCategory",
+//     params: { serviceTitle: "Plumber" },
+//     icon: "water-outline",
+//     availability: "Emergency service",
+//   },
+//   {
+//     id: "3",
+//     title: "Health",
+//     subtitle: "Wellness & fitness services",
+//     screen: "HealthCategory",
+//     params: { serviceTitle: "Health" },
+//     icon: "fitness-outline",
+//     availability: "Book sessions",
+//   },
+//   {
+//     id: "4",
+//     title: "Cleaning",
+//     subtitle: "Deep cleaning & maintenance",
+//     screen: "CleaningCategory",
+//     params: { serviceTitle: "Cleaning" },
+//     icon: "sparkles-outline",
+//     availability: "Same day service",
+//   },
+//   {
+//     id: "5",
+//     title: "Daily Wages",
+//     subtitle: "Skilled workers for hire",
+//     screen: "DailyWagesCategory",
+//     params: { serviceTitle: "Daily Wages" },
+//     icon: "people-outline",
+//     availability: "Flexible hours",
+//   },
+//   {
+//     id: "6",
+//     title: "Car Wash",
+//     subtitle: "Premium car care services",
+//     screen: "CarWashCategory",
+//     params: { serviceTitle: "Car Wash" },
+//     icon: "car-outline",
+//     availability: "Doorstep service",
+//   },
+// ];
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-  useEffect(() => {
-    fetchServiceCategories();
-  }, []);
-
+  // Fetch function
   const fetchServiceCategories = async () => {
     try {
       setLoading(true);
+      setError(null);
       const categories = await FirestoreService.getServiceCategories();
       setServiceCategories(categories);
     } catch (error) {
       console.error('Error fetching service categories:', error);
-      // Don't show alert since we have fallback data in the service
-      // Alert.alert('Error', 'Failed to load service categories. Please try again.');
+      setError('Failed to load services. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchServiceCategories();
+  }, []);
+
+  // Search functionality - simplified without useMemo to avoid React null error
+  const getFilteredCategories = () => {
+    if (!searchQuery.trim()) {
+      return serviceCategories;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return serviceCategories.filter(category =>
+      category.name.toLowerCase().includes(query) ||
+      category.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, ''))
+    );
+  };
+
+  const filteredCategories = getFilteredCategories();
+
+  // Navigation functions
   const goTo = (screen: string, params: any) => {
     navigation.navigate(screen, params);
   };
 
   const handleMonsoonSpecial = () => {
-    // Navigate to a special monsoon services screen or show modal
     navigation.navigate("ServiceCategory", { 
       serviceTitle: "Monsoon Special",
       specialOffer: true,
@@ -414,14 +289,104 @@ export default function ServicesScreen() {
   };
 
   const handleViewAllPopular = () => {
-    // Navigate to All Services Screen
     navigation.navigate("AllServices");
   };
 
   const handleViewAllCategories = () => {
-    // Navigate to All Services Screen
     navigation.navigate("AllServices");
   };
+
+  const handleSearch = (text: string) => {
+    setSearchQuery(text);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
+
+  // Data slices
+  const topCategories = searchQuery ? filteredCategories.slice(0, 3) : serviceCategories.slice(0, 3);
+  const listCategories = searchQuery ? filteredCategories.slice(0, 20) : serviceCategories.slice(0, 6);
+
+  // Render functions
+  const renderCategoryCard = ({ item, index }: { item: ServiceCategory; index: number }) => {
+    const categoryStyle = getCategoryStyle(item.name, index);
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={[styles.categoryCard, { backgroundColor: categoryStyle.bgColor }]}
+        activeOpacity={0.8}
+        onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
+          <Ionicons name={categoryStyle.icon as any} size={28} color="white" />
+        </View>
+        <Text style={styles.categoryTitle}>{item.name}</Text>
+        <Text style={styles.categorySubtitle}>Professional service</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderListItem = ({ item, index }: { item: ServiceCategory; index: number }) => {
+    const categoryStyle = getCategoryStyle(item.name, index);
+    return (
+      <TouchableOpacity
+        style={styles.listCard}
+        activeOpacity={0.8}
+        onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
+      >
+        <View style={[styles.listIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
+          <Ionicons 
+            name={categoryStyle.icon as any} 
+            size={24} 
+            color={categoryStyle.color} 
+          />
+        </View>
+        <View style={styles.listContent}>
+          <Text style={styles.listTitle}>{item.name}</Text>
+          <Text style={styles.listSubtitle}>Professional {item.name.toLowerCase()} services</Text>
+          <Text style={styles.listAvailability}>Available now</Text>
+        </View>
+        <View style={styles.listArrowContainer}>
+          <Ionicons name="chevron-forward" size={20} color="#64748b" />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPopularCard = (item: any) => (
+    <TouchableOpacity
+      key={item.id}
+      style={styles.popularCard}
+      activeOpacity={0.9}
+      onPress={() => goTo(item.screen, item.params)}
+    >
+      <ImageBackground
+        source={item.image}
+        style={styles.popularBg}
+        imageStyle={styles.popularBgImage}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={styles.popularGradient}
+        >
+          <View style={styles.popularContent}>
+            <View style={styles.popularStats}>
+              <View style={styles.statItem}>
+                <Text style={styles.statIcon}>⭐</Text>
+                <Text style={styles.statText}>{item.rating}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statText}>{item.bookings}</Text>
+              </View>
+            </View>
+            <Text style={styles.popularTitle}>{item.title}</Text>
+            <Text style={styles.popularSubtitle}>{item.subtitle}</Text>
+          </View>
+        </LinearGradient>
+      </ImageBackground>
+    </TouchableOpacity>
+  );
 
   const HeaderUI = () => {
     return (
@@ -438,185 +403,171 @@ export default function ServicesScreen() {
                 Trusted experts at your doorstep
               </Text>
             </View>
-            {/* <View style={styles.headerBadge}>
-              <Text style={styles.badgeText}>24/7</Text>
-            </View> */}
           </View>
         </View>
 
-        {/* Premium Banner */}
-        <View style={styles.bannerContainer}>
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={handleMonsoonSpecial}
-          >
-            <LinearGradient
-              colors={['#667eea', '#764ba2']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.gradientBanner}
-            >
-              <View style={styles.bannerContent}>
-                <View style={styles.bannerTextSection}>
-                  <Text style={styles.bannerTitle}>Monsoon Special</Text>
-                  <Text style={styles.bannerSubTitle}>
-                    Leak Proofing & Geyser Repair
-                  </Text>
-                  <View style={styles.bannerOffer}>
-                    <Text style={styles.offerText}>Up to 30% OFF</Text>
-                  </View>
-                </View>
-                <View style={styles.bannerIcon}>
-                  <Ionicons name="umbrella" size={40} color="white" />
-                </View>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Service Categories */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Service Categories</Text>
-            <TouchableOpacity 
-              onPress={handleViewAllCategories}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#3b82f6" />
-              <Text style={styles.loadingText}>Loading categories...</Text>
-            </View>
-          ) : (
-            <View style={styles.categoryRow}>
-              {serviceCategories.slice(0, 3).map((item, index) => {
-                const categoryStyle = getCategoryStyle(item.name, index);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[styles.categoryCard, { backgroundColor: categoryStyle.bgColor }]}
-                    activeOpacity={0.8}
-                    onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
-                  >
-                    <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
-                      <Ionicons name={categoryStyle.icon as any} size={28} color="white" />
-                    </View>
-                    <Text style={styles.categoryTitle}>{item.name}</Text>
-                    <Text style={styles.categorySubtitle}>Professional service</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {/* Popular Services */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Popular Near You</Text>
-            <TouchableOpacity 
-              onPress={handleViewAllPopular}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.popularRow}>
-            {POPULAR.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.popularCard}
-                activeOpacity={0.9}
-                onPress={() => goTo(item.screen, item.params)}
-              >
-                <ImageBackground
-                  source={item.image}
-                  style={styles.popularBg}
-                  imageStyle={styles.popularBgImage}
-                >
-                  <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.7)']}
-                    style={styles.popularGradient}
-                  >
-                    <View style={styles.popularContent}>
-                      <View style={styles.popularStats}>
-                        <View style={styles.statItem}>
-                          <Text style={styles.statIcon}>⭐</Text>
-                          <Text style={styles.statText}>{item.rating}</Text>
-                        </View>
-                        <View style={styles.statItem}>
-                          <Text style={styles.statText}>{item.bookings}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.popularTitle}>{item.title}</Text>
-                      <Text style={styles.popularSubtitle}>{item.subtitle}</Text>
-                    </View>
-                  </LinearGradient>
-                </ImageBackground>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
+            <Ionicons name="search" size={20} color="#64748b" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search for services..."
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={handleSearch}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={20} color="#64748b" />
               </TouchableOpacity>
-            ))}
+            )}
           </View>
         </View>
 
-        {/* All Services Header */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>All Services</Text>
-            <TouchableOpacity 
-              onPress={handleViewAllCategories}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
+        {/* Show search results header when searching */}
+        {searchQuery.length > 0 && (
+          <View style={styles.searchResultsHeader}>
+            <Text style={styles.searchResultsText}>
+              {filteredCategories.length} service{filteredCategories.length !== 1 ? 's' : ''} found for "{searchQuery}"
+            </Text>
+            {filteredCategories.length === 0 && (
+              <Text style={styles.noResultsText}>
+                Try searching for "electrician", "plumber", "cleaning", etc.
+              </Text>
+            )}
           </View>
-        </View>
+        )}
+
+        {/* Only show banner and sections when not searching */}
+        {searchQuery.length === 0 && (
+          <>
+            {/* Premium Banner */}
+            <View style={styles.bannerContainer}>
+              <TouchableOpacity 
+                activeOpacity={0.9}
+                onPress={handleMonsoonSpecial}
+              >
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientBanner}
+                >
+                  <View style={styles.bannerContent}>
+                    <View style={styles.bannerTextSection}>
+                      <Text style={styles.bannerTitle}>Monsoon Special</Text>
+                      <Text style={styles.bannerSubTitle}>
+                        Leak Proofing & Geyser Repair
+                      </Text>
+                      <View style={styles.bannerOffer}>
+                        <Text style={styles.offerText}>Up to 30% OFF</Text>
+                      </View>
+                    </View>
+                    <View style={styles.bannerIcon}>
+                      <Ionicons name="umbrella" size={40} color="white" />
+                    </View>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            {/* Service Categories */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Service Categories</Text>
+                <TouchableOpacity 
+                  onPress={handleViewAllCategories}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                  <Text style={styles.loadingText}>Loading categories...</Text>
+                </View>
+              ) : error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
+                    <Text style={styles.retryText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.categoryRow}>
+                  {topCategories.map((item, index) => renderCategoryCard({ item, index }))}
+                </View>
+              )}
+            </View>
+
+            {/* Popular Services */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Popular Near You</Text>
+                <TouchableOpacity 
+                  onPress={handleViewAllPopular}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.popularRow}>
+                {POPULAR.map(renderPopularCard)}
+              </View>
+            </View>
+
+            {/* All Services Header */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>All Services</Text>
+                <TouchableOpacity 
+                  onPress={handleViewAllCategories}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* Full screen scroll */}
       <FlatList
-        data={loading ? [] : serviceCategories.slice(0, 6)} // Show first 6 categories in the list
+        data={loading ? [] : listCategories}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={HeaderUI}
-        renderItem={({ item, index }) => {
-          const categoryStyle = getCategoryStyle(item.name, index);
-          return (
-            <TouchableOpacity
-              style={styles.listCard}
-              activeOpacity={0.8}
-              onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
-            >
-              <View style={[styles.listIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
-                <Ionicons 
-                  name={categoryStyle.icon as any} 
-                  size={24} 
-                  color={categoryStyle.color} 
-                />
-              </View>
-              <View style={styles.listContent}>
-                <Text style={styles.listTitle}>{item.name}</Text>
-                <Text style={styles.listSubtitle}>Professional {item.name.toLowerCase()} services</Text>
-                <Text style={styles.listAvailability}>Available now</Text>
-              </View>
-              <View style={styles.listArrowContainer}>
-                <Ionicons name="chevron-forward" size={20} color="#64748b" />
-              </View>
-            </TouchableOpacity>
-          );
-        }}
+        renderItem={renderListItem}
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyLoadingContainer}>
               <ActivityIndicator size="large" color="#3b82f6" />
               <Text style={styles.emptyLoadingText}>Loading services...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{error}</Text>
+              <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : searchQuery.length > 0 && filteredCategories.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
+              <Text style={styles.emptyText}>No services found</Text>
+              <Text style={styles.emptySubText}>Try searching with different keywords</Text>
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -628,6 +579,16 @@ export default function ServicesScreen() {
         showsVerticalScrollIndicator={false}
         refreshing={loading}
         onRefresh={fetchServiceCategories}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={searchQuery ? 20 : 6}
+        getItemLayout={(data, index) => ({
+          length: 100, // Approximate item height
+          offset: 100 * index,
+          index,
+        })}
+        keyboardShouldPersistTaps="handled"
       />
     </View>
   );
@@ -672,6 +633,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "400",
     lineHeight: 24,
+  },
+
+  // Search Bar Styles
+  searchContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  searchBarFocused: {
+    borderColor: "#3b82f6",
+    backgroundColor: "white",
+    elevation: 2,
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  searchIcon: {
+    marginRight: 12,
+  },
+
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#0f172a",
+    fontWeight: "400",
+  },
+
+  clearButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+
+  searchResultsHeader: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: "#f8fafc",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  searchResultsText: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+
+  noResultsText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontWeight: "400",
   },
 
   headerBadge: {
@@ -995,5 +1023,46 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "400",
     textAlign: "center",
+  },
+
+  emptySubText: {
+    fontSize: 14,
+    color: "#94a3b8",
+    fontWeight: "400",
+    textAlign: "center",
+    marginTop: 8,
+  },
+
+  emptyIcon: {
+    marginBottom: 16,
+    alignSelf: "center",
+  },
+
+  // Error States
+  errorContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+  },
+
+  errorText: {
+    fontSize: 14,
+    color: "#ef4444",
+    fontWeight: "400",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  retryButton: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+
+  retryText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
