@@ -5,14 +5,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Dimensions,
   Alert,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { getTrackingConfig, formatTimeSlot, BookingType } from "../utils/trackingConfig";
-
-const { width: screenWidth } = Dimensions.get("window");
 
 type BookingStatus = 
   | "confirmed" 
@@ -39,7 +35,7 @@ export default function TrackBookingScreen() {
   const {
     bookingId = "BK001",
     serviceTitle = "Service Booking",
-    selectedDate = "Today",
+    selectedDate = "Tomorrow",
     selectedTime = "1:00 PM - 3:00 PM",
     company,
     agency,
@@ -50,18 +46,244 @@ export default function TrackBookingScreen() {
     notes = "",
   } = route.params || {};
 
-  // Get configuration based on booking type
-  const config = getTrackingConfig(bookingType as BookingType);
-  const { date, time } = formatTimeSlot(selectedDate || "Today", selectedTime || "1:00 PM - 3:00 PM");
+  // Determine booking status based on date and time
+  const calculateBookingStatus = () => {
+    const now = new Date();
+    const currentDate = now.toDateString();
+    
+    console.log("=== BOOKING STATUS CALCULATION ===");
+    console.log("Current time:", now.toString());
+    console.log("Selected date:", selectedDate);
+    console.log("Selected time:", selectedTime);
+    
+    // Parse booking date
+    let bookingDate: Date;
+    let dateType: 'today' | 'tomorrow' | 'future' | 'past' = 'future';
+    
+    if (selectedDate === "Today") {
+      bookingDate = new Date();
+      dateType = 'today';
+    } else if (selectedDate === "Tomorrow") {
+      bookingDate = new Date();
+      bookingDate.setDate(bookingDate.getDate() + 1);
+      dateType = 'tomorrow';
+    } else {
+      // Handle formatted dates like "Wednesday, January 29, 2025"
+      bookingDate = new Date(selectedDate);
+      if (isNaN(bookingDate.getTime())) {
+        // Fallback to tomorrow if date parsing fails
+        bookingDate = new Date();
+        bookingDate.setDate(bookingDate.getDate() + 1);
+        dateType = 'tomorrow';
+      } else {
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const bookingStart = new Date(bookingDate.getFullYear(), bookingDate.getMonth(), bookingDate.getDate());
+        
+        const dayDiff = Math.floor((bookingStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (dayDiff === 0) dateType = 'today';
+        else if (dayDiff === 1) dateType = 'tomorrow';
+        else if (dayDiff > 1) dateType = 'future';
+        else dateType = 'past';
+      }
+    }
+    
+    console.log("Date type:", dateType);
+    console.log("Booking date:", bookingDate.toDateString());
+    
+    // Return status based on date type
+    switch (dateType) {
+      case 'future':
+      case 'tomorrow':
+        return {
+          status: "confirmed" as BookingStatus,
+          progress: 5,
+          message: dateType === 'tomorrow' 
+            ? `Your booking is confirmed for tomorrow at ${selectedTime.split(' - ')[0]}. We'll assign a technician tomorrow morning.`
+            : `Your booking is confirmed for ${selectedDate} at ${selectedTime.split(' - ')[0]}. We'll assign a technician on the service day.`,
+          showCountdown: true,
+          isActive: false
+        };
+        
+      case 'past':
+        return {
+          status: "completed" as BookingStatus,
+          progress: 100,
+          message: `Your service was completed successfully on ${selectedDate}. Thank you for choosing our service!`,
+          showCountdown: false,
+          isActive: false
+        };
+        
+      case 'today':
+        // For today's bookings, check time progression
+        return calculateTodayStatus(selectedTime);
+        
+      default:
+        return {
+          status: "confirmed" as BookingStatus,
+          progress: 5,
+          message: "Your booking is confirmed. We'll update the status shortly.",
+          showCountdown: true,
+          isActive: false
+        };
+    }
+  };
 
-  const [currentStatus, setCurrentStatus] = useState<BookingStatus>("confirmed");
-  const [estimatedArrival, setEstimatedArrival] = useState<string>("2:30 PM");
-  const [technicianName, setTechnicianName] = useState<string>("Raj Kumar");
-  const [technicianPhone, setTechnicianPhone] = useState<string>("+91 98765 43210");
+  const calculateTodayStatus = (timeSlot: string) => {
+    const now = new Date();
+    const [startTimeStr] = timeSlot.split(' - ');
+    
+    try {
+      // Parse booking time
+      const [time, period] = startTimeStr.trim().split(' ');
+      const [hours, minutes] = time.split(':').map(Number);
+      
+      let hour24 = hours;
+      if (period === 'PM' && hours !== 12) hour24 += 12;
+      if (period === 'AM' && hours === 12) hour24 = 0;
+      
+      const bookingTime = new Date();
+      bookingTime.setHours(hour24, minutes || 0, 0, 0);
+      
+      // Calculate key times
+      const assignTime = new Date(bookingTime.getTime() - 90 * 60 * 1000); // 1.5 hours before
+      const departTime = new Date(bookingTime.getTime() - 30 * 60 * 1000); // 30 mins before
+      const arriveTime = new Date(bookingTime.getTime() - 5 * 60 * 1000);  // 5 mins before
+      const endTime = new Date(bookingTime.getTime() + 2 * 60 * 60 * 1000); // 2 hours after
+      
+      console.log("Today's time progression:");
+      console.log("- Current:", now.toLocaleTimeString());
+      console.log("- Assignment:", assignTime.toLocaleTimeString());
+      console.log("- Departure:", departTime.toLocaleTimeString());
+      console.log("- Arrival:", arriveTime.toLocaleTimeString());
+      console.log("- Service start:", bookingTime.toLocaleTimeString());
+      console.log("- Service end:", endTime.toLocaleTimeString());
+      
+      if (now < assignTime) {
+        return {
+          status: "confirmed" as BookingStatus,
+          progress: 10,
+          message: `Your booking is confirmed for today at ${startTimeStr}. We'll assign a technician soon.`,
+          showCountdown: false,
+          isActive: true
+        };
+      } else if (now < departTime) {
+        return {
+          status: "assigned" as BookingStatus,
+          progress: 25,
+          message: `Raj Kumar has been assigned to your service and will arrive at ${startTimeStr}.`,
+          showCountdown: false,
+          isActive: true
+        };
+      } else if (now < arriveTime) {
+        return {
+          status: "on_the_way" as BookingStatus,
+          progress: 50,
+          message: `Raj Kumar is on the way to your location. Expected arrival: ${startTimeStr}.`,
+          showCountdown: false,
+          isActive: true
+        };
+      } else if (now < bookingTime) {
+        return {
+          status: "arrived" as BookingStatus,
+          progress: 70,
+          message: "Technician has arrived at your location and will begin the service shortly.",
+          showCountdown: false,
+          isActive: true
+        };
+      } else if (now < endTime) {
+        return {
+          status: "in_progress" as BookingStatus,
+          progress: 85,
+          message: "Service work is currently in progress. Our technician is working on your issues.",
+          showCountdown: false,
+          isActive: true
+        };
+      } else {
+        return {
+          status: "completed" as BookingStatus,
+          progress: 100,
+          message: "Your service has been completed successfully. Thank you for choosing our service!",
+          showCountdown: false,
+          isActive: false
+        };
+      }
+    } catch (error) {
+      console.log("Time parsing error:", error);
+      return {
+        status: "confirmed" as BookingStatus,
+        progress: 10,
+        message: "Your booking is confirmed for today. We'll update the status shortly.",
+        showCountdown: false,
+        isActive: true
+      };
+    }
+  };
 
-  // Generate tracking steps based on booking type and current status
-  const generateTrackingSteps = (): TrackingStep[] => {
-    const baseSteps: TrackingStep[] = [
+  const bookingStatus = calculateBookingStatus();
+  const [currentStatus, setCurrentStatus] = useState<BookingStatus>(bookingStatus.status);
+  const [progressPercentage, setProgressPercentage] = useState<number>(bookingStatus.progress);
+  const [statusMessage, setStatusMessage] = useState<string>(bookingStatus.message);
+  const [showCountdown, setShowCountdown] = useState<boolean>(bookingStatus.showCountdown);
+  const [isActive, setIsActive] = useState<boolean>(bookingStatus.isActive);
+
+  // Update status every minute for active bookings
+  useEffect(() => {
+    if (!isActive) return;
+    
+    const updateStatus = () => {
+      const newStatus = calculateBookingStatus();
+      setCurrentStatus(newStatus.status);
+      setProgressPercentage(newStatus.progress);
+      setStatusMessage(newStatus.message);
+      setShowCountdown(newStatus.showCountdown);
+      setIsActive(newStatus.isActive);
+    };
+
+    const interval = setInterval(updateStatus, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [isActive, selectedDate, selectedTime]);
+
+  // Generate timeline steps
+  const generateTimelineSteps = (): TrackingStep[] => {
+    if (showCountdown) {
+      // For future bookings, show planning timeline
+      return [
+        {
+          id: "confirmed",
+          title: "Booking Confirmed",
+          description: `Your ${serviceTitle} booking has been confirmed`,
+          timestamp: "Today, " + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+          status: "completed",
+          icon: "checkmark-circle",
+        },
+        {
+          id: "assigned",
+          title: "Technician Assignment",
+          description: "We'll assign a technician on the service day",
+          status: "pending",
+          icon: "person-circle",
+        },
+        {
+          id: "on_the_way",
+          title: "On the Way",
+          description: "Technician will head to your location",
+          status: "pending",
+          icon: "car",
+        },
+        {
+          id: "service",
+          title: "Service Completion",
+          description: "Service will be performed and completed",
+          status: "pending",
+          icon: "checkmark-done-circle",
+        },
+      ];
+    }
+
+    // For active/completed bookings, show detailed timeline
+    return [
       {
         id: "confirmed",
         title: "Booking Confirmed",
@@ -73,7 +295,7 @@ export default function TrackBookingScreen() {
       {
         id: "assigned",
         title: "Technician Assigned",
-        description: `${technicianName} has been assigned to your booking`,
+        description: "Raj Kumar has been assigned to your booking",
         timestamp: currentStatus === "confirmed" ? undefined : "Today, 1:15 PM",
         status: currentStatus === "confirmed" ? "pending" : "completed",
         icon: "person-circle",
@@ -81,9 +303,9 @@ export default function TrackBookingScreen() {
       {
         id: "on_the_way",
         title: "On the Way",
-        description: `Technician is heading to your location`,
-        timestamp: currentStatus && ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:00 PM" : undefined,
-        status: currentStatus && ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
+        description: "Technician is heading to your location",
+        timestamp: ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:00 PM" : undefined,
+        status: ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
                 currentStatus === "assigned" ? "current" : "pending",
         icon: "car",
       },
@@ -91,8 +313,8 @@ export default function TrackBookingScreen() {
         id: "arrived",
         title: "Arrived",
         description: "Technician has arrived at your location",
-        timestamp: currentStatus && ["arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:25 PM" : undefined,
-        status: currentStatus && ["arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
+        timestamp: ["arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:25 PM" : undefined,
+        status: ["arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
                 currentStatus === "on_the_way" ? "current" : "pending",
         icon: "location",
       },
@@ -100,8 +322,8 @@ export default function TrackBookingScreen() {
         id: "in_progress",
         title: "Work in Progress",
         description: "Service work has started",
-        timestamp: currentStatus && ["in_progress", "completed"].includes(currentStatus) ? "Today, 2:30 PM" : undefined,
-        status: currentStatus && ["in_progress", "completed"].includes(currentStatus) ? "completed" : 
+        timestamp: ["in_progress", "completed"].includes(currentStatus) ? "Today, 2:30 PM" : undefined,
+        status: ["in_progress", "completed"].includes(currentStatus) ? "completed" : 
                 currentStatus === "arrived" ? "current" : "pending",
         icon: "construct",
       },
@@ -115,33 +337,9 @@ export default function TrackBookingScreen() {
         icon: "checkmark-done-circle",
       },
     ];
-
-    return baseSteps;
   };
 
-  const trackingSteps = generateTrackingSteps();
-
-  // Simulate status updates (in real app, this would come from API)
-  useEffect(() => {
-    if (!currentStatus) return;
-    
-    const statusProgression: BookingStatus[] = [
-      "confirmed", "assigned", "on_the_way", "arrived", "in_progress", "completed"
-    ];
-    
-    let currentIndex = statusProgression.indexOf(currentStatus);
-    
-    const interval = setInterval(() => {
-      if (currentIndex < statusProgression.length - 1) {
-        currentIndex++;
-        setCurrentStatus(statusProgression[currentIndex]);
-      } else {
-        clearInterval(interval);
-      }
-    }, config.statusUpdateInterval * 1000); // Use config interval
-
-    return () => clearInterval(interval);
-  }, [currentStatus, config.statusUpdateInterval]);
+  const timelineSteps = generateTimelineSteps();
 
   const getStatusColor = (status: "completed" | "current" | "pending") => {
     switch (status) {
@@ -151,25 +349,10 @@ export default function TrackBookingScreen() {
     }
   };
 
-  const getStatusMessage = () => {
-    if (!currentStatus) return "Tracking your booking status";
-    
-    switch (currentStatus) {
-      case "confirmed": return "Your booking is confirmed and being processed";
-      case "assigned": return `${technicianName} has been assigned to your service`;
-      case "on_the_way": return `${technicianName} is on the way to your location`;
-      case "arrived": return "Technician has arrived at your location";
-      case "in_progress": return "Service work is currently in progress";
-      case "completed": return "Your service has been completed successfully";
-      case "cancelled": return "This booking has been cancelled";
-      default: return "Tracking your booking status";
-    }
-  };
-
   const handleCallTechnician = () => {
     Alert.alert(
       "Call Technician",
-      `Call ${technicianName} at ${technicianPhone}?`,
+      "Call Raj Kumar at +91 98765 43210?",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Call", onPress: () => console.log("Calling technician...") },
@@ -178,15 +361,6 @@ export default function TrackBookingScreen() {
   };
 
   const handleCancelBooking = () => {
-    if (!config.allowCancellation) {
-      Alert.alert(
-        "Cannot Cancel",
-        "This type of booking cannot be cancelled. Please contact support if needed.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
     Alert.alert(
       "Cancel Booking",
       "Are you sure you want to cancel this booking?",
@@ -197,6 +371,7 @@ export default function TrackBookingScreen() {
           style: "destructive",
           onPress: () => {
             setCurrentStatus("cancelled");
+            setStatusMessage("This booking has been cancelled.");
             Alert.alert("Booking Cancelled", "Your booking has been cancelled successfully.");
           }
         },
@@ -220,9 +395,13 @@ export default function TrackBookingScreen() {
         <View style={styles.bookingCard}>
           <View style={styles.bookingHeader}>
             <Text style={styles.bookingId}>#{bookingId}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: currentStatus === "completed" ? "#10B981" : "#3B82F6" }]}>
+            <View style={[styles.statusBadge, { 
+              backgroundColor: currentStatus === "completed" ? "#10B981" : 
+                             currentStatus === "cancelled" ? "#EF4444" : "#3B82F6" 
+            }]}>
               <Text style={styles.statusText}>
-                {currentStatus === "completed" ? "Completed" : "Active"}
+                {currentStatus === "completed" ? "Completed" : 
+                 currentStatus === "cancelled" ? "Cancelled" : "Active"}
               </Text>
             </View>
           </View>
@@ -232,11 +411,11 @@ export default function TrackBookingScreen() {
           <View style={styles.bookingDetails}>
             <View style={styles.detailRow}>
               <Ionicons name="calendar" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{date}</Text>
+              <Text style={styles.detailText}>{selectedDate}</Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="time" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{time}</Text>
+              <Text style={styles.detailText}>{selectedTime}</Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="business" size={16} color="#6B7280" />
@@ -250,12 +429,30 @@ export default function TrackBookingScreen() {
         {/* Current Status */}
         <View style={styles.statusCard}>
           <Text style={styles.statusTitle}>Current Status</Text>
-          <Text style={styles.statusMessage}>{getStatusMessage()}</Text>
+          <Text style={styles.statusMessage}>{statusMessage}</Text>
           
-          {config.showETA && currentStatus === "on_the_way" && (
+          {/* Show countdown for future bookings */}
+          {showCountdown && (
+            <View style={styles.countdownContainer}>
+              <Ionicons name="calendar-outline" size={20} color="#6B7280" />
+              <Text style={styles.countdownText}>
+                Booking scheduled for {selectedDate} at {selectedTime.split(' - ')[0]}
+              </Text>
+            </View>
+          )}
+          
+          {/* Progress Bar */}
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
+            </View>
+            <Text style={styles.progressText}>{progressPercentage}% Complete</Text>
+          </View>
+          
+          {currentStatus === "on_the_way" && (
             <View style={styles.etaContainer}>
               <Ionicons name="time-outline" size={20} color="#3B82F6" />
-              <Text style={styles.etaText}>Estimated arrival: {estimatedArrival}</Text>
+              <Text style={styles.etaText}>Estimated arrival: {selectedTime.split(' - ')[0]}</Text>
             </View>
           )}
         </View>
@@ -264,7 +461,7 @@ export default function TrackBookingScreen() {
         <View style={styles.timelineCard}>
           <Text style={styles.timelineTitle}>Booking Progress</Text>
           
-          {trackingSteps.map((step, index) => (
+          {timelineSteps.map((step, index) => (
             <View key={step.id} style={styles.timelineItem}>
               <View style={styles.timelineLeft}>
                 <View style={[styles.timelineIcon, { backgroundColor: getStatusColor(step.status) }]}>
@@ -274,7 +471,7 @@ export default function TrackBookingScreen() {
                     color="white" 
                   />
                 </View>
-                {index < trackingSteps.length - 1 && (
+                {index < timelineSteps.length - 1 && (
                   <View style={[styles.timelineLine, { backgroundColor: getStatusColor(step.status) }]} />
                 )}
               </View>
@@ -301,25 +498,21 @@ export default function TrackBookingScreen() {
         {/* Action Buttons */}
         {currentStatus !== "completed" && currentStatus !== "cancelled" && (
           <View style={styles.actionButtons}>
-            {config.technicianCallEnabled && (
-              <TouchableOpacity 
-                style={styles.callButton} 
-                onPress={handleCallTechnician}
-              >
-                <Ionicons name="call" size={20} color="white" />
-                <Text style={styles.callButtonText}>Call Technician</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={styles.callButton} 
+              onPress={handleCallTechnician}
+            >
+              <Ionicons name="call" size={20} color="white" />
+              <Text style={styles.callButtonText}>Call Technician</Text>
+            </TouchableOpacity>
             
-            {config.allowCancellation && (
-              <TouchableOpacity 
-                style={[styles.cancelButton, !config.technicianCallEnabled && { flex: 1 }]} 
-                onPress={handleCancelBooking}
-              >
-                <Ionicons name="close-circle" size={20} color="#EF4444" />
-                <Text style={styles.cancelButtonText}>Cancel Booking</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={styles.cancelButton} 
+              onPress={handleCancelBooking}
+            >
+              <Ionicons name="close-circle" size={20} color="#EF4444" />
+              <Text style={styles.cancelButtonText}>Cancel Booking</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -420,6 +613,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
     lineHeight: 20,
+  },
+  countdownContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 8,
+  },
+  countdownText: {
+    fontSize: 14,
+    color: "#92400E",
+    fontWeight: "500",
+  },
+  progressContainer: {
+    marginTop: 16,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#10B981",
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 8,
+    textAlign: "center",
   },
   etaContainer: {
     flexDirection: "row",
