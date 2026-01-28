@@ -21,6 +21,16 @@ import CleaningCategoryScreen from "../screens/CleaningCategoryScreen";
 import HealthCategoryScreen from "../screens/HealthCategoryScreen";
 import CarWashCategoryScreen from "../screens/CarWashCategoryScreen";
 
+// ✅ Service workflow screens
+import ServiceAddOnScreen from "../screens/ServiceAddOnScreen";
+import ServiceCallingScreen from "../screens/ServiceCallingScreen";
+import ServiceVisitScreen from "../screens/ServiceVisitScreen";
+import ServiceTimerScreen from "../screens/ServiceTimerScreen";
+import ServiceEndScreen from "../screens/ServiceEndScreen";
+import ServiceRatingScreen from "../screens/ServiceRatingScreen";
+import FinalCheckoutScreen from "../screens/FinalCheckoutScreen";
+import BookingFlowDemoScreen from "../screens/BookingFlowDemoScreen";
+
 const Stack = createNativeStackNavigator();
 
 export default function ServicesStack() {
@@ -54,6 +64,18 @@ export default function ServicesStack() {
       <Stack.Screen name="CleaningCategory" component={CleaningCategoryScreen} />
       <Stack.Screen name="HealthCategory" component={HealthCategoryScreen} />
       <Stack.Screen name="CarWashCategory" component={CarWashCategoryScreen} />
+
+      {/* Service Workflow Screens */}
+      <Stack.Screen name="ServiceAddOn" component={ServiceAddOnScreen} />
+      <Stack.Screen name="ServiceCalling" component={ServiceCallingScreen} />
+      <Stack.Screen name="ServiceVisit" component={ServiceVisitScreen} />
+      <Stack.Screen name="ServiceTimer" component={ServiceTimerScreen} />
+      <Stack.Screen name="ServiceEnd" component={ServiceEndScreen} />
+      <Stack.Screen name="ServiceRating" component={ServiceRatingScreen} />
+      <Stack.Screen name="FinalCheckout" component={FinalCheckoutScreen} />
+
+      {/* Demo Screen */}
+      <Stack.Screen name="BookingFlowDemo" component={BookingFlowDemoScreen} />
     </Stack.Navigator>
   );
 }

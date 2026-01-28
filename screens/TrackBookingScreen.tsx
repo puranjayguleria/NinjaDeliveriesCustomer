@@ -6,9 +6,14 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Animated,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 
 type BookingStatus = 
   | "confirmed" 
@@ -227,6 +232,12 @@ export default function TrackBookingScreen() {
   const [statusMessage, setStatusMessage] = useState<string>(bookingStatus.message);
   const [showCountdown, setShowCountdown] = useState<boolean>(bookingStatus.showCountdown);
   const [isActive, setIsActive] = useState<boolean>(bookingStatus.isActive);
+  
+  // Rating and Feedback states
+  const [userRating, setUserRating] = useState<number>(0);
+  const [userFeedback, setUserFeedback] = useState<string>("");
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [animatedProgress] = useState(new Animated.Value(bookingStatus.progress));
 
   // Update status every minute for active bookings
   useEffect(() => {
@@ -235,108 +246,86 @@ export default function TrackBookingScreen() {
     const updateStatus = () => {
       const newStatus = calculateBookingStatus();
       setCurrentStatus(newStatus.status);
+      
+      // Animate progress bar changes
+      Animated.timing(animatedProgress, {
+        toValue: newStatus.progress,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+      
       setProgressPercentage(newStatus.progress);
       setStatusMessage(newStatus.message);
       setShowCountdown(newStatus.showCountdown);
       setIsActive(newStatus.isActive);
+      
+      console.log(`📊 Booking status updated: ${newStatus.status} - ${newStatus.progress}%`);
     };
 
     const interval = setInterval(updateStatus, 60000); // Update every minute
     return () => clearInterval(interval);
-  }, [isActive, selectedDate, selectedTime]);
+  }, [isActive, selectedDate, selectedTime, animatedProgress]);
 
-  // Generate timeline steps
+  // Generate booking steps based on stage
   const generateTimelineSteps = (): TrackingStep[] => {
-    if (showCountdown) {
-      // For future bookings, show planning timeline
-      return [
-        {
-          id: "confirmed",
-          title: "Booking Confirmed",
-          description: `Your ${serviceTitle} booking has been confirmed`,
-          timestamp: "Today, " + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
-          status: "completed",
-          icon: "checkmark-circle",
-        },
-        {
-          id: "assigned",
-          title: "Technician Assignment",
-          description: "We'll assign a technician on the service day",
-          status: "pending",
-          icon: "person-circle",
-        },
-        {
-          id: "on_the_way",
-          title: "On the Way",
-          description: "Technician will head to your location",
-          status: "pending",
-          icon: "car",
-        },
-        {
-          id: "service",
-          title: "Service Completion",
-          description: "Service will be performed and completed",
-          status: "pending",
-          icon: "checkmark-done-circle",
-        },
-      ];
-    }
-
-    // For active/completed bookings, show detailed timeline
-    return [
+    const statusSequence: BookingStatus[] = ["confirmed", "assigned", "on_the_way", "arrived", "in_progress", "completed"];
+    const currentStatusIndex = statusSequence.indexOf(currentStatus);
+    
+    console.log(`📍 Timeline: Current status index = ${currentStatusIndex} (${currentStatus})`);
+    
+    // Timeline configuration with all steps
+    const allSteps: TrackingStep[] = [
       {
         id: "confirmed",
         title: "Booking Confirmed",
         description: `Your ${serviceTitle} booking has been confirmed`,
-        timestamp: "Today, 12:30 PM",
+        timestamp: "Just now",
         status: "completed",
         icon: "checkmark-circle",
       },
       {
         id: "assigned",
         title: "Technician Assigned",
-        description: "Raj Kumar has been assigned to your booking",
-        timestamp: currentStatus === "confirmed" ? undefined : "Today, 1:15 PM",
-        status: currentStatus === "confirmed" ? "pending" : "completed",
+        description: "A technician has been assigned to your booking",
+        timestamp: currentStatusIndex >= 1 ? "1 min ago" : undefined,
+        status: currentStatusIndex > 1 ? "completed" : currentStatusIndex === 1 ? "current" : "pending",
         icon: "person-circle",
       },
       {
         id: "on_the_way",
         title: "On the Way",
         description: "Technician is heading to your location",
-        timestamp: ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:00 PM" : undefined,
-        status: ["on_the_way", "arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
-                currentStatus === "assigned" ? "current" : "pending",
+        timestamp: currentStatusIndex >= 2 ? "2 min ago" : undefined,
+        status: currentStatusIndex > 2 ? "completed" : currentStatusIndex === 2 ? "current" : "pending",
         icon: "car",
       },
       {
         id: "arrived",
         title: "Arrived",
         description: "Technician has arrived at your location",
-        timestamp: ["arrived", "in_progress", "completed"].includes(currentStatus) ? "Today, 2:25 PM" : undefined,
-        status: ["arrived", "in_progress", "completed"].includes(currentStatus) ? "completed" : 
-                currentStatus === "on_the_way" ? "current" : "pending",
+        timestamp: currentStatusIndex >= 3 ? "3 min ago" : undefined,
+        status: currentStatusIndex > 3 ? "completed" : currentStatusIndex === 3 ? "current" : "pending",
         icon: "location",
       },
       {
         id: "in_progress",
         title: "Work in Progress",
-        description: "Service work has started",
-        timestamp: ["in_progress", "completed"].includes(currentStatus) ? "Today, 2:30 PM" : undefined,
-        status: ["in_progress", "completed"].includes(currentStatus) ? "completed" : 
-                currentStatus === "arrived" ? "current" : "pending",
+        description: "Service work is currently in progress",
+        timestamp: currentStatusIndex >= 4 ? "4 min ago" : undefined,
+        status: currentStatusIndex > 4 ? "completed" : currentStatusIndex === 4 ? "current" : "pending",
         icon: "construct",
       },
       {
         id: "completed",
         title: "Service Completed",
         description: "Your service has been completed successfully",
-        timestamp: currentStatus === "completed" ? "Today, 4:15 PM" : undefined,
-        status: currentStatus === "completed" ? "completed" : 
-                currentStatus === "in_progress" ? "current" : "pending",
+        timestamp: currentStatusIndex >= 5 ? "Just now" : undefined,
+        status: currentStatusIndex >= 5 ? "completed" : currentStatusIndex === 4 ? "current" : "pending",
         icon: "checkmark-done-circle",
       },
     ];
+    
+    return allSteps;
   };
 
   const timelineSteps = generateTimelineSteps();
@@ -348,6 +337,117 @@ export default function TrackBookingScreen() {
       case "pending": return "#9CA3AF";
     }
   };
+
+  // Submit rating to Firebase
+  const handleSubmitRating = async () => {
+    if (!userRating) {
+      Alert.alert("Rating Required", "Please select a rating before submitting");
+      return;
+    }
+
+    setRatingLoading(true);
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        Alert.alert("Error", "User not authenticated");
+        setRatingLoading(false);
+        return;
+      }
+
+      // Save rating to Firestore
+      await firestore().collection("serviceRatings").add({
+        bookingId: bookingId,
+        userId: user.uid,
+        serviceTitle: serviceTitle,
+        company: company?.name || agency?.name || "Unknown",
+        rating: userRating,
+        feedback: userFeedback || "No feedback provided",
+        createdAt: new Date().toISOString(),
+        status: "completed",
+      });
+
+      console.log("⭐ Rating submitted successfully");
+      Alert.alert("✅ Rating Submitted", "Thank you for your feedback!");
+      
+      // Reset rating state
+      setUserRating(0);
+      setUserFeedback("");
+    } catch (error) {
+      console.log("Error submitting rating:", error);
+      Alert.alert("Error", "Failed to submit rating: " + String(error));
+    } finally {
+      setRatingLoading(false);
+    }
+  };
+
+  // Test mode: Advance booking status for demo purposes
+  useEffect(() => {
+    if (currentStatus === "completed" || currentStatus === "cancelled") return;
+    
+    console.log(`📱 Demo: Current status is ${currentStatus}, scheduling auto-progression...`);
+    
+    const statusSequence: { status: BookingStatus; progress: number; message: string; delay: number }[] = [
+      { 
+        status: "confirmed", 
+        progress: 10, 
+        message: "Your booking is confirmed. We're looking for a technician.", 
+        delay: 3000 
+      },
+      { 
+        status: "assigned", 
+        progress: 25, 
+        message: "A technician has been assigned to your booking.", 
+        delay: 8000 
+      },
+      { 
+        status: "on_the_way", 
+        progress: 50, 
+        message: "Your technician is on the way to your location.", 
+        delay: 13000 
+      },
+      { 
+        status: "arrived", 
+        progress: 75, 
+        message: "Your technician has arrived at your location.", 
+        delay: 18000 
+      },
+      { 
+        status: "in_progress", 
+        progress: 90, 
+        message: "Service is currently in progress.", 
+        delay: 23000 
+      },
+      { 
+        status: "completed", 
+        progress: 100, 
+        message: "Your service has been completed successfully. Thank you!", 
+        delay: 28000 
+      },
+    ];
+    
+    // Find next status in sequence
+    const currentIdx = statusSequence.findIndex(x => x.status === currentStatus);
+    if (currentIdx >= 0 && currentIdx < statusSequence.length - 1) {
+      const currentItem = statusSequence[currentIdx];
+      const nextItem = statusSequence[currentIdx + 1];
+      const timeUntilNext = nextItem.delay - currentItem.delay;
+      
+      const timeout = setTimeout(() => {
+        console.log(`🔄 Demo: Advancing ${currentStatus} → ${nextItem.status}`);
+        setCurrentStatus(nextItem.status);
+        setStatusMessage(nextItem.message);
+        setProgressPercentage(nextItem.progress);
+        
+        Animated.timing(animatedProgress, {
+          toValue: nextItem.progress,
+          duration: 500,
+          useNativeDriver: false,
+        }).start();
+      }, timeUntilNext);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [currentStatus, animatedProgress]);
 
   const handleCallTechnician = () => {
     Alert.alert(
@@ -391,6 +491,7 @@ export default function TrackBookingScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+
         {/* Booking Info Card */}
         <View style={styles.bookingCard}>
           <View style={styles.bookingHeader}>
@@ -444,7 +545,17 @@ export default function TrackBookingScreen() {
           {/* Progress Bar */}
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
+              <Animated.View 
+                style={[
+                  styles.progressFill, 
+                  {
+                    width: animatedProgress.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ["0%", "100%"],
+                    }),
+                  }
+                ]} 
+              />
             </View>
             <Text style={styles.progressText}>{progressPercentage}% Complete</Text>
           </View>
@@ -494,6 +605,69 @@ export default function TrackBookingScreen() {
             </View>
           ))}
         </View>
+
+        {/* Rating Card - Show when completed */}
+        {currentStatus === "completed" && (
+          <View style={styles.ratingCard}>
+            <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+            <View style={styles.starsContainer}>
+              {[1, 2, 3, 4, 5].map((num) => (
+                <TouchableOpacity
+                  key={num}
+                  onPress={() => setUserRating(num)}
+                >
+                  <Ionicons
+                    name={userRating >= num ? "star" : "star-outline"}
+                    size={40}
+                    color={userRating >= num ? "#FFD700" : "#CCCCCC"}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+            {userRating > 0 && (
+              <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+            )}
+          </View>
+        )}
+
+        {/* Feedback Textarea - Show after rating selected */}
+        {currentStatus === "completed" && userRating > 0 && (
+          <View style={styles.feedbackContainer}>
+            <Text style={styles.feedbackLabel}>Share Your Feedback</Text>
+            <TextInput
+              style={styles.feedbackInput}
+              placeholder="Tell us about your experience..."
+              placeholderTextColor="#999"
+              multiline={true}
+              numberOfLines={4}
+              value={userFeedback}
+              onChangeText={setUserFeedback}
+            />
+            <Text style={styles.feedbackCounter}>
+              {userFeedback.length}/500 characters
+            </Text>
+          </View>
+        )}
+
+        {/* Rating Submit Button */}
+        {currentStatus === "completed" && userRating > 0 && (
+          <View style={styles.ratingButtonContainer}>
+            <TouchableOpacity
+              style={[styles.submitRatingButton, ratingLoading && { opacity: 0.6 }]}
+              onPress={handleSubmitRating}
+              disabled={ratingLoading}
+            >
+              {ratingLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-done" size={20} color="#fff" />
+                  <Text style={styles.submitRatingText}>Submit Rating</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Action Buttons */}
         {currentStatus !== "completed" && currentStatus !== "cancelled" && (
@@ -717,6 +891,86 @@ const styles = StyleSheet.create({
   timelineTimestamp: {
     fontSize: 12,
     color: "#9CA3AF",
+  },
+  ratingCard: {
+    backgroundColor: "white",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  ratingTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 16,
+  },
+  starsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 12,
+  },
+  ratingValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFD700",
+    textAlign: "center",
+  },
+  feedbackContainer: {
+    backgroundColor: "#f8f9ff",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#6366F1",
+  },
+  feedbackLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 10,
+  },
+  feedbackInput: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: "#333",
+    textAlignVertical: "top",
+    marginBottom: 6,
+  },
+  feedbackCounter: {
+    fontSize: 11,
+    color: "#999",
+    textAlign: "right",
+  },
+  ratingButtonContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  submitRatingButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#10B981",
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  submitRatingText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
   actionButtons: {
     flexDirection: "row",
