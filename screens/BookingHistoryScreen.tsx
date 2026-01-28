@@ -39,7 +39,22 @@ export default function BookingHistoryScreen() {
     const isOngoing = item.status === "Ongoing";
 
     return (
-      <View style={styles.card}>
+      <TouchableOpacity 
+        style={styles.card}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate("TrackBooking", {
+          bookingId: item.id,
+          serviceTitle: `${item.service} - ${item.issue}`,
+          selectedDate: item.date,
+          selectedTime: item.time,
+          agency: { name: item.agency },
+          issues: [item.issue],
+          totalPrice: 299, // Default price, can be made dynamic
+          bookingType: item.service.toLowerCase(),
+          paymentMethod: "cash",
+          notes: "",
+        })}
+      >
         {/* Left Icon */}
         <Image source={item.icon} style={styles.icon} />
 
@@ -72,7 +87,7 @@ export default function BookingHistoryScreen() {
             {item.status}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
