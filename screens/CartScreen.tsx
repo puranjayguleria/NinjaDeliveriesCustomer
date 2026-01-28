@@ -42,6 +42,8 @@ import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
 import { useWeather } from "../context/WeatherContext";
+import { useRestaurantCart } from "../context/RestaurantCartContext";
+import { useServiceCart } from "../context/ServiceCartContext";
 
 
 
@@ -211,6 +213,9 @@ const CartScreen: React.FC = () => {
     addToCart,
   } = useCart();
 
+  const restaurantCart = useRestaurantCart();
+  const serviceCart = useServiceCart();
+
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<
@@ -335,7 +340,8 @@ const CartScreen: React.FC = () => {
     }
 
     if (currentStore && currentStore !== prevStoreIdRef.current) {
-      clearCart();
+      // Clear all carts when store location changes
+      clearAllCarts();
       setSelectedLocation(null);
       setShowLocationSheet(false);
       prevStoreIdRef.current = currentStore;
@@ -430,6 +436,8 @@ const CartScreen: React.FC = () => {
             "Sorry, we’re not delivering right now. Please try again during our next delivery window."
           );
         } else {
+          // Clear all carts when new location is selected from navigation
+          clearAllCarts();
           setSelectedLocation(route.params.selectedLocation);
         }
         navigation.setParams({ selectedLocation: null });
@@ -570,6 +578,15 @@ const CartScreen: React.FC = () => {
       return () => setNotificationModalVisible(false);
     }, [showLocationSheet])
   );
+
+  // Redirect to location selection when cart is empty and no location selected
+  useEffect(() => {
+    if (Object.keys(cart).length === 0 && !selectedLocation && isFocused) {
+      navigation.navigate("LocationSelector", {
+        fromScreen: "Cart",
+      });
+    }
+  }, [cart, selectedLocation, isFocused, navigation]);
 
   const fetchRecommended = async (baseItems: Product[]) => {
     try {
@@ -1055,7 +1072,8 @@ const CartScreen: React.FC = () => {
         }
         
         const { orderId, pickupCoords } = result;
-        clearCart();
+        // Clear all carts after successful order
+        clearAllCarts();
         setSelectedLocation(null);
 
         console.log("Navigating to OrderAllocating with:", {
@@ -1339,6 +1357,15 @@ const CartScreen: React.FC = () => {
     );
   };
 
+  /**
+   * Clear grocery and services carts when location changes
+   * Keep restaurant cart as it's independent of location
+   */
+  const clearAllCarts = () => {
+    clearCart(); // Clear grocery cart
+    serviceCart.clearCart(); // Clear services cart
+  };
+
   const handleDeleteLocation = async (locToDelete: any) => {
     try {
       const currentUser = auth().currentUser;
@@ -1386,6 +1413,9 @@ const CartScreen: React.FC = () => {
               lng: item.lng,
               storeId: nearest.id,
             };
+
+            // Clear all carts when location changes
+            clearAllCarts();
 
             setSelectedLocation(fullLocation);
             updateLocation(fullLocation);
@@ -1443,8 +1473,8 @@ const CartScreen: React.FC = () => {
             <Loader />
           </View>
         ) : Object.keys(cart).length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Your cart is empty.</Text>
+          <View style={styles.loaderContainer}>
+            <Loader />
           </View>
         ) : (
           <>
