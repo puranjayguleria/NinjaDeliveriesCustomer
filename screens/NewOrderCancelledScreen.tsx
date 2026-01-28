@@ -26,7 +26,6 @@ type RootStackParamList = {
     // paymentMethod no longer strictly required in route params,
     // because we will fetch it from Firestore.
   };
-  ContactUs: undefined;
   Orders: undefined;
   Home: undefined; // Ensure 'Home' is defined if not already
   // ... other screens
@@ -166,7 +165,7 @@ const NewOrderCancelledScreen: React.FC = () => {
       {/* Help Button */}
       <TouchableOpacity
         style={styles.helpButton}
-        onPress={() => navigation.navigate("ContactUs")} // Navigate to ContactUs screen
+        onPress={() => navigation.navigate("Profile")} // Navigate to Profile screen where contact is now located
       >
         <Ionicons name="help-circle-outline" size={24} color="#FFFFFF" />
         <Text style={styles.helpButtonText}>Get Help</Text>

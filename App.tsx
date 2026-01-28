@@ -78,7 +78,6 @@ import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
 import OrderTrackingScreen from "./screens/OrderTrackingScreen";
 import RatingScreen from "./screens/RatingScreen";
 import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import ContactUsScreen from "./screens/ContactUsScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
@@ -596,7 +595,6 @@ function AppTabs() {
             FeaturedTab: "star-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ContactUsTab: "call-outline",
             ServicesTab: "construct-outline",
           };
           return {
@@ -769,13 +767,6 @@ function AppTabs() {
               }
             },
           })}
-        />
-
-        {/* ⿦ Contact Us */}
-        <Tab.Screen
-          name="ContactUsTab"
-          component={ContactUsScreen}
-          options={{ title: "Contact Us" }}
         />
       </Tab.Navigator>
       
@@ -984,11 +975,6 @@ const App: React.FC = () => {
                       name="LocationSelector"
                       component={LocationSelectorScreen}
                       options={{ title: "Select Location" }}
-                    />
-                    <RootStack.Screen
-                      name="ContactUs"
-                      component={ContactUsScreen}
-                      options={{ title: "Contact Us", headerShown: true }}
                     />
                     <RootStack.Screen
                       name="RewardScreen"
