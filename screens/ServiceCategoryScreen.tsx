@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,72 +8,58 @@ import {
   Image,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  const { serviceTitle } = route.params;
+  const { serviceTitle, categoryId } = route.params;
 
   // ✅ Multi-select states
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [otherText, setOtherText] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [issues, setIssues] = useState<ServiceIssue[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // ✅ Electrician + Plumber Issues (Different)
-  const issues = useMemo(() => {
-    const electricianIssues = [
-      { id: "1", title: "Fan Not Working" },
-      { id: "2", title: "Switchboard Repair" },
-      { id: "3", title: "New Fitting Installation" },
-      { id: "4", title: "Wiring & Short Circuit" },
-      { id: "5", title: "MCB / Fuse Problem" },
-      { id: "6", title: "Light Not Working" },
-      { id: "7", title: "Socket Repair" },
-      { id: "8", title: "Power Fluctuation" },
-      { id: "9", title: "Inverter Connection" },
-      { id: "10", title: "Geyser Repair" },
-      { id: "11", title: "Door Bell Issue" },
-      { id: "12", title: "AC Point Installation" },
-      { id: "13", title: "TV / DTH Wiring" },
-      { id: "14", title: "Earthing Issue" },
-      { id: "15", title: "Ceiling Light Installation" },
-      { id: "16", title: "Short Circuit Smell / Sparks" },
-      { id: "17", title: "Tube Light Repair" },
-      { id: "18", title: "Motor / Pump Connection" },
-      { id: "19", title: "New Wiring Setup" },
-      { id: "20", title: "Other Issue" },
-    ];
+  // Fetch issues from Firestore
+  useEffect(() => {
+    fetchServiceIssues();
+  }, [categoryId]);
 
-    const plumberIssues = [
-      { id: "1", title: "Tap Leakage" },
-      { id: "2", title: "Pipe Leakage" },
-      { id: "3", title: "Bathroom Fitting Repair" },
-      { id: "4", title: "Flush Repair" },
-      { id: "5", title: "Blocked Drain" },
-      { id: "6", title: "Water Tank Overflow" },
-      { id: "7", title: "Low Water Pressure" },
-      { id: "8", title: "New Tap Installation" },
-      { id: "9", title: "Sink / Basin Repair" },
-      { id: "10", title: "Shower Repair / Installation" },
-      { id: "11", title: "Geyser Pipe Leakage" },
-      { id: "12", title: "Toilet Seat Repair" },
-      { id: "13", title: "Kitchen Pipe Repair" },
-      { id: "14", title: "Water Motor Connection" },
-      { id: "15", title: "Bathroom Drain Cleaning" },
-      { id: "16", title: "Seepage / Water Damp Issue" },
-      { id: "17", title: "New Pipeline Fitting" },
-      { id: "18", title: "Water Heater Connection" },
-      { id: "19", title: "Main Water Line Issue" },
-      { id: "20", title: "Other Issue" },
-    ];
+  const fetchServiceIssues = async () => {
+    try {
+      setLoading(true);
+      const fetchedIssues = await FirestoreService.getServiceIssues(categoryId);
+      
+      // Add "Other Issue" option at the end
+      const issuesWithOther = [
+        ...fetchedIssues,
+        { 
+          id: 'other', 
+          name: 'Other Issue', 
+          categoryMasterId: categoryId, 
+          isActive: true 
+        }
+      ];
+      
+      setIssues(issuesWithOther);
+    } catch (error) {
+      console.error('Error fetching service issues:', error);
+      // Fallback to demo data if needed
+      setIssues([
+        { id: 'other', name: 'Other Issue', categoryMasterId: categoryId, isActive: true }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    if (serviceTitle?.toLowerCase() === "plumber") return plumberIssues;
-    return electricianIssues;
-  }, [serviceTitle]);
-
+  // ✅ Remove the old hardcoded issues logic and replace with dynamic data
   const displayedIssues = useMemo(() => {
     if (showAll) return issues;
     return issues.slice(0, 5);
@@ -87,7 +73,7 @@ export default function ServiceCategoryScreen() {
         const updated = prev.filter((x) => x !== id);
 
         // if Other removed => clear text
-        if (id === "20") setOtherText("");
+        if (id === "other") setOtherText("");
 
         return updated;
       } else {
@@ -96,12 +82,12 @@ export default function ServiceCategoryScreen() {
     });
   };
 
-  const isOtherSelected = selectedIds.includes("20");
+  const isOtherSelected = selectedIds.includes("other");
 
   const selectedIssueTitles = useMemo(() => {
     const list = issues
       .filter((x) => selectedIds.includes(x.id))
-      .map((x) => x.title);
+      .map((x) => x.name);
 
     if (isOtherSelected && otherText.trim().length > 0) {
       return list.map((t) => (t === "Other Issue" ? `Other: ${otherText}` : t));
@@ -123,7 +109,9 @@ export default function ServiceCategoryScreen() {
     // ✅ FIRST go to company selection
     navigation.navigate("CompanySelection", {
       serviceTitle,
+      categoryId,
       issues: selectedIssueTitles,
+      selectedIssueIds: selectedIds, // Pass the actual issue IDs
     });
   };
 
@@ -145,7 +133,7 @@ export default function ServiceCategoryScreen() {
           <Image source={issueIcon} style={styles.icon} />
 
           <View style={styles.textContainer}>
-            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.title}>{item.name}</Text>
             <Text style={styles.subTitle}>
               {checked ? "Selected for service" : "Tap to select this issue"}
             </Text>
@@ -206,17 +194,30 @@ export default function ServiceCategoryScreen() {
       <Text style={styles.header}>{serviceTitle} Services</Text>
       <Text style={styles.subHeader}>Select your issues (multiple allowed)</Text>
 
-      <FlatList
-        style={{ marginTop: 14 }}
-        data={displayedIssues}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        ListFooterComponent={ListFooter}
-        contentContainerStyle={{ paddingBottom: 10 }}
-        showsVerticalScrollIndicator={false}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading services...</Text>
+        </View>
+      ) : (
+        <FlatList
+          style={{ marginTop: 14 }}
+          data={displayedIssues}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          ListFooterComponent={ListFooter}
+          contentContainerStyle={{ paddingBottom: 10 }}
+          showsVerticalScrollIndicator={false}
+          refreshing={loading}
+          onRefresh={fetchServiceIssues}
+        />
+      )}
 
-      <TouchableOpacity style={styles.btn} onPress={onContinue}>
+      <TouchableOpacity 
+        style={[styles.btn, loading && styles.btnDisabled]} 
+        onPress={onContinue}
+        disabled={loading}
+      >
         <Text style={styles.btnText}>Continue</Text>
       </TouchableOpacity>
     </View>
@@ -423,5 +424,24 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     fontSize: 14,
     letterSpacing: -0.1,
+  },
+
+  // Loading states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 64,
+  },
+
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  btnDisabled: {
+    opacity: 0.6,
   },
 });

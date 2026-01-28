@@ -2,6 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import ServicesScreen from "../screens/ServicesScreen";
+import AllServicesScreen from "../screens/AllServicesScreen";
 import ServiceCategoryScreen from "../screens/ServiceCategoryScreen";
 import CompanySelectionScreen from "../screens/CompanySelectionScreen";
 import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
@@ -29,6 +30,7 @@ export default function ServicesStack() {
       initialRouteName="ServicesHome"
     >
       <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+      <Stack.Screen name="AllServices" component={AllServicesScreen} />
 
       {/* Service Cart */}
       <Stack.Screen name="ServiceCart" component={ServiceCartScreen} />
