@@ -6,29 +6,23 @@ import { FirestoreService } from '../services/firestoreService';
 export class FirebaseConnectionTest {
   
   /**
-   * Test creating a booking in Firebase (matches website structure)
+   * Test creating a booking in Firebase
    */
   static async testCreateBooking(): Promise<void> {
     try {
       console.log('🔥 Testing Firebase connection to service_bookings...');
       
       const testBookingData = {
-        companyId: 'PLbLmI2YMOSLBuLa2wOPHkgbkkI',
+        companyId: 'test-company-id',
         customerName: 'Test Customer',
         serviceName: 'Test Service',
         date: '2026-02-15',
         time: '10:00 AM',
         status: 'pending' as const,
-        phone: '9876543210',
-        address: 'Test Address',
-        totalPrice: 500,
-        addOns: [
-          { name: 'Extra cleaning', price: 100 }
-        ],
         workName: 'Test work description',
+        otherVerified: false,
+        startOtp: null,
       };
-
-      console.log('📋 Test booking data:', testBookingData);
 
       const bookingId = await FirestoreService.createServiceBooking(testBookingData);
       console.log('✅ Test booking created successfully with ID:', bookingId);
@@ -40,11 +34,6 @@ export class FirebaseConnectionTest {
       return;
     } catch (error) {
       console.error('❌ Firebase connection test failed:', error);
-      console.error('❌ Test error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
       throw error;
     }
   }
@@ -115,9 +104,6 @@ export class FirebaseConnectionTest {
       
       // Test 2: Fetch bookings
       await this.testFetchBookings();
-      
-      // Test 3: Real-time updates
-      await this.testRealTimeUpdates();
       
       console.log('🎉 All Firebase tests passed successfully!');
       

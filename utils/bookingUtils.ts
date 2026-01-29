@@ -6,83 +6,57 @@ import { ServiceBooking } from '../services/firestoreService';
 export class BookingUtils {
   
   /**
-   * Get status color for booking status (matches website)
+   * Get status color for booking status
    */
   static getStatusColor(status: ServiceBooking['status']): string {
     switch (status) {
       case 'pending':
         return '#F59E0B'; // Orange
-      case 'assigned':
+      case 'confirmed':
         return '#3B82F6'; // Blue
-      case 'started':
+      case 'in-progress':
         return '#8B5CF6'; // Purple
       case 'completed':
         return '#10B981'; // Green
-      case 'rejected':
+      case 'cancelled':
         return '#EF4444'; // Red
-      case 'expired':
-        return '#6B7280'; // Gray
       default:
         return '#6B7280'; // Gray
     }
   }
 
   /**
-   * Get status display text (matches website)
+   * Get status display text
    */
   static getStatusText(status: ServiceBooking['status']): string {
     switch (status) {
       case 'pending':
         return 'Pending';
-      case 'assigned':
-        return 'Assigned';
-      case 'started':
-        return 'Started';
+      case 'confirmed':
+        return 'Confirmed';
+      case 'in-progress':
+        return 'In Progress';
       case 'completed':
         return 'Completed';
-      case 'rejected':
-        return 'Rejected';
-      case 'expired':
-        return 'Expired';
+      case 'cancelled':
+        return 'Cancelled';
       default:
         return 'Unknown';
     }
   }
 
   /**
-   * Get status icon (matches website)
-   */
-  static getStatusIcon(status: ServiceBooking['status']): string {
-    switch (status) {
-      case 'pending':
-        return '⏱️';
-      case 'assigned':
-        return '👤';
-      case 'started':
-        return '🔧';
-      case 'completed':
-        return '✅';
-      case 'rejected':
-        return '❌';
-      case 'expired':
-        return '⏰';
-      default:
-        return '❓';
-    }
-  }
-
-  /**
-   * Check if booking can be cancelled (matches website logic)
+   * Check if booking can be cancelled
    */
   static canCancelBooking(status: ServiceBooking['status']): boolean {
-    return status === 'pending' || status === 'assigned';
+    return status === 'pending' || status === 'confirmed';
   }
 
   /**
-   * Check if booking is active (matches website logic)
+   * Check if booking is active (not completed or cancelled)
    */
   static isActiveBooking(status: ServiceBooking['status']): boolean {
-    return !['completed', 'rejected', 'expired'].includes(status);
+    return status !== 'completed' && status !== 'cancelled';
   }
 
   /**
