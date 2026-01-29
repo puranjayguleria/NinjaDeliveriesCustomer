@@ -89,7 +89,7 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.issuesContainer}>
         <Text style={styles.issuesTitle}>Issues:</Text>
         <View style={styles.issuesList}>
-          {item.issues.map((issue, index) => (
+          {(item.issues || []).map((issue, index) => (
             <View key={index} style={styles.issueTag}>
               <Text style={styles.issueText}>{issue}</Text>
             </View>

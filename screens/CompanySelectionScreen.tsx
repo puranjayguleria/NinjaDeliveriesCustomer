@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,48 +6,49 @@ import {
   StyleSheet,
   FlatList,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-
-const companies = [
-  { 
-    id: "1", 
-    name: "Ninja Electric Service", 
-    price: 199, 
-    time: "30 min",
-    rating: 4.8,
-    experience: "5+ years",
-    verified: true,
-    specialties: ["Wiring", "Repairs", "Installation"]
-  },
-  { 
-    id: "2", 
-    name: "Quick Fix Electrician", 
-    price: 249, 
-    time: "40 min",
-    rating: 4.6,
-    experience: "3+ years",
-    verified: true,
-    specialties: ["Emergency", "Repairs", "Maintenance"]
-  },
-  { 
-    id: "3", 
-    name: "Home Repair Pro", 
-    price: 299, 
-    time: "45 min",
-    rating: 4.9,
-    experience: "8+ years",
-    verified: false,
-    specialties: ["Premium Service", "Installation", "Consultation"]
-  },
-];
+import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<ServiceCompany[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { serviceTitle, issues } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
+
+  // Fetch companies from Firestore based on selected issues
+  useEffect(() => {
+    fetchServiceCompanies();
+  }, [selectedIssueIds]);
+
+  const fetchServiceCompanies = async () => {
+    try {
+      setLoading(true);
+      let fetchedCompanies: ServiceCompany[];
+      
+      if (selectedIssueIds && selectedIssueIds.length > 0) {
+        // Fetch companies that provide the specific selected services
+        fetchedCompanies = await FirestoreService.getCompaniesByServiceIssues(selectedIssueIds);
+      } else if (categoryId) {
+        // Fetch companies that provide services in this category
+        fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
+      } else {
+        // Fallback to all companies
+        fetchedCompanies = await FirestoreService.getServiceCompanies();
+      }
+      
+      setCompanies(fetchedCompanies);
+    } catch (error) {
+      console.error('Error fetching service companies:', error);
+      setCompanies([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
@@ -56,10 +57,14 @@ export default function CompanySelectionScreen() {
     
     navigation.navigate("SelectDateTime", {
       serviceTitle,
-      issues,
+      categoryId,
+      // Keep the existing `issues` (names) for backward compatibility but also pass the full objects
+      issues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name) : issues,
+      selectedIssues: selectedIssues || [],
       company: selectedCompany,
+      selectedIssueIds,
     });
-  };
+  }; 
 
   return (
     <View style={styles.container}>
@@ -73,7 +78,12 @@ export default function CompanySelectionScreen() {
         </TouchableOpacity>
         
         <Text style={styles.header}>Select Service Provider</Text>
-        <Text style={styles.subHeader}>Choose from verified professionals</Text>
+        <Text style={styles.subHeader}>
+          {selectedIssueIds && selectedIssueIds.length > 0 
+            ? `Showing providers for your selected services (${companies.length} available)`
+            : "Choose from verified professionals"
+          }
+        </Text>
       </View>
 
       {/* Service Info Card */}
@@ -100,71 +110,89 @@ export default function CompanySelectionScreen() {
       </View>
 
       {/* Companies List */}
-      <FlatList
-        data={companies}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const isSelected = item.id === selectedCompanyId;
-          
-          return (
-            <TouchableOpacity
-              style={[styles.companyCard, isSelected && styles.companyCardSelected]}
-              activeOpacity={0.7}
-              onPress={() => setSelectedCompanyId(item.id)}
-            >
-              <View style={styles.cardHeader}>
-                <View style={styles.cardLeft}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.companyName}>{item.name}</Text>
-                    {item.verified && (
-                      <View style={styles.verifiedBadge}>
-                        <Text style={styles.verifiedText}>✓ Verified</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading service providers...</Text>
+        </View>
+      ) : companies.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No Service Providers Found</Text>
+          <Text style={styles.emptyText}>
+            No companies currently provide the selected services in your area. 
+            Please try selecting different services or contact support.
+          </Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => fetchServiceCompanies()}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={companies}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => {
+            const isSelected = item.id === selectedCompanyId;
+            
+            return (
+              <TouchableOpacity
+                style={[styles.companyCard, isSelected && styles.companyCardSelected]}
+                activeOpacity={0.7}
+                onPress={() => setSelectedCompanyId(item.id)}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardLeft}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.companyName}>{item.companyName}</Text>
+                      {item.isActive && (
+                        <View style={styles.verifiedBadge}>
+                          <Text style={styles.verifiedText}>✓ Active</Text>
+                        </View>
+                      )}
+                    </View>
+                    
+                    <View style={styles.ownerRow}>
+                      <Text style={styles.ownerName}>Owner: {item.ownerName}</Text>
+                    </View>
+                    
+                    <View style={styles.contactRow}>
+                      <Text style={styles.phone}>📞 {item.phone}</Text>
+                      <Text style={styles.zone}>📍 {item.deliveryZoneName}</Text>
+                    </View>
+                    
+                    <View style={styles.businessRow}>
+                      <Text style={styles.businessType}>Service Type: {item.businessType}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.cardRight}>
+                    {isSelected ? (
+                      <View style={styles.selectedBadge}>
+                        <Text style={styles.selectedText}>Selected</Text>
                       </View>
+                    ) : (
+                      <Text style={styles.selectText}>Select</Text>
                     )}
                   </View>
-                  
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.rating}>⭐ {item.rating}</Text>
-                    <Text style={styles.experience}>{item.experience}</Text>
-                  </View>
-                  
-                  <View style={styles.priceRow}>
-                    <Text style={styles.price}>₹{item.price}</Text>
-                    <Text style={styles.time}>• {item.time}</Text>
-                  </View>
                 </View>
-
-                <View style={styles.cardRight}>
-                  {isSelected ? (
-                    <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedText}>Selected</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.selectText}>Select</Text>
-                  )}
-                </View>
-              </View>
-
-              <View style={styles.specialtiesRow}>
-                {item.specialties.map((specialty, index) => (
-                  <View key={index} style={styles.specialtyTag}>
-                    <Text style={styles.specialtyText}>{specialty}</Text>
-                  </View>
-                ))}
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+              </TouchableOpacity>
+            );
+          }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={loading}
+          onRefresh={fetchServiceCompanies}
+        />
+      )}
 
       {/* Bottom Action Bar */}
       {selectedCompany && (
         <View style={styles.bottomBar}>
           <View style={styles.selectedInfo}>
-            <Text style={styles.selectedCompanyName}>{selectedCompany.name}</Text>
-            <Text style={styles.selectedPrice}>₹{selectedCompany.price} • {selectedCompany.time}</Text>
+            <Text style={styles.selectedCompanyName}>{selectedCompany.companyName}</Text>
+            <Text style={styles.selectedDetails}>Owner: {selectedCompany.ownerName} • {selectedCompany.phone}</Text>
           </View>
           
           <TouchableOpacity
@@ -371,6 +399,47 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
 
+  ownerRow: {
+    marginBottom: 8,
+  },
+
+  ownerName: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
+
+  phone: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+    marginRight: 16,
+  },
+
+  zone: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  businessRow: {
+    marginBottom: 8,
+  },
+
+  businessType: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "400",
+    textTransform: "capitalize",
+  },
+
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -476,6 +545,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#64748b",
     fontWeight: "400",
+  },
+
+  selectedDetails: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  // Loading states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 64,
+  },
+
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 48,
+    paddingVertical: 64,
+  },
+
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+
+  emptyText: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+
+  retryButton: {
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+
+  retryText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
   },
 
   continueBtn: {

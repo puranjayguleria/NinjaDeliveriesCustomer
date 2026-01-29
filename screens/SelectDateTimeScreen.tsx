@@ -20,39 +20,47 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { serviceTitle, issues, company } = route.params;
+  const { serviceTitle, issues, selectedIssues, company } = route.params;
+
+  // Calculate price from selected issue objects (they include optional `price`)
+  const issueTotalPrice = Array.isArray(selectedIssues)
+    ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
+    : 0;
 
   const [time, setTime] = useState("1:00 PM - 3:00 PM");
   const [selectedDate, setSelectedDate] = useState(() => {
-  const d = new Date();
-  return d.toISOString().split("T")[0];
-});
+    // Default to tomorrow instead of today
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
 
-const getNext7Days = () => {
-  const days = [];
-  const today = new Date();
+  const getNext7Days = () => {
+    const days = [];
+    const today = new Date();
 
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
+    // Start from tomorrow (i = 1) instead of today (i = 0)
+    for (let i = 1; i < 8; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
 
-    days.push({
-      key: d.toISOString().split("T")[0],
-      label: {
-        day: d.toLocaleDateString("en-US", { weekday: "short" }), // Mon, Tue
-        date: d.toLocaleDateString("en-US", { day: "numeric", month: "short" }), // 22 Jan
-      },
-      full: d.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }),
-    });
-  }
+      days.push({
+        key: d.toISOString().split("T")[0],
+        label: {
+          day: d.toLocaleDateString("en-US", { weekday: "short" }), // Mon, Tue
+          date: d.toLocaleDateString("en-US", { day: "numeric", month: "short" }), // 22 Jan
+        },
+        full: d.toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+      });
+    }
 
-  return days;
-};
+    return days;
+  };
 
 
 const dates = getNext7Days();
@@ -224,6 +232,8 @@ const dates = getNext7Days();
             else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
             // Add service to cart
+            const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (company?.price || 99);
+
             addService({
               serviceTitle,
               issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
@@ -231,7 +241,7 @@ const dates = getNext7Days();
               selectedDate: selected?.full || selectedDate,
               selectedTime: time,
               bookingType,
-              totalPrice: company?.price || 99,
+              totalPrice: computedPrice,
             });
 
             Alert.alert(
@@ -239,7 +249,7 @@ const dates = getNext7Days();
               `${serviceTitle} service has been added to your cart.`,
               [
                 {
-                  text: "Continue Shopping",
+                  text: "Continue Services",
                   onPress: () => navigation.navigate("ServicesHome"),
                 },
                 {

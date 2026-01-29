@@ -13,16 +13,17 @@ export type ServiceCartItem = {
   company: {
     id: string;
     name: string;
-    price: number;
-    time: string;
-    rating: number;
-    experience: string;
-    verified: boolean;
-    specialties: string[];
+    price?: number;
+    time?: string;
+    rating?: number;
+    experience?: string;
+    verified?: boolean;
+    specialties?: string[];
   };
   selectedDate: string;
   selectedTime: string;
   quantity: number;
+  unitPrice: number; // per-item price stored to avoid depending on company.price later
   totalPrice: number;
   bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash';
   additionalInfo?: any; // For service-specific data
@@ -63,16 +64,22 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
     items: {},
   });
 
-  const addService = (service: Omit<ServiceCartItem, "quantity" | "id">) => {
+  const addService = (service: Omit<ServiceCartItem, "quantity" | "id" | "unitPrice" | "totalPrice"> & { totalPrice?: number }) => {
     // Generate unique ID for this service booking
     const serviceId = `${service.bookingType}_${service.company.id}_${Date.now()}`;
-    
+
+    // Derive unitPrice from passed totalPrice (preferred), or company.price, or fallback to 0
+    const unitPrice = typeof (service as any).totalPrice === 'number'
+      ? (service as any).totalPrice
+      : (typeof service.company?.price === 'number' ? service.company.price : 0);
+
     const newService: ServiceCartItem = {
       ...service,
       id: serviceId,
       quantity: 1,
-      totalPrice: service.company.price,
-    };
+      unitPrice,
+      totalPrice: unitPrice * 1,
+    } as ServiceCartItem;
 
     setState((prev) => ({
       ...prev,
@@ -104,9 +111,12 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
         ...updates,
       };
 
-      // Recalculate total price if quantity or company price changed
-      if (updates.quantity !== undefined || updates.company?.price !== undefined) {
-        updatedService.totalPrice = updatedService.quantity * updatedService.company.price;
+      // Recalculate total price using unitPrice (fallback to company.price or 0)
+      if (updates.quantity !== undefined || updates.unitPrice !== undefined || updates.company?.price !== undefined) {
+        const unit = typeof updatedService.unitPrice === 'number'
+          ? updatedService.unitPrice
+          : (typeof updatedService.company?.price === 'number' ? updatedService.company.price : 0);
+        updatedService.totalPrice = (updatedService.quantity || 0) * unit;
       }
 
       return {
@@ -132,7 +142,7 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
   }, [state.items]);
 
   const totalAmount = useMemo(() => {
-    return Object.values(state.items).reduce((sum, item) => sum + item.totalPrice, 0);
+    return Object.values(state.items).reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
   }, [state.items]);
 
   const hasServices = useMemo(() => {
@@ -151,7 +161,7 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
       totalAmount,
       hasServices,
     }),
-    [state, totalItems, totalAmount, hasServices]
+    [state]
   );
 
   return (

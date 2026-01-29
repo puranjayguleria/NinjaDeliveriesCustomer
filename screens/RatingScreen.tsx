@@ -778,7 +778,7 @@ export default function RatingScreen() {
         {/* HELP BUTTON */}
         <TouchableOpacity
           style={styles.helpButton}
-          onPress={() => navigation.navigate("ContactUs")}
+          onPress={() => navigation.navigate("Profile")}
         >
           <Ionicons
             name="help-circle"

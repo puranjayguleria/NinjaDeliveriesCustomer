@@ -17,6 +17,7 @@ import {
   Alert,
   AppState,
   Modal as RNModal,
+  Image,
 } from "react-native";
 import {
   NavigationContainer,
@@ -54,7 +55,7 @@ import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider } from "./context/LocationContext";
 import { OrderProvider, useOrder } from "./context/OrderContext";
-import { ServiceCartProvider } from "./context/ServiceCartContext";
+import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
 /* ──────────────────────────────────────────────────────────
    Screens
@@ -67,13 +68,17 @@ import CategoriesScreen from "./screens/CategoriesScreen";
 import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
+import CartPaymentScreen from "./screens/CartPaymentScreen";
+import TestPaymentScreen from "./screens/TestPaymentScreen";
+import UnifiedCartScreen from "./screens/UnifiedCartScreen";
+import CartSelectionModal from "./components/CartSelectionModal";
+import RazorpayWebView from "./screens/RazorpayWebView";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
 import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
 import OrderTrackingScreen from "./screens/OrderTrackingScreen";
 import RatingScreen from "./screens/RatingScreen";
 import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import ContactUsScreen from "./screens/ContactUsScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
@@ -417,7 +422,11 @@ function FeaturedStack() {
 
 const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="CartHome" component={CartScreen} />
+    <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
+    <Stack.Screen name="GroceryCart" component={CartScreen} />
+    <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
+    <Stack.Screen name="TestPayment" component={TestPaymentScreen} />
+    <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen
       name="OrderAllocating"
       component={OrderAllocatingScreen}
@@ -442,10 +451,18 @@ const ProfileStack = () => (
    ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
-  const totalItems = Object.values(cart).reduce((a, q) => a + q, 0);
+  const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
+  const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
+  const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  
+  // Cart selection modal state
+  const [cartModalVisible, setCartModalVisible] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
+  const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -514,8 +531,68 @@ function AppTabs() {
       },
     ]);
 
+  // Cart modal handlers
+  const handleCartModalClose = () => {
+    setCartModalVisible(false);
+    setPendingNavigation(null);
+  };
+
+  const handleSelectGrocery = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Navigate to grocery cart (original CartScreen)
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "CartFlow",
+              state: { routes: [{ name: "GroceryCart" }] },
+            },
+          ],
+        })
+      );
+    }
+    setPendingNavigation(null);
+  };
+
+  const handleSelectServices = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Show loader briefly, then navigate to services tab and service cart
+      setServiceLoaderVisible(true);
+      setTimeout(() => {
+        pendingNavigation.navigate("ServicesTab", { 
+          screen: "ServiceCart" 
+        });
+        setServiceLoaderVisible(false);
+      }, 500);
+    }
+    setPendingNavigation(null);
+  };
+
+  const handleSelectUnified = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Navigate to unified cart
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "CartFlow",
+              state: { routes: [{ name: "CartHome" }] },
+            },
+          ],
+        })
+      );
+    }
+    setPendingNavigation(null);
+  };
+
   return (
-    <View style={{ flex: 1 }}>
+    <>
+      <View style={{ flex: 1 }}>
       <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={({ route }) => {
@@ -525,62 +602,56 @@ function AppTabs() {
             FeaturedTab: "star-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ContactUsTab: "call-outline",
             ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
-            // service icon with shake animation
+            // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
-  const isService = route.name === "ServicesTab";
+              const isService = route.name === "ServicesTab";
+              const iconName = iconMap[route.name];
 
-  return (
-    <Animated.View
-      style={{
-        width: size + 12,
-        height: size + 12,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: isService ? blinkAnim : 1,
-        transform: isService
-          ? [
-              { translateX: shakeAnim }, // side-to-side shake
-            ]
-          : [],
-      }}
-    >
-      {isService && (
-        <View
-          style={{
-            position: "absolute",
-            top: -8,
-            backgroundColor: "red",
-            paddingHorizontal: 4,
-            borderRadius: 6,
-          }}
-        >
-          <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-            NEW
-          </Text>
-        </View>
-      )}
+              return (
+                <View
+                  style={{
+                    width: size + 12,
+                    height: size + 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {isService && (
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: -8,
+                        backgroundColor: "red",
+                        paddingHorizontal: 4,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
+                        NEW
+                      </Text>
+                    </View>
+                  )}
 
-      <Ionicons
-        name={iconMap[route.name]}
-        size={size}
-        color={isService ? "red" : color}
-      />
+                  <Ionicons
+                    name={iconName}
+                    size={size}
+                    color={isService ? "red" : color}
+                  />
 
-      {route.name === "CartFlow" && totalItems > 0 && (
-        <View style={styles.badgeContainer}>
-          <Text style={styles.badgeText}>{totalItems}</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-},
+                  {route.name === "CartFlow" && totalItems > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>{totalItems}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            },
           };
         }}
       >
@@ -615,17 +686,7 @@ function AppTabs() {
           component={CategoriesStack}
           options={{ title: "Categories" }}
         />
-        {/* ⿣ Services Tab */}
-        <Tab.Screen
-         name="ServicesTab"
-         component={ServicesStack}
-
-         options={{ title: "Services",
-         tabBarLabel: ({ focused}) => (
-            <Text style ={{ color: "red", fontSize: 11, fontWeight:"600",}}> service </Text>
-          ),
-          }}
-         />
+        
         {/* ⿣ Featured Tab */}
         <Tab.Screen
           name="FeaturedTab"
@@ -633,7 +694,41 @@ function AppTabs() {
           options={{ title: "Featured" }}
         />
 
-        {/* ⿤ Cart (with existing login/reset logic) */}
+        {/* ⿣ Services Tab */}
+        <Tab.Screen
+          name="ServicesTab"
+          component={ServicesStack}
+          options={{
+            title: "Services",
+          }}
+          listeners={({ navigation, route }) => ({
+            tabPress: (e) => {
+              // Show the service loader, then reset or navigate after a short delay
+              e.preventDefault();
+              setServiceLoaderVisible(true);
+              setTimeout(() => {
+                if (route.state && route.state.index > 0) {
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "ServicesTab",
+                          state: { routes: [{ name: "ServicesHome" }] },
+                        },
+                      ],
+                    })
+                  );
+                } else {
+                  navigation.navigate("ServicesTab");
+                }
+                setServiceLoaderVisible(false);
+              }, 900);
+            },
+          })}
+        />
+
+        {/* ⿤ Cart (with modal selection) */}
         <Tab.Screen
           name="CartFlow"
           component={CartStack}
@@ -643,20 +738,29 @@ function AppTabs() {
               if (!auth().currentUser) {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
-                // ...login prompt...
-              } else if (route.state && route.state.index > 0) {
-                e.preventDefault();
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "CartFlow",
-                        state: { routes: [{ name: "CartHome" }] },
-                      },
-                    ],
-                  })
-                );
+              } else {
+                // Show modal if both grocery and services have items, or if user wants to choose
+                if (groceryTotalItems > 0 || serviceTotalItems > 0) {
+                  e.preventDefault();
+                  setPendingNavigation(navigation);
+                  setCartModalVisible(true);
+                } else {
+                  // Empty cart - go to unified cart
+                  if (route.state && route.state.index > 0) {
+                    e.preventDefault();
+                    navigation.dispatch(
+                      CommonActions.reset({
+                        index: 0,
+                        routes: [
+                          {
+                            name: "CartFlow",
+                            state: { routes: [{ name: "CartHome" }] },
+                          },
+                        ],
+                      })
+                    );
+                  }
+                }
               }
             },
           })}
@@ -677,15 +781,31 @@ function AppTabs() {
             },
           })}
         />
-
-        {/* ⿦ Contact Us */}
-        <Tab.Screen
-          name="ContactUsTab"
-          component={ContactUsScreen}
-          options={{ title: "Contact Us" }}
-        />
       </Tab.Navigator>
+      
+      {/* Service Loader Modal */}
+      <RNModal visible={serviceLoaderVisible} transparent animationType="fade">
+        <View style={styles.serviceLoaderOverlay}>
+          <Image
+            source={require("./assets/ninjaServiceLoader.gif")}
+            style={styles.serviceLoaderImage}
+            resizeMode="contain"
+          />
+        </View>
+      </RNModal>
+
+      {/* Cart Selection Modal */}
+      <CartSelectionModal
+        visible={cartModalVisible}
+        onClose={handleCartModalClose}
+        onSelectGrocery={handleSelectGrocery}
+        onSelectServices={handleSelectServices}
+        onSelectUnified={handleSelectUnified}
+        groceryItemCount={groceryTotalItems}
+        serviceItemCount={serviceTotalItems}
+      />
           </View>
+    </>
   );
 }
 
@@ -881,11 +1001,6 @@ const App: React.FC = () => {
                       options={{ title: "Select Location" }}
                     />
                     <RootStack.Screen
-                      name="ContactUs"
-                      component={ContactUsScreen}
-                      options={{ title: "Contact Us", headerShown: true }}
-                    />
-                    <RootStack.Screen
                       name="RewardScreen"
                       component={HiddenCouponCard}
                       options={{ title: "Reward Screen", headerShown: false }}
@@ -961,6 +1076,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+
+  serviceLoaderOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  serviceLoaderImage: {
+    width: 160,
+    height: 160,
+  },
 
   inProgressBar: {
     position: "absolute",

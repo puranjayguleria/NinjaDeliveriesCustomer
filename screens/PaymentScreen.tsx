@@ -1,12 +1,43 @@
-import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from "react-native";
+import React, { useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import auth from "@react-native-firebase/auth";
+import axios from "axios";
+
+// Real Razorpay WebView Integration - No native module needed
+console.log("🚀 Payment system initialized - WebView Razorpay Integration");
+
+// API Configuration for Razorpay
+const api = axios.create({
+  timeout: 20000,
+  headers: { "Content-Type": "application/json" },
+});
+
+const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
+const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+
+const getAuthHeaders = async () => {
+  const user = auth().currentUser;
+  if (!user) throw new Error("Not logged in");
+  const token = await user.getIdToken(true);
+  return { Authorization: `Bearer ${token}` };
+};
+
+const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
 
 export default function PaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const [loading, setLoading] = useState(false);
 
+  // Handle both old single booking format and new multiple bookings format
   const {
+    bookings, // New format from ServiceCheckoutScreen
+    totalAmount, // New format
+    paymentMethod, // New format
+    // Old format (for backward compatibility)
     bookingId,
     amount,
     serviceTitle,
@@ -16,21 +47,245 @@ export default function PaymentScreen() {
     time,
   } = route.params || {};
 
-  // Format issues for display
+  console.log("PaymentScreen received:", { bookings, totalAmount, paymentMethod, bookingId, amount });
+
+  // Determine if this is new format (multiple bookings) or old format (single booking)
+  const isMultipleBookings = bookings && Array.isArray(bookings);
+  const finalAmount = isMultipleBookings ? totalAmount : amount;
+  const selectedPaymentMethod = isMultipleBookings ? paymentMethod : "cash";
+
+  console.log("PaymentScreen processed:", { 
+    isMultipleBookings, 
+    finalAmount, 
+    selectedPaymentMethod,
+    razorpayAvailable: true, // WebView always available
+    razorpayOpenAvailable: true // WebView always available
+  });
+
+  // Format issues for display (old format)
   const displayIssues = Array.isArray(issues) && issues.length > 0 
     ? issues.join(", ") 
     : "No issues selected";
 
-  const onPay = () => {
-    navigation.navigate("BookingDetails", {
-      bookingId,
-      serviceTitle,
-      issues,
-      company,
-      amount,
-      date,
-      time,
+  const createRazorpayOrderOnServer = async (amountRupees: number) => {
+    console.log("Creating Razorpay order for services - Amount:", amountRupees);
+    const user = auth().currentUser;
+    if (!user) throw new Error("Not logged in");
+
+    const amountPaise = toPaise(amountRupees);
+    const headers = await getAuthHeaders();
+
+    const requestData = {
+      amountPaise,
+      currency: "INR",
+      receipt: `service_${user.uid}_${Date.now()}`,
+      notes: { uid: user.uid, type: "service_booking" },
+    };
+
+    const { data } = await api.post(CREATE_RZP_ORDER_URL, requestData, { headers });
+
+    if (!data?.orderId || !data?.keyId) {
+      throw new Error(data?.error || "Failed to create Razorpay order");
+    }
+
+    return {
+      orderId: String(data.orderId),
+      keyId: String(data.keyId),
+      amountPaise: Number(data.amountPaise ?? amountPaise),
+      currency: String(data.currency ?? "INR"),
+    };
+  };
+
+  const verifyRazorpayPaymentOnServer = async (meta: any) => {
+    const headers = await getAuthHeaders();
+    const { data } = await api.post(VERIFY_RZP_PAYMENT_URL, meta, { headers });
+
+    if (!data?.verified) {
+      throw new Error(data?.error || "Payment verification failed");
+    }
+    return true;
+  };
+
+  const openRazorpayWebView = async (
+    keyId: string,
+    orderId: string,
+    amountPaise: number,
+    currency: string
+  ) => {
+    console.log("Opening Razorpay WebView for payment");
+    
+    const user = auth().currentUser;
+    if (!user) throw new Error("Not logged in");
+
+    const contact = (user.phoneNumber || "").replace("+91", "");
+
+    // Navigate to WebView payment
+    navigation.navigate("RazorpayWebView", {
+      orderId,
+      amount: amountPaise / 100, // Convert back to rupees for display
+      keyId,
+      currency: currency || "INR",
+      name: "Ninja Services",
+      description: "Service booking payment",
+      prefill: {
+        contact,
+        email: "",
+        name: "",
+      },
+      onSuccess: async (response: any) => {
+        try {
+          console.log("Payment successful:", response);
+          
+          // Verify payment on server
+          await verifyRazorpayPaymentOnServer(response);
+          
+          console.log("Payment verified, navigating to booking details...");
+          navigateToBookingDetails("paid");
+        } catch (error) {
+          console.error("Payment verification failed:", error);
+          Alert.alert("Payment Verification Failed", "Please contact support.");
+        }
+      },
+      onFailure: (error: any) => {
+        console.log("Payment failed:", error);
+        Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+      },
     });
+  };
+
+  // Real Razorpay WebView availability check
+  const isRazorpayReallyAvailable = () => {
+    // WebView approach is always available since react-native-webview is installed
+    console.log("Razorpay WebView check: Always available");
+    return true;
+  };
+
+  const handlePayment = async () => {
+    console.log("handlePayment called with method:", selectedPaymentMethod);
+    setLoading(true);
+
+    try {
+      if (selectedPaymentMethod === "online") {
+        console.log("Processing online payment for services...");
+        
+        // WebView Razorpay is always available
+        const razorpayWorking = isRazorpayReallyAvailable();
+        console.log("WebView Razorpay check result:", razorpayWorking);
+        
+        if (!razorpayWorking) {
+          console.log("WebView not available - fallback to cash");
+          setLoading(false);
+          
+          Alert.alert(
+            "⚠️ Payment Gateway Unavailable",
+            "Online payment is temporarily unavailable. Please use cash payment.",
+            [
+              { 
+                text: "Cancel", 
+                style: "cancel"
+              },
+              {
+                text: "Use Cash Payment",
+                onPress: () => {
+                  console.log("Switching to cash payment");
+                  proceedWithCashPayment();
+                }
+              }
+            ]
+          );
+          return;
+        }
+        
+        // Real Razorpay WebView flow
+        console.log("Razorpay WebView is working, proceeding with real payment...");
+        try {
+          // Create Razorpay order
+          console.log("Creating Razorpay order...");
+          const serverOrder = await createRazorpayOrderOnServer(finalAmount);
+          
+          // Open Razorpay WebView
+          console.log("Opening Razorpay WebView...");
+          await openRazorpayWebView(
+            serverOrder.keyId,
+            serverOrder.orderId,
+            serverOrder.amountPaise,
+            serverOrder.currency
+          );
+          
+          // Navigation will be handled by WebView callbacks
+        } catch (razorpayError: any) {
+          console.error("Razorpay WebView error:", razorpayError);
+          
+          Alert.alert(
+            "Payment Gateway Error",
+            "The payment gateway encountered an error. Would you like to try cash payment instead?",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Use Cash Payment",
+                onPress: () => proceedWithCashPayment()
+              }
+            ]
+          );
+          return;
+        }
+      } else {
+        console.log("Processing cash payment for services...");
+        proceedWithCashPayment();
+      }
+    } catch (error: any) {
+      console.error("Payment error:", error);
+      let message = "Payment failed. Please try again.";
+      
+      if (error?.description) {
+        message = error.description;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      
+      Alert.alert("Payment Failed", message, [
+        { text: "OK" },
+        {
+          text: "Use Cash Payment",
+          onPress: () => {
+            proceedWithCashPayment();
+          }
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const proceedWithCashPayment = () => {
+    console.log("Processing cash payment...");
+    navigateToBookingDetails("pending");
+  };
+
+  const navigateToBookingDetails = (paymentStatus: string) => {
+    // Navigate to booking details
+    if (isMultipleBookings) {
+      // For multiple bookings, navigate to a summary or first booking
+      navigation.navigate("BookingDetails", {
+        bookings,
+        totalAmount,
+        paymentMethod: selectedPaymentMethod,
+        paymentStatus,
+      });
+    } else {
+      // For single booking (old format)
+      navigation.navigate("BookingDetails", {
+        bookingId,
+        serviceTitle,
+        issues,
+        company,
+        amount: finalAmount,
+        date,
+        time,
+        paymentMethod: selectedPaymentMethod,
+        paymentStatus,
+      });
+    }
   };
 
   return (
@@ -45,7 +300,12 @@ export default function PaymentScreen() {
         </TouchableOpacity>
         
         <Text style={styles.header}>Payment</Text>
-        <Text style={styles.subHeader}>Review and confirm your booking</Text>
+        <Text style={styles.subHeader}>
+          {isMultipleBookings 
+            ? `Review and confirm ${bookings.length} service booking${bookings.length > 1 ? 's' : ''}`
+            : "Review and confirm your booking"
+          }
+        </Text>
       </View>
 
       {/* Scrollable Content */}
@@ -62,9 +322,12 @@ export default function PaymentScreen() {
           />
 
           <View style={styles.bannerContent}>
-            <Text style={styles.bannerTitle}>Secure Your Slot</Text>
+            <Text style={styles.bannerTitle}>Secure Your Service</Text>
             <Text style={styles.bannerSub}>
-              Pay advance amount to confirm your booking
+              {selectedPaymentMethod === "online" 
+                ? "Pay securely to confirm your booking"
+                : "Pay when service is completed"
+              }
             </Text>
           </View>
         </View>
@@ -73,57 +336,103 @@ export default function PaymentScreen() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Booking Summary</Text>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Service</Text>
-            <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
-          </View>
+          {isMultipleBookings ? (
+            // Multiple bookings display
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Services</Text>
+                <Text style={styles.value}>{bookings.length} service{bookings.length > 1 ? 's' : ''}</Text>
+              </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Issues</Text>
-            <Text style={styles.valueMultiline}>{displayIssues}</Text>
-          </View>
+              {bookings.slice(0, 3).map((booking: any, index: number) => (
+                <View key={index} style={styles.serviceItem}>
+                  <Text style={styles.serviceTitle}>{booking.serviceTitle}</Text>
+                  <Text style={styles.serviceCompany}>{booking.company.name}</Text>
+                  <Text style={styles.servicePrice}>₹{booking.totalPrice}</Text>
+                </View>
+              ))}
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Provider</Text>
-            <Text style={styles.value}>
-              {company?.name || "Service Provider"}
-            </Text>
-          </View>
+              {bookings.length > 3 && (
+                <Text style={styles.moreServices}>
+                  +{bookings.length - 3} more service{bookings.length - 3 > 1 ? 's' : ''}
+                </Text>
+              )}
+            </>
+          ) : (
+            // Single booking display (old format)
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Service</Text>
+                <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
+              </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Time Slot</Text>
-            <Text style={styles.value}>{time || "N/A"}</Text>
-          </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Issues</Text>
+                <Text style={styles.valueMultiline}>{displayIssues}</Text>
+              </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Date</Text>
-            <Text style={styles.value}>{date || "Today"}</Text>
-          </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Provider</Text>
+                <Text style={styles.value}>
+                  {company?.name || "Service Provider"}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Time Slot</Text>
+                <Text style={styles.value}>{time || "N/A"}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Date</Text>
+                <Text style={styles.value}>{date || "Today"}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Payment Details */}
         <View style={styles.paymentCard}>
           <Text style={styles.paymentTitle}>Payment Details</Text>
 
+          {/* Debug Info */}
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>🔧 Debug Info:</Text>
+            <Text style={styles.debugText}>Payment System: Real Razorpay WebView</Text>
+            <Text style={styles.debugText}>WebView Status: Available</Text>
+            <Text style={styles.debugText}>Payment Method: {selectedPaymentMethod}</Text>
+            <Text style={styles.debugText}>Amount: ₹{finalAmount}</Text>
+            <Text style={styles.successText}>✅ Real Razorpay WebView ready</Text>
+          </View>
+
           <View style={styles.summaryRow}>
-            <Text style={styles.label}>Booking ID</Text>
-            <Text style={styles.value}>{bookingId || "N/A"}</Text>
+            <Text style={styles.label}>Payment Method</Text>
+            <Text style={styles.value}>
+              {selectedPaymentMethod === "online" ? "Pay Online" : "Cash on Service"}
+            </Text>
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.label}>Service Charge</Text>
-            <Text style={styles.amount}>₹{company?.price || amount || 0}</Text>
+            <Text style={styles.amount}>₹{finalAmount || 0}</Text>
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Advance Amount</Text>
-            <Text style={styles.advanceAmount}>₹{Math.min(99, company?.price || amount || 99)}</Text>
-          </View>
+          {selectedPaymentMethod === "online" && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.label}>Amount to Pay Now</Text>
+              <Text style={styles.advanceAmount}>₹{finalAmount || 0}</Text>
+            </View>
+          )}
 
           <View style={styles.noteBox}>
-            <Text style={styles.noteTitle}>💡 Payment Note</Text>
+            <Text style={styles.noteTitle}>
+              {selectedPaymentMethod === "online" ? "💳 Online Payment" : "💰 Cash Payment"}
+            </Text>
             <Text style={styles.noteText}>
-              Pay advance amount to secure your slot. Remaining payment will be collected after service completion.
+              {selectedPaymentMethod === "online" 
+                ? "Pay securely using UPI, Cards, or Net Banking. Your payment is protected."
+                : "Pay the service provider directly when the service is completed."
+              }
             </Text>
           </View>
         </View>
@@ -132,22 +441,43 @@ export default function PaymentScreen() {
       {/* Fixed Bottom Section */}
       <View style={styles.bottomSection}>
         <TouchableOpacity 
-          style={styles.payBtn} 
+          style={[styles.payBtn, loading && styles.disabledBtn]} 
           activeOpacity={0.7} 
-          onPress={onPay}
+          onPress={handlePayment}
+          disabled={loading}
         >
-          <Text style={styles.payBtnText}>
-            Pay ₹{Math.min(99, company?.price || amount || 99)} & Confirm
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.payBtnText}>
+              {selectedPaymentMethod === "online" 
+                ? `Pay ₹${finalAmount || 0} & Confirm`
+                : `Confirm Booking - ₹${finalAmount || 0}`
+              }
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.backBtn} 
           onPress={() => navigation.goBack()}
+          disabled={loading}
         >
           <Text style={styles.backText}>Go Back</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Loading Overlay */}
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4CAF50" />
+            <Text style={styles.loadingText}>
+              {selectedPaymentMethod === "online" ? "Processing payment..." : "Confirming booking..."}
+            </Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -300,6 +630,102 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "right",
     lineHeight: 20,
+  },
+
+  serviceItem: {
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+
+  serviceTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+
+  serviceCompany: {
+    fontSize: 12,
+    color: "#64748b",
+    marginBottom: 4,
+  },
+
+  servicePrice: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#059669",
+  },
+
+  moreServices: {
+    fontSize: 12,
+    color: "#64748b",
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: 8,
+  },
+
+  disabledBtn: {
+    opacity: 0.6,
+  },
+
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loadingContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 24,
+    alignItems: "center",
+  },
+
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#333",
+  },
+
+  debugInfo: {
+    backgroundColor: "#f0f0f0",
+    padding: 8,
+    borderRadius: 4,
+    marginBottom: 12,
+  },
+
+  debugText: {
+    fontSize: 11,
+    color: "#666",
+    marginBottom: 2,
+  },
+
+  warningText: {
+    fontSize: 11,
+    color: "#e74c3c",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+
+  mockText: {
+    fontSize: 11,
+    color: "#2563eb",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+
+  successText: {
+    fontSize: 11,
+    color: "#059669",
+    fontWeight: "600",
+    marginTop: 4,
   },
 
   // Payment Card
