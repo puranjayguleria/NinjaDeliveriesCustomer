@@ -8,7 +8,6 @@ import {
   Image,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Easing,
   Animated,
   Vibration,
@@ -27,6 +26,7 @@ import { Button, TextInput } from "react-native-paper";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
 import Loader from "@/components/VideoLoader";
+import { LinearGradient } from "expo-linear-gradient";
 
 const pastelGreen = "#e7f8f6";
 const primaryTextColor = "#333";
@@ -56,17 +56,27 @@ interface Order {
   convenienceFee?: number;
   platformFee?: number;
   surgeFee?: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  deliveryAddress?: string;
+  mobile?: string;
+  storeName?: string;
 }
 
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const currentUser = auth().currentUser;
+  const memberSinceYear =
+    currentUser?.metadata?.creationTime
+      ? new Date(currentUser.metadata.creationTime).getFullYear()
+      : new Date().getFullYear();
 
   // Profile UI state
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [userName, setUserName] = useState<string>("");
   const [dob, setDob] = useState<Date | null>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>([]);
@@ -218,6 +228,7 @@ const ProfileScreen: React.FC = () => {
         dob: dobStr,
       });
       Alert.alert("Saved", "Profile updated successfully!");
+      setIsEditing(false);
     } catch (error) {
       Alert.alert("Error", "Failed to save profile info.");
     } finally {
@@ -248,9 +259,21 @@ const ProfileScreen: React.FC = () => {
 
   /** Re-auth if needed => phone flow in a modal. */
   const doPhoneReauth = async (phoneNumber: string) => {
-    let finalNumber = phoneNumber.startsWith("+91")
-      ? phoneNumber
-      : "+91" + phoneNumber.replace("+91", "");
+    let finalNumber = phoneNumber.trim();
+    // Robust formatting for E.164
+    if (finalNumber.startsWith("+")) {
+      finalNumber = finalNumber.replace(/[\s-()]/g, "");
+    } else {
+      const digits = finalNumber.replace(/\D/g, "");
+      if (digits.length === 10) {
+        finalNumber = `+91${digits}`;
+      } else if (digits.length === 12 && digits.startsWith("91")) {
+        finalNumber = `+${digits}`;
+      } else {
+        finalNumber = `+91${digits}`;
+      }
+    }
+
     setReauthLoading(true);
     try {
       const confirmationResult = await auth().signInWithPhoneNumber(
@@ -370,8 +393,8 @@ const ProfileScreen: React.FC = () => {
     );
   };
   /**Reward section */
-  const scaleValue = new Animated.Value(1);
-  const rotateValue = new Animated.Value(0);
+  const scaleValue = useRef(new Animated.Value(1)).current;
+  const rotateValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Continuous subtle animation
@@ -566,7 +589,12 @@ const ProfileScreen: React.FC = () => {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate("Login" as never)}
+          onPress={() =>
+            navigation.navigate("AppTabs", {
+              screen: "HomeTab",
+              params: { screen: "LoginInHomeStack" },
+            })
+          }
           style={{ backgroundColor: "#FF7043", marginTop: 16 }}
         >
           Login
@@ -582,19 +610,15 @@ const ProfileScreen: React.FC = () => {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         <View style={styles.headerBlock}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ position: "absolute", left: 16, top: "50%", marginTop: -12, zIndex: 10 }}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
           <Text style={styles.mainTitle}>My Profile</Text>
 
-          {/* <TouchableOpacity
-            style={styles.iconContainer}
-            onPress={() => navigation.navigate("RewardScreen")}
-          >
-            <Image
-              source={require("../assets/rewards.png")}
-              style={styles.icon}
-              resizeMode="contain"
-            />
-            <Text style={styles.reward}>Rewards</Text>
-          </TouchableOpacity> */}
+
         </View>
 
         <View style={styles.profileCard}>
@@ -603,65 +627,78 @@ const ProfileScreen: React.FC = () => {
             style={styles.profileImage}
           />
 
-          {/* Section header for user details */}
-          <Text style={styles.sectionHeader}>User Details</Text>
-
-          {/* Name Input (Paper's label used) */}
-          <TextInput
-            label="Name"
-            value={userName}
-            onChangeText={setUserName}
-            mode="outlined"
-            style={styles.input}
-          />
-
-          <Text style={styles.label}>Date of Birth</Text>
-          <TouchableOpacity onPress={openDatePicker} style={styles.dobSelect}>
-            <Text style={{ color: dob ? "#333" : "#999" }}>
-              {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
-            </Text>
-            <MaterialIcons name="calendar-today" size={16} color="#555" />
+          <TouchableOpacity
+            onPress={() => setIsEditing(true)}
+            style={styles.editButton}
+          >
+            <Text style={styles.editButtonText}>Edit Details</Text>
           </TouchableOpacity>
 
-          {/* Android Date Picker */}
-          {showDatePicker && Platform.OS === "android" && (
-            <DateTimePicker
-              value={dob || new Date()}
-              mode="date"
-              display="calendar"
-              onChange={onDateChange}
-              maximumDate={new Date()}
-            />
-          )}
+          <Text style={styles.profileName}>{userName || "John Doe"}</Text>
+          <Text style={styles.memberSince}>Member since {memberSinceYear}</Text>
 
-          {/* iOS Date Picker in Modal */}
-          {Platform.OS === "ios" && (
-            <Modal
-              visible={showIosModal}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setShowIosModal(false)}
-            >
-              <View style={styles.modalOverlayDate}>
-                <View style={styles.modalContainerDate}>
-                  {/* iOS Done button */}
-                  <View style={styles.iosPickerHeader}>
-                    <TouchableOpacity onPress={() => setShowIosModal(false)}>
-                      <Text style={styles.doneButtonText}>Done</Text>
-                    </TouchableOpacity>
+          {isEditing && (
+            <>
+              <Text style={styles.sectionHeader}>User Details</Text>
+              <TextInput
+                label="Name"
+                value={userName}
+                onChangeText={setUserName}
+                mode="outlined"
+                style={styles.input}
+                outlineColor="#ddd"
+                activeOutlineColor="#5b2ecc"
+              />
+
+              <Text style={styles.label}>Date of Birth</Text>
+              <TouchableOpacity
+                onPress={openDatePicker}
+                style={styles.dobSelect}
+              >
+                <Text style={{ color: dob ? "#333" : "#999" }}>
+                  {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
+                </Text>
+                <MaterialIcons name="calendar-today" size={16} color="#555" />
+              </TouchableOpacity>
+
+              {showDatePicker && Platform.OS === "android" && (
+                <DateTimePicker
+                  value={dob || new Date()}
+                  mode="date"
+                  display="calendar"
+                  onChange={onDateChange}
+                  maximumDate={new Date()}
+                />
+              )}
+
+              {Platform.OS === "ios" && (
+                <Modal
+                  visible={showIosModal}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setShowIosModal(false)}
+                >
+                  <View style={styles.modalOverlayDate}>
+                    <View style={styles.modalContainerDate}>
+                      <View style={styles.iosPickerHeader}>
+                        <TouchableOpacity onPress={() => setShowIosModal(false)}>
+                          <Text style={styles.doneButtonText}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        themeVariant="light"
+                        value={dob || new Date()}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        maximumDate={new Date()}
+                        style={{ backgroundColor: "#fff" }}
+                      />
+                    </View>
                   </View>
-                  <DateTimePicker
-                    themeVariant="light"
-                    value={dob || new Date()}
-                    mode="date"
-                    display="spinner"
-                    onChange={onDateChange}
-                    maximumDate={new Date()}
-                    style={{ backgroundColor: "#fff" }}
-                  />
-                </View>
-              </View>
-            </Modal>
+                </Modal>
+              )}
+            </>
           )}
 
           {/* Full-width "Save Changes" with icon */}
@@ -670,7 +707,7 @@ const ProfileScreen: React.FC = () => {
             mode="contained"
             onPress={handleSave}
             loading={saving}
-            style={styles.fullWidthButton}
+            style={[styles.fullWidthButton, styles.saveButton]}
             labelStyle={{ color: "#fff" }}
           >
             {saving ? "Saving..." : "Save Changes"}
@@ -682,29 +719,47 @@ const ProfileScreen: React.FC = () => {
               <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
             )}
             mode="outlined"
-            onPress={handleLogout}
-            style={styles.fullWidthButton}
+            onPress={() =>
+              Alert.alert("Logout", "Are you sure you want to logout?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Logout", style: "destructive", onPress: handleLogout },
+              ])
+            }
+            style={[styles.fullWidthButton, styles.outlinedButton]}
             labelStyle={{ color: "#e74c3c" }}
           >
             Logout
           </Button>
 
-          {/* Full-width "Delete Account" with icon */}
+          {/* Full-width "Contact Us" */}
           <TouchableOpacity
-            style={[
-              styles.fullWidthButtonTouchable,
-              { backgroundColor: "#e74c3c" },
-            ]}
-            onPress={handleDeleteAccount}
+            style={[styles.fullWidthButtonTouchable, styles.contactButton]}
+            onPress={() => navigation.navigate("ContactUs" as never)}
           >
             <Ionicons
-              name="trash"
+              name="call-outline"
               size={16}
-              color="#fff"
+              color="#333"
               style={{ marginRight: 6 }}
             />
-            <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+            <Text style={{ color: "#333", fontWeight: "600", fontSize: 14 }}>
+              Contact Us
+            </Text>
           </TouchableOpacity>
+
+        {/* Full-width "Delete Account" with icon */}
+          <TouchableOpacity
+            style={[styles.fullWidthButtonTouchable, styles.deleteButton]}
+             onPress={handleDeleteAccount}
+           >
+            <Ionicons
+               name="trash"
+               size={16}
+               color="#fff"
+              style={{ marginRight: 6 }}
+           />
+             <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+           </TouchableOpacity>
         </View>
 
         {/* Premium Reward Section */}
@@ -793,7 +848,7 @@ const ProfileScreen: React.FC = () => {
                     {Array.isArray(selectedOrder.items) &&
                     selectedOrder.items.length > 0 ? (
                       selectedOrder.items.map(
-                        (item: OrderItem, idx: number) => {
+                        (item: any, idx: number) => {
                           const price = Number(item.price) || 0;
                           const discount = Number(item.discount) || 0;
                           const cgst = Number(item.CGST) || 0;
@@ -1014,56 +1069,68 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   headerBlock: {
-    backgroundColor: pastelGreen,
-    paddingVertical: 20,
+    backgroundColor: "#f4f6ff",
+    paddingVertical: 24,
     paddingHorizontal: 16,
     borderBottomRightRadius: 24,
     borderBottomLeftRadius: 24,
-    marginBottom: 15,
-    flexDirection: "row", // 👈 Arrange in a row
-    justifyContent: "space-between", // 👈 Push items to edges
-    alignItems: "center", // 👈 Align vertically
+    marginBottom: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   mainTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: primaryTextColor,
   },
-  iconContainer: {
-    padding: 5,
-  },
-  icon: {
-    width: 32,
-    height: 32,
-  },
-  reward: {
-    fontSize: 10,
-    fontWeight: "bold",
-    color: primaryTextColor,
-  },
-  subTitle: {
-    fontSize: 13,
-    color: "#666",
-  },
+
   profileCard: {
     backgroundColor: "#fff",
-    borderRadius: 8,
+    borderRadius: 20,
     marginHorizontal: 16,
     marginTop: -30,
     padding: 16,
-    elevation: 2,
+    elevation: 6,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: "#f9f9f9",
     alignSelf: "center",
     marginBottom: 16,
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#333",
+    textAlign: "center",
+  },
+  memberSince: {
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  editButton: {
+    alignSelf: "center",
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  editButtonText: {
+    fontSize: 12,
+    color: "#333",
+    fontWeight: "600",
   },
   sectionHeader: {
     fontSize: 15,
@@ -1080,6 +1147,8 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+    borderRadius: 12,
+    backgroundColor: "#fff",
   },
   dobSelect: {
     flexDirection: "row",
@@ -1088,27 +1157,47 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
+    backgroundColor: "#fff",
   },
 
   fullWidthButton: {
     width: "100%",
-    marginVertical: 6,
+    marginVertical: 8,
+    borderRadius: 24,
   },
   fullWidthButtonTouchable: {
     width: "100%",
-    marginVertical: 6,
-    borderRadius: 6,
+    marginVertical: 8,
+    borderRadius: 24,
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    elevation: 3,
+  },
+  saveButton: {
+    backgroundColor: "#5b2ecc",
+    elevation: 6,
+  },
+  outlinedButton: {
+    borderColor: "#ddd",
+    backgroundColor: "#fff",
+  },
+  contactButton: {
+    backgroundColor: "#f4f4f8",
+    borderWidth: 1,
+    borderColor: "#ddd",
   },
   deleteAccountButtonText: {
     color: "#fff",
     fontWeight: "600",
     fontSize: 14,
+  },
+  deleteButton: {
+    backgroundColor: "#e74c3c",
+    elevation: 6,
   },
 
   myOrdersHeader: {
@@ -1410,7 +1499,7 @@ const styles = StyleSheet.create({
     marginTop: -1,
   },
   rewardText: {
-    color: "#black",
+    color: "#000",
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.5,

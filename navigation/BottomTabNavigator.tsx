@@ -56,7 +56,6 @@ const BottomTabNavigator: React.FC = () => {
           },
         })}
       />
-      <Tab.Screen name="ContactUs" component={ContactUsScreen} />
       <Tab.Screen name="Business" component={BusinessStack} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

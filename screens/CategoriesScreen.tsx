@@ -16,6 +16,7 @@ import {
   Linking,
   Pressable,
   Vibration,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
@@ -44,6 +45,7 @@ type Product = {
   quantity: number;
   discount?: number;
   categoryId?: string;
+  description?: string; // added to match search usage
 };
 
 type CategoryAlert = {
@@ -227,28 +229,27 @@ const CategoriesScreen: React.FC = () => {
     />
   );
 
-  const openSearch = () =>
-    navigation.getParent()?.navigate("HomeTab", { screen: "Search" });
-
   /* ────────── UI ────────── */
   return (
     <SafeAreaView style={styles.safe}>
       {/* search bar */}
-      <TouchableOpacity
-        style={styles.searchRow}
-        activeOpacity={0.7}
-        onPress={openSearch}
-      >
+      <View style={styles.searchRow}>
         <MaterialIcons
           name="search"
           size={22}
           color="#555"
           style={styles.icn}
         />
-        <Text style={styles.searchPlaceholder}>
-          Search categories or products
-        </Text>
-      </TouchableOpacity>
+        <TextInput
+          style={styles.searchPlaceholder}
+          placeholder="Search categories or products"
+          placeholderTextColor="#777"
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+      </View>
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -414,7 +415,6 @@ const styles = StyleSheet.create({
   linkTxt: {
     fontSize: 13,
     color: "#007aff",
-    textDecorationLine: "underline",
     fontWeight: "600",
   },
   rowButtons: { flexDirection: "row", justifyContent: "flex-end" },

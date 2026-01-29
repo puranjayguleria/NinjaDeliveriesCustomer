@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
-  Easing,
   Dimensions,
   FlatList,
+  Image as RNImage,
   Platform,
   Pressable,
   ScrollView,
@@ -24,21 +24,24 @@ import {
   Modal,
   Linking,
   Vibration,
+  Easing,
 } from "react-native";
+import { Ionicons, MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Video from "react-native-video";
-import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Image } from "expo-image";
+import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
+
 import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
-import { useWeather } from "../context/WeatherContext"; // adjust path if needed
+import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 
@@ -54,8 +57,8 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 165;
-const COLLAPSED_VIDEO_HEIGHT = 100;
+const INITIAL_VIDEO_HEIGHT = 160;
+const COLLAPSED_VIDEO_HEIGHT = 80;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
@@ -248,13 +251,12 @@ const Header = memo(() => {
       style={styles.locationRow}
       onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
     >
-      <MaterialIcons
-        name="place"
-        size={20}
-        color="#fff"
-        style={{ marginRight: 4 }}
-      />
-      <View style={styles.textRow}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
+        <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
+        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+      </View>
+      <Text style={{ color: "#fff", opacity: 0.8, marginRight: 6 }}>•</Text>
+      <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
         <Text style={styles.locationTxt} numberOfLines={1}>
           {location.address
             ? `Delivering to ${location.address}`
@@ -875,9 +877,7 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>([
-    "#00b4a0",
-    "#00d2c7",
-    "#ffffff",
+    "#FF5FA2", "#FFD1E6", "#FFFFFF"
   ]); // fallback defaults
 
   const [activeVerticalMode, setActiveVerticalMode] =
@@ -1014,7 +1014,7 @@ export default function ProductsHomeScreen() {
   // pull gradient colors for the collapsing header from Firestore
   useEffect(() => {
     if (!location.storeId) {
-      setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"]);
+      setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"]);
       return;
     }
 
@@ -1035,10 +1035,10 @@ export default function ProductsHomeScreen() {
             : null;
 
           setHeaderGradientColors(
-            arr && arr.length ? arr : ["#00b4a0", "#00d2c7", "#ffffff"]
+            arr && arr.length ? arr : ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
           );
         },
-        () => setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"])
+        () => setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"])
       );
 
     return unsub;
@@ -1671,9 +1671,120 @@ export default function ProductsHomeScreen() {
     loadHighlights();
   }, [loadHighlights]);
 
+  // Handle category shortcut press
+  const handleCategoryShortcut = useCallback((name: string) => {
+    if (name === "Offers") {
+      nav.navigate("AllDiscountedProducts");
+      return;
+    }
+
+    if (name === "Chocolates") {
+      nav.navigate("ProductListingFromHome", {
+        categoryName: name,
+        searchQuery: "chocolate",
+      });
+      return;
+    }
+    
+    // Define keyword mappings for shortcuts that may not match category names exactly
+    const keywordMappings: Record<string, string[]> = {
+      "Chocolates": ["chocolate", "chocolates", "choco"],
+      "Valentine": ["valentine", "valentines", "love", "heart", "chocolate", "water", "ice cream", "condom", "wellness"],
+      "Snacks": ["snack", "snacks", "chips", "namkeen"],
+      "Dairy": ["dairy", "milk", "curd", "paneer", "cheese"],
+    };
+    
+    // Find category
+    // Try exact match first, then partial
+    let cat = cats.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!cat) {
+      cat = cats.find(c => c.name.toLowerCase().includes(name.toLowerCase()));
+    }
+    
+    // Also try reverse match - category name contains any of our keywords
+    if (!cat && keywordMappings[name]) {
+      cat = cats.find(c => 
+        keywordMappings[name].some(kw => c.name.toLowerCase().includes(kw))
+      );
+    }
+    
+    if (cat) {
+      maybeNavigateCat(cat);
+    } else {
+       // Fallback for specific hardcoded ones if not found in DB
+       if (name === "Milk") {
+          // Try to find Dairy if Milk not found
+          const dairy = cats.find(c => c.name.toLowerCase().includes("dairy"));
+          if (dairy) {
+            maybeNavigateCat(dairy);
+            return;
+          }
+       }
+       
+       // Final fallback: Navigate to product listing with keyword search
+       // This will search products by name/description/keywords containing the search term
+       // e.g., searching "chocolate" will find all products with "chocolate" in their name
+       const searchTerm = keywordMappings[name]?.[0] || name.toLowerCase();
+       nav.navigate("ProductListingFromHome", {
+         categoryName: name,
+         searchQuery: searchTerm,
+       });
+    }
+  }, [cats, nav, maybeNavigateCat]);
+
   // Build the list header for the SectionList
   const listHeader = (
     <>
+      {/* Category Shortcuts */}
+      <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+          {[
+            { name: "Offers", image: require("../assets/shortcuts/offers.jpeg"), bg: "#963556ff" },
+            { name: "Valentine", image: require("../assets/shortcuts/valentine.jpeg"), bg: "#963556ff" },
+            { name: "Chocolates", image: require("../assets/shortcuts/chocolate.jpeg"), bg: "#963556ff" },
+            { name: "Snacks", image: require("../assets/shortcuts/snacks.jpeg"), bg: "#963556ff" },
+            { name: "Dairy", image: require("../assets/shortcuts/dairy.jpeg"), bg: "#963556ff" },
+          ].map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              style={{
+                alignItems: "center",
+                marginRight: 4,
+                width: 68,
+              }}
+              onPress={() => handleCategoryShortcut(item.name)}
+            >
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 20,
+                  backgroundColor: item.bg,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginBottom: 6,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 2 },
+                  overflow: "hidden"
+                }}
+              >
+                <Image
+                  source={item.image}
+                  style={{ width: "100%", height: "100%" }}
+                  contentFit="cover"
+                  transition={200}
+                />
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* Promotional banners */}
       <BannerSwitcher storeId={location.storeId} />
       {/* Last order → Repeat order card */}
@@ -1711,7 +1822,7 @@ export default function ProductsHomeScreen() {
       <>
         {bestHeader.length > 0 && (
           <>
-            <Text style={styles.laneTitle}>Best sellers</Text>
+            <Text style={styles.laneTitle}>Best sellers❤️</Text>
             <FlatList
               horizontal
               data={bestHeader}
@@ -1724,7 +1835,7 @@ export default function ProductsHomeScreen() {
         )}
         {freshHeader.length > 0 && (
           <>
-            <Text style={styles.laneTitle}>Fresh arrivals</Text>
+            <Text style={styles.laneTitle}>Fresh arrivals✨</Text>
             <FlatList
               horizontal
               data={freshHeader}
@@ -1809,6 +1920,18 @@ export default function ProductsHomeScreen() {
           </View>
         ) : null}
 
+        {/* Valentine Background - Starts below search bar */}
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { top: INITIAL_VIDEO_HEIGHT, zIndex: -1 }]}
+        >
+          <RNImage
+            source={require("../assets/valentine-banner.png")}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="cover"
+          />
+        </View>
+
         {/* Collapsing header + background video */}
         <Animated.View
           pointerEvents="box-none"
@@ -1818,7 +1941,12 @@ export default function ProductsHomeScreen() {
           <Animated.View
             pointerEvents="none"
             style={[
-              StyleSheet.absoluteFill,
+              {
+                position: "absolute",
+                top: -35,
+                width: "100%",
+                left: "0%",
+              },
               { height: videoHeight, opacity: videoOpacity },
             ]}
           >
@@ -1848,15 +1976,51 @@ export default function ProductsHomeScreen() {
             <Header />
 
             {/* Search bar */}
-            <View style={styles.searchFlex}>
-              <StableSearchBar />
-            </View>
+            <View style={styles.searchRow}>
+  <View style={styles.searchFlex}>
+    <StableSearchBar />
+  </View>
+
+  <Pressable
+    style={styles.profileBtn}
+    onPress={() => nav.navigate("Profile")}
+  >
+    <Svg height="48" width="48" viewBox="0 0 24 24">
+      <Defs>
+        <ClipPath id="heart_clip">
+          <Path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </ClipPath>
+      </Defs>
+      <SvgImage
+        href={require("../assets/profile.png")}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid slice"
+        clipPath="url(#heart_clip)"
+      />
+    </Svg>
+  </Pressable>
+</View>
 
             {/* Informational messages displayed below the search bar.
                Show the highest priority message first (homeMsg from Firestore
                takes precedence over the local pausedMessage). Only one message
                is rendered at a time. */}
             {(() => {
+              let effectiveHomeMsg = homeMsg;
+              // User request: Remove "High demand. Riders Occupied" banner
+              if (effectiveHomeMsg) {
+                const text = String(effectiveHomeMsg.text || "").toLowerCase();
+                if (
+                  text.includes("riders occupied") ||
+                  text.includes("high demand") ||
+                  (text.includes("riders") && text.includes("occupied")) ||
+                  text.includes("demand")
+                ) {
+                  effectiveHomeMsg = null;
+                }
+              }
+
               // Determine which message should be displayed. Only one message
               // (either from Firestore or the pausedMessage) is shown at a time.
               // If the user has dismissed a message, no other messages will be
@@ -1885,9 +2049,9 @@ export default function ProductsHomeScreen() {
               // a lingering "orders paused" message from showing after the
               // store becomes active again.
               let activeHomeMsg: any | null = null;
-              if (homeMsg) {
-                if (!isOrdersPausedMsg(homeMsg) || isOrderAcceptancePaused) {
-                  activeHomeMsg = homeMsg;
+              if (effectiveHomeMsg) {
+                if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
+                  activeHomeMsg = effectiveHomeMsg;
                 }
               }
               const displayMsg = activeHomeMsg || pausedMessage;
@@ -1938,7 +2102,7 @@ export default function ProductsHomeScreen() {
 
               const data = prodMap[item.id]?.rows || [];
               return (
-                <View style={{ marginTop: 32 }}>
+                <View style={{ marginTop: 36}}>
                   <View style={styles.rowHeader}>
                     <Text style={styles.rowTitle}>{item.name}</Text>
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
@@ -2083,7 +2247,7 @@ labelActive: { color: '#fff' },
   },
   topBg: {
     paddingHorizontal: H,
-    paddingBottom: 16,
+    paddingBottom: 4,
     position: "relative",
     zIndex: 1,
     backgroundColor: "transparent",
@@ -2114,25 +2278,25 @@ labelActive: { color: '#fff' },
 },
 
   locationTxt: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
-  },
+  flex: 1,
+  fontSize: 15,          // ⬅ slightly larger
+  fontWeight: "700",
+  color: "#fff",
+},
   searchWrapper: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#fafafa",
-  borderRadius: 22,
-  paddingVertical: 8,
-  paddingHorizontal: 12,
+  backgroundColor: "#ffffff",
+  borderRadius: 26,              // ⬅ rounder pill
+  paddingVertical: 10,
+  paddingHorizontal: 16,
   shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 4,
-  shadowOffset: { width: 0, height: 2 },
-  // remove marginHorizontal – topBg already handles left/right padding
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
 },
-  searchTxt: { color: "#555", fontSize: 14 },
+searchTxt: { color: "#555", fontSize: 14 },
   quizCard: {
     margin: H,
     borderRadius: 12,
@@ -2172,41 +2336,47 @@ labelActive: { color: '#fff' },
     marginTop: 10,
     marginBottom: 8,
   },
-  rowTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: "#333" },
-  seeAllTxt: { fontSize: 12, color: "#009688", fontWeight: "600" },
+  rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
+  seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
   chip: {
-    backgroundColor: "#e0f2f1",
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 6,
-  },
-  chipTxt: { fontSize: 11, color: "#00695c", fontWeight: "600" },
+  backgroundColor: "#FFE6F0",   // soft pink
+  borderRadius: 18,
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  marginRight: 8,
+},
+chipTxt: {
+  fontSize: 12,
+  color: "#C2185B",
+  fontWeight: "700",
+},
   tile: {
-    marginRight: 8,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+   marginRight: 8,
+   backgroundColor: "#fff",
+   borderRadius: 14,             // ⬅ softer
+   padding: 8,
+   borderWidth: 0,
+   shadowColor: "#000",
+   shadowOpacity: 0.07,
+   shadowRadius: 8,
+   shadowOffset: { width: 0, height: 3 },
+   elevation: 3,
   },
   mosaicCard: {
-    width: MOSAIC_W,
-    height: MOSAIC_W,
-    borderRadius: 12,
-    backgroundColor: "#f5f5f5",
-    overflow: "hidden",
-    marginRight: G,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
-  },
+  width: MOSAIC_W,
+  height: MOSAIC_W,
+  borderRadius: 20,              // ⬅ more rounded
+  backgroundColor: "#ffffff",
+  overflow: "hidden",
+  marginRight: G,
+  flexDirection: "row",
+  flexWrap: "wrap",
+  borderWidth: 0,                // ⬅ remove harsh border
+  shadowColor: "#000",           // ⬅ soft shadow
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  elevation: 4,
+},
   mosaicImg: {
     width: "88%",
     height: "88%",
@@ -2278,15 +2448,16 @@ labelActive: { color: '#fff' },
   },
   mosaicDealTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
   cardLabel: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 4,
-  },
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 6,
+},
+
   badge: {
     marginRight: 4,
     borderRadius: 4,
@@ -2294,7 +2465,7 @@ labelActive: { color: '#fff' },
     paddingVertical: 1,
   },
   badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 12, fontWeight: "700", flex: 1 },
+  cardTitle: { color: "#fff", fontSize: 13, fontWeight: "800", flex: 1 },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -2402,13 +2573,13 @@ labelActive: { color: '#fff' },
   },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
   laneTitle: {
-    marginTop: 25,
-    marginBottom: 10,
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#333",
-    marginHorizontal: H,
-  },
+  marginTop: 28,
+  marginBottom: 12,
+  fontSize: 18,
+  fontWeight: "800",
+  color: "#222",
+  marginHorizontal: H,
+},
   seeAllRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2452,15 +2623,7 @@ labelActive: { color: '#fff' },
   reorderTitle: { fontSize: 16, fontWeight: "700", color: "#2f2f2f" },
   reorderDate: { fontSize: 12, color: "#777", fontWeight: "600" },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#e0f2f1",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
+
   pillStatus: { backgroundColor: "#26a69a" },
   pillText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   pillTextDark: { color: "#00695c", fontSize: 11, fontWeight: "700" },
@@ -2613,5 +2776,18 @@ searchFlex: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.05)",
+  },
+    searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+    profileBtn: {
+    marginLeft: 10,
+    padding: 4,
+  },
+   profileImg: {
+   width: 38,
+   height: 38,
+   borderRadius: 19,
   },
 });

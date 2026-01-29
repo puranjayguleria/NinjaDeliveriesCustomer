@@ -33,6 +33,7 @@ import { auth, firestore } from './firebase.native';
 // import auth from "@react-native-firebase/auth";
 // import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
 import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
@@ -73,6 +74,10 @@ import ContactUsScreen from "./screens/ContactUsScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
+import RoseBouquetScreen from "./screens/RoseBouquetScreen";
+import ValentineSpecialsScreen from "./screens/ValentineSpecialsScreen";
+import MakeBouquetScreen from "./screens/MakeBouquetScreen";
+import ProductDetailsScreen from "./screens/ProductDetailsScreen";
 import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
 import LeaderboardScreen from "./screens/LeaderBoardScreen";
@@ -245,7 +250,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           {
             text: "Log In",
             onPress: () =>
-              navigation.navigate("HomeTab", { screen: "LoginInHomeStack" }),
+              navigation.navigate("LoginInHomeStack"),
           },
         ]
       );
@@ -305,6 +310,26 @@ function HomeStack() {
       <Stack.Screen
         name="Search"
         component={SearchScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ValentineSpecials"
+        component={ValentineSpecialsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RoseBouquetScreen"
+        component={RoseBouquetScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="MakeBouquetScreen"
+        component={MakeBouquetScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ProductDetails"
+        component={ProductDetailsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -479,13 +504,19 @@ function AppTabs() {
             CategoriesTab: "apps-outline",
             FeaturedTab: "star-outline",
             CartFlow: "cart-outline",
-            Profile: "person-outline",
-            ContactUsTab: "call-outline",
           };
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "gray",
+            tabBarStyle: {
+              backgroundColor: "#ffffff",
+              borderTopWidth: 1,
+              borderTopColor: "#f0f0f0",
+              height: Platform.OS === "android" ? 60 : 85,
+              paddingBottom: Platform.OS === "android" ? 10 : 30,
+              elevation: 8,
+            },
             tabBarIcon: ({ color, size }) => (
               <View style={{ width: size, height: size }}>
                 <Ionicons
@@ -569,29 +600,6 @@ function AppTabs() {
               }
             },
           })}
-        />
-
-        {/* ⿥ Profile */}
-        <Tab.Screen
-          name="Profile"
-          component={ProfileStack}
-          options={{ title: "Profile" }}
-          listeners={({ navigation }) => ({
-            tabPress: (e) => {
-              if (!auth().currentUser) {
-                promptLogin(navigation, "Profile");
-                e.preventDefault();
-                // ...login prompt...
-              }
-            },
-          })}
-        />
-
-        {/* ⿦ Contact Us */}
-        <Tab.Screen
-          name="ContactUsTab"
-          component={ContactUsScreen}
-          options={{ title: "Contact Us" }}
         />
       </Tab.Navigator>
           </View>
@@ -762,10 +770,11 @@ const App: React.FC = () => {
     : "AppTabs";
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="dark" translucent backgroundColor="transparent" />
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style="dark" translucent backgroundColor="transparent" />
 
-      <CustomerProvider>
+        <CustomerProvider>
         <CartProvider>
           <RestaurantCartProvider>
 
@@ -782,6 +791,11 @@ const App: React.FC = () => {
                       name="TermsAndConditions"
                       component={TermsAndConditionsScreen}
                     />
+                    <RootStack.Screen
+                      name="MakeBouquetScreen"
+                      component={MakeBouquetScreen}
+                      options={{ headerShown: false }}
+                    />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
                       <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
                     <RootStack.Screen
@@ -794,6 +808,7 @@ const App: React.FC = () => {
                       component={ContactUsScreen}
                       options={{ title: "Contact Us", headerShown: true }}
                     />
+                    <RootStack.Screen name="Profile" component={ProfileStack} />
                     <RootStack.Screen
                       name="RewardScreen"
                       component={HiddenCouponCard}
@@ -848,7 +863,8 @@ const App: React.FC = () => {
         </View>
       </RNModal>
       <Toast />
-    </GestureHandlerRootView>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 };
 

@@ -7,6 +7,9 @@ import QuizBanner from "./QuizBanner";
 import SliderBanner from "./SliderBanner";
 import SalesBanner from "./SalesBanner";
 import Loader from "./VideoLoader";
+import ValentineBanner from "./ValentineBanner";
+import RoseBouquetBanner from "./RoseBouquetBanner";
+import ValentineSpecialSection from "./ValentineSpecialSection";
 
 interface BannerSwitcherProps {
   storeId: string;
@@ -53,27 +56,23 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
     );
   }
 
-  if (
-    !bannerConfig ||
-    (!bannerConfig.showQuiz &&
-      !bannerConfig.showSliderBanner &&
-      !bannerConfig.showSales)
-  ) {
-    return null; // No banners to show, avoid rendering space
-  }
+  const showOthers = bannerConfig && (bannerConfig.showQuiz || bannerConfig.showSliderBanner || bannerConfig.showSales);
 
   return (
     <View style={styles.container}>
-      {bannerConfig.showQuiz && <QuizBanner storeId={storeId} />}
-      {bannerConfig.showSliderBanner && <SliderBanner storeId={storeId} />}
-      {bannerConfig.showSales && <SalesBanner storeId={storeId} />}
+      <ValentineBanner />
+      <RoseBouquetBanner />
+      {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}
+      {bannerConfig?.showSliderBanner && <SliderBanner storeId={storeId} />}
+      <ValentineSpecialSection storeId={storeId} />
+      {bannerConfig?.showSales && <SalesBanner storeId={storeId} />}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   errorText: {
     color: "red",

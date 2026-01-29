@@ -55,10 +55,16 @@ const IMAGE_SIZE = 50;
 
 /********** COMPONENT **********/
 const ProductListingScreen: React.FC<Props> = () => {
+  /***** NAV / ROUTE / CONTEXT *****/
+  const navigation = useNavigation<ProductListingScreenNavigationProp>();
+  const route = useRoute<ProductListingScreenRouteProp>();
+  const { categoryId, searchQuery: initialQuery } = route.params || {};
+  const { location } = useLocationContext();
+
   /***** STATE *****/
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialQuery || "");
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
@@ -67,24 +73,20 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  /***** NAV / ROUTE / CONTEXT *****/
-  const navigation = useNavigation<ProductListingScreenNavigationProp>();
-  const route = useRoute<ProductListingScreenRouteProp>();
-  const { categoryId } = route.params || {};
-  const { location } = useLocationContext(); // ⬅️ NEW (storeId)
-
   /***** CART HOOKS *****/
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
-
-  /**********************************************************************
-   * EFFECT: fetch sub-cats (once) & products (whenever filters change)
-   *********************************************************************/
   useEffect(() => {
-    if (!categoryId || !location.storeId) return;
+    if (!location.storeId) return;
 
-    fetchSubcategories(categoryId, location.storeId);
-    fetchProducts(categoryId, selectedSubcategory, location.storeId);
-  }, [categoryId, selectedSubcategory, location.storeId]);
+    // If we have a categoryId, fetch by category
+    if (categoryId) {
+      fetchSubcategories(categoryId, location.storeId);
+      fetchProducts(categoryId, selectedSubcategory, location.storeId);
+    } else if (initialQuery) {
+      // If no categoryId but we have a search query, fetch products by keyword
+      fetchProductsByKeyword(initialQuery, location.storeId);
+    }
+  }, [categoryId, selectedSubcategory, location.storeId, initialQuery]);
 
   /**********************************************************************
    * EFFECT: search filter
@@ -155,6 +157,56 @@ const ProductListingScreen: React.FC<Props> = () => {
 
       setProducts(data);
       setFilteredProducts(data);
+    } catch {
+      Alert.alert("Error", "Failed to fetch products.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Fetch products by keyword/name search (when no categoryId is provided)
+   */
+  const fetchProductsByKeyword = async (keyword: string, storeId: string) => {
+    setLoading(true);
+    try {
+      // Fetch all products from the store and filter by keyword
+      const snap = await firestore()
+        .collection("products")
+        .where("storeId", "==", storeId)
+        .get();
+
+      const q = keyword.toLowerCase();
+      const data = snap.docs
+        .map((d) => {
+          const doc = d.data() as any;
+          const base = doc.discount ? doc.price - doc.discount : doc.price;
+          return {
+            id: d.id,
+            ...doc,
+            outOfStock: doc.quantity <= 0,
+            priceInclTax:
+              (base ?? 0) + (doc.CGST ?? 0) + (doc.SGST ?? 0) + (doc.cess ?? 0),
+          };
+        })
+        .filter((p) => {
+          const name = (p.name || p.title || "").toLowerCase();
+          const desc = (p.description || "").toLowerCase();
+          const keywords = Array.isArray(p.keywords)
+            ? p.keywords.map((k: string) => k.toLowerCase())
+            : [];
+          return (
+            name.includes(q) ||
+            desc.includes(q) ||
+            keywords.some((kw: string) => kw.includes(q))
+          );
+        })
+        .sort((a, b) => (b.discount || 0) - (a.discount || 0));
+
+      setProducts(data);
+      setFilteredProducts(data);
+      // Clear subcategories since we're doing keyword search
+      setSubcategories([]);
     } catch {
       Alert.alert("Error", "Failed to fetch products.");
     } finally {

@@ -43,6 +43,7 @@ import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
 import { useWeather } from "../context/WeatherContext"; // adjust path if needed
+import { VALENTINE_PRODUCTS, SPECIAL_OFFERS } from "@/constants/ValentineProducts";
 
 /**
  * Returns true if the current time is inside the delivery window.
@@ -556,6 +557,13 @@ useEffect(() => {
             }
           }
         });
+      });
+
+      // Merge local Valentine products if they are in the cart
+      [...VALENTINE_PRODUCTS, ...SPECIAL_OFFERS].forEach((item) => {
+        if (cart[item.id] && !productsData.some((p) => p.id === item.id)) {
+          productsData.push(item);
+        }
       });
 
       // Filter to only items with quantity > 0 in cart

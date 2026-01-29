@@ -414,7 +414,7 @@ export default function SearchScreen() {
                       onPress={() =>
                         maybeGate(
                           () =>
-                            nav.navigate("ProductListing", {
+                            nav.navigate("ProductListingFromHome", {
                               categoryId: section.category.id,
                               subcategoryId: sub.id,
                               categoryName: section.category.name,

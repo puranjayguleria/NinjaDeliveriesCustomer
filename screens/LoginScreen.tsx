@@ -44,12 +44,23 @@ const LoginScreen: React.FC = () => {
     setErrorModalVisible(false);
   };
 
-  // Format phone number with +91 prefix
+  // Format phone number with +91 prefix and ensure E.164 compliance
   const formatPhoneNumber = (number: string) => {
-    if (!number.startsWith("+91")) {
-      return `+91${number}`;
+    const clean = number.trim();
+    // If user typed "+91 999...", remove spaces/dashes but keep +
+    if (clean.startsWith("+")) {
+      return clean.replace(/[\s-()]/g, "");
     }
-    return number;
+    // If user typed "9999999999", remove everything else and add +91
+    const digits = clean.replace(/\D/g, "");
+    if (digits.length === 10) {
+      return `+91${digits}`;
+    }
+    if (digits.length === 12 && digits.startsWith("91")) {
+      return `+${digits}`;
+    }
+    // Fallback
+    return `+91${digits}`;
   };
 
   // Register for push notifications

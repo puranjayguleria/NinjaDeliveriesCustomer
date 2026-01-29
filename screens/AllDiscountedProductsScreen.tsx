@@ -30,8 +30,8 @@ const FIRST_ROW_HEIGHT = 200;
 const ITEM_WIDTH = (SCREEN_WIDTH - ITEM_SPACING * 4) / 3; // 3 items with equal padding
 
 const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
-  const { storeId } = route.params;
   const { location, updateLocation } = useLocationContext();
+  const storeId = location.storeId;
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,11 +130,10 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         // ✅ Remove duplicates by ID
         setProducts((prev) => {
           const combined = loadMore ? [...prev, ...newProducts] : newProducts;
-          const unique = combined.filter(
+          return combined.filter(
             (item, index, self) =>
               index === self.findIndex((p) => p.id === item.id)
           );
-          return unique;
         });
 
         setLastVisible(snapshot.docs[snapshot.docs.length - 1]);

@@ -75,7 +75,21 @@ const TermsAndConditionsScreen: React.FC = () => {
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: "Login" }],
+            routes: [
+              {
+                name: "AppTabs",
+                state: {
+                  routes: [
+                    {
+                      name: "HomeTab",
+                      state: {
+                        routes: [{ name: "LoginInHomeStack" }],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
           })
         );
       }
@@ -132,7 +146,21 @@ const TermsAndConditionsScreen: React.FC = () => {
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: "Login" }],
+          routes: [
+            {
+              name: "AppTabs",
+              state: {
+                routes: [
+                  {
+                    name: "HomeTab",
+                    state: {
+                      routes: [{ name: "LoginInHomeStack" }],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
         })
       );
     } catch (error: any) {
