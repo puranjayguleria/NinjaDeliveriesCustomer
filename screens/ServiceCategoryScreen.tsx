@@ -50,10 +50,8 @@ export default function ServiceCategoryScreen() {
       setIssues(issuesWithOther);
     } catch (error) {
       console.error('Error fetching service issues:', error);
-      // Fallback to demo data if needed
-      setIssues([
-        { id: 'other', name: 'Other Issue', categoryMasterId: categoryId, isActive: true }
-      ]);
+      // Set empty array on error - no demo data
+      setIssues([]);
     } finally {
       setLoading(false);
     }

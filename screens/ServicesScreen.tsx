@@ -10,11 +10,13 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
+  Alert,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory } from '../services/firestoreService';
+import { FirebaseConnectionTest } from '../utils/testFirebaseConnection';
 
 const { width } = Dimensions.get('window');
 
@@ -247,11 +249,11 @@ export default function ServicesScreen() {
       setLoading(true);
       setError(null);
       const categories = await FirestoreService.getServiceCategories();
-      setServiceCategories(categories || []); // Ensure it's always an array
+      setServiceCategories(categories || []);
     } catch (error) {
       console.error('Error fetching service categories:', error);
-      setError('Failed to load services. Please try again.');
-      setServiceCategories([]); // Set empty array on error
+      setError('Failed to load services. Please check your internet connection and try again.');
+      setServiceCategories([]);
     } finally {
       setLoading(false);
     }
@@ -303,6 +305,17 @@ export default function ServicesScreen() {
 
   const clearSearch = () => {
     setSearchQuery('');
+  };
+
+  // Test Firebase connection
+  const testFirebaseConnection = async () => {
+    try {
+      Alert.alert("Testing Firebase", "Testing connection to service_bookings collection...");
+      await FirebaseConnectionTest.runAllTests();
+      Alert.alert("Success!", "Firebase connection test passed! Check console for details.");
+    } catch (error) {
+      Alert.alert("Error", "Firebase connection test failed. Check console for details.");
+    }
   };
 
   // Data slices with null checks
@@ -417,6 +430,16 @@ export default function ServicesScreen() {
                 Trusted experts at your doorstep
               </Text>
             </View>
+            
+            {/* Test Firebase Button - Remove in production */}
+            {__DEV__ && (
+              <TouchableOpacity 
+                style={styles.testButton}
+                onPress={testFirebaseConnection}
+              >
+                <Text style={styles.testButtonText}>Test DB</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -732,6 +755,21 @@ const styles = StyleSheet.create({
   },
 
   badgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Test button styles (development only)
+  testButton: {
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+
+  testButtonText: {
     color: "white",
     fontSize: 12,
     fontWeight: "600",

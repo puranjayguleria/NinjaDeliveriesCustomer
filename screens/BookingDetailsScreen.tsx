@@ -128,16 +128,6 @@ export default function BookingDetailsScreen() {
               activeOpacity={0.9}
               onPress={() => navigation.navigate("TrackBooking", {
                 bookingId: extractedData.bookingId,
-                serviceTitle: extractedData.serviceTitle,
-                selectedDate: extractedData.date,
-                selectedTime: extractedData.time,
-                company: extractedData.company,
-                agency: extractedData.agency,
-                issues: extractedData.issues,
-                totalPrice: extractedData.amount,
-                bookingType: "electrician", // Can be made dynamic
-                paymentMethod: extractedData.paymentMethod,
-                notes: "",
               })}
             >
               <Text style={styles.trackText}>📍 Track Booking</Text>

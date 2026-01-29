@@ -44,6 +44,7 @@ export default function CompanySelectionScreen() {
       setCompanies(fetchedCompanies);
     } catch (error) {
       console.error('Error fetching service companies:', error);
+      setCompanies([]);
     } finally {
       setLoading(false);
     }
