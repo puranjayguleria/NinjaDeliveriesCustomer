@@ -420,6 +420,19 @@ export default function ServicesScreen() {
                 Trusted experts at your doorstep
               </Text>
             </View>
+            
+            {/* Debug button for development */}
+            {__DEV__ && (
+              <TouchableOpacity 
+                style={styles.debugButton}
+                onPress={async () => {
+                  await FirestoreService.debugAppServicesData();
+                  Alert.alert('Debug Complete', 'Check console for app_services data');
+                }}
+              >
+                <Text style={styles.debugButtonText}>Debug Data</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -735,6 +748,21 @@ const styles = StyleSheet.create({
   },
 
   badgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Debug button for development
+  debugButton: {
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+
+  debugButtonText: {
     color: "white",
     fontSize: 12,
     fontWeight: "600",

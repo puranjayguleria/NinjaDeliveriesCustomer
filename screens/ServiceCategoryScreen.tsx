@@ -35,7 +35,7 @@ export default function ServiceCategoryScreen() {
     try {
       setLoading(true);
       
-      console.log('Fetching services for category:', categoryId);
+      console.log('Fetching services with companies for category:', categoryId);
 
       if (!categoryId) {
         console.error('No categoryId provided');
@@ -50,9 +50,10 @@ export default function ServiceCategoryScreen() {
         return;
       }
 
-      const fetchedIssues = await FirestoreService.getServiceIssues(categoryId);
+      // Use the new method that fetches services with company info
+      const fetchedIssues = await FirestoreService.getServicesWithCompanies(categoryId);
       
-      console.log(`Found ${fetchedIssues.length} services for category ${categoryId}`);
+      console.log(`Found ${fetchedIssues.length} services with companies for category ${categoryId}`);
       
       // Add "Other Issue" option at the end
       const issuesWithOther = [
@@ -68,7 +69,7 @@ export default function ServiceCategoryScreen() {
       setIssues(issuesWithOther);
       
     } catch (error) {
-      console.error('Error fetching service issues:', error);
+      console.error('Error fetching services with companies:', error);
       
       // Set only "Other Issue" on error
       setIssues([
