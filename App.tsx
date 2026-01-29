@@ -17,6 +17,7 @@ import {
   Alert,
   AppState,
   Modal as RNModal,
+  Image,
 } from "react-native";
 import {
   NavigationContainer,
@@ -460,6 +461,8 @@ function AppTabs() {
   // Cart selection modal state
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
+  const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -556,10 +559,14 @@ function AppTabs() {
   const handleSelectServices = () => {
     setCartModalVisible(false);
     if (pendingNavigation) {
-      // Navigate to services tab and then to service cart
-      pendingNavigation.navigate("ServicesTab", { 
-        screen: "ServiceCart" 
-      });
+      // Show loader briefly, then navigate to services tab and service cart
+      setServiceLoaderVisible(true);
+      setTimeout(() => {
+        pendingNavigation.navigate("ServicesTab", { 
+          screen: "ServiceCart" 
+        });
+        setServiceLoaderVisible(false);
+      }, 500);
     }
     setPendingNavigation(null);
   };
@@ -696,21 +703,27 @@ function AppTabs() {
           }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              // Reset services stack to home screen when tab is pressed
-              if (route.state && route.state.index > 0) {
-                e.preventDefault();
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "ServicesTab",
-                        state: { routes: [{ name: "ServicesHome" }] },
-                      },
-                    ],
-                  })
-                );
-              }
+              // Show the service loader, then reset or navigate after a short delay
+              e.preventDefault();
+              setServiceLoaderVisible(true);
+              setTimeout(() => {
+                if (route.state && route.state.index > 0) {
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "ServicesTab",
+                          state: { routes: [{ name: "ServicesHome" }] },
+                        },
+                      ],
+                    })
+                  );
+                } else {
+                  navigation.navigate("ServicesTab");
+                }
+                setServiceLoaderVisible(false);
+              }, 900);
             },
           })}
         />
@@ -770,6 +783,17 @@ function AppTabs() {
         />
       </Tab.Navigator>
       
+      {/* Service Loader Modal */}
+      <RNModal visible={serviceLoaderVisible} transparent animationType="fade">
+        <View style={styles.serviceLoaderOverlay}>
+          <Image
+            source={require("./assets/ninjaServiceLoader.gif")}
+            style={styles.serviceLoaderImage}
+            resizeMode="contain"
+          />
+        </View>
+      </RNModal>
+
       {/* Cart Selection Modal */}
       <CartSelectionModal
         visible={cartModalVisible}
@@ -1052,6 +1076,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+
+  serviceLoaderOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  serviceLoaderImage: {
+    width: 160,
+    height: 160,
+  },
 
   inProgressBar: {
     position: "absolute",

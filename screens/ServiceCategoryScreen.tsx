@@ -110,11 +110,14 @@ export default function ServiceCategoryScreen() {
     }
 
     // ✅ FIRST go to company selection
+    const selectedIssuesObjects = issues.filter(i => selectedIds.includes(i.id));
+
     navigation.navigate("CompanySelection", {
       serviceTitle,
       categoryId,
       issues: selectedIssueTitles,
       selectedIssueIds: selectedIds, // Pass the actual issue IDs
+      selectedIssues: selectedIssuesObjects, // pass actual issue objects (with price)
     });
   };
 

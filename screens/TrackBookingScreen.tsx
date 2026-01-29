@@ -529,21 +529,38 @@ export default function TrackBookingScreen() {
 
         {/* Current Status */}
         <View style={styles.statusCard}>
-          <Text style={styles.statusTitle}>Current Status</Text>
+          <View style={styles.statusHeader}>
+            <View style={styles.statusLeft}>
+              <View style={styles.statusIconBG}>
+                <Ionicons name="construct" size={18} color="#fff" />
+              </View>
+              <Text style={styles.statusTitle}>Current Status</Text>
+            </View>
+
+            <View style={[styles.statusBadgeSmall, currentStatus === "completed" ? { backgroundColor: "#10B981" } : currentStatus === "cancelled" ? { backgroundColor: "#EF4444" } : { backgroundColor: "#3B82F6" }]}>
+              <Text style={styles.statusBadgeText}>{currentStatus === "completed" ? "Completed" : currentStatus === "cancelled" ? "Cancelled" : currentStatus.replace(/_/g, ' ').toUpperCase()}</Text>
+            </View>
+          </View>
+
           <Text style={styles.statusMessage}>{statusMessage}</Text>
-          
+
           {/* Show countdown for future bookings */}
           {showCountdown && (
             <View style={styles.countdownContainer}>
-              <Ionicons name="calendar-outline" size={20} color="#6B7280" />
+              <Ionicons name="calendar-outline" size={18} color="#92400E" />
               <Text style={styles.countdownText}>
-                Booking scheduled for {selectedDate} at {selectedTime.split(' - ')[0]}
+                Booking scheduled for {selectedDate} • {selectedTime.split(' - ')[0]}
               </Text>
             </View>
           )}
-          
-          {/* Progress Bar */}
-          <View style={styles.progressContainer}>
+
+          {/* Progress Row */}
+          <View style={styles.progressWrap}>
+            <View style={styles.progressRow}>
+              <Text style={styles.progressLabel}>Progress</Text>
+              <Text style={styles.progressTextSmall}>{progressPercentage}%</Text>
+            </View>
+
             <View style={styles.progressBar}>
               <Animated.View 
                 style={[
@@ -557,13 +574,19 @@ export default function TrackBookingScreen() {
                 ]} 
               />
             </View>
-            <Text style={styles.progressText}>{progressPercentage}% Complete</Text>
           </View>
-          
+
           {currentStatus === "on_the_way" && (
             <View style={styles.etaContainer}>
-              <Ionicons name="time-outline" size={20} color="#3B82F6" />
-              <Text style={styles.etaText}>Estimated arrival: {selectedTime.split(' - ')[0]}</Text>
+              <Ionicons name="time-outline" size={18} color="#3B82F6" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={styles.etaText}>Estimated arrival</Text>
+                <Text style={styles.etaTime}>{selectedTime.split(' - ')[0]}</Text>
+              </View>
+
+              <TouchableOpacity style={styles.callTechBtn} onPress={handleCallTechnician}>
+                <Ionicons name="call" size={16} color="#fff" />
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -779,42 +802,87 @@ const styles = StyleSheet.create({
   },
   statusTitle: {
     fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 8,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  statusHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statusLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusIconBG: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#3B82F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  statusBadgeSmall: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  statusBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
   statusMessage: {
-    fontSize: 14,
-    color: "#6B7280",
-    lineHeight: 20,
+    fontSize: 15,
+    color: "#374151",
+    lineHeight: 22,
+    marginBottom: 12,
   },
   countdownContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 12,
-    padding: 12,
+    marginTop: 10,
+    padding:18,
     backgroundColor: "#FEF3C7",
-    borderRadius: 8,
+    borderRadius: 12,
+    marginBottom: 14,
   },
   countdownText: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#92400E",
-    fontWeight: "500",
+    fontWeight: "600",
+    marginLeft: 8,
   },
-  progressContainer: {
-    marginTop: 16,
+  progressWrap: {
+    marginTop: 6,
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  progressTextSmall: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "700",
   },
   progressBar: {
-    height: 6,
+    height: 8,
     backgroundColor: "#E5E7EB",
-    borderRadius: 3,
+    borderRadius: 8,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     backgroundColor: "#10B981",
-    borderRadius: 3,
+    borderRadius: 8,
   },
   progressText: {
     fontSize: 12,
@@ -825,16 +893,26 @@ const styles = StyleSheet.create({
   etaContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     marginTop: 12,
     padding: 12,
     backgroundColor: "#EBF8FF",
     borderRadius: 8,
   },
   etaText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#3B82F6",
     fontWeight: "500",
+  },
+  etaTime: {
+    fontSize: 15,
+    color: "#0F172A",
+    fontWeight: "700",
+  },
+  callTechBtn: {
+    marginLeft: "auto",
+    backgroundColor: "#10B981",
+    padding: 8,
+    borderRadius: 10,
   },
   timelineCard: {
     backgroundColor: "white",

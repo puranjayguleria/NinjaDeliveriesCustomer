@@ -18,7 +18,7 @@ export default function CompanySelectionScreen() {
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
@@ -57,10 +57,13 @@ export default function CompanySelectionScreen() {
     navigation.navigate("SelectDateTime", {
       serviceTitle,
       categoryId,
-      issues,
+      // Keep the existing `issues` (names) for backward compatibility but also pass the full objects
+      issues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name) : issues,
+      selectedIssues: selectedIssues || [],
       company: selectedCompany,
+      selectedIssueIds,
     });
-  };
+  }; 
 
   return (
     <View style={styles.container}>

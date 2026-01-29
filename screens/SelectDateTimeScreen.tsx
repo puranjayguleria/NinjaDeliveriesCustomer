@@ -20,7 +20,12 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { serviceTitle, issues, company } = route.params;
+  const { serviceTitle, issues, selectedIssues, company } = route.params;
+
+  // Calculate price from selected issue objects (they include optional `price`)
+  const issueTotalPrice = Array.isArray(selectedIssues)
+    ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
+    : 0;
 
   const [time, setTime] = useState("1:00 PM - 3:00 PM");
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -227,6 +232,8 @@ const dates = getNext7Days();
             else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
             // Add service to cart
+            const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (company?.price || 99);
+
             addService({
               serviceTitle,
               issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
@@ -234,7 +241,7 @@ const dates = getNext7Days();
               selectedDate: selected?.full || selectedDate,
               selectedTime: time,
               bookingType,
-              totalPrice: company?.price || 99,
+              totalPrice: computedPrice,
             });
 
             Alert.alert(
