@@ -2,44 +2,48 @@ import { ServiceBooking } from '../services/firestoreService';
 
 /**
  * Utility functions for managing service bookings
+ * Matches website status flow: pending → assigned → started → completed
  */
 export class BookingUtils {
   
   /**
-   * Get status color for booking status
+   * Get status color for booking status (matches website)
    */
   static getStatusColor(status: ServiceBooking['status']): string {
     switch (status) {
       case 'pending':
-        return '#F59E0B'; // Orange
-      case 'confirmed':
-        return '#3B82F6'; // Blue
-      case 'in-progress':
-        return '#8B5CF6'; // Purple
+        return '#F59E0B'; // Orange - waiting for assignment
+      case 'assigned':
+        return '#3B82F6'; // Blue - technician assigned
+      case 'started':
+        return '#8B5CF6'; // Purple - work in progress
       case 'completed':
-        return '#10B981'; // Green
-      case 'cancelled':
-        return '#EF4444'; // Red
+        return '#10B981'; // Green - work finished
+      case 'rejected':
+      case 'expired':
+        return '#EF4444'; // Red - cancelled/expired
       default:
         return '#6B7280'; // Gray
     }
   }
 
   /**
-   * Get status display text
+   * Get status display text (matches website)
    */
   static getStatusText(status: ServiceBooking['status']): string {
     switch (status) {
       case 'pending':
         return 'Pending';
-      case 'confirmed':
-        return 'Confirmed';
-      case 'in-progress':
-        return 'In Progress';
+      case 'assigned':
+        return 'Assigned';
+      case 'started':
+        return 'Started';
       case 'completed':
         return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
+      case 'rejected':
+        return 'Rejected';
+      case 'expired':
+        return 'Expired';
       default:
         return 'Unknown';
     }
@@ -49,14 +53,34 @@ export class BookingUtils {
    * Check if booking can be cancelled
    */
   static canCancelBooking(status: ServiceBooking['status']): boolean {
-    return status === 'pending' || status === 'confirmed';
+    return status === 'pending' || status === 'assigned';
   }
 
   /**
-   * Check if booking is active (not completed or cancelled)
+   * Check if booking is active (not completed, rejected, or expired)
    */
   static isActiveBooking(status: ServiceBooking['status']): boolean {
-    return status !== 'completed' && status !== 'cancelled';
+    return !['completed', 'rejected', 'expired'].includes(status);
+  }
+
+  /**
+   * Get next possible status transitions (matches website workflow)
+   */
+  static getNextStatus(currentStatus: ServiceBooking['status']): ServiceBooking['status'][] {
+    switch (currentStatus) {
+      case 'pending':
+        return ['assigned', 'rejected', 'expired'];
+      case 'assigned':
+        return ['started', 'rejected'];
+      case 'started':
+        return ['completed'];
+      case 'completed':
+      case 'rejected':
+      case 'expired':
+        return []; // Terminal states
+      default:
+        return [];
+    }
   }
 
   /**
@@ -94,6 +118,49 @@ export class BookingUtils {
       return `${displayHour}:${minutes} ${ampm}`;
     } catch (error) {
       return timeString;
+    }
+  }
+
+  /**
+   * Calculate booking progress percentage based on status
+   */
+  static getProgressPercentage(status: ServiceBooking['status']): number {
+    switch (status) {
+      case 'pending':
+        return 10;
+      case 'assigned':
+        return 25;
+      case 'started':
+        return 75;
+      case 'completed':
+        return 100;
+      case 'rejected':
+      case 'expired':
+        return 0;
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Get status message for display
+   */
+  static getStatusMessage(booking: ServiceBooking): string {
+    switch (booking.status) {
+      case 'pending':
+        return `Your ${booking.serviceName} booking is confirmed. We're looking for a technician.`;
+      case 'assigned':
+        return `${booking.technicianName || 'A technician'} has been assigned to your booking.`;
+      case 'started':
+        return `Service work is currently in progress. ${booking.technicianName || 'The technician'} is working on your issues.`;
+      case 'completed':
+        return 'Your service has been completed successfully. Thank you for choosing our service!';
+      case 'rejected':
+        return 'This booking has been rejected. Please contact support for assistance.';
+      case 'expired':
+        return 'This booking has expired. Please create a new booking if you still need the service.';
+      default:
+        return 'Booking status unknown. Please contact support.';
     }
   }
 }

@@ -28,22 +28,39 @@ export default function CompanySelectionScreen() {
   const fetchServiceCompanies = async () => {
     try {
       setLoading(true);
+      console.log('🏢 Fetching companies for:', { serviceTitle, categoryId, selectedIssueIds });
+      
       let fetchedCompanies: ServiceCompany[];
       
       if (selectedIssueIds && selectedIssueIds.length > 0) {
+        console.log('🏢 Fetching companies by selected issue IDs:', selectedIssueIds);
         // Fetch companies that provide the specific selected services
         fetchedCompanies = await FirestoreService.getCompaniesByServiceIssues(selectedIssueIds);
       } else if (categoryId) {
+        console.log('🏢 Fetching companies by category ID:', categoryId);
         // Fetch companies that provide services in this category
         fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
       } else {
+        console.log('🏢 Fetching all companies as fallback');
         // Fallback to all companies
         fetchedCompanies = await FirestoreService.getServiceCompanies();
       }
       
+      console.log(`🏢 Found ${fetchedCompanies.length} companies:`, 
+        fetchedCompanies.map(c => ({ 
+          id: c.id, 
+          companyName: c.companyName,
+          serviceName: c.serviceName, 
+          price: c.price, 
+          serviceType: c.serviceType,
+          companyId: c.companyId,
+          isActive: c.isActive 
+        }))
+      );
+      
       setCompanies(fetchedCompanies);
     } catch (error) {
-      console.error('Error fetching service companies:', error);
+      console.error('❌ Error fetching service companies:', error);
       setCompanies([]);
     } finally {
       setLoading(false);
@@ -119,14 +136,18 @@ export default function CompanySelectionScreen() {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No Service Providers Found</Text>
           <Text style={styles.emptyText}>
-            No companies currently provide the selected services in your area. 
-            Please try selecting different services or contact support.
+            No companies currently provide the selected services in your area. This could be because:
+            {'\n'}• No providers are registered for these services
+            {'\n'}• All providers are currently inactive
+            {'\n'}• Services exist but categoryMasterId doesn't match
+            {'\n'}
+            {'\n'}Please try selecting different services or contact support for assistance.
           </Text>
           <TouchableOpacity 
             style={styles.retryButton}
             onPress={() => fetchServiceCompanies()}
           >
-            <Text style={styles.retryText}>Retry</Text>
+            <Text style={styles.retryText}>Retry Loading</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -145,26 +166,92 @@ export default function CompanySelectionScreen() {
                 <View style={styles.cardHeader}>
                   <View style={styles.cardLeft}>
                     <View style={styles.nameRow}>
-                      <Text style={styles.companyName}>{item.companyName}</Text>
+                      <Text style={styles.companyName}>{item.companyName || item.serviceName}</Text>
                       {item.isActive && (
                         <View style={styles.verifiedBadge}>
-                          <Text style={styles.verifiedText}>✓ Active</Text>
+                          <Text style={styles.verifiedText}>✓ Verified</Text>
                         </View>
                       )}
                     </View>
                     
-                    <View style={styles.ownerRow}>
-                      <Text style={styles.ownerName}>Owner: {item.ownerName}</Text>
+                    {/* Show Selected Services */}
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Selected Services:</Text>
+                      <Text style={styles.detailValue}>
+                        {Array.isArray(issues) ? issues.join(', ') : 'Service selected'}
+                      </Text>
                     </View>
                     
-                    <View style={styles.contactRow}>
-                      <Text style={styles.phone}>📞 {item.phone}</Text>
-                      <Text style={styles.zone}>📍 {item.deliveryZoneName}</Text>
-                    </View>
+                    {/* Price */}
+                    {item.price && (
+                      <View style={styles.priceRow}>
+                        <Text style={styles.priceLabel}>Starting Price:</Text>
+                        <Text style={styles.price}>₹{item.price}</Text>
+                      </View>
+                    )}
                     
-                    <View style={styles.businessRow}>
-                      <Text style={styles.businessType}>Service Type: {item.businessType}</Text>
-                    </View>
+                    {/* Packages if available */}
+                    {item.packages && Array.isArray(item.packages) && item.packages.length > 0 && (
+                      <View style={styles.packagesRow}>
+                        <Text style={styles.detailLabel}>Available Packages:</Text>
+                        <View style={styles.packagesList}>
+                          {item.packages.slice(0, 2).map((pkg: any, index: number) => (
+                            <View key={index} style={styles.packageTag}>
+                              <Text style={styles.packageText}>
+                                {typeof pkg === 'string' ? pkg : pkg.name || `Package ${index + 1}`}
+                              </Text>
+                            </View>
+                          ))}
+                          {item.packages.length > 2 && (
+                            <Text style={styles.morePackages}>+{item.packages.length - 2} more</Text>
+                          )}
+                        </View>
+                      </View>
+                    )}
+                    
+                    {/* Description if available */}
+                    {item.description && (
+                      <View style={styles.descriptionRow}>
+                        <Text style={styles.detailLabel}>Description:</Text>
+                        <Text style={styles.descriptionText} numberOfLines={2}>
+                          {item.description}
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {/* Rating and Reviews if available */}
+                    {(item.rating || item.reviewCount) && (
+                      <View style={styles.ratingRow}>
+                        {item.rating && (
+                          <View style={styles.ratingContainer}>
+                            <Text style={styles.ratingText}>⭐ {item.rating.toFixed(1)}</Text>
+                          </View>
+                        )}
+                        {item.reviewCount && (
+                          <Text style={styles.reviewCount}>({item.reviewCount} reviews)</Text>
+                        )}
+                      </View>
+                    )}
+                    
+                    {/* Contact Info if available */}
+                    {item.contactInfo && (item.contactInfo.phone || item.contactInfo.email) && (
+                      <View style={styles.contactRow}>
+                        {item.contactInfo.phone && (
+                          <Text style={styles.contactText}>📞 {item.contactInfo.phone}</Text>
+                        )}
+                        {item.contactInfo.email && (
+                          <Text style={styles.contactText}>✉️ {item.contactInfo.email}</Text>
+                        )}
+                      </View>
+                    )}
+                    
+                    {/* Availability if available */}
+                    {item.availability && (
+                      <View style={styles.availabilityRow}>
+                        <Text style={styles.detailLabel}>Available:</Text>
+                        <Text style={styles.availabilityText}>{item.availability}</Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.cardRight}>
@@ -191,8 +278,15 @@ export default function CompanySelectionScreen() {
       {selectedCompany && (
         <View style={styles.bottomBar}>
           <View style={styles.selectedInfo}>
-            <Text style={styles.selectedCompanyName}>{selectedCompany.companyName}</Text>
-            <Text style={styles.selectedDetails}>Owner: {selectedCompany.ownerName} • {selectedCompany.phone}</Text>
+            <Text style={styles.selectedCompanyName}>{selectedCompany.companyName || selectedCompany.serviceName}</Text>
+            <View style={styles.selectedDetailsRow}>
+              {selectedCompany.serviceType && (
+                <Text style={styles.selectedDetail}>{selectedCompany.serviceType}</Text>
+              )}
+              {selectedCompany.price && (
+                <Text style={styles.selectedPrice}>₹{selectedCompany.price}</Text>
+              )}
+            </View>
           </View>
           
           <TouchableOpacity
@@ -440,16 +534,166 @@ const styles = StyleSheet.create({
     textTransform: "capitalize",
   },
 
+  // New enhanced styles for service_services collection fields
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    flexWrap: "wrap",
+  },
+
+  detailLabel: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+    marginRight: 8,
+    minWidth: 80,
+  },
+
+  detailValue: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "500",
+    textTransform: "capitalize",
+    flex: 1,
+  },
+
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 8,
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+  },
+
+  priceLabel: {
+    fontSize: 13,
+    color: "#0369a1",
+    fontWeight: "500",
+    marginRight: 8,
   },
 
   price: {
-    fontSize: 20,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0c4a6e",
+    letterSpacing: -0.2,
+  },
+
+  packagesRow: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  packagesList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 6,
+    gap: 6,
+  },
+
+  packageTag: {
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+
+  packageText: {
+    fontSize: 11,
+    color: "#92400e",
+    fontWeight: "500",
+  },
+
+  morePackages: {
+    fontSize: 11,
+    color: "#64748b",
+    fontWeight: "500",
+    fontStyle: "italic",
+    alignSelf: "center",
+    marginLeft: 4,
+  },
+
+  descriptionRow: {
+    marginTop: 8,
+    marginBottom: 6,
+  },
+
+  descriptionText: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "400",
+    lineHeight: 18,
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 6,
+  },
+
+  ratingContainer: {
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+
+  ratingText: {
+    fontSize: 12,
+    color: "#92400e",
     fontWeight: "600",
-    color: "#0f172a",
-    letterSpacing: -0.3,
+  },
+
+  reviewCount: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  contactRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 6,
+    marginBottom: 6,
+    gap: 12,
+  },
+
+  contactText: {
+    fontSize: 12,
+    color: "#374151",
+    fontWeight: "500",
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+
+  availabilityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 4,
+  },
+
+  availabilityText: {
+    fontSize: 13,
+    color: "#059669",
+    fontWeight: "600",
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
 
   time: {
@@ -535,22 +779,31 @@ const styles = StyleSheet.create({
 
   selectedCompanyName: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#0f172a",
     letterSpacing: -0.2,
     marginBottom: 4,
   },
 
-  selectedPrice: {
-    fontSize: 14,
-    color: "#64748b",
-    fontWeight: "400",
+  selectedDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
   },
 
-  selectedDetails: {
-    fontSize: 14,
+  selectedDetail: {
+    fontSize: 13,
     color: "#64748b",
-    fontWeight: "400",
+    fontWeight: "500",
+    marginRight: 12,
+    textTransform: "capitalize",
+  },
+
+  selectedPrice: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#059669",
+    letterSpacing: -0.1,
   },
 
   // Loading states

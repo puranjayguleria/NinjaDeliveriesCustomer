@@ -64,13 +64,13 @@ export default function BookingHistoryScreen() {
         activeOpacity={0.7}
         onPress={() => navigation.navigate("TrackBooking", {
           bookingId: item.id,
-          serviceTitle: `${item.serviceName} - ${item.workName}`,
+          serviceTitle: item.serviceName,
           selectedDate: formattedDate,
           selectedTime: formattedTime,
-          company: { name: item.customerName }, // You might want to fetch company details
-          issues: item.workName.split(', '),
-          totalPrice: 299, // You might want to add price to booking data
-          bookingType: item.serviceName.toLowerCase(),
+          company: { name: item.technicianName || "Service Provider" },
+          issues: [item.workName],
+          totalPrice: item.totalPrice || 0,
+          bookingType: "service",
           paymentMethod: "cash",
           notes: item.workName,
         })}
@@ -100,6 +100,10 @@ export default function BookingHistoryScreen() {
             </View>
             
             <Text style={styles.bookingId}>Booking ID: {item.id?.substring(0, 8)}...</Text>
+            
+            {item.totalPrice && (
+              <Text style={styles.price}>₹{item.totalPrice}</Text>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -273,6 +277,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#999",
     fontStyle: "italic",
+  },
+
+  price: {
+    fontSize: 14,
+    color: "#10B981",
+    fontWeight: "700",
+    marginTop: 4,
   },
 
   // Loading states
