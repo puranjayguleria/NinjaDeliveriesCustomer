@@ -54,6 +54,7 @@ console.log('[RNFB] Native apps constant', NativeModules.RNFBAppModule?.NATIVE_F
 import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider } from "./context/LocationContext";
+import { useLocationContext } from "./context/LocationContext";
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
@@ -72,6 +73,7 @@ import CartPaymentScreen from "./screens/CartPaymentScreen";
 import TestPaymentScreen from "./screens/TestPaymentScreen";
 import UnifiedCartScreen from "./screens/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
+import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
 import RazorpayWebView from "./screens/RazorpayWebView";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
@@ -452,6 +454,7 @@ const ProfileStack = () => (
 function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
+  const { location } = useLocationContext(); // Add location context
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
@@ -463,6 +466,8 @@ function AppTabs() {
   const [pendingNavigation, setPendingNavigation] = useState<any>(null);
   // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
+  // Services unavailable modal state
+  const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -703,11 +708,29 @@ function AppTabs() {
           }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              // Show the service loader, then reset or navigate after a short delay
+              // Check if user is in Tanda location or other restricted locations
+              // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
+              const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
+              
+              // Debug: Log current storeId to help identify location
+              console.log("[Services Tab] Current storeId:", location?.storeId);
+              console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
+              console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
+              
+              if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
+                e.preventDefault();
+                setServicesUnavailableModalVisible(true);
+                return;
+              }
+              
+              // For non-restricted locations, show the service loader, then reset or navigate after a short delay
               e.preventDefault();
+              console.log("[Services Tab] Showing service loader for non-restricted location");
               setServiceLoaderVisible(true);
               setTimeout(() => {
+                console.log("[Services Tab] Loader timeout completed, navigating...");
                 if (route.state && route.state.index > 0) {
+                  console.log("[Services Tab] Resetting navigation stack");
                   navigation.dispatch(
                     CommonActions.reset({
                       index: 0,
@@ -720,8 +743,10 @@ function AppTabs() {
                     })
                   );
                 } else {
+                  console.log("[Services Tab] Navigating to ServicesTab");
                   navigation.navigate("ServicesTab");
                 }
+                console.log("[Services Tab] Hiding service loader");
                 setServiceLoaderVisible(false);
               }, 900);
             },
@@ -793,6 +818,12 @@ function AppTabs() {
           />
         </View>
       </RNModal>
+
+      {/* Services Unavailable Modal */}
+      <ServicesUnavailableModal
+        visible={servicesUnavailableModalVisible}
+        onClose={() => setServicesUnavailableModalVisible(false)}
+      />
 
       {/* Cart Selection Modal */}
       <CartSelectionModal
