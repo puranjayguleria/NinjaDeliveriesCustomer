@@ -34,7 +34,25 @@ export default function ServiceCategoryScreen() {
   const fetchServiceIssues = async () => {
     try {
       setLoading(true);
+      
+      console.log('Fetching services for category:', categoryId);
+
+      if (!categoryId) {
+        console.error('No categoryId provided');
+        setIssues([
+          { 
+            id: 'other', 
+            name: 'Other Issue', 
+            categoryMasterId: '', 
+            isActive: true 
+          }
+        ]);
+        return;
+      }
+
       const fetchedIssues = await FirestoreService.getServiceIssues(categoryId);
+      
+      console.log(`Found ${fetchedIssues.length} services for category ${categoryId}`);
       
       // Add "Other Issue" option at the end
       const issuesWithOther = [
@@ -48,10 +66,19 @@ export default function ServiceCategoryScreen() {
       ];
       
       setIssues(issuesWithOther);
+      
     } catch (error) {
       console.error('Error fetching service issues:', error);
-      // Set empty array on error - no demo data
-      setIssues([]);
+      
+      // Set only "Other Issue" on error
+      setIssues([
+        { 
+          id: 'other', 
+          name: 'Other Issue', 
+          categoryMasterId: categoryId || '', 
+          isActive: true 
+        }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -195,13 +222,31 @@ export default function ServiceCategoryScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>{serviceTitle} Services</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>{serviceTitle} Services</Text>
+      </View>
       <Text style={styles.subHeader}>Select your issues (multiple allowed)</Text>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
           <Text style={styles.loadingText}>Loading services...</Text>
+        </View>
+      ) : issues.length <= 1 ? ( // Only "Other Issue" means no real services found
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No Services Available</Text>
+          <Text style={styles.emptyText}>
+            No services found for {serviceTitle}. This might be because:
+            {'\n'}• No services are configured for this category
+            {'\n'}• Services exist but categoryMasterId doesn't match
+            {'\n'}• All services are marked as inactive
+          </Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={fetchServiceIssues}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -234,14 +279,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafbfc",
   },
 
+  headerContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingBottom: 8,
+  },
+
   header: { 
     fontSize: 28, 
     fontWeight: "600",
     color: "#0f172a",
     letterSpacing: -0.6,
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 8,
+    flex: 1,
   },
   
   subHeader: { 
@@ -442,6 +494,44 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: "#64748b",
+    fontWeight: "500",
+  },
+
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 48,
+    paddingVertical: 64,
+  },
+
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+
+  emptyText: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+
+  retryButton: {
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
     fontWeight: "500",
   },
 

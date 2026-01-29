@@ -59,7 +59,7 @@ export class FirestoreService {
       console.log('Fetching service categories from Firestore...');
       
       const snapshot = await firestore()
-        .collection('service_categories_master')
+        .collection('app_categories')
         .where('isActive', '==', true)
         .get();
 
@@ -105,18 +105,31 @@ export class FirestoreService {
    */
   static async getServiceIssues(categoryId: string): Promise<ServiceIssue[]> {
     try {
-      console.log(`Fetching service issues for category: ${categoryId}`);
+      if (!categoryId || typeof categoryId !== 'string' || categoryId.trim() === '') {
+        console.error('Invalid categoryId provided:', categoryId);
+        throw new Error('Invalid category ID provided');
+      }
+
+      console.log(`Fetching services for category: ${categoryId}`);
       
       const snapshot = await firestore()
-        .collection('service_services')
-        .where('categoryMasterId', '==', categoryId)
+        .collection('app_services')
+        .where('categoryMasterId', '==', categoryId.trim())
         .where('isActive', '==', true)
         .get();
+
+      console.log(`Found ${snapshot.size} services for category ${categoryId}`);
 
       const issues: ServiceIssue[] = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
+        
+        if (!data.name) {
+          console.warn(`Service document ${doc.id} missing name field, skipping`);
+          return;
+        }
+
         issues.push({
           id: doc.id,
           name: data.name || '',
@@ -131,20 +144,20 @@ export class FirestoreService {
         });
       });
 
-      // Sort by name on the client side
+      // Sort by name
       issues.sort((a, b) => a.name.localeCompare(b.name));
 
-      console.log(`Fetched ${issues.length} service issues for category ${categoryId}`);
+      console.log(`Successfully fetched ${issues.length} services for category ${categoryId}`);
       
       return issues;
     } catch (error) {
-      console.error('Error fetching service issues from Firestore:', error);
-      throw new Error('Failed to fetch service issues. Please check your internet connection.');
+      console.error('Error fetching services from app_services:', error);
+      throw new Error(`Failed to fetch services for this category. Please check your internet connection.`);
     }
   }
 
   /**
-   * Fetch service companies that provide specific services/issues
+   * Fetch all service companies from Firestore
    */
   static async getCompaniesByServiceIssues(issueIds: string[]): Promise<ServiceCompany[]> {
     try {
@@ -156,7 +169,7 @@ export class FirestoreService {
 
       // First, get the service issues to find their associated company IDs
       const issuesSnapshot = await firestore()
-        .collection('service_services')
+        .collection('app_services')
         .where('__name__', 'in', issueIds)
         .where('isActive', '==', true)
         .get();
@@ -188,7 +201,7 @@ export class FirestoreService {
         const batch = companyIdsArray.slice(i, i + 10);
         
         const companiesSnapshot = await firestore()
-          .collection('service_company')
+          .collection('service_services')
           .where('__name__', 'in', batch)
           .where('isActive', '==', true)
           .get();
@@ -231,7 +244,7 @@ export class FirestoreService {
       
       // First, get all service issues for this category
       const issuesSnapshot = await firestore()
-        .collection('service_services')
+        .collection('app_services')
         .where('categoryMasterId', '==', categoryId)
         .where('isActive', '==', true)
         .get();
@@ -262,7 +275,7 @@ export class FirestoreService {
         const batch = companyIdsArray.slice(i, i + 10);
         
         const companiesSnapshot = await firestore()
-          .collection('service_company')
+          .collection('service_services')
           .where('__name__', 'in', batch)
           .where('isActive', '==', true)
           .get();
@@ -304,7 +317,7 @@ export class FirestoreService {
       console.log('Fetching service companies from Firestore...');
       
       const snapshot = await firestore()
-        .collection('service_company')
+        .collection('service_services')
         .where('isActive', '==', true)
         .get();
 
@@ -346,7 +359,7 @@ export class FirestoreService {
       console.log(`Fetching service companies for zone: ${zoneId}`);
       
       const snapshot = await firestore()
-        .collection('service_company')
+        .collection('service_services')
         .where('deliveryZoneId', '==', zoneId)
         .where('isActive', '==', true)
         .get();
@@ -387,7 +400,7 @@ export class FirestoreService {
   static async getServiceCategoryById(categoryId: string): Promise<ServiceCategory | null> {
     try {
       const doc = await firestore()
-        .collection('service_categories_master')
+        .collection('app_categories')
         .doc(categoryId)
         .get();
 

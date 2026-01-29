@@ -307,17 +307,6 @@ export default function ServicesScreen() {
     setSearchQuery('');
   };
 
-  // Test Firebase connection
-  const testFirebaseConnection = async () => {
-    try {
-      Alert.alert("Testing Firebase", "Testing connection to service_bookings collection...");
-      await FirebaseConnectionTest.runAllTests();
-      Alert.alert("Success!", "Firebase connection test passed! Check console for details.");
-    } catch (error) {
-      Alert.alert("Error", "Firebase connection test failed. Check console for details.");
-    }
-  };
-
   // Data slices with null checks
   const topCategories = searchQuery 
     ? (filteredCategories || []).slice(0, 3) 
@@ -424,22 +413,13 @@ export default function ServicesScreen() {
         {/* Header */}
         <View style={styles.topHeader}>
           <View style={styles.headerRow}>
+            {/* Header content only */}
             <View style={styles.headerTextContainer}>
               <Text style={styles.header}>Professional Services</Text>
               <Text style={styles.headerSub}>
                 Trusted experts at your doorstep
               </Text>
             </View>
-            
-            {/* Test Firebase Button - Remove in production */}
-            {__DEV__ && (
-              <TouchableOpacity 
-                style={styles.testButton}
-                onPress={testFirebaseConnection}
-              >
-                <Text style={styles.testButtonText}>Test DB</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
 
@@ -755,21 +735,6 @@ const styles = StyleSheet.create({
   },
 
   badgeText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  // Test button styles (development only)
-  testButton: {
-    backgroundColor: "#ef4444",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginLeft: 12,
-  },
-
-  testButtonText: {
     color: "white",
     fontSize: 12,
     fontWeight: "600",
