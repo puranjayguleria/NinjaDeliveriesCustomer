@@ -340,22 +340,33 @@ const CartScreen: React.FC = () => {
     }
 
     if (currentStore && currentStore !== prevStoreIdRef.current) {
-      // Clear all carts when store location changes
-      clearAllCarts();
+      const allCartsEmpty = isAllCartsEmpty();
+      
+      if (!allCartsEmpty) {
+        // Clear all carts when store location changes and carts have items
+        clearAllCarts();
+      }
       setSelectedLocation(null);
       setShowLocationSheet(false);
       prevStoreIdRef.current = currentStore;
 
       if (isFocused) {
-        storeChangeSerial += 1;
+        if (allCartsEmpty) {
+          // Navigate directly to location selector for empty cart
+          navigation.navigate("LocationSelector", {
+            fromScreen: "Cart",
+          });
+        } else {
+          storeChangeSerial += 1;
         unseenChangeId.current = storeChangeSerial;
         setNotificationModalMessage(
           "Looks like you’ve switched to another store. Your cart has been emptied—please add items again."
         );
         maybeShowNotice();
+        }
       }
     }
-  }, [location.storeId, isFocused, clearCart]);
+  }, [location.storeId, isFocused, clearCart, navigation]);
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
@@ -436,8 +447,12 @@ const CartScreen: React.FC = () => {
             "Sorry, we’re not delivering right now. Please try again during our next delivery window."
           );
         } else {
-          // Clear all carts when new location is selected from navigation
-          clearAllCarts();
+          const allCartsEmpty = isAllCartsEmpty();
+          
+          // Only clear carts if they have items
+          if (!allCartsEmpty) {
+            clearAllCarts();
+          }
           setSelectedLocation(route.params.selectedLocation);
         }
         navigation.setParams({ selectedLocation: null });
@@ -579,14 +594,7 @@ const CartScreen: React.FC = () => {
     }, [showLocationSheet])
   );
 
-  // Redirect to location selection when cart is empty and no location selected
-  useEffect(() => {
-    if (Object.keys(cart).length === 0 && !selectedLocation && isFocused) {
-      navigation.navigate("LocationSelector", {
-        fromScreen: "Cart",
-      });
-    }
-  }, [cart, selectedLocation, isFocused, navigation]);
+  // Note: Removed automatic redirect for empty cart to allow manual location selection
 
   const fetchRecommended = async (baseItems: Product[]) => {
     try {
@@ -1366,6 +1374,16 @@ const CartScreen: React.FC = () => {
     serviceCart.clearCart(); // Clear services cart
   };
 
+  /**
+   * Check if all carts are empty
+   */
+  const isAllCartsEmpty = () => {
+    const groceryItemsCount = Object.keys(cart).length;
+    const serviceItemsCount = serviceCart.totalItems;
+    const restaurantItemsCount = restaurantCart.totalItems;
+    return groceryItemsCount === 0 && serviceItemsCount === 0 && restaurantItemsCount === 0;
+  };
+
   const handleDeleteLocation = async (locToDelete: any) => {
     try {
       const currentUser = auth().currentUser;
@@ -1414,8 +1432,12 @@ const CartScreen: React.FC = () => {
               storeId: nearest.id,
             };
 
-            // Clear all carts when location changes
-            clearAllCarts();
+            const allCartsEmpty = isAllCartsEmpty();
+            
+            // Only clear carts if they have items
+            if (!allCartsEmpty) {
+              clearAllCarts();
+            }
 
             setSelectedLocation(fullLocation);
             updateLocation(fullLocation);

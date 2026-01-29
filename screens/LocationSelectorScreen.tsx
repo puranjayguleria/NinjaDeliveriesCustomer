@@ -29,6 +29,9 @@ import { RootStackParamList, LocationData } from "../types/navigation";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal";
 import { useLocationContext } from "../context/LocationContext"; // location context hook
+import { useCart } from "../context/CartContext";
+import { useRestaurantCart } from "../context/RestaurantCartContext";
+import { useServiceCart } from "../context/ServiceCartContext";
 import Loader from "@/components/VideoLoader";
 
 type LocationSelectorScreenNavigationProp = StackNavigationProp<
@@ -70,9 +73,22 @@ type PlaceDetails = {
 
 const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const { location, updateLocation } = useLocationContext();
+  const { cart } = useCart();
+  const restaurantCart = useRestaurantCart();
+  const serviceCart = useServiceCart();
   const mapRef = useRef<MapView>(null);
 
   const fromScreen = route.params?.fromScreen || "Category";
+
+  /**
+   * Check if all carts are empty
+   */
+  const isAllCartsEmpty = () => {
+    const groceryItemsCount = Object.keys(cart).length;
+    const serviceItemsCount = serviceCart.totalItems;
+    const restaurantItemsCount = restaurantCart.totalItems;
+    return groceryItemsCount === 0 && serviceItemsCount === 0 && restaurantItemsCount === 0;
+  };
 
   /****************************************
    * DEFAULT REGION
@@ -403,9 +419,17 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       updateLocation(newLocationData);
 
       if (fromScreen === "Cart") {
-        setHouseNo("");
-        setPlaceLabel("");
-        setShowSaveForm(true);
+        const allCartsEmpty = isAllCartsEmpty();
+        
+        if (allCartsEmpty) {
+          // If cart is empty, navigate to home screen instead of cart
+          navigation.navigate("AppTabs", { screen: "Home" });
+        } else {
+          // If cart has items, collect delivery details
+          setHouseNo("");
+          setPlaceLabel("");
+          setShowSaveForm(true);
+        }
       } else {
         navigation.navigate("AppTabs", { screen: "Home" });
       }
