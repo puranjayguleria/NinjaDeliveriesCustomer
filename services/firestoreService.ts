@@ -86,7 +86,7 @@ export class FirestoreService {
       console.log('Fetching service categories from Firestore...');
       
       const snapshot = await firestore()
-        .collection('service_categories_master')
+        .collection('app_categories')
         .where('isActive', '==', true)
         .get();
 
@@ -135,7 +135,7 @@ export class FirestoreService {
       console.log(`Fetching service issues for category: ${categoryId}`);
       
       const snapshot = await firestore()
-        .collection('service_services')
+        .collection('app_services')
         .where('categoryMasterId', '==', categoryId)
         .where('isActive', '==', true)
         .get();
@@ -183,7 +183,7 @@ export class FirestoreService {
 
       // First, get the service issues to find their associated company IDs
       const issuesSnapshot = await firestore()
-        .collection('service_services')
+        .collection('app_services')
         .where('__name__', 'in', issueIds)
         .where('isActive', '==', true)
         .get();
@@ -258,7 +258,7 @@ export class FirestoreService {
       
       // First, get all service issues for this category
       const issuesSnapshot = await firestore()
-        .collection('service_services')
+        .collection('app_services')
         .where('categoryMasterId', '==', categoryId)
         .where('isActive', '==', true)
         .get();
@@ -414,7 +414,7 @@ export class FirestoreService {
   static async getServiceCategoryById(categoryId: string): Promise<ServiceCategory | null> {
     try {
       const doc = await firestore()
-        .collection('service_categories_master')
+        .collection('app_categories')
         .doc(categoryId)
         .get();
 
