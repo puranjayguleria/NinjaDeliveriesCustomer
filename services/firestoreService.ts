@@ -183,7 +183,7 @@ export class FirestoreService {
 
       // First, get the service issues to find their associated company IDs
       const issuesSnapshot = await firestore()
-        .collection('app_services')
+        .collection('service_services')
         .where('__name__', 'in', issueIds)
         .where('isActive', '==', true)
         .get();
@@ -215,7 +215,7 @@ export class FirestoreService {
         const batch = companyIdsArray.slice(i, i + 10);
         
         const companiesSnapshot = await firestore()
-          .collection('service_company')
+          .collection('service_services')
           .where('__name__', 'in', batch)
           .where('isActive', '==', true)
           .get();
@@ -258,7 +258,7 @@ export class FirestoreService {
       
       // First, get all service issues for this category
       const issuesSnapshot = await firestore()
-        .collection('app_services')
+        .collection('service_services')
         .where('categoryMasterId', '==', categoryId)
         .where('isActive', '==', true)
         .get();
@@ -289,7 +289,7 @@ export class FirestoreService {
         const batch = companyIdsArray.slice(i, i + 10);
         
         const companiesSnapshot = await firestore()
-          .collection('service_company')
+          .collection('service_services')
           .where('__name__', 'in', batch)
           .where('isActive', '==', true)
           .get();
@@ -331,7 +331,7 @@ export class FirestoreService {
       console.log('Fetching service companies from Firestore...');
       
       const snapshot = await firestore()
-        .collection('service_company')
+        .collection('service_services')
         .where('isActive', '==', true)
         .get();
 
@@ -373,7 +373,7 @@ export class FirestoreService {
       console.log(`Fetching service companies for zone: ${zoneId}`);
       
       const snapshot = await firestore()
-        .collection('service_company')
+        .collection('service_services')
         .where('deliveryZoneId', '==', zoneId)
         .where('isActive', '==', true)
         .get();
@@ -757,33 +757,33 @@ export class FirestoreService {
   /**
    * Test method to update booking status (for testing real-time updates)
    */
-  static async testUpdateBookingStatus(bookingId: string, status: ServiceBooking['status'], technicianName?: string): Promise<void> {
-    try {
-      console.log(`🧪 Testing status update for booking ${bookingId} to ${status}`);
+  // static async testUpdateBookingStatus(bookingId: string, status: ServiceBooking['status'], technicianName?: string): Promise<void> {
+  //   try {
+  //     console.log(`🧪 Testing status update for booking ${bookingId} to ${status}`);
       
-      const updates: Partial<ServiceBooking> = {
-        status: status,
-      };
+  //     const updates: Partial<ServiceBooking> = {
+  //       status: status,
+  //     };
 
-      if (technicianName) {
-        updates.technicianName = technicianName;
-      }
+  //     if (technicianName) {
+  //       updates.technicianName = technicianName;
+  //     }
 
-      if (status === 'started') {
-        updates.startOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        updates.startedAt = new Date();
-      }
+  //     if (status === 'started') {
+  //       updates.startOtp = Math.floor(100000 + Math.random() * 900000).toString();
+  //       updates.startedAt = new Date();
+  //     }
 
-      if (status === 'completed') {
-        updates.completedAt = new Date();
-        updates.otpVerified = true;
-      }
+  //     if (status === 'completed') {
+  //       updates.completedAt = new Date();
+  //       updates.otpVerified = true;
+  //     }
 
-      await this.updateServiceBooking(bookingId, updates);
-      console.log(`✅ Test status update completed: ${bookingId} → ${status}`);
-    } catch (error) {
-      console.error('❌ Error in test status update:', error);
-      throw error;
-    }
-  }
+  //     await this.updateServiceBooking(bookingId, updates);
+  //     console.log(`✅ Test status update completed: ${bookingId} → ${status}`);
+  //   } catch (error) {
+  //     console.error('❌ Error in test status update:', error);
+  //     throw error;
+  //   }
+  // }
 }
