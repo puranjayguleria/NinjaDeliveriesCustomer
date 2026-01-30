@@ -45,17 +45,38 @@ export default function PaymentScreen() {
     company,
     date,
     time,
+    // Add-on services format
+    addOnServices,
+    addOnTotal,
+    originalAmount,
+    isAddOnPayment,
+    serviceName,
+    companyName,
   } = route.params || {};
 
-  console.log("PaymentScreen received:", { bookings, totalAmount, paymentMethod, bookingId, amount });
+  console.log("PaymentScreen received:", { 
+    bookings, 
+    totalAmount, 
+    paymentMethod, 
+    bookingId, 
+    amount, 
+    addOnServices, 
+    addOnTotal,
+    originalAmount,
+    isAddOnPayment,
+    serviceName,
+    companyName
+  });
 
-  // Determine if this is new format (multiple bookings) or old format (single booking)
+  // Determine if this is new format (multiple bookings) or old format (single booking) or add-on payment
   const isMultipleBookings = bookings && Array.isArray(bookings);
-  const finalAmount = isMultipleBookings ? totalAmount : amount;
-  const selectedPaymentMethod = isMultipleBookings ? paymentMethod : "cash";
+  const isAddOn = isAddOnPayment && addOnServices && Array.isArray(addOnServices);
+  const finalAmount = isAddOn ? totalAmount : (isMultipleBookings ? totalAmount : amount);
+  const selectedPaymentMethod = isAddOn ? "online" : (isMultipleBookings ? paymentMethod : "cash");
 
   console.log("PaymentScreen processed:", { 
     isMultipleBookings, 
+    isAddOn,
     finalAmount, 
     selectedPaymentMethod,
     razorpayAvailable: true, // WebView always available
@@ -264,7 +285,17 @@ export default function PaymentScreen() {
 
   const navigateToBookingDetails = (paymentStatus: string) => {
     // Navigate to booking details
-    if (isMultipleBookings) {
+    if (isAddOn) {
+      // For add-on payments, go back to booking confirmation with updated info
+      navigation.navigate("BookingConfirmation", {
+        bookingId,
+        addOnPaymentComplete: true,
+        paymentStatus,
+        addOnServices,
+        addOnTotal,
+        totalAmount: finalAmount
+      });
+    } else if (isMultipleBookings) {
       // For multiple bookings, navigate to a summary or first booking
       navigation.navigate("BookingDetails", {
         bookings,
@@ -299,11 +330,16 @@ export default function PaymentScreen() {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         
-        <Text style={styles.header}>Payment</Text>
+        <Text style={styles.header}>
+          {isAddOn ? "Add-On Payment" : "Payment"}
+        </Text>
         <Text style={styles.subHeader}>
-          {isMultipleBookings 
-            ? `Review and confirm ${bookings.length} service booking${bookings.length > 1 ? 's' : ''}`
-            : "Review and confirm your booking"
+          {isAddOn 
+            ? `Pay for ${addOnServices?.length || 0} additional service${(addOnServices?.length || 0) > 1 ? 's' : ''}`
+            : (isMultipleBookings 
+              ? `Review and confirm ${bookings.length} service booking${bookings.length > 1 ? 's' : ''}`
+              : "Review and confirm your booking"
+            )
           }
         </Text>
       </View>
@@ -322,11 +358,16 @@ export default function PaymentScreen() {
           />
 
           <View style={styles.bannerContent}>
-            <Text style={styles.bannerTitle}>Secure Your Service</Text>
+            <Text style={styles.bannerTitle}>
+              {isAddOn ? "Secure Add-On Payment" : "Secure Your Service"}
+            </Text>
             <Text style={styles.bannerSub}>
-              {selectedPaymentMethod === "online" 
-                ? "Pay securely to confirm your booking"
-                : "Pay when service is completed"
+              {isAddOn 
+                ? "Pay securely for additional services"
+                : (selectedPaymentMethod === "online" 
+                  ? "Pay securely to confirm your booking"
+                  : "Pay when service is completed"
+                )
               }
             </Text>
           </View>
@@ -334,9 +375,48 @@ export default function PaymentScreen() {
 
         {/* Booking Summary */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Booking Summary</Text>
+          <Text style={styles.summaryTitle}>
+            {isAddOn ? "Add-On Services" : "Booking Summary"}
+          </Text>
 
-          {isMultipleBookings ? (
+          {isAddOn ? (
+            // Add-on services display
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Original Booking</Text>
+                <Text style={styles.value}>{serviceName || "Service"}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Service Provider</Text>
+                <Text style={styles.value}>{companyName || "Service Provider"}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Additional Services</Text>
+                <Text style={styles.value}>{addOnServices?.length || 0} service{(addOnServices?.length || 0) > 1 ? 's' : ''}</Text>
+              </View>
+
+              {addOnServices?.map((service: any, index: number) => (
+                <View key={index} style={styles.serviceItem}>
+                  <Text style={styles.serviceTitle}>+ {service.name}</Text>
+                  <Text style={styles.servicePrice}>₹{service.price}</Text>
+                </View>
+              ))}
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Original Amount</Text>
+                <Text style={styles.value}>₹{originalAmount || 0}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Add-On Total</Text>
+                <Text style={styles.value}>₹{addOnTotal || 0}</Text>
+              </View>
+            </>
+          ) : isMultipleBookings ? (
             // Multiple bookings display
             <>
               <View style={styles.summaryRow}>
@@ -400,6 +480,7 @@ export default function PaymentScreen() {
             <Text style={styles.debugText}>🔧 Debug Info:</Text>
             <Text style={styles.debugText}>Payment System: Real Razorpay WebView</Text>
             <Text style={styles.debugText}>WebView Status: Available</Text>
+            <Text style={styles.debugText}>Payment Type: {isAddOn ? "Add-On Payment" : "Regular Payment"}</Text>
             <Text style={styles.debugText}>Payment Method: {selectedPaymentMethod}</Text>
             <Text style={styles.debugText}>Amount: ₹{finalAmount}</Text>
             <Text style={styles.successText}>✅ Real Razorpay WebView ready</Text>
@@ -417,7 +498,7 @@ export default function PaymentScreen() {
             <Text style={styles.amount}>₹{finalAmount || 0}</Text>
           </View>
 
-          {selectedPaymentMethod === "online" && (
+          {(selectedPaymentMethod === "online" || isAddOn) && (
             <View style={styles.summaryRow}>
               <Text style={styles.label}>Amount to Pay Now</Text>
               <Text style={styles.advanceAmount}>₹{finalAmount || 0}</Text>
@@ -426,10 +507,10 @@ export default function PaymentScreen() {
 
           <View style={styles.noteBox}>
             <Text style={styles.noteTitle}>
-              {selectedPaymentMethod === "online" ? "💳 Online Payment" : "💰 Cash Payment"}
+              {(selectedPaymentMethod === "online" || isAddOn) ? "💳 Online Payment" : "💰 Cash Payment"}
             </Text>
             <Text style={styles.noteText}>
-              {selectedPaymentMethod === "online" 
+              {(selectedPaymentMethod === "online" || isAddOn)
                 ? "Pay securely using UPI, Cards, or Net Banking. Your payment is protected."
                 : "Pay the service provider directly when the service is completed."
               }
@@ -450,7 +531,7 @@ export default function PaymentScreen() {
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <Text style={styles.payBtnText}>
-              {selectedPaymentMethod === "online" 
+              {(selectedPaymentMethod === "online" || isAddOn)
                 ? `Pay ₹${finalAmount || 0} & Confirm`
                 : `Confirm Booking - ₹${finalAmount || 0}`
               }
@@ -473,7 +554,7 @@ export default function PaymentScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4CAF50" />
             <Text style={styles.loadingText}>
-              {selectedPaymentMethod === "online" ? "Processing payment..." : "Confirming booking..."}
+              {(selectedPaymentMethod === "online" || isAddOn) ? "Processing payment..." : "Confirming booking..."}
             </Text>
           </View>
         </View>
@@ -664,6 +745,12 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     textAlign: "center",
     marginTop: 8,
+  },
+
+  summaryDivider: {
+    height: 1,
+    backgroundColor: "#e2e8f0",
+    marginVertical: 12,
   },
 
   disabledBtn: {

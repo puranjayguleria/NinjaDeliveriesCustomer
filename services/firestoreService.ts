@@ -58,7 +58,7 @@ export interface ServiceBooking {
   customerId?: string; // User ID who created the booking
   date: string;
   time: string;
-  status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'expired';
+  status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'expired' | 'reject';
   companyId?: string;
   technicianName?: string;
   technicianId?: string;
@@ -1769,6 +1769,39 @@ export class FirestoreService {
     }
   }
 
+  /**
+   * Update an existing service booking
+   */
+  static async updateServiceBooking(bookingId: string, updates: Partial<ServiceBooking>): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update booking');
+      }
+      
+      console.log(`🔥 Updating service booking ${bookingId} for user: ${userId}`);
+      
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update({
+          ...updates,
+          updatedAt: new Date(),
+        });
+
+      console.log(`✅ Updated booking ${bookingId} successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating service booking:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to update service booking. Please check your internet connection.');
+    }
+  }
+
   static async getCompaniesFromServiceCompany(): Promise<any[]> {
     try {
       console.log('🏢 Fetching all companies from service_company collection...');
@@ -2359,6 +2392,12 @@ export class FirestoreService {
         // Only completed bookings
         filteredBookings = allUserBookings.filter(booking => booking.status === 'completed');
         console.log(`✅ Showing COMPLETED bookings: ${filteredBookings.length}`);
+      } else if (status === 'rejected') {
+        // Only rejected bookings (handle both 'rejected' and 'reject' for backward compatibility)
+        filteredBookings = allUserBookings.filter(booking => 
+          booking.status === 'rejected' || booking.status === 'reject'
+        );
+        console.log(`✅ Showing REJECTED bookings (rejected/reject): ${filteredBookings.length}`);
       } else {
         // Specific status (for any other status)
         filteredBookings = allUserBookings.filter(booking => booking.status === status);
@@ -2394,7 +2433,143 @@ export class FirestoreService {
       throw new Error('Failed to fetch your bookings. Please check your internet connection.');
     }
   }
-  static generateCompletionOtp(): string {
+  /**
+   * Fix existing bookings that might have incorrect status values
+   */
+  static async fixBookingStatusInconsistencies(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔧 Checking for booking status inconsistencies for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings to check`);
+      
+      let fixedCount = 0;
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        let needsUpdate = false;
+        const updates: any = {};
+        
+        // Fix 'reject' to 'rejected'
+        if (data.status === 'reject') {
+          updates.status = 'rejected';
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: 'reject' → 'rejected'`);
+        }
+        
+        // Fix 'cancelled' to 'rejected' (if any exist)
+        if (data.status === 'cancelled' || data.status === 'canceled') {
+          updates.status = 'rejected';
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: '${data.status}' → 'rejected'`);
+        }
+        
+        // Fix timestamp field names
+        if (data.rejectAt && !data.rejectedAt) {
+          updates.rejectedAt = data.rejectAt;
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: 'rejectAt' → 'rejectedAt'`);
+        }
+        
+        if (needsUpdate) {
+          updates.updatedAt = new Date();
+          await firestore()
+            .collection('service_bookings')
+            .doc(doc.id)
+            .update(updates);
+          
+          fixedCount++;
+        }
+      }
+      
+      console.log(`✅ Fixed ${fixedCount} booking status inconsistencies`);
+      
+      if (fixedCount > 0) {
+        console.log(`💡 Recommendation: Refresh the booking history screen to see updated statuses`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fixing booking status inconsistencies:', error);
+    }
+  }
+
+  /**
+   * Debug method to check all booking statuses for current user
+   */
+  static async debugBookingStatuses(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔍 Checking all booking statuses for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings:`);
+      
+      const statusCounts: Record<string, number> = {};
+      const statusExamples: Record<string, string[]> = {};
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const status = data.status || 'undefined';
+        
+        // Count statuses
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+        
+        // Store examples
+        if (!statusExamples[status]) {
+          statusExamples[status] = [];
+        }
+        if (statusExamples[status].length < 3) {
+          statusExamples[status].push(`${data.serviceName} (${doc.id.substring(0, 8)})`);
+        }
+      });
+      
+      console.log(`📋 Status breakdown:`);
+      Object.entries(statusCounts).forEach(([status, count]) => {
+        console.log(`   ${status}: ${count} booking${count > 1 ? 's' : ''}`);
+        console.log(`     Examples: ${statusExamples[status].join(', ')}`);
+      });
+      
+      // Check for problematic statuses
+      const problematicStatuses = ['reject', 'cancelled', 'canceled'];
+      const hasProblems = problematicStatuses.some(status => statusCounts[status] > 0);
+      
+      if (hasProblems) {
+        console.log(`⚠️ Found problematic statuses that should be fixed:`);
+        problematicStatuses.forEach(status => {
+          if (statusCounts[status] > 0) {
+            console.log(`   - '${status}' should be 'rejected'`);
+          }
+        });
+        console.log(`💡 Run FirestoreService.fixBookingStatusInconsistencies() to fix these`);
+      } else {
+        console.log(`✅ All booking statuses look correct`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error debugging booking statuses:', error);
+    }
+  } static generateCompletionOtp(): string {
     return Math.floor(1000 + Math.random() * 9000).toString();
   }
 
@@ -2941,7 +3116,7 @@ export class FirestoreService {
       
       // Step 1: Show current state
       console.log('\n📊 STEP 1: Current database state');
-      await this.debugBookingData();
+      await this.debugAllUserBookings();
       
       // Step 2: Force clean all demo data
       console.log('\n🧹 STEP 2: Force cleaning demo data');
@@ -3155,165 +3330,9 @@ export class FirestoreService {
       }
       
       return realBookings;
-      
     } catch (error) {
-      console.error('❌ Error verifying real bookings:', error);
+      console.error('❌ Error verifying real customer bookings:', error);
       return [];
-    }
-  }
-
-  /**
-   * Debug function to show all bookings and filtering results
-   */
-  static async debugBookingData(): Promise<void> {
-    try {
-      console.log('🔍 DEBUG: Analyzing all booking data...');
-      
-      const snapshot = await firestore()
-        .collection('service_bookings')
-        .limit(50)
-        .get();
-
-      console.log(`📊 Total bookings in database: ${snapshot.size}`);
-      
-      let realBookings = 0;
-      let testBookings = 0;
-      
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        
-        // Apply the same filtering logic
-        const isTestBooking = (
-          // Service name patterns
-          (data.serviceName && (
-            data.serviceName.toLowerCase().includes('test') ||
-            data.serviceName.toLowerCase().includes('demo') ||
-            data.serviceName.toLowerCase().includes('sample') ||
-            data.serviceName.toLowerCase().includes('mock') ||
-            data.serviceName.toLowerCase().includes('fake') ||
-            data.serviceName.toLowerCase().includes('dummy')
-          )) ||
-          // Customer name patterns
-          (data.customerName && (
-            data.customerName.toLowerCase().includes('test') ||
-            data.customerName.toLowerCase().includes('demo') ||
-            data.customerName.toLowerCase().includes('sample') ||
-            data.customerName.toLowerCase().includes('mock') ||
-            data.customerName.toLowerCase().includes('dummy')
-          )) ||
-          // Work name patterns
-          (data.workName && (
-            data.workName.toLowerCase().includes('test') ||
-            data.workName.toLowerCase().includes('demo') ||
-            data.workName.toLowerCase().includes('sample')
-          )) ||
-          // Company ID patterns
-          (data.companyId && (
-            data.companyId === 'test-company-id' ||
-            data.companyId.toLowerCase().includes('test') ||
-            data.companyId.toLowerCase().includes('demo')
-          )) ||
-          // Phone number patterns (test phone numbers)
-          (data.customerPhone && (
-            data.customerPhone.includes('9999999999') ||
-            data.customerPhone.includes('1234567890') ||
-            data.customerPhone.includes('0000000000')
-          ))
-        );
-        
-        if (isTestBooking) {
-          testBookings++;
-          console.log(`🚫 TEST BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
-        } else {
-          realBookings++;
-          console.log(`✅ REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
-        }
-      });
-      
-      console.log(`📊 SUMMARY:`);
-      console.log(`   - Real bookings: ${realBookings}`);
-      console.log(`   - Test bookings (filtered out): ${testBookings}`);
-      console.log(`   - Total: ${realBookings + testBookings}`);
-      
-    } catch (error) {
-      console.error('❌ Error in debug function:', error);
-    }
-  }
-
-  /**
-   * Clean up test/demo bookings from the database (admin function)
-   */
-  static async cleanupTestBookings(): Promise<number> {
-    try {
-      console.log('🧹 Cleaning up test/demo bookings...');
-      
-      const snapshot = await firestore()
-        .collection('service_bookings')
-        .get();
-
-      let deletedCount = 0;
-      const batch = firestore().batch();
-      
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        
-        // Identify test/demo bookings with comprehensive patterns
-        const isTestBooking = (
-          // Service name patterns
-          (data.serviceName && (
-            data.serviceName.toLowerCase().includes('test') ||
-            data.serviceName.toLowerCase().includes('demo') ||
-            data.serviceName.toLowerCase().includes('sample') ||
-            data.serviceName.toLowerCase().includes('mock') ||
-            data.serviceName.toLowerCase().includes('fake') ||
-            data.serviceName.toLowerCase().includes('dummy')
-          )) ||
-          // Customer name patterns
-          (data.customerName && (
-            data.customerName.toLowerCase().includes('test') ||
-            data.customerName.toLowerCase().includes('demo') ||
-            data.customerName.toLowerCase().includes('sample') ||
-            data.customerName.toLowerCase().includes('mock') ||
-            data.customerName.toLowerCase().includes('dummy')
-          )) ||
-          // Work name patterns
-          (data.workName && (
-            data.workName.toLowerCase().includes('test') ||
-            data.workName.toLowerCase().includes('demo') ||
-            data.workName.toLowerCase().includes('sample')
-          )) ||
-          // Company ID patterns
-          (data.companyId && (
-            data.companyId === 'test-company-id' ||
-            data.companyId.toLowerCase().includes('test') ||
-            data.companyId.toLowerCase().includes('demo')
-          )) ||
-          // Phone number patterns (test phone numbers)
-          (data.customerPhone && (
-            data.customerPhone.includes('9999999999') ||
-            data.customerPhone.includes('1234567890') ||
-            data.customerPhone.includes('0000000000')
-          ))
-        );
-        
-        if (isTestBooking) {
-          console.log(`🗑️ Marking test booking for deletion: ${data.serviceName} (${doc.id})`);
-          batch.delete(doc.ref);
-          deletedCount++;
-        }
-      });
-      
-      if (deletedCount > 0) {
-        await batch.commit();
-        console.log(`✅ Deleted ${deletedCount} test/demo bookings`);
-      } else {
-        console.log('✅ No test bookings found to delete');
-      }
-      
-      return deletedCount;
-    } catch (error: any) {
-      console.error('❌ Error cleaning up test bookings:', error);
-      throw new Error('Failed to clean up test bookings');
     }
   }
 }

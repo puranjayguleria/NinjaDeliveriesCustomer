@@ -13,6 +13,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import firestore from "@react-native-firebase/firestore";
+import AddOnServicesModal from "../components/AddOnServicesModal";
 
 export default function BookingConfirmationScreen() {
   const route = useRoute<any>();
@@ -24,6 +25,10 @@ export default function BookingConfirmationScreen() {
   const [bookingData, setBookingData] = useState<ServiceBooking | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [companyPhone, setCompanyPhone] = useState<string>("");
+  const [showAddOnModal, setShowAddOnModal] = useState(false);
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [addOnServices, setAddOnServices] = useState<any[]>([]);
+  const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
 
   // Fetch booking data from Firebase
   useEffect(() => {
@@ -42,6 +47,7 @@ export default function BookingConfirmationScreen() {
         
         if (booking) {
           setBookingData(booking);
+          setTotalWithAddOns(booking.totalPrice || 0);
           
           // Fetch company name if companyId exists
           if (booking.companyId) {
@@ -64,6 +70,10 @@ export default function BookingConfirmationScreen() {
               setCompanyName(`Company ${booking.companyId}`);
             }
           }
+
+          // Try to determine category ID for add-on services
+          // This is a simplified approach - you might need to adjust based on your data structure
+          await determineCategoryId(booking.serviceName);
         } else {
           Alert.alert("Error", "Booking not found");
         }
@@ -78,8 +88,42 @@ export default function BookingConfirmationScreen() {
     fetchBookingData();
   }, [bookingId]);
 
+  // Helper function to determine category ID based on service name
+  const determineCategoryId = async (serviceName: string) => {
+    try {
+      // Fetch all categories and find the one that matches the service
+      const categories = await FirestoreService.getServiceCategories();
+      
+      // Simple matching logic - you might need to improve this based on your data structure
+      const matchingCategory = categories.find(category => 
+        serviceName.toLowerCase().includes(category.name.toLowerCase()) ||
+        category.name.toLowerCase().includes(serviceName.toLowerCase())
+      );
+
+      if (matchingCategory) {
+        setCategoryId(matchingCategory.id);
+        console.log(`📱 Found matching category: ${matchingCategory.name} (${matchingCategory.id})`);
+      } else {
+        console.log(`📱 No matching category found for service: ${serviceName}`);
+      }
+    } catch (error) {
+      console.error("Error determining category ID:", error);
+    }
+  };
+
   // Fallback data from route params (for backward compatibility)
   const fallbackData = route.params || {};
+  
+  // Handle add-on payment completion
+  useEffect(() => {
+    if (fallbackData.addOnPaymentComplete) {
+      Alert.alert(
+        "Payment Successful! 🎉",
+        `Your add-on services have been added and payment completed successfully.`,
+        [{ text: "OK" }]
+      );
+    }
+  }, [fallbackData.addOnPaymentComplete]);
   
   const displayData = bookingData ? {
     bookingId: bookingData.id || fallbackData.bookingId || bookingId,
@@ -137,6 +181,89 @@ export default function BookingConfirmationScreen() {
 
   const handleGoToBookingHistory = () => {
     navigation.navigate("BookingHistory");
+  };
+
+  const handleAddOnServices = () => {
+    if (!categoryId) {
+      Alert.alert(
+        "Category Not Found", 
+        "Unable to determine service category for add-on services."
+      );
+      return;
+    }
+    setShowAddOnModal(true);
+  };
+
+  const handleAddServicesConfirm = async (selectedServices: any[]) => {
+    try {
+      setAddOnServices(selectedServices);
+      const addOnTotal = selectedServices.reduce((sum, service) => sum + service.price, 0);
+      const newTotal = (bookingData?.totalPrice || 0) + addOnTotal;
+      setTotalWithAddOns(newTotal);
+      
+      // Update the booking in Firebase with add-on services
+      if (bookingId && bookingData) {
+        try {
+          const updatedAddOns = [
+            ...(bookingData.addOns || []),
+            ...selectedServices.map(service => ({
+              name: service.name,
+              price: service.price
+            }))
+          ];
+
+          await FirestoreService.updateServiceBooking(bookingId, {
+            addOns: updatedAddOns,
+            totalPrice: newTotal,
+            updatedAt: new Date()
+          });
+
+          console.log(`✅ Updated booking ${bookingId} with add-on services`);
+        } catch (updateError) {
+          console.error("Error updating booking with add-ons:", updateError);
+          // Continue with payment flow even if update fails
+        }
+      }
+      
+      Alert.alert(
+        "Services Added! 🎉",
+        `${selectedServices.length} add-on service${selectedServices.length > 1 ? 's' : ''} added to your booking.\n\nNew Total: ₹${newTotal}\nAdd-on Amount: ₹${addOnTotal}`,
+        [
+          {
+            text: "Make Payment",
+            onPress: () => handlePaymentForAddOns(selectedServices, addOnTotal, newTotal)
+          },
+          {
+            text: "Pay Later",
+            style: "cancel",
+            onPress: () => {
+              Alert.alert(
+                "Payment Pending",
+                "Add-on services have been added to your booking. You can pay when the service provider arrives.",
+                [{ text: "OK" }]
+              );
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error("Error handling add-on services:", error);
+      Alert.alert("Error", "Failed to add services. Please try again.");
+    }
+  };
+
+  const handlePaymentForAddOns = (selectedServices: any[], addOnTotal: number, newTotal: number) => {
+    // Navigate to payment screen with add-on services
+    navigation.navigate("PaymentScreen", {
+      bookingId: bookingId,
+      addOnServices: selectedServices,
+      addOnTotal: addOnTotal,
+      totalAmount: newTotal,
+      originalAmount: bookingData?.totalPrice || 0,
+      isAddOnPayment: true,
+      serviceName: bookingData?.serviceName || "Service",
+      companyName: companyName
+    });
   };
 
   if (loading) {
@@ -250,6 +377,39 @@ export default function BookingConfirmationScreen() {
             </View>
           </View>
 
+          {/* Add-On Services */}
+          {addOnServices.length > 0 && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="add-circle" size={20} color="#6B7280" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Add-On Services:</Text>
+                <View style={styles.addOnContainer}>
+                  {addOnServices.map((service, index) => (
+                    <View key={index} style={styles.addOnItem}>
+                      <Text style={styles.addOnName}>• {service.name}</Text>
+                      <Text style={styles.addOnPrice}>₹{service.price}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Total with Add-Ons */}
+          {addOnServices.length > 0 && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="calculator" size={20} color="#6B7280" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Total with Add-Ons:</Text>
+                <Text style={styles.priceValue}>₹{totalWithAddOns}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Advance Paid */}
           <View style={styles.detailRow}>
             <View style={styles.iconContainer}>
@@ -298,6 +458,17 @@ export default function BookingConfirmationScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           
+          {/* Add-On Services Button */}
+          {categoryId && (
+            <TouchableOpacity 
+              style={styles.addOnButton}
+              onPress={handleAddOnServices}
+            >
+              <Ionicons name="add-circle" size={18} color="#fff" />
+              <Text style={styles.addOnButtonText}>Add More Services</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Call Agency & Track Booking Row */}
           <View style={styles.buttonRow}>
             <TouchableOpacity 
@@ -332,6 +503,15 @@ export default function BookingConfirmationScreen() {
         <View style={{ height: 30 }} />
 
       </ScrollView>
+
+      {/* Add-On Services Modal */}
+      <AddOnServicesModal
+        visible={showAddOnModal}
+        onClose={() => setShowAddOnModal(false)}
+        onAddServices={handleAddServicesConfirm}
+        categoryId={categoryId}
+        existingServices={displayData.selectedIssues}
+      />
     </View>
   );
 }
@@ -511,5 +691,39 @@ const styles = StyleSheet.create({
   statusText: {
     textTransform: "capitalize",
     fontWeight: "500",
+  },
+  addOnContainer: {
+    marginTop: 4,
+  },
+  addOnItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  addOnName: {
+    fontSize: 14,
+    color: "#374151",
+    flex: 1,
+  },
+  addOnPrice: {
+    fontSize: 14,
+    color: "#10B981",
+    fontWeight: "600",
+  },
+  addOnButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#F59E0B",
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  addOnButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

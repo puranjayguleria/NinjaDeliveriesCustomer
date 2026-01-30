@@ -337,10 +337,9 @@ export default function ServicesScreen() {
             <TouchableOpacity 
               style={styles.historyButton}
               onPress={() => navigation.navigate("BookingHistory")}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
-              <Ionicons name="time-outline" size={24} color="#6D28D9" />
-              <Text style={styles.historyButtonText}>History</Text>
+              <Ionicons name="receipt-outline" size={22} color="#3b82f6" />
             </TouchableOpacity>
           </View>
         </View>
@@ -553,19 +552,17 @@ const styles = StyleSheet.create({
   historyButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "#F3E8FF",
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    backgroundColor: "white",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#E9D5FF",
-  },
-
-  historyButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6D28D9",
-    marginTop: 2,
+    borderColor: "#e2e8f0",
+    elevation: 3,
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
 
   header: {

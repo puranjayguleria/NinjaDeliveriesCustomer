@@ -9,13 +9,16 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  ScrollView,
+  Animated,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
+import { FirestoreServiceExtensions } from "../services/firestoreServiceExtensions";
 import { BookingUtils } from "../utils/bookingUtils";
 
-type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'reject';
+type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected';
 
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
@@ -25,6 +28,7 @@ export default function BookingHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('all');
+  const [tabAnimation] = useState(new Animated.Value(0));
 
   // Fetch bookings from Firebase for currently logged-in user only
   const fetchBookings = async (isRefresh = false, filter: FilterStatus = 'all') => {
@@ -76,9 +80,26 @@ export default function BookingHistoryScreen() {
   };
 
   useEffect(() => {
-    // Temporarily disable automatic cleanup to preserve real bookings
-    console.log('📱 Loading booking history without automatic cleanup...');
-    fetchBookings(false, activeFilter);
+    // Fix any inconsistent booking statuses first
+    const fixStatusesAndFetch = async () => {
+      try {
+        // Fix inconsistent statuses
+        await FirestoreServiceExtensions.fixInconsistentBookingStatuses();
+        
+        // Debug booking statuses
+        await FirestoreServiceExtensions.debugBookingStatusesDetailed();
+        
+        // Then fetch bookings
+        fetchBookings(false, activeFilter);
+      } catch (error) {
+        console.error('Error fixing statuses:', error);
+        // Still try to fetch bookings even if fix fails
+        fetchBookings(false, activeFilter);
+      }
+    };
+
+    console.log('📱 Loading booking history and fixing status inconsistencies...');
+    fixStatusesAndFetch();
   }, [activeFilter]);
 
   const onRefresh = () => {
@@ -86,7 +107,23 @@ export default function BookingHistoryScreen() {
   };
 
   const handleFilterChange = (filter: FilterStatus) => {
-    setActiveFilter(filter);
+    if (filter !== activeFilter) {
+      // Animate tab change
+      Animated.sequence([
+        Animated.timing(tabAnimation, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tabAnimation, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      setActiveFilter(filter);
+    }
   };
 
   const getFilterCounts = () => {
@@ -96,7 +133,7 @@ export default function BookingHistoryScreen() {
       const active = allBookings.filter(b => ['pending', 'assigned', 'started'].includes(b.status)).length;
       const pending = allBookings.filter(b => b.status === 'pending').length;
       const completed = allBookings.filter(b => b.status === 'completed').length;
-      const reject = allBookings.filter(b => b.status === 'reject').length;
+      const reject = allBookings.filter(b => b.status === 'rejected' || b.status === 'reject').length;
       
       console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}`);
       
@@ -109,47 +146,90 @@ export default function BookingHistoryScreen() {
 
   const renderFilterTabs = () => {
     const counts = getFilterCounts();
-    const filters: { key: FilterStatus; label: string; count: number; icon?: string }[] = [
-      { key: 'all', label: 'All', count: counts.all },
-      { key: 'active', label: 'Active', count: counts.active },
-      { key: 'pending', label: 'Pending', count: counts.pending },
-      { key: 'completed', label: 'Done', count: counts.completed },
-      { key: 'reject', label: 'Reject', count: counts.reject },
+    const filters: { key: FilterStatus; label: string; count: number; icon: string; color: string; gradient: string[] }[] = [
+      { key: 'all', label: 'All', count: counts.all, icon: 'apps', color: '#6366F1', gradient: ['#6366F1', '#8B5CF6'] },
+      { key: 'active', label: 'Active', count: counts.active, icon: 'pulse', color: '#10B981', gradient: ['#10B981', '#059669'] },
+      { key: 'pending', label: 'Pending', count: counts.pending, icon: 'time', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
+      { key: 'completed', label: 'Done', count: counts.completed, icon: 'checkmark-circle', color: '#059669', gradient: ['#059669', '#047857'] },
+      { key: 'rejected', label: 'Reject', count: counts.reject, icon: 'close-circle', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
     ];
 
     return (
       <View style={styles.filterContainer}>
-        {filters.map((filter) => (
-          <TouchableOpacity
-            key={filter.key}
-            style={[
-              styles.filterTab,
-              activeFilter === filter.key && styles.activeFilterTab
-            ]}
-            onPress={() => handleFilterChange(filter.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterText,
-              activeFilter === filter.key && styles.activeFilterText
-            ]}>
-              {filter.label}
-            </Text>
-            {filter.count > 0 && (
-              <View style={[
-                styles.countBadge,
-                activeFilter === filter.key && styles.activeCountBadge
-              ]}>
-                <Text style={[
-                  styles.countText,
-                  activeFilter === filter.key && styles.activeCountText
-                ]}>
-                  {filter.count}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabScrollContainer}
+          decelerationRate="fast"
+          snapToInterval={112} // Approximate tab width + gap
+          snapToAlignment="start"
+        >
+          {filters.map((filter, index) => {
+            const isActive = activeFilter === filter.key;
+            const animatedScale = tabAnimation.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 0.95],
+            });
+
+            return (
+              <Animated.View
+                key={filter.key}
+                style={[
+                  { transform: [{ scale: isActive ? animatedScale : 1 }] }
+                ]}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.filterTab,
+                    isActive && styles.activeFilterTab,
+                    isActive && { 
+                      backgroundColor: filter.color,
+                      shadowColor: filter.color,
+                    }
+                  ]}
+                  onPress={() => handleFilterChange(filter.key)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.tabContent}>
+                    <View style={[
+                      styles.tabIconContainer,
+                      isActive && styles.activeTabIconContainer
+                    ]}>
+                      <Ionicons 
+                        name={filter.icon as any} 
+                        size={16} 
+                        color={isActive ? '#FFFFFF' : filter.color} 
+                      />
+                    </View>
+                    
+                    <View style={styles.tabTextContainer}>
+                      <Text style={[
+                        styles.filterText,
+                        isActive && styles.activeFilterText
+                      ]}>
+                        {filter.label}
+                      </Text>
+                      
+                      {filter.count > 0 && (
+                        <View style={[
+                          styles.countBadge,
+                          isActive && styles.activeCountBadge
+                        ]}>
+                          <Text style={[
+                            styles.countText,
+                            isActive && styles.activeCountText
+                          ]}>
+                            {filter.count}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          })}
+        </ScrollView>
       </View>
     );
   };
@@ -169,8 +249,8 @@ export default function BookingHistoryScreen() {
           onPress: async () => {
             try {
               setLoading(true);
-              await FirestoreService.updateBookingStatus(bookingId, 'reject', {
-                rejectAt: new Date()
+              await FirestoreService.updateBookingStatus(bookingId, 'rejected', {
+                rejectedAt: new Date()
               });
               
               Alert.alert(
@@ -419,51 +499,82 @@ const styles = StyleSheet.create({
   },
 
   filterContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    backgroundColor: "white",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 20,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
-    gap: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+
+  tabScrollContainer: {
+    paddingHorizontal: 16,
+    gap: 12,
+    alignItems: "center",
   },
 
   filterTab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 22,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    minHeight: 28,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    minWidth: 100,
+    borderWidth: 2,
+    borderColor: "#F3F4F6",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-
-  activeFilterTab: {
-    backgroundColor: "#6D28D9",
-    borderColor: "#6D28D9",
-    shadowColor: "#6D28D9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
     elevation: 3,
   },
 
+  activeFilterTab: {
+    borderColor: "transparent",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+    transform: [{ translateY: -2 }],
+  },
+
+  tabContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  tabIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  activeTabIconContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+
+  tabTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
   filterText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#64748B",
+    color: "#374151",
     textAlign: "center",
-    flexShrink: 1,
+    letterSpacing: 0.2,
   },
 
   activeFilterText: {
@@ -472,33 +583,40 @@ const styles = StyleSheet.create({
   },
 
   countBadge: {
-    marginLeft: 4,
-    backgroundColor: "#E2E8F0",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    minWidth: 16,
-    height: 16,
+    marginLeft: 8,
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    minWidth: 24,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
   activeCountBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-    borderWidth: 0.5,
-    borderColor: "rgba(255, 255, 255, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
 
   countText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#64748B",
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#FFFFFF",
     textAlign: "center",
   },
 
   activeCountText: {
-    color: "#FFFFFF",
-    fontWeight: "800",
+    color: "#374151",
+    fontWeight: "900",
   },
 
   card: {
