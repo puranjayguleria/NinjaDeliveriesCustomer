@@ -108,11 +108,11 @@ export default function BookingHistoryScreen() {
 
   const renderFilterTabs = () => {
     const counts = getFilterCounts();
-    const filters: { key: FilterStatus; label: string; count: number }[] = [
+    const filters: { key: FilterStatus; label: string; count: number; icon?: string }[] = [
       { key: 'all', label: 'All', count: counts.all },
-      { key: 'active', label: 'In Progress', count: counts.active },
+      { key: 'active', label: 'Active', count: counts.active },
       { key: 'pending', label: 'Pending', count: counts.pending },
-      { key: 'completed', label: 'Completed', count: counts.completed },
+      { key: 'completed', label: 'Done', count: counts.completed },
     ];
 
     return (
@@ -125,6 +125,7 @@ export default function BookingHistoryScreen() {
               activeFilter === filter.key && styles.activeFilterTab
             ]}
             onPress={() => handleFilterChange(filter.key)}
+            activeOpacity={0.7}
           >
             <Text style={[
               styles.filterText,
@@ -357,11 +358,13 @@ const styles = StyleSheet.create({
 
   filterContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+    gap: 6,
   },
 
   filterTab: {
@@ -369,57 +372,77 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 8,
-    marginHorizontal: 4,
-    borderRadius: 12,
+    borderRadius: 18,
     backgroundColor: "#F8FAFC",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#E2E8F0",
+    minHeight: 48,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   activeFilterTab: {
     backgroundColor: "#6D28D9",
     borderColor: "#6D28D9",
     shadowColor: "#6D28D9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    transform: [{ scale: 1.02 }],
   },
 
   filterText: {
     fontSize: 13,
     fontWeight: "600",
     color: "#64748B",
+    textAlign: "center",
+    flexShrink: 1,
   },
 
   activeFilterText: {
-    color: "#fff",
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
 
   countBadge: {
     marginLeft: 6,
     backgroundColor: "#E2E8F0",
     borderRadius: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    minWidth: 24,
+    minWidth: 22,
+    height: 22,
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
 
   activeCountBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
   },
 
   countText: {
     fontSize: 11,
     fontWeight: "700",
     color: "#64748B",
+    textAlign: "center",
   },
 
   activeCountText: {
-    color: "#fff",
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 
   card: {
