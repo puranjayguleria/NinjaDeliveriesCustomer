@@ -30,7 +30,6 @@ import ServiceTimerScreen from "../screens/ServiceTimerScreen";
 import ServiceEndScreen from "../screens/ServiceEndScreen";
 import ServiceRatingScreen from "../screens/ServiceRatingScreen";
 import FinalCheckoutScreen from "../screens/FinalCheckoutScreen";
-import BookingFlowDemoScreen from "../screens/BookingFlowDemoScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -75,9 +74,6 @@ export default function ServicesStack() {
       <Stack.Screen name="ServiceEnd" component={ServiceEndScreen} />
       <Stack.Screen name="ServiceRating" component={ServiceRatingScreen} />
       <Stack.Screen name="FinalCheckout" component={FinalCheckoutScreen} />
-
-      {/* Demo Screen */}
-      <Stack.Screen name="BookingFlowDemo" component={BookingFlowDemoScreen} />
     </Stack.Navigator>
   );
 }

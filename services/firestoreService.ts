@@ -1652,4 +1652,77 @@ export class FirestoreService {
       throw new Error('Failed to create service booking. Please check your internet connection.');
     }
   }
+
+  static async getCompaniesFromServiceCompany(): Promise<any[]> {
+    try {
+      console.log('🏢 Fetching all companies from service_company collection...');
+      
+      const snapshot = await firestore()
+        .collection('service_company')
+        .get();
+
+      const companies: any[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        companies.push({
+          id: doc.id,
+          ...data,
+        });
+      });
+
+      console.log(`✅ Found ${companies.length} companies in service_company collection`);
+      return companies;
+    } catch (error) {
+      console.error('❌ Error fetching companies from service_company:', error);
+      throw new Error('Failed to fetch companies from service_company. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Listen to real-time updates for a specific service booking
+   */
+  static listenToServiceBooking(
+    bookingId: string,
+    onUpdate: (booking: ServiceBooking | null) => void,
+    onError?: (error: Error) => void
+  ): () => void {
+    console.log(`🔥 Setting up real-time listener for booking ${bookingId}...`);
+
+    const unsubscribe = firestore()
+      .collection('service_bookings')
+      .doc(bookingId)
+      .onSnapshot(
+        (doc) => {
+          if (!doc.exists) {
+            console.log(`❌ Booking ${bookingId} not found in real-time listener`);
+            onUpdate(null);
+            return;
+          }
+
+          const data = doc.data();
+          if (!data) {
+            console.log(`❌ Booking ${bookingId} has no data in real-time listener`);
+            onUpdate(null);
+            return;
+          }
+
+          const booking: ServiceBooking = {
+            id: doc.id,
+            ...data,
+          } as ServiceBooking;
+
+          console.log(`🔄 Real-time update for booking ${bookingId}: status = ${booking.status}`);
+          onUpdate(booking);
+        },
+        (error) => {
+          console.error(`❌ Error in real-time listener for booking ${bookingId}:`, error);
+          if (onError) {
+            onError(error);
+          }
+        }
+      );
+
+    return unsubscribe;
+  }
 }

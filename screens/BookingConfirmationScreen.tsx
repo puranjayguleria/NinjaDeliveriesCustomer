@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,29 +7,103 @@ import {
   ScrollView,
   Alert,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { FirestoreService, ServiceBooking } from "../services/firestoreService";
+import firestore from "@react-native-firebase/firestore";
 
 export default function BookingConfirmationScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   
-  const {
-    bookingId,
-    serviceName,
-    companyName,
-    companyPhone,
-    agencyName,
-    selectedIssues = [],
-    advancePaid = 0,
-    totalPrice = 0,
-    selectedDate,
-    selectedTime,
-    status = "Ongoing",
-    paymentMethod = "cash",
-    notes = "",
-  } = route.params || {};
+  const { bookingId } = route.params || {};
+  
+  const [loading, setLoading] = useState(true);
+  const [bookingData, setBookingData] = useState<ServiceBooking | null>(null);
+  const [companyName, setCompanyName] = useState<string>("");
+  const [companyPhone, setCompanyPhone] = useState<string>("");
+
+  // Fetch booking data from Firebase
+  useEffect(() => {
+    const fetchBookingData = async () => {
+      if (!bookingId) {
+        console.error("No bookingId provided");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log(`📱 Fetching booking data for ID: ${bookingId}`);
+        
+        const booking = await FirestoreService.getServiceBookingById(bookingId);
+        
+        if (booking) {
+          setBookingData(booking);
+          
+          // Fetch company name if companyId exists
+          if (booking.companyId) {
+            try {
+              const companyNameFetched = await FirestoreService.getActualCompanyName(booking.companyId);
+              setCompanyName(companyNameFetched);
+              
+              // Try to get company phone from service_company collection
+              const companyDoc = await firestore()
+                .collection('service_company')
+                .doc(booking.companyId)
+                .get();
+              
+              if (companyDoc.exists) {
+                const companyData = companyDoc.data();
+                setCompanyPhone(companyData?.phone || companyData?.contactInfo?.phone || "");
+              }
+            } catch (error) {
+              console.error("Error fetching company data:", error);
+              setCompanyName(`Company ${booking.companyId}`);
+            }
+          }
+        } else {
+          Alert.alert("Error", "Booking not found");
+        }
+      } catch (error) {
+        console.error("Error fetching booking:", error);
+        Alert.alert("Error", "Failed to load booking details");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBookingData();
+  }, [bookingId]);
+
+  // Fallback data from route params (for backward compatibility)
+  const fallbackData = route.params || {};
+  
+  const displayData = bookingData ? {
+    bookingId: bookingData.id || fallbackData.bookingId || bookingId,
+    serviceName: bookingData.serviceName || fallbackData.serviceName,
+    selectedIssues: bookingData.workName ? [bookingData.workName] : (fallbackData.selectedIssues || []),
+    totalPrice: bookingData.totalPrice || fallbackData.totalPrice || 0,
+    advancePaid: fallbackData.advancePaid || 0,
+    selectedDate: bookingData.date || fallbackData.selectedDate,
+    selectedTime: bookingData.time || fallbackData.selectedTime,
+    status: bookingData.status || fallbackData.status || "pending",
+    paymentMethod: fallbackData.paymentMethod || "cash",
+    notes: fallbackData.notes || "",
+  } : {
+    bookingId: fallbackData.bookingId || bookingId,
+    serviceName: fallbackData.serviceName || "",
+    selectedIssues: fallbackData.selectedIssues || [],
+    totalPrice: fallbackData.totalPrice || 0,
+    advancePaid: fallbackData.advancePaid || 0,
+    selectedDate: fallbackData.selectedDate || "",
+    selectedTime: fallbackData.selectedTime || "",
+    status: fallbackData.status || "pending",
+    paymentMethod: fallbackData.paymentMethod || "cash",
+    notes: fallbackData.notes || "",
+  };
 
   const handleTrackBooking = () => {
     navigation.navigate("TrackBooking", {
@@ -41,7 +115,7 @@ export default function BookingConfirmationScreen() {
     if (companyPhone) {
       Alert.alert(
         "Call Company",
-        `Call ${companyName} at ${companyPhone}?`,
+        `Call ${companyName || "Service Provider"} at ${companyPhone}?`,
         [
           { text: "Cancel", style: "cancel" },
           { 
@@ -65,6 +139,15 @@ export default function BookingConfirmationScreen() {
     navigation.navigate("BookingHistory");
   };
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading booking details...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -84,7 +167,7 @@ export default function BookingConfirmationScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Booking ID:</Text>
-              <Text style={styles.detailValue}>{bookingId || "-"}</Text>
+              <Text style={styles.detailValue}>{displayData.bookingId || "-"}</Text>
             </View>
           </View>
 
@@ -95,7 +178,7 @@ export default function BookingConfirmationScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Service:</Text>
-              <Text style={styles.detailValue}>{serviceName || "-"}</Text>
+              <Text style={styles.detailValue}>{displayData.serviceName || "-"}</Text>
             </View>
           </View>
 
@@ -107,7 +190,7 @@ export default function BookingConfirmationScreen() {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Scheduled:</Text>
               <Text style={styles.detailValue}>
-                {selectedDate || "-"} | {selectedTime || "-"}
+                {displayData.selectedDate || "-"} | {displayData.selectedTime || "-"}
               </Text>
             </View>
           </View>
@@ -126,14 +209,14 @@ export default function BookingConfirmationScreen() {
             </View>
           </View>
 
-          {/* Agency */}
+          {/* Status */}
           <View style={styles.detailRow}>
             <View style={styles.iconContainer}>
-              <Ionicons name="people" size={20} color="#6B7280" />
+              <Ionicons name="information-circle" size={20} color="#6B7280" />
             </View>
             <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Agency:</Text>
-              <Text style={styles.detailValue}>{agencyName || "-"}</Text>
+              <Text style={styles.detailLabel}>Status:</Text>
+              <Text style={[styles.detailValue, styles.statusText]}>{displayData.status}</Text>
             </View>
           </View>
 
@@ -145,12 +228,12 @@ export default function BookingConfirmationScreen() {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Selected Issues:</Text>
               <View style={styles.issuesContainer}>
-                {selectedIssues.length > 0 ? (
-                  selectedIssues.map((issue: string, index: number) => (
+                {displayData.selectedIssues.length > 0 ? (
+                  displayData.selectedIssues.map((issue: string, index: number) => (
                     <Text key={index} style={styles.issueItem}>• {issue}</Text>
                   ))
                 ) : (
-                  <Text style={styles.detailValue}>-</Text>
+                  <Text style={styles.issueItem}>• {displayData.serviceName || "Service"}</Text>
                 )}
               </View>
             </View>
@@ -163,7 +246,7 @@ export default function BookingConfirmationScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Total Amount:</Text>
-              <Text style={styles.priceValue}>₹{totalPrice || 0}</Text>
+              <Text style={styles.priceValue}>₹{displayData.totalPrice || 0}</Text>
             </View>
           </View>
 
@@ -174,7 +257,7 @@ export default function BookingConfirmationScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Advance Paid:</Text>
-              <Text style={styles.detailValue}>₹{advancePaid || 0}</Text>
+              <Text style={styles.detailValue}>₹{displayData.advancePaid || 0}</Text>
             </View>
           </View>
 
@@ -185,19 +268,19 @@ export default function BookingConfirmationScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Payment Method:</Text>
-              <Text style={styles.detailValue}>{paymentMethod === "cash" ? "Cash on Service" : "Online Payment"}</Text>
+              <Text style={styles.detailValue}>{displayData.paymentMethod === "cash" ? "Cash on Service" : "Online Payment"}</Text>
             </View>
           </View>
 
           {/* Notes */}
-          {notes && (
+          {displayData.notes && (
             <View style={styles.detailRow}>
               <View style={styles.iconContainer}>
                 <Ionicons name="chatbubble-ellipses" size={20} color="#6B7280" />
               </View>
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Notes:</Text>
-                <Text style={styles.detailValue}>{notes}</Text>
+                <Text style={styles.detailValue}>{displayData.notes}</Text>
               </View>
             </View>
           )}
@@ -206,7 +289,7 @@ export default function BookingConfirmationScreen() {
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>Status:</Text>
             <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>{status}</Text>
+              <Text style={styles.statusBadgeText}>{displayData.status}</Text>
             </View>
           </View>
 
@@ -353,8 +436,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  statusText: {
+  statusBadgeText: {
     color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  statusText: {
+    textTransform: "capitalize",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -408,5 +496,20 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  statusText: {
+    textTransform: "capitalize",
+    fontWeight: "500",
   },
 });

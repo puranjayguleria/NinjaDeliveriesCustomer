@@ -36,7 +36,6 @@ export default function TrackBookingScreen() {
   const [booking, setBooking] = useState<ServiceBooking | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   
   // Rating and Feedback states
   const [userRating, setUserRating] = useState<number>(0);
@@ -44,8 +43,8 @@ export default function TrackBookingScreen() {
   const [ratingLoading, setRatingLoading] = useState(false);
   const [animatedProgress] = useState(new Animated.Value(0));
 
-  // Fetch booking data from Firebase
-  const fetchBookingData = async (isRefresh = false) => {
+  // Fetch booking data from Firebase (initial load)
+  const fetchBookingData = async () => {
     if (!bookingId) {
       setError('No booking ID provided');
       setLoading(false);
@@ -53,11 +52,7 @@ export default function TrackBookingScreen() {
     }
 
     try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
       
       console.log(`🔥 Fetching booking data for ID: ${bookingId}`);
@@ -84,25 +79,55 @@ export default function TrackBookingScreen() {
       setError('Failed to load booking details. Please check your internet connection.');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchBookingData();
+    if (!bookingId) {
+      setError('No booking ID provided');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    console.log(`🔥 Setting up real-time listener for booking ${bookingId}...`);
+
+    const unsubscribe = FirestoreService.listenToServiceBooking(
+      bookingId,
+      (bookingData) => {
+        if (!bookingData) {
+          setError('Booking not found');
+          setLoading(false);
+          return;
+        }
+
+        setBooking(bookingData);
+
+        // Animate progress bar
+        const progress = BookingUtils.getProgressPercentage(bookingData.status);
+        Animated.timing(animatedProgress, {
+          toValue: progress,
+          duration: 1000,
+          useNativeDriver: false,
+        }).start();
+
+        console.log(`🔄 Real-time update: ${bookingData.serviceName} - Status: ${bookingData.status}`);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error in real-time listener:', error);
+        setError('Failed to load booking details. Please check your internet connection.');
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      console.log(`🔥 Cleaning up real-time listener for booking ${bookingId}...`);
+      unsubscribe();
+    };
   }, [bookingId]);
-
-  // Auto-refresh for active bookings every 30 seconds
-  useEffect(() => {
-    if (!booking || !BookingUtils.isActiveBooking(booking.status)) return;
-    
-    const interval = setInterval(() => {
-      console.log(`🔄 Auto-refreshing booking ${bookingId}...`);
-      fetchBookingData(true);
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [booking?.status, bookingId]);
 
   // Generate booking steps based on current status
   const generateTimelineSteps = (): TrackingStep[] => {
@@ -345,13 +370,7 @@ export default function TrackBookingScreen() {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Track Booking</Text>
-        <TouchableOpacity onPress={() => fetchBookingData(true)} disabled={refreshing}>
-          {refreshing ? (
-            <ActivityIndicator size="small" color="#6D28D9" />
-          ) : (
-            <Ionicons name="refresh" size={24} color="#6D28D9" />
-          )}
-        </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>

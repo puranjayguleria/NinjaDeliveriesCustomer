@@ -79,7 +79,7 @@ const DropoffLocationScreen: React.FC = () => {
 
   const navigation = useNavigation();
   const { customerId } = useCustomer();
- ws  const { pickupCoords, pickupDetails } = route.params;
+  const { pickupCoords, pickupDetails } = route.params;
 
   // Helper Function to Calculate Distance using Haversine Formula
   /**

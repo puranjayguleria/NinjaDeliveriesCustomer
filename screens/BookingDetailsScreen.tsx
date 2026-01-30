@@ -16,7 +16,7 @@ export default function BookingDetailsScreen() {
     bookingId: params.bookingId || params.bookings?.[0]?.bookingId || "BK" + Date.now().toString().slice(-6),
     serviceTitle: params.serviceTitle || params.bookings?.[0]?.serviceTitle || "Electrician Service",
     issues: params.issues || params.bookings?.[0]?.issues || ["Fan not working", "Switch repair"],
-    company: params.company || params.bookings?.[0]?.company || { name: "Quick Fix Services", price: 299, rating: 4.5 },
+    company: params.company || params.bookings?.[0]?.company || { name: "Service Provider", price: 0, rating: 0 },
     agency: params.agency || params.bookings?.[0]?.agency || null,
     amount: params.amount || params.totalAmount || params.bookings?.[0]?.totalPrice || 299,
     date: params.date || params.bookings?.[0]?.selectedDate || new Date().toLocaleDateString("en-US", {

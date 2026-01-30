@@ -47,7 +47,7 @@ export default function ServiceCheckoutScreen() {
                   date: service.selectedDate,
                   time: service.selectedTime,
                   status: 'pending' as const,
-                  companyId: service.company.id,
+                  companyId: service.company.companyId || service.company.id,
                   totalPrice: service.totalPrice,
                   addOns: service.addOns || [],
                 };
@@ -72,18 +72,6 @@ export default function ServiceCheckoutScreen() {
               const firstBooking = bookings[0];
               navigation.navigate("BookingConfirmation", {
                 bookingId: firstBooking.bookingId,
-                serviceName: firstBooking.serviceTitle,
-                companyName: firstBooking.company?.name || "Service Provider",
-                companyPhone: firstBooking.company?.phone || firstBooking.company?.contactInfo?.phone || "",
-                agencyName: firstBooking.company?.name || "Service Agency",
-                selectedIssues: firstBooking.issues || [],
-                advancePaid: 0,
-                totalPrice: totalAmount,
-                selectedDate: firstBooking.selectedDate,
-                selectedTime: firstBooking.selectedTime,
-                status: "Ongoing",
-                paymentMethod: paymentMethod,
-                notes: notes,
               });
 
             } catch (error) {
