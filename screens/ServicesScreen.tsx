@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   StatusBar,
   Dimensions,
   ActivityIndicator,
   TextInput,
-  Alert,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
@@ -133,49 +131,6 @@ const getCategoryStyle = (categoryName: string, index: number) => {
 //   },
 // ];
 
-const POPULAR = [
-  {
-    id: "electrician",
-    title: "Electrician",
-    subtitle: "Quick & reliable repairs",
-    image: require("../assets/images/card_electrician.png"),
-    screen: "ServiceCategory",
-    params: { serviceTitle: "Electrician" },
-    rating: "4.8",
-    bookings: "2.5k+",
-  },
-  {
-    id: "plumber",
-    title: "Plumber",
-    subtitle: "Emergency plumbing services",
-    image: require("../assets/images/card_acrepair.png"),
-    screen: "ServiceCategory",
-    params: { serviceTitle: "Plumber" },
-    rating: "4.7",
-    bookings: "1.8k+",
-  },
-  {
-    id: "cleaning",
-    title: "Cleaning",
-    subtitle: "Deep cleaning specialists",
-    image: require("../assets/images/icon_cleaning.png"),
-    screen: "CleaningCategory",
-    params: { serviceTitle: "Cleaning" },
-    rating: "4.9",
-    bookings: "3.2k+",
-  },
-  {
-    id: "car-wash",
-    title: "Car Wash",
-    subtitle: "Premium car care",
-    image: require("../assets/images/car_wash.jpg"),
-    screen: "CarWashCategory",
-    params: { serviceTitle: "Car Wash" },
-    rating: "4.6",
-    bookings: "1.2k+",
-  },
-];
-
 // Remove unused constants
 // const ALL_SERVICES = [
 //   {
@@ -290,10 +245,6 @@ export default function ServicesScreen() {
     });
   };
 
-  const handleViewAllPopular = () => {
-    navigation.navigate("AllServices");
-  };
-
   const handleViewAllCategories = () => {
     navigation.navigate("AllServices");
   };
@@ -365,44 +316,6 @@ export default function ServicesScreen() {
     );
   };
 
-  const renderPopularCard = (item: any) => {
-    if (!item || !item.id) return null; // Safety check
-    
-    return (
-      <TouchableOpacity
-        key={item.id}
-        style={styles.popularCard}
-        activeOpacity={0.9}
-        onPress={() => goTo(item.screen, item.params)}
-      >
-        <ImageBackground
-          source={item.image}
-          style={styles.popularBg}
-          imageStyle={styles.popularBgImage}
-        >
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.7)']}
-            style={styles.popularGradient}
-          >
-            <View style={styles.popularContent}>
-              <View style={styles.popularStats}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statIcon}>⭐</Text>
-                  <Text style={styles.statText}>{item.rating}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statText}>{item.bookings}</Text>
-                </View>
-              </View>
-              <Text style={styles.popularTitle}>{item.title}</Text>
-              <Text style={styles.popularSubtitle}>{item.subtitle}</Text>
-            </View>
-          </LinearGradient>
-        </ImageBackground>
-      </TouchableOpacity>
-    );
-  };
-
   const HeaderUI = () => {
     return (
       <View>
@@ -460,11 +373,11 @@ export default function ServicesScreen() {
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found for "{searchQuery}"
+              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found for &quot;{searchQuery}&quot;
             </Text>
             {(filteredCategories || []).length === 0 && (
               <Text style={styles.noResultsText}>
-                Try searching for "electrician", "plumber", "cleaning", etc.
+                Try searching for &quot;electrician&quot;, &quot;plumber&quot;, &quot;cleaning&quot;, etc.
               </Text>
             )}
           </View>
@@ -532,23 +445,6 @@ export default function ServicesScreen() {
                   {(topCategories || []).filter(Boolean).map((item, index) => renderCategoryCard({ item, index }))}
                 </View>
               )}
-            </View>
-
-            {/* Popular Services */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Popular Near You</Text>
-                <TouchableOpacity 
-                  onPress={handleViewAllPopular}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.viewAllText}>View All</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.popularRow}>
-                {(POPULAR || []).filter(Boolean).map(renderPopularCard)}
-              </View>
             </View>
 
             {/* All Services Header */}
@@ -896,83 +792,6 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
     lineHeight: 16,
-  },
-
-  // Popular Services Styles
-  popularRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-
-  popularCard: {
-    width: (width - 64) / 2,
-    height: 160,
-    borderRadius: 20,
-    overflow: "hidden",
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-  },
-
-  popularBg: {
-    flex: 1,
-  },
-
-  popularBgImage: {
-    borderRadius: 20,
-  },
-
-  popularGradient: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-
-  popularContent: {
-    padding: 16,
-  },
-
-  popularStats: {
-    flexDirection: "row",
-    marginBottom: 8,
-    gap: 12,
-  },
-
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-
-  statIcon: {
-    fontSize: 12,
-    marginRight: 4,
-  },
-
-  statText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  popularTitle: {
-    color: "white",
-    fontWeight: "700",
-    fontSize: 16,
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-
-  popularSubtitle: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 13,
-    fontWeight: "400",
   },
 
   // List Styles
