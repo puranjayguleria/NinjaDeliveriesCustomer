@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
 
-type FilterStatus = 'all' | 'active' | 'pending' | 'completed';
+type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'reject';
 
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
@@ -96,14 +96,15 @@ export default function BookingHistoryScreen() {
       const active = allBookings.filter(b => ['pending', 'assigned', 'started'].includes(b.status)).length;
       const pending = allBookings.filter(b => b.status === 'pending').length;
       const completed = allBookings.filter(b => b.status === 'completed').length;
+      const reject = allBookings.filter(b => b.status === 'reject').length;
       
       console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}`);
       
-      return { all, active, pending, completed };
+      return { all, active, pending, completed ,reject};
     }
     
     // If no bookings loaded yet, return zeros
-    return { all: 0, active: 0, pending: 0, completed: 0 };
+    return { all: 0, active: 0, pending: 0, completed: 0 , reject: 0};
   };
 
   const renderFilterTabs = () => {
@@ -113,6 +114,7 @@ export default function BookingHistoryScreen() {
       { key: 'active', label: 'Active', count: counts.active },
       { key: 'pending', label: 'Pending', count: counts.pending },
       { key: 'completed', label: 'Done', count: counts.completed },
+      { key: 'reject', label: 'Reject', count: counts.reject },
     ];
 
     return (
@@ -152,12 +154,53 @@ export default function BookingHistoryScreen() {
     );
   };
 
+  const handleRejectBooking = async (bookingId: string, serviceName: string) => {
+    Alert.alert(
+      "Cancel Booking",
+      `Are you sure you want to cancel "${serviceName}"?`,
+      [
+        {
+          text: "No",
+          style: "cancel"
+        },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await FirestoreService.updateBookingStatus(bookingId, 'reject', {
+                rejectAt: new Date()
+              });
+              
+              Alert.alert(
+                "Booking Cancelled", 
+                "Your booking has been cancelled successfully.",
+                [{ text: "OK", onPress: () => fetchBookings(false, activeFilter) }]
+              );
+            } catch (error: any) {
+              console.error('Error rejecting booking:', error);
+              Alert.alert(
+                "Error", 
+                "Failed to cancel booking. Please try again.",
+                [{ text: "OK" }]
+              );
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderItem = ({ item }: { item: ServiceBooking }) => {
     const isActive = BookingUtils.isActiveBooking(item.status);
     const statusColor = BookingUtils.getStatusColor(item.status);
     const statusText = BookingUtils.getStatusText(item.status);
     const formattedDate = BookingUtils.formatBookingDate(item.date);
     const formattedTime = BookingUtils.formatBookingTime(item.time);
+    const canReject = ['pending', 'assigned'].includes(item.status);
 
     return (
       <TouchableOpacity 
@@ -223,6 +266,25 @@ export default function BookingHistoryScreen() {
                 <Text style={styles.otpText}>
                   OTP: {item.completionOtp || item.startOtp}
                 </Text>
+              </View>
+            )}
+
+            {/* Action buttons for cancellable bookings */}
+            {canReject && (
+              <View style={styles.actionButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.rejectButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleRejectBooking(item.id, item.serviceName);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.rejectButtonContent}>
+                    <Ionicons name="close-outline" size={14} color="#FF4757" />
+                    <Text style={styles.rejectButtonText}>Cancel</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -358,13 +420,13 @@ const styles = StyleSheet.create({
 
   filterContainer: {
     flexDirection: "row",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
-    gap: 6,
+    gap: 2,
   },
 
   filterTab: {
@@ -372,13 +434,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
+    paddingVertical: 8,
     paddingHorizontal: 8,
-    borderRadius: 18,
+    borderRadius: 22,
     backgroundColor: "#F8FAFC",
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    minHeight: 48,
+    minHeight: 28,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -390,11 +452,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#6D28D9",
     borderColor: "#6D28D9",
     shadowColor: "#6D28D9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
-    transform: [{ scale: 1.02 }],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
 
   filterText: {
@@ -411,30 +472,25 @@ const styles = StyleSheet.create({
   },
 
   countBadge: {
-    marginLeft: 6,
+    marginLeft: 4,
     backgroundColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    minWidth: 22,
-    height: 22,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 16,
+    height: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
 
   activeCountBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    borderWidth: 0.5,
+    borderColor: "rgba(255, 255, 255, 0.4)",
   },
 
   countText: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "700",
     color: "#64748B",
     textAlign: "center",
@@ -588,6 +644,39 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
 
+  actionButtonsContainer: {
+    flexDirection: "row",
+    marginTop: 6,
+    marginBottom: 4,
+  },
+
+  rejectButton: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FFE5E5",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    overflow: "hidden",
+  },
+
+  rejectButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "rgba(255, 71, 87, 0.05)",
+  },
+
+  rejectButtonText: {
+    fontSize: 11,
+    color: "#FF4757",
+    fontWeight: "600",
+    marginLeft: 4,
+    letterSpacing: 0.1,
+  },
+
   // Loading states
   loadingContainer: {
     flex: 1,
@@ -621,39 +710,43 @@ const styles = StyleSheet.create({
   },
 
   retryButton: {
-    backgroundColor: "#6D28D9",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "#6D28D9",
     shadowColor: "#6D28D9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   retryText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#6D28D9",
+    fontSize: 13,
     fontWeight: "600",
+    textAlign: "center",
   },
 
   loginButton: {
     backgroundColor: "#6D28D9",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
     shadowColor: "#6D28D9",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
 
   loginText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#FFFFFF",
+    fontSize: 13,
     fontWeight: "600",
+    textAlign: "center",
   },
 
   // Empty states
@@ -683,41 +776,44 @@ const styles = StyleSheet.create({
 
   browseButton: {
     backgroundColor: "#6D28D9",
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
     shadowColor: "#6D28D9",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
 
   browseText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#FFFFFF",
+    fontSize: 13,
     fontWeight: "600",
+    textAlign: "center",
   },
 
   backBtn: {
     position: "absolute",
-    bottom: 20,
-    left: 16,
-    right: 16,
-    backgroundColor: "#6D28D9",
-    paddingVertical: 16,
-    borderRadius: 16,
-    shadowColor: "#6D28D9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    bottom: 16,
+    left: 12,
+    right: 12,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#6D28D9",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
   backText: {
-    color: "white",
-    fontWeight: "700",
+    color: "#6D28D9",
+    fontWeight: "600",
     textAlign: "center",
-    fontSize: 16,
+    fontSize: 14,
   },
 });
