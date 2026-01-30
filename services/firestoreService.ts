@@ -75,6 +75,10 @@ export interface ServiceBooking {
   expiredAt?: any;
   createdAt?: any;
   updatedAt?: any;
+  // Rating and feedback fields
+  customerRating?: number;
+  customerFeedback?: string;
+  ratedAt?: any;
 }
 
 export class FirestoreService {
@@ -1627,6 +1631,42 @@ export class FirestoreService {
     } catch (error) {
       console.error(`❌ Error updating booking ${bookingId} status:`, error);
       throw new Error('Failed to update booking status. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Submit customer rating and feedback for a completed booking
+   */
+  static async submitBookingRating(
+    bookingId: string,
+    rating: number,
+    feedback?: string
+  ): Promise<void> {
+    try {
+      console.log(`⭐ Submitting rating ${rating} for booking ${bookingId}...`);
+      console.log(`📝 Feedback: "${feedback}"`);
+
+      const updateData: any = {
+        customerRating: rating,
+        ratedAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      if (feedback && feedback.trim()) {
+        updateData.customerFeedback = feedback.trim();
+      }
+
+      console.log(`🔥 Update data:`, updateData);
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Rating submitted for booking ${bookingId}`);
+    } catch (error) {
+      console.error(`❌ Error submitting rating for booking ${bookingId}:`, error);
+      throw new Error('Failed to submit rating. Please check your internet connection.');
     }
   }
 
