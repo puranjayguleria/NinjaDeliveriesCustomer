@@ -14,6 +14,7 @@ import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { VALENTINE_PRODUCTS, SPECIAL_OFFERS } from "@/constants/ValentineProducts";
+import { Colors } from "@/constants/colors";
 
 const { width } = Dimensions.get("window");
 
@@ -52,14 +53,18 @@ const ValentineSpecialsScreen = () => {
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => navigation.goBack()}
+            accessibilityLabel="Go back"
+            accessibilityHint="Returns to previous screen"
+            accessibilityRole="button"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={28} color="#b22222" />
+            <Ionicons name="arrow-back" size={28} color={Colors.valentine.primary} />
           </TouchableOpacity>
 
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Valentine Specials</Text>
+              <Text style={styles.headerTitle} accessibilityRole="header">Valentine Specials</Text>
               <Text style={styles.headerSubtitle}>
                 Surprise Your Loved Ones with Something Sweet
               </Text>
@@ -68,7 +73,7 @@ const ValentineSpecialsScreen = () => {
             {/* Sale Banner */}
             <View style={styles.bannerContainer}>
               <LinearGradient
-                colors={["#ffe6e9", "#ffccd5"]}
+                colors={[Colors.valentine.gradientStart, Colors.valentine.gradientEnd]}
                 style={styles.bannerGradient}
               >
                 <View style={styles.bannerContent}>
@@ -78,10 +83,14 @@ const ValentineSpecialsScreen = () => {
                       <Text style={styles.saleText}>SALE</Text>
                     </View>
                     <Text style={styles.discountText}>
-                      UP TO <Text style={styles.percentText}>50%</Text> OFF
+                      UP TO <Text style={styles.percentText}>40%</Text> OFF
                     </Text>
-                    <TouchableOpacity style={styles.shopNowButton}>
-                      <Text style={styles.shopNowText}>Shop Now</Text>
+                    <TouchableOpacity 
+                      style={styles.shopNowButton}
+                      accessibilityLabel="Shop Valentine's Specials"
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.shopNowText}>Special</Text>
                     </TouchableOpacity>
                   </View>
                   <Image
@@ -89,6 +98,7 @@ const ValentineSpecialsScreen = () => {
                       uri: "https://images.unsplash.com/photo-1581938165093-050aeb5ef218?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
                     }}
                     style={styles.bannerImage}
+                    accessibilityLabel="Valentine's day chocolates and gifts"
                   />
                 </View>
               </LinearGradient>
@@ -96,39 +106,64 @@ const ValentineSpecialsScreen = () => {
 
             {/* Best Gifts Section */}
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Best Gifts for Your Valentine</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Best Gifts for Your Valentine</Text>
               <View style={styles.gridContainer}>
-                {VALENTINE_PRODUCTS.map((item) => (
-                  <View key={item.id} style={styles.productCard}>
-                    <TouchableOpacity onPress={() => handleProductPress(item)}>
-                      <Image source={{ uri: item.image }} style={styles.productImage} />
-                    </TouchableOpacity>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName}>{item.name}</Text>
+                {VALENTINE_PRODUCTS.map((item) => {
+                  const isComingSoon = item.id === "v4"; // Valentine Gift Basket
+                  return (
+                    <View key={item.id} style={styles.productCard}>
+                      <TouchableOpacity 
+                        onPress={() => !isComingSoon && handleProductPress(item)}
+                        activeOpacity={isComingSoon ? 1 : 0.2}
+                        accessibilityLabel={isComingSoon ? `${item.name}, Coming Soon` : `View details for ${item.name}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: isComingSoon }}
+                      >
+                        <Image source={{ uri: item.image }} style={styles.productImage} accessibilityLabel={item.name} />
+                        {isComingSoon && (
+                          <View style={styles.comingSoonOverlay}>
+                            <Text style={styles.comingSoonText}>Coming Soon</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName}>{item.name}</Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </View>
 
             {/* Special Offers Section */}
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>Special Offers</Text>
+                <Text style={styles.sectionTitle} accessibilityRole="header">Special Offers</Text>
               </View>
               <View style={styles.offersRow}>
-                {SPECIAL_OFFERS.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.offerCard}
-                    onPress={() => handleProductPress(item)}
-                  >
-                    <Image source={{ uri: item.image }} style={styles.offerImage} />
-                    <View style={styles.offerOverlay}>
-                      <Text style={styles.offerName}>{item.name}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                {SPECIAL_OFFERS.map((item) => {
+                   const isComingSoon = item.id === "v5"; // Assorted Truffles
+                   return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.offerCard}
+                      onPress={() => !isComingSoon && handleProductPress(item)}
+                      activeOpacity={isComingSoon ? 1 : 0.2}
+                      accessibilityLabel={isComingSoon ? `${item.name}, Coming Soon` : `View details for ${item.name}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: isComingSoon }}
+                    >
+                      <Image source={{ uri: item.image }} style={styles.offerImage} accessibilityLabel={item.name} />
+                      <View style={styles.offerOverlay}>
+                        {isComingSoon ? (
+                           <Text style={styles.comingSoonText}>Coming Soon</Text>
+                        ) : (
+                           <Text style={styles.offerName}>{item.name}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
             
@@ -156,15 +191,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 20,
     left: 15,
-    zIndex: 10,
+    zIndex: 100,
     padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: Colors.white,
     borderRadius: 20,
-    elevation: 5,
-    shadowColor: "#000",
+    elevation: 10,
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   scrollContent: {
     padding: 16,
@@ -177,7 +212,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#b22222",
+    color: Colors.valentine.primary,
     fontFamily: "IndieFlower",
     textShadowColor: "rgba(255, 255, 255, 0.6)",
     textShadowOffset: { width: 1, height: 1 },
@@ -185,7 +220,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
-    color: "#8b0000",
+    color: Colors.valentine.dark,
     marginTop: 5,
     fontWeight: "600",
     textAlign: "center",
@@ -195,7 +230,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
     elevation: 5,
-    shadowColor: "#000",
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -214,11 +249,11 @@ const styles = StyleSheet.create({
   bannerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#8b0000",
+    color: Colors.valentine.dark,
     marginBottom: 5,
   },
   saleBadge: {
-    backgroundColor: "#b22222",
+    backgroundColor: Colors.valentine.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -226,29 +261,29 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   saleText: {
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "bold",
     fontSize: 12,
   },
   discountText: {
     fontSize: 16,
-    color: "#555",
+    color: Colors.text.secondary,
     marginBottom: 10,
   },
   percentText: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#b22222",
+    color: Colors.valentine.primary,
   },
   shopNowButton: {
-    backgroundColor: "#b22222",
+    backgroundColor: Colors.valentine.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     alignSelf: "flex-start",
   },
   shopNowText: {
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "bold",
   },
   bannerImage: {
@@ -256,7 +291,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderWidth: 2,
-    borderColor: "#fff",
+    borderColor: Colors.white,
   },
   sectionContainer: {
     marginBottom: 24,
@@ -264,7 +299,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#8b0000",
+    color: Colors.valentine.dark,
     marginBottom: 12,
   },
   gridContainer: {
@@ -274,12 +309,12 @@ const styles = StyleSheet.create({
   },
   productCard: {
     width: (width - 48) / 2,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.white,
     borderRadius: 16,
     marginBottom: 16,
     overflow: "hidden",
     elevation: 3,
-    shadowColor: "#000",
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -295,7 +330,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: Colors.text.primary,
     marginBottom: 4,
   },
   sectionHeaderRow: {
@@ -305,7 +340,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   viewAllText: {
-    color: "#666",
+    color: Colors.text.muted,
     fontSize: 14,
   },
   offersRow: {
@@ -332,13 +367,26 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   offerName: {
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "bold",
     fontSize: 16,
     textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
+  },
+  comingSoonOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  comingSoonText: {
+    color: Colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
 

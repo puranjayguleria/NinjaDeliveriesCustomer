@@ -44,6 +44,7 @@ import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
+import { Colors } from "@/constants/colors";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
 // migrate to the modular API, you can remove this. See:
@@ -209,7 +210,7 @@ const LocationPromptCard: React.FC<LocationPromptProps> = ({
     <View style={styles.locSheet}>
       <View style={styles.locHandle} />
       <View style={styles.locHeader}>
-        <MaterialIcons name="location-on" size={26} color="#009688" />
+        <MaterialIcons name="location-on" size={26} color={Colors.primary} />
         <Text style={styles.locTitle}>Set your delivery location</Text>
       </View>
       <Text style={styles.locSub}>
@@ -253,9 +254,9 @@ const Header = memo(() => {
     >
       <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
         <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
       </View>
-      <Text style={{ color: "#fff", opacity: 0.8, marginRight: 6 }}>•</Text>
+      <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
       <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
         <Text style={styles.locationTxt} numberOfLines={1}>
           {location.address
@@ -269,7 +270,7 @@ const Header = memo(() => {
           </View>
         )}
       </View>
-      <MaterialIcons name="keyboard-arrow-down" size={18} color="#fff" />
+      <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
     </Pressable>
   );
 });
@@ -285,7 +286,7 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
       <MaterialIcons
         name="search"
         size={20}
-        color="#555"
+        color={Colors.text.secondary}
         style={{ marginRight: 6 }}
       />
       <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
@@ -308,7 +309,7 @@ const MemoIntroCard = React.memo(
     if (!url) {
       return (
         <View style={[styles.mediaBox, styles.center]}>
-          <ActivityIndicator color="#ffffff" size="large" />
+          <ActivityIndicator color={Colors.white} size="large" />
         </View>
       );
     }
@@ -334,7 +335,7 @@ const MemoIntroCard = React.memo(
             />
             {spin && (
               <View style={[styles.mediaBox, styles.loaderOverlay]}>
-                <ActivityIndicator color="#ffffff" size="large" />
+                <ActivityIndicator color={Colors.white} size="large" />
               </View>
             )}
           </>
@@ -541,7 +542,7 @@ const SeeAllButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
       <View style={styles.seeAllRow}>
         <Text style={styles.seeAllTxt}>See all</Text>
         <Animated.View style={{ transform: [{ rotate: rotateDeg }] }}>
-          <MaterialIcons name="arrow-forward-ios" size={14} color="#009688" />
+          <MaterialIcons name="arrow-forward-ios" size={14} color={Colors.primary} />
         </Animated.View>
       </View>
     </AnimatedPressable>

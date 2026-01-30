@@ -98,6 +98,7 @@ import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
 import { RestaurantCartProvider } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
@@ -337,7 +338,7 @@ function HomeStack() {
         component={ProductListingScreen}
         options={({ route }) => ({
           title: route.params?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
       />
       <Stack.Screen
@@ -406,7 +407,7 @@ function CategoriesStack() {
         component={ProductListingScreen}
         options={({ route }) => ({
           title: route.params?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
       />
       <Stack.Screen
@@ -427,7 +428,7 @@ function FeaturedStack() {
         component={ProductListingScreen}
         options={({ route }) => ({
           title: route.params?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
       />
     </Stack.Navigator>
@@ -772,6 +773,7 @@ const App: React.FC = () => {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        <ErrorBoundary>
         <StatusBar style="dark" translucent backgroundColor="transparent" />
 
         <CustomerProvider>
@@ -863,6 +865,7 @@ const App: React.FC = () => {
         </View>
       </RNModal>
       <Toast />
+      </ErrorBoundary>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

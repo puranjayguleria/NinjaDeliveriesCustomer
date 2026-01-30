@@ -14,6 +14,7 @@ import firestore from "@react-native-firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useCart } from "@/context/CartContext";
+import Toast from "react-native-toast-message";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.24;
@@ -153,7 +154,20 @@ const ValentineSpecialSection = ({ storeId }: { storeId: string }) => {
                         <Text style={styles.qtyBtnTxt}>-</Text>
                       </TouchableOpacity>
                       <Text style={styles.qtyTxt}>{count}</Text>
-                      <TouchableOpacity onPress={() => addToCart(item.id, item.quantity)} style={styles.qtyBtn}>
+                      <TouchableOpacity 
+                        onPress={() => {
+                          if (count >= 3) { // Limit to 3
+                             Toast.show({
+                               type: "info",
+                               text1: "Limit Reached",
+                               text2: "You can only select up to 3 units."
+                             });
+                             return;
+                          }
+                          addToCart(item.id, item.quantity);
+                        }} 
+                        style={styles.qtyBtn}
+                      >
                         <Text style={styles.qtyBtnTxt}>+</Text>
                       </TouchableOpacity>
                    </View>

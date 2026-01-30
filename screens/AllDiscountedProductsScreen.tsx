@@ -16,11 +16,14 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { QuickTile } from "@/components/QuickTile";
+import { ProductGridSkeleton } from "@/components/Skeleton";
 import Loader from "@/components/VideoLoader";
 import { useLocationContext } from "@/context/LocationContext";
+import { Colors } from "@/constants/colors";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const PAGE_SIZE = 15; // Load 15 items at a time
@@ -30,6 +33,7 @@ const FIRST_ROW_HEIGHT = 200;
 const ITEM_WIDTH = (SCREEN_WIDTH - ITEM_SPACING * 4) / 3; // 3 items with equal padding
 
 const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
+  const navigation = useNavigation();
   const { location, updateLocation } = useLocationContext();
   const storeId = location.storeId;
   const [products, setProducts] = useState<any[]>([]);
@@ -166,7 +170,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
     }
   }, [fetchProducts, hasMore, loading, refreshing]);
 
-  const renderItem = ({ item, index }: { item: any; index: number }) => {
+  const renderItem = useCallback(({ item, index }: { item: any; index: number }) => {
     const isPan = item.categoryId === "panCorner"; // or use item.requiresPan if available
 
     return (
@@ -203,11 +207,21 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         />
       </Animated.View>
     );
-  };
+  }, [scrollY, maybeGate]);
+
+  const keyExtractor = useCallback((item: any) => item.id, []);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background.default }}>
       <View style={{ flex: 1 }}>
+        {/* Back Button */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={Colors.text.primary} />
+        </TouchableOpacity>
+
         {/* Animated Banner */}
         <Animated.View
           style={[
@@ -226,11 +240,16 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         </Animated.View>
 
         {/* Product Grid */}
+        {loading && products.length === 0 ? (
+           <View style={{ paddingTop: BANNER_HEIGHT + 20, paddingHorizontal: 8 }}>
+             <ProductGridSkeleton />
+           </View>
+        ) : (
         <Animated.FlatList
           data={products}
           renderItem={renderItem}
           numColumns={3}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           contentContainerStyle={{
             paddingTop: BANNER_HEIGHT, // products start below banner
             paddingBottom: 20,
@@ -244,22 +263,26 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
             { useNativeDriver: true }
           )}
           scrollEventThrottle={16}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={true}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#009688"
-              colors={["#009688"]}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
             />
           }
           ListFooterComponent={
             loading ? (
               <View style={styles.loadingFooter}>
-                <Loader />
+                <ActivityIndicator size="small" color={Colors.primary} />
               </View>
             ) : !hasMore ? (
               <View style={styles.endReached}>
-                <MaterialIcons name="done-all" size={24} color="#009688" />
+                <MaterialIcons name="done-all" size={24} color={Colors.primary} />
                 <Text style={styles.endReachedText}>All deals loaded</Text>
               </View>
             ) : null
@@ -275,6 +298,8 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
                 <TouchableOpacity
                   style={styles.refreshButton}
                   onPress={handleRefresh}
+                  accessibilityLabel="Refresh products"
+                  accessibilityRole="button"
                 >
                   <MaterialIcons name="refresh" size={20} color="#fff" />
                   <Text style={styles.refreshText}>Refresh</Text>
@@ -283,6 +308,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
             ) : null
           }
         />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -291,21 +317,35 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: Colors.background.default,
   },
   header: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.08)",
-    shadowColor: "#000",
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
     zIndex: 10,
+  },
+  backButton: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    zIndex: 20,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 20,
+    padding: 8,
+    elevation: 5,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   bannerContainer: {
     position: "absolute",
@@ -318,7 +358,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     backgroundColor: "#f0f0f0",
     elevation: 5,
-    shadowColor: "#000",
+    shadowColor: Colors.black,
     shadowOpacity: 0.1,
     shadowRadius: 10,
     zIndex: 10,
@@ -330,7 +370,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#333",
+    color: Colors.text.primary,
     marginBottom: 12,
   },
   sortContainer: {
@@ -345,15 +385,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
   },
   activeSort: {
-    backgroundColor: "#009688",
+    backgroundColor: Colors.primary,
   },
   sortText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#666",
+    color: Colors.text.muted,
   },
   activeSortText: {
-    color: "#fff",
+    color: Colors.white,
   },
   listContent: {
     paddingHorizontal: ITEM_SPACING,
@@ -384,7 +424,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginLeft: 8,
-    color: "#666",
+    color: Colors.text.muted,
     fontSize: 14,
   },
   emptyContainer: {
@@ -396,26 +436,26 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#333",
+    color: Colors.text.primary,
     marginTop: 16,
     marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#666",
+    color: Colors.text.muted,
     textAlign: "center",
     marginBottom: 20,
   },
   refreshButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#009688",
+    backgroundColor: Colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 24,
   },
   refreshText: {
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "600",
     marginLeft: 6,
   },
@@ -426,7 +466,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   endReachedText: {
-    color: "#009688",
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 8,
@@ -440,18 +480,18 @@ const styles = StyleSheet.create({
   filterButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#009688",
+    backgroundColor: Colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 24,
-    shadowColor: "#000",
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 5,
   },
   filterText: {
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "600",
     marginLeft: 6,
     fontSize: 14,

@@ -9,7 +9,7 @@ const RoseBouquetBanner = () => {
   const navigation = useNavigation<any>();
 
   const handlePress = () => {
-    navigation.navigate("RoseBouquetScreen");
+    navigation.navigate("MakeBouquetScreen");
   };
 
   return (

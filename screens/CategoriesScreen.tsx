@@ -199,7 +199,7 @@ const CategoriesScreen: React.FC = () => {
   };
 
   /* ────────── renderers ────────── */
-  const renderCategory = ({ item }: { item: Category }) => (
+  const renderCategory = useCallback(({ item }: { item: Category }) => (
     <TouchableOpacity
       style={styles.catCard}
       onPress={() => handleCategoryPress(item)}
@@ -215,9 +215,9 @@ const CategoriesScreen: React.FC = () => {
       />
       <Text style={styles.catTxt}>{item.name}</Text>
     </TouchableOpacity>
-  );
+  ), []);
 
-  const renderProduct = ({ item }: { item: Product }) => (
+  const renderProduct = useCallback(({ item }: { item: Product }) => (
     <ProductCard
       style={styles.prodCardOverride}
       item={item}
@@ -227,7 +227,9 @@ const CategoriesScreen: React.FC = () => {
       onIncrease={() => attemptAdd(item, "inc")}
       onDecrease={() => decreaseQuantity(item.id)}
     />
-  );
+  ), [cart, attemptAdd, decreaseQuantity]);
+
+  const keyExtractor = useCallback((item: { id: string }) => item.id, []);
 
   /* ────────── UI ────────── */
   return (
@@ -262,20 +264,28 @@ const CategoriesScreen: React.FC = () => {
       ) : search.trim() === "" ? (
         <FlatList
           data={visibleCategories}
-          keyExtractor={(c) => c.id}
+          keyExtractor={keyExtractor}
           renderItem={renderCategory}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           contentContainerStyle={{ padding: 16 }}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       ) : (
         <FlatList
           data={visibleProducts}
-          keyExtractor={(p) => p.id}
+          keyExtractor={keyExtractor}
           renderItem={renderProduct}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           contentContainerStyle={{ padding: 16 }}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       )}
 
