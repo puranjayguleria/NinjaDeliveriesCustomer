@@ -468,14 +468,27 @@ export default function TrackBookingScreen() {
             </View>
           </View>
 
-          {/* Show OTP info for started bookings */}
-          {booking.status === "started" && booking.startOtp && (
+          {/* Show completion OTP for started bookings */}
+          {booking.status === "started" && (booking.completionOtp || booking.startOtp) && (
             <View style={styles.otpContainer}>
               <Ionicons name="key-outline" size={18} color="#3B82F6" />
               <View style={{ marginLeft: 10 }}>
-                <Text style={styles.otpLabel}>Service OTP</Text>
-                <Text style={styles.otpValue}>{booking.startOtp}</Text>
-                <Text style={styles.otpNote}>Share this OTP with the technician to complete the service</Text>
+                <Text style={styles.otpLabel}>Service Completion OTP</Text>
+                <Text style={styles.otpValue}>
+                  {booking.completionOtp || booking.startOtp}
+                </Text>
+                <Text style={styles.otpNote}>Give this OTP to the company when service is completed</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Fallback: Always show OTP section for started services */}
+          {booking.status === "started" && !booking.completionOtp && !booking.startOtp && (
+            <View style={styles.otpContainer}>
+              <Ionicons name="warning-outline" size={18} color="#EF4444" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={styles.otpLabel}>OTP Not Available</Text>
+                <Text style={styles.otpNote}>Contact support for service completion OTP</Text>
               </View>
             </View>
           )}

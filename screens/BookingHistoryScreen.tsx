@@ -8,10 +8,14 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
+
+type FilterStatus = 'all' | 'active' | 'pending' | 'completed';
 
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
@@ -19,9 +23,10 @@ export default function BookingHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterStatus>('all');
 
-  // Fetch bookings from Firebase
-  const fetchBookings = async (isRefresh = false) => {
+  // Fetch bookings from Firebase for currently logged-in user only
+  const fetchBookings = async (isRefresh = false, filter: FilterStatus = 'all') => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -30,13 +35,34 @@ export default function BookingHistoryScreen() {
       }
       setError(null);
 
-      const fetchedBookings = await FirestoreService.getServiceBookings(20);
+      // Check if user is logged in
+      if (!FirestoreService.isUserLoggedIn()) {
+        setError('Please log in to view your bookings');
+        return;
+      }
+
+      // DEBUG: Check current user first
+      console.log('👤 DEBUG: Checking current user...');
+      await FirestoreService.debugCurrentUser();
+      
+      // DEBUG: Show all user bookings
+      console.log('🔍 DEBUG: Checking all bookings for current user...');
+      await FirestoreService.debugAllUserBookings();
+      
+      // SIMPLE FETCH: Get all bookings from service_bookings collection
+      console.log('📱 Simple fetch: Getting all bookings from service_bookings...');
+      const fetchedBookings = await FirestoreService.getSimpleUserBookings(50);
       setBookings(fetchedBookings);
       
-      console.log(`Fetched ${fetchedBookings.length} bookings from Firebase`);
-    } catch (error) {
-      console.error('Error fetching bookings:', error);
-      setError('Failed to load booking history. Please check your internet connection.');
+      console.log(`✅ Loaded ${fetchedBookings.length} bookings from service_bookings collection`);
+    } catch (error: any) {
+      console.error('Error fetching user bookings:', error);
+      
+      if (error?.message?.includes('log in')) {
+        setError('Please log in to view your bookings');
+      } else {
+        setError('Failed to load your booking history. Please check your internet connection.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -44,11 +70,82 @@ export default function BookingHistoryScreen() {
   };
 
   useEffect(() => {
-    fetchBookings();
-  }, []);
+    // Temporarily disable automatic cleanup to preserve real bookings
+    console.log('📱 Loading booking history without automatic cleanup...');
+    fetchBookings(false, activeFilter);
+  }, [activeFilter]);
 
   const onRefresh = () => {
-    fetchBookings(true);
+    fetchBookings(true, activeFilter);
+  };
+
+  const handleFilterChange = (filter: FilterStatus) => {
+    setActiveFilter(filter);
+  };
+
+  const getFilterCounts = () => {
+    // When we have bookings loaded, calculate counts from the current data
+    if (activeFilter === 'all' && bookings.length > 0) {
+      const all = bookings.length;
+      const active = bookings.filter(b => BookingUtils.isActiveBooking(b.status)).length;
+      const pending = bookings.filter(b => b.status === 'pending').length;
+      const completed = bookings.filter(b => b.status === 'completed').length;
+      
+      return { all, active, pending, completed };
+    }
+    
+    // For filtered views, show the current count
+    return {
+      all: activeFilter === 'all' ? bookings.length : 0,
+      active: activeFilter === 'active' ? bookings.length : 0,
+      pending: activeFilter === 'pending' ? bookings.length : 0,
+      completed: activeFilter === 'completed' ? bookings.length : 0,
+    };
+  };
+
+  const renderFilterTabs = () => {
+    const counts = getFilterCounts();
+    const filters: { key: FilterStatus; label: string; count: number }[] = [
+      { key: 'all', label: 'All', count: counts.all },
+      { key: 'active', label: 'In Progress', count: counts.active },
+      { key: 'pending', label: 'Pending', count: counts.pending },
+      { key: 'completed', label: 'Completed', count: counts.completed },
+    ];
+
+    return (
+      <View style={styles.filterContainer}>
+        {filters.map((filter) => (
+          <TouchableOpacity
+            key={filter.key}
+            style={[
+              styles.filterTab,
+              activeFilter === filter.key && styles.activeFilterTab
+            ]}
+            onPress={() => handleFilterChange(filter.key)}
+          >
+            <Text style={[
+              styles.filterText,
+              activeFilter === filter.key && styles.activeFilterText
+            ]}>
+              {filter.label}
+            </Text>
+            {filter.count > 0 && (
+              <View style={[
+                styles.countBadge,
+                activeFilter === filter.key && styles.activeCountBadge
+              ]}>
+                <Text style={[
+                  styles.countText,
+                  activeFilter === filter.key && styles.activeCountText
+                ]}>
+                  {filter.count}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
   };
 
   const renderItem = ({ item }: { item: ServiceBooking }) => {
@@ -76,34 +173,67 @@ export default function BookingHistoryScreen() {
         })}
       >
         <View style={styles.cardContent}>
-          <View style={styles.iconContainer}>
-            <Image 
-              source={require("../assets/images/icon_home_repair.png")} 
-              style={styles.icon}
+          {/* Service Icon */}
+          <View style={[styles.iconContainer, { backgroundColor: statusColor + '15' }]}>
+            <Ionicons 
+              name="construct" 
+              size={24} 
+              color={statusColor} 
             />
           </View>
           
           <View style={styles.details}>
+            {/* Header with service name and status */}
             <View style={styles.cardHeader}>
-              <Text style={styles.service}>{item.serviceName}</Text>
+              <Text style={styles.service} numberOfLines={1}>{item.serviceName}</Text>
               <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
                 <Text style={styles.statusText}>{statusText}</Text>
               </View>
             </View>
             
-            <Text style={styles.issue}>{item.workName}</Text>
-            <Text style={styles.customer}>Customer: {item.customerName}</Text>
+            {/* Work description */}
+            <Text style={styles.issue} numberOfLines={2}>{item.workName}</Text>
             
-            <View style={styles.timeInfo}>
-              <Text style={styles.date}>{formattedDate}</Text>
-              <Text style={styles.time}>{formattedTime}</Text>
+            {/* Customer info */}
+            <View style={styles.customerRow}>
+              <Ionicons name="person-outline" size={14} color="#6B7280" />
+              <Text style={styles.customer}>{item.customerName}</Text>
             </View>
             
-            <Text style={styles.bookingId}>Booking ID: {item.id?.substring(0, 8)}...</Text>
-            
-            {item.totalPrice && (
-              <Text style={styles.price}>₹{item.totalPrice}</Text>
+            {/* Date and time */}
+            <View style={styles.timeInfo}>
+              <View style={styles.dateTimeItem}>
+                <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+                <Text style={styles.dateTime}>{new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+              </View>
+              <View style={styles.dateTimeItem}>
+                <Ionicons name="time-outline" size={14} color="#6B7280" />
+                <Text style={styles.dateTime}>{item.time}</Text>
+              </View>
+            </View>
+
+            {/* Show completion OTP for started services */}
+            {item.status === 'started' && (item.completionOtp || item.startOtp) && (
+              <View style={styles.otpContainer}>
+                <Ionicons name="key" size={12} color="#3B82F6" />
+                <Text style={styles.otpText}>
+                  OTP: {item.completionOtp || item.startOtp}
+                </Text>
+              </View>
             )}
+
+            {/* Bottom row with booking ID and price */}
+            <View style={styles.bottomRow}>
+              <Text style={styles.bookingId}>#{item.id?.substring(0, 8)}</Text>
+              {item.totalPrice && (
+                <Text style={styles.price}>₹{item.totalPrice}</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Arrow indicator */}
+          <View style={styles.arrowContainer}>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </View>
         </View>
       </TouchableOpacity>
@@ -111,7 +241,15 @@ export default function BookingHistoryScreen() {
   };
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Booking History</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Booking History</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      {renderFilterTabs()}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -120,15 +258,37 @@ export default function BookingHistoryScreen() {
         </View>
       ) : error ? (
         <View style={styles.errorContainer}>
+          <Ionicons 
+            name={error.includes('log in') ? "person-outline" : "alert-circle"} 
+            size={48} 
+            color="#EF4444" 
+          />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => fetchBookings()}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
+          
+          {error.includes('log in') ? (
+            <TouchableOpacity 
+              style={styles.loginButton} 
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.loginText}>Go to Login</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.retryButton} onPress={() => fetchBookings(false, activeFilter)}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : bookings.length === 0 ? (
         <View style={styles.emptyContainer}>
+          <Ionicons name="calendar-outline" size={64} color="#9CA3AF" />
           <Text style={styles.emptyTitle}>No Bookings Found</Text>
-          <Text style={styles.emptyText}>You haven't made any service bookings yet.</Text>
+          <Text style={styles.emptyText}>
+            {activeFilter === 'all' 
+              ? "You haven't made any service bookings yet."
+              : `No ${activeFilter} bookings found.`
+            }
+          </Text>
+          
           <TouchableOpacity
             style={styles.browseButton}
             onPress={() => navigation.navigate("ServicesHome")}
@@ -138,11 +298,11 @@ export default function BookingHistoryScreen() {
         </View>
       ) : (
         <FlatList
-          style={{ marginTop: 14 }}
+          style={{ flex: 1 }}
           data={bookings}
           keyExtractor={(item) => item.id || ''}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -168,48 +328,124 @@ export default function BookingHistoryScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#fff", 
-    padding: 16,
-    paddingTop: 50,
+    backgroundColor: "#F8FAFC",
   },
 
-  header: { 
-    fontSize: 22, 
-    fontWeight: "900",
-    marginBottom: 20,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 20,
+    backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+
+  filterContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+
+  filterTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  activeFilterTab: {
+    backgroundColor: "#6D28D9",
+    borderColor: "#6D28D9",
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  filterText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+
+  activeFilterText: {
+    color: "#fff",
+  },
+
+  countBadge: {
+    marginLeft: 6,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 24,
+    alignItems: "center",
+  },
+
+  activeCountBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+  },
+
+  countText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+
+  activeCountText: {
+    color: "#fff",
   },
 
   card: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: "white",
+    borderRadius: 16,
+    marginHorizontal: 16,
     marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
   },
 
   cardContent: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    padding: 16,
   },
 
   iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#fff",
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-  },
-
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    marginRight: 12,
   },
 
   details: {
@@ -219,71 +455,111 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 8,
   },
 
   service: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#111",
+    color: "#1F2937",
     flex: 1,
+    marginRight: 8,
   },
 
   statusBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
+    borderRadius: 20,
   },
 
   statusText: {
-    fontSize: 10,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
     color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
   issue: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 4,
+    color: "#6B7280",
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+
+  customerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
   },
 
   customer: {
-    fontSize: 12,
-    color: "#888",
-    marginBottom: 8,
+    fontSize: 13,
+    color: "#6B7280",
+    marginLeft: 6,
   },
 
   timeInfo: {
     flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  dateTimeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+
+  dateTime: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+
+  otpContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EBF8FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 8,
+    alignSelf: "flex-start",
+  },
+
+  otpText: {
+    fontSize: 12,
+    color: "#3B82F6",
+    fontWeight: "700",
+    marginLeft: 6,
+  },
+
+  bottomRow: {
+    flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
-  },
-
-  date: {
-    fontSize: 12,
-    color: "#555",
-    fontWeight: "600",
-  },
-
-  time: {
-    fontSize: 12,
-    color: "#555",
-    fontWeight: "600",
+    alignItems: "center",
   },
 
   bookingId: {
-    fontSize: 10,
-    color: "#999",
-    fontStyle: "italic",
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "600",
+    fontFamily: "monospace",
   },
 
   price: {
-    fontSize: 14,
-    color: "#10B981",
+    fontSize: 16,
+    color: "#059669",
     fontWeight: "700",
-    marginTop: 4,
+  },
+
+  arrowContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingLeft: 8,
   },
 
   // Loading states
@@ -291,13 +567,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 50,
+    paddingVertical: 60,
   },
 
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: "#666",
+    color: "#6B7280",
     fontWeight: "500",
   },
 
@@ -306,15 +582,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 50,
+    paddingVertical: 60,
     paddingHorizontal: 20,
   },
 
   errorText: {
     fontSize: 16,
-    color: "#ef4444",
+    color: "#EF4444",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 24,
     lineHeight: 24,
   },
 
@@ -322,10 +598,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#6D28D9",
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
 
   retryText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  loginButton: {
+    backgroundColor: "#6D28D9",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  loginText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
@@ -336,30 +635,36 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 50,
+    paddingVertical: 60,
     paddingHorizontal: 20,
   },
 
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
-    color: "#333",
+    color: "#374151",
     marginBottom: 12,
+    marginTop: 16,
   },
 
   emptyText: {
     fontSize: 16,
-    color: "#666",
+    color: "#6B7280",
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 32,
     lineHeight: 24,
   },
 
   browseButton: {
     backgroundColor: "#6D28D9",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
 
   browseText: {
@@ -374,14 +679,19 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     backgroundColor: "#6D28D9",
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 16,
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 
   backText: {
     color: "white",
-    fontWeight: "900",
+    fontWeight: "700",
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 16,
   },
 });

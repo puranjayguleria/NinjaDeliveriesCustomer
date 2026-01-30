@@ -419,6 +419,16 @@ export default function ServicesScreen() {
                 Trusted experts at your doorstep
               </Text>
             </View>
+            
+            {/* Booking History Button */}
+            <TouchableOpacity 
+              style={styles.historyButton}
+              onPress={() => navigation.navigate("BookingHistory")}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="time-outline" size={24} color="#6D28D9" />
+              <Text style={styles.historyButtonText}>History</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -642,6 +652,24 @@ const styles = StyleSheet.create({
 
   headerTextContainer: {
     flex: 1,
+  },
+
+  historyButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#F3E8FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+  },
+
+  historyButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6D28D9",
+    marginTop: 2,
   },
 
   header: {

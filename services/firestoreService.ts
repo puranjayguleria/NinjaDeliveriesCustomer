@@ -1,4 +1,4 @@
-import { firestore } from '../firebase.native';
+import { firestore, auth } from '../firebase.native';
 
 export interface ServiceCategory {
   id: string;
@@ -55,6 +55,7 @@ export interface ServiceBooking {
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
+  customerId?: string; // User ID who created the booking
   date: string;
   time: string;
   status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'expired';
@@ -66,8 +67,13 @@ export interface ServiceBooking {
     name: string;
     price: number;
   }>;
+  // Service duration and OTP system
+  estimatedDuration?: number; // Duration in hours (1-2 hours)
   startOtp?: string;
+  completionOtp?: string; // OTP given to company at service end
   otpVerified?: boolean;
+  completionOtpVerified?: boolean;
+  // Timestamps
   assignedAt?: any;
   startedAt?: any;
   completedAt?: any;
@@ -125,7 +131,7 @@ export class FirestoreService {
       console.log('Categories:', categories.map(c => ({ id: c.id, name: c.name, isActive: c.isActive })));
       
       return categories;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error fetching categories from app_categories:', error);
       throw new Error('Failed to fetch service categories. Please check your internet connection.');
     }
@@ -319,7 +325,7 @@ export class FirestoreService {
       console.log(`Unique services found for "${categoryName}":`, services.map(s => ({ id: s.id, name: s.name, isActive: s.isActive })));
       
       return services;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error fetching services from app_services:', error);
       throw new Error(`Failed to fetch services for this category. Please check your internet connection.`);
     }
@@ -1500,6 +1506,50 @@ export class FirestoreService {
       snapshot.forEach(doc => {
         const data = doc.data();
         
+        // Filter out test/demo bookings with more comprehensive patterns
+        const isTestBooking = (
+          // Service name patterns
+          (data.serviceName && (
+            data.serviceName.toLowerCase().includes('test') ||
+            data.serviceName.toLowerCase().includes('demo') ||
+            data.serviceName.toLowerCase().includes('sample') ||
+            data.serviceName.toLowerCase().includes('mock') ||
+            data.serviceName.toLowerCase().includes('fake') ||
+            data.serviceName.toLowerCase().includes('dummy')
+          )) ||
+          // Customer name patterns
+          (data.customerName && (
+            data.customerName.toLowerCase().includes('test') ||
+            data.customerName.toLowerCase().includes('demo') ||
+            data.customerName.toLowerCase().includes('sample') ||
+            data.customerName.toLowerCase().includes('mock') ||
+            data.customerName.toLowerCase().includes('dummy')
+          )) ||
+          // Work name patterns
+          (data.workName && (
+            data.workName.toLowerCase().includes('test') ||
+            data.workName.toLowerCase().includes('demo') ||
+            data.workName.toLowerCase().includes('sample')
+          )) ||
+          // Company ID patterns
+          (data.companyId && (
+            data.companyId === 'test-company-id' ||
+            data.companyId.toLowerCase().includes('test') ||
+            data.companyId.toLowerCase().includes('demo')
+          )) ||
+          // Phone number patterns (test phone numbers)
+          (data.customerPhone && (
+            data.customerPhone.includes('9999999999') ||
+            data.customerPhone.includes('1234567890') ||
+            data.customerPhone.includes('0000000000')
+          ))
+        );
+        
+        if (isTestBooking) {
+          console.log(`🚫 Filtering out test/demo booking: ${data.serviceName} (Customer: ${data.customerName})`);
+          return; // Skip test/demo bookings
+        }
+        
         console.log(`📋 Booking ${doc.id}:`, {
           serviceName: data.serviceName,
           customerName: data.customerName,
@@ -1515,6 +1565,7 @@ export class FirestoreService {
           customerName: data.customerName || '',
           customerPhone: data.customerPhone || data.phone,
           customerAddress: data.customerAddress || data.address,
+          customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
           status: data.status || 'pending',
@@ -1523,8 +1574,11 @@ export class FirestoreService {
           technicianId: data.technicianId,
           totalPrice: data.totalPrice,
           addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
           startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
           otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
           assignedAt: data.assignedAt,
           startedAt: data.startedAt,
           completedAt: data.completedAt,
@@ -1532,12 +1586,15 @@ export class FirestoreService {
           expiredAt: data.expiredAt,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
         });
       });
 
       console.log(`✅ Fetched ${bookings.length} service bookings from Firebase`);
       return bookings;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error fetching service bookings:', error);
       throw new Error('Failed to fetch service bookings. Please check your internet connection.');
     }
@@ -1581,6 +1638,7 @@ export class FirestoreService {
         customerName: data.customerName || '',
         customerPhone: data.customerPhone || data.phone,
         customerAddress: data.customerAddress || data.address,
+        customerId: data.customerId,
         date: data.date || '',
         time: data.time || '',
         status: data.status || 'pending',
@@ -1589,8 +1647,11 @@ export class FirestoreService {
         technicianId: data.technicianId,
         totalPrice: data.totalPrice,
         addOns: data.addOns || [],
+        estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
         startOtp: data.startOtp,
+        completionOtp: data.completionOtp,
         otpVerified: data.otpVerified,
+        completionOtpVerified: data.completionOtpVerified,
         assignedAt: data.assignedAt,
         startedAt: data.startedAt,
         completedAt: data.completedAt,
@@ -1598,8 +1659,11 @@ export class FirestoreService {
         expiredAt: data.expiredAt,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
+        customerRating: data.customerRating,
+        customerFeedback: data.customerFeedback,
+        ratedAt: data.ratedAt,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Error fetching booking ${bookingId}:`, error);
       throw new Error('Failed to fetch booking details. Please check your internet connection.');
     }
@@ -1628,7 +1692,7 @@ export class FirestoreService {
         .update(updateData);
 
       console.log(`✅ Updated booking ${bookingId} status to ${status}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Error updating booking ${bookingId} status:`, error);
       throw new Error('Failed to update booking status. Please check your internet connection.');
     }
@@ -1664,31 +1728,43 @@ export class FirestoreService {
         .update(updateData);
 
       console.log(`✅ Rating submitted for booking ${bookingId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Error submitting rating for booking ${bookingId}:`, error);
       throw new Error('Failed to submit rating. Please check your internet connection.');
     }
   }
 
   /**
-   * Create a new service booking
+   * Create a new service booking with logged-in user ID
    */
   static async createServiceBooking(bookingData: Omit<ServiceBooking, 'id'>): Promise<string> {
     try {
-      console.log(`🔥 Creating new service booking...`);
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to create a booking');
+      }
+      
+      console.log(`🔥 Creating new service booking for logged-in user: ${userId}`);
       
       const docRef = await firestore()
         .collection('service_bookings')
         .add({
           ...bookingData,
+          customerId: userId, // Always set the logged-in user ID
           createdAt: new Date(),
           updatedAt: new Date(),
         });
 
-      console.log(`✅ Created booking with ID: ${docRef.id}`);
+      console.log(`✅ Created booking with ID: ${docRef.id} for logged-in user: ${userId}`);
       return docRef.id;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error creating service booking:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
       throw new Error('Failed to create service booking. Please check your internet connection.');
     }
   }
@@ -1720,8 +1796,691 @@ export class FirestoreService {
   }
 
   /**
-   * Listen to real-time updates for a specific service booking
+   * Update existing bookings to add customerId field for logged-in user (for migration)
    */
+  static async updateExistingBookingsWithUserId(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update bookings');
+      }
+      
+      console.log(`🔧 Updating existing bookings with logged-in userId: ${userId}`);
+      
+      // Get all bookings without customerId
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .orderBy('createdAt', 'desc')
+        .limit(20)
+        .get();
+      
+      console.log(`Found ${snapshot.size} total bookings to check`);
+      
+      let updatedCount = 0;
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        
+        // If booking doesn't have customerId, add it
+        if (!data.customerId) {
+          await firestore()
+            .collection('service_bookings')
+            .doc(doc.id)
+            .update({
+              customerId: userId,
+              updatedAt: new Date(),
+            });
+          
+          console.log(`✅ Updated booking ${doc.id} with customerId: ${userId}`);
+          updatedCount++;
+        } else {
+          console.log(`⚠️ Booking ${doc.id} already has customerId: ${data.customerId}`);
+        }
+      }
+      
+      console.log(`✅ Updated ${updatedCount} bookings with logged-in user customerId`);
+    } catch (error: any) {
+      console.error('❌ Error updating existing bookings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current logged-in user ID from Firebase Auth
+   */
+  static getCurrentUserId(): string | null {
+    try {
+      // Ensure Firebase is initialized
+      if (!auth) {
+        console.error('❌ Firebase Auth not initialized');
+        return null;
+      }
+
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        console.log(`🔐 Current logged-in user: ${currentUser.uid}`);
+        return currentUser.uid;
+      } else {
+        console.log('❌ No user is currently logged in');
+        return null;
+      }
+    } catch (error: any) {
+      console.error('❌ Error getting current user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if user is logged in
+   */
+  static isUserLoggedIn(): boolean {
+    try {
+      // Ensure Firebase is initialized
+      if (!auth) {
+        console.error('❌ Firebase Auth not initialized');
+        return false;
+      }
+
+      return auth().currentUser !== null;
+    } catch (error: any) {
+      console.error('❌ Error checking login status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user data from users collection for logged-in user
+   */
+  static async getCurrentUser(): Promise<any> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('No user is currently logged in');
+      }
+      
+      console.log(`🔥 Fetching user data for logged-in user: ${userId}`);
+      
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(userId)
+        .get();
+
+      if (!userDoc.exists) {
+        console.log(`❌ User ${userId} not found in users collection`);
+        return null;
+      }
+
+      const userData = userDoc.data();
+      console.log(`✅ Found logged-in user: ${userData?.name || userData?.email || 'Unknown'}`);
+      
+      return {
+        id: userDoc.id,
+        ...userData,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching current user:', error);
+      throw new Error('Failed to fetch user data. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * SIMPLE: Get all bookings for current user from service_bookings collection
+   */
+  static async getSimpleUserBookings(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
+      
+      // Direct query to service_bookings collection
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`📋 Processing booking ${doc.id}:`, {
+          serviceName: data.serviceName,
+          customerName: data.customerName,
+          status: data.status,
+          date: data.date,
+          time: data.time,
+          customerId: data.customerId
+        });
+        
+        // Add ALL bookings for this user (no filtering)
+        bookings.push({
+          id: doc.id,
+          serviceName: data.serviceName || '',
+          workName: data.workName || data.serviceName || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || '',
+          customerAddress: data.customerAddress || '',
+          customerId: data.customerId,
+          date: data.date || '',
+          time: data.time || '',
+          status: data.status || 'pending',
+          companyId: data.companyId,
+          technicianName: data.technicianName,
+          technicianId: data.technicianId,
+          totalPrice: data.totalPrice,
+          addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2,
+          startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
+          otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
+          assignedAt: data.assignedAt,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+          rejectedAt: data.rejectedAt,
+          expiredAt: data.expiredAt,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
+        });
+      });
+
+      // Sort by creation date (newest first)
+      bookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime;
+      });
+
+      const result = bookings.slice(0, limit);
+
+      console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
+      
+      if (result.length === 0) {
+        console.log(`ℹ️ No bookings found for user ${userId} in service_bookings collection`);
+        console.log(`💡 Check if:`);
+        console.log(`   - User is logged in correctly`);
+        console.log(`   - Bookings have correct customerId field`);
+        console.log(`   - Bookings are in service_bookings collection`);
+      } else {
+        console.log(`📋 Bookings found:`);
+        result.forEach((booking, index) => {
+          console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
+        });
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error in simple fetch:', error);
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get ONLY legitimate customer bookings (NO DEMO/TEST DATA)
+   */
+  static async getRealUserBookingsOnly(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching ONLY LEGITIMATE bookings for user: ${userId}`);
+      
+      // Get bookings for this user only
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`Found ${snapshot.size} bookings for user, applying STRICT legitimacy filter`);
+
+      const legitimateBookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // REASONABLE VALIDATION - Allow real bookings, block obvious demo data
+        const isLegitimate = (
+          // Must have service name
+          data.serviceName && 
+          data.serviceName.trim().length > 0 &&
+          
+          // Must have customer name
+          data.customerName && 
+          data.customerName.trim().length > 0 &&
+          
+          // Block only obvious demo names (not all similar names)
+          data.customerName.toLowerCase() !== 'john doe' &&
+          data.customerName.toLowerCase() !== 'jane smith' &&
+          data.customerName.toLowerCase() !== 'bob johnson' &&
+          data.customerName.toLowerCase() !== 'test customer' &&
+          data.customerName.toLowerCase() !== 'demo customer' &&
+          data.customerName.toLowerCase() !== 'sample customer' &&
+          data.customerName.toLowerCase() !== 'customer' &&
+          
+          // Must have phone (but allow various formats)
+          data.customerPhone && 
+          data.customerPhone.trim().length >= 10 &&
+          // Block only obvious test numbers
+          data.customerPhone !== '9999999999' &&
+          data.customerPhone !== '1234567890' &&
+          data.customerPhone !== '0000000000' &&
+          data.customerPhone !== '+91 9999999999' &&
+          
+          // Block test company
+          data.companyId !== 'test-company-id' &&
+          
+          // Must belong to current user
+          data.customerId === userId
+        );
+        
+        if (isLegitimate) {
+          console.log(`✅ LEGITIMATE: ${data.serviceName} | ${data.customerName} | ${data.status}`);
+          
+          legitimateBookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || '',
+            customerAddress: data.customerAddress || '',
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            technicianName: data.technicianName,
+            technicianId: data.technicianId,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        } else {
+          console.log(`🚫 REJECTED: ${data.serviceName || 'N/A'} | ${data.customerName || 'N/A'} | CustomerId: ${data.customerId} | Expected: ${userId}`);
+          console.log(`   Reasons for rejection:`);
+          console.log(`   - Service name valid: ${!!(data.serviceName && data.serviceName.trim().length > 0)}`);
+          console.log(`   - Customer name valid: ${!!(data.customerName && data.customerName.trim().length > 0)}`);
+          console.log(`   - Not demo name: ${data.customerName?.toLowerCase() !== 'john doe' && data.customerName?.toLowerCase() !== 'jane smith'}`);
+          console.log(`   - Phone valid: ${!!(data.customerPhone && data.customerPhone.trim().length >= 10)}`);
+          console.log(`   - Not test phone: ${data.customerPhone !== '9999999999'}`);
+          console.log(`   - CustomerId matches: ${data.customerId === userId}`);
+        }
+      });
+
+      // Sort by date (newest first)
+      legitimateBookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime;
+      });
+
+      const result = legitimateBookings.slice(0, limit);
+
+      console.log(`📊 RESULT: ${result.length} legitimate bookings out of ${snapshot.size} total`);
+      
+      if (result.length === 0) {
+        console.log(`ℹ️ NO LEGITIMATE BOOKINGS - User needs to create real bookings through the app`);
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error fetching legitimate bookings:', error);
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings for currently logged-in user only
+   */
+  static async getUserBookings(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching REAL bookings only for logged-in user: ${userId}`);
+      console.log(`🔥 DEBUG: About to execute query - REAL DATA ONLY`);
+      
+      // Get all bookings first, then filter for REAL bookings only
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .limit(200) // Get more to find real bookings
+        .get();
+
+      console.log(`Found ${snapshot.size} total bookings, filtering for REAL user bookings for ${userId}`);
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Filter for the specific user
+        if (data.customerId !== userId) {
+          return; // Skip bookings that don't belong to this user
+        }
+        
+        // STRICT REAL BOOKING VALIDATION - Only allow clearly real bookings
+        const isRealBooking = (
+          // Must have real service name
+          data.serviceName && 
+          data.serviceName.trim().length > 0 &&
+          !data.serviceName.toLowerCase().includes('test') &&
+          !data.serviceName.toLowerCase().includes('demo') &&
+          !data.serviceName.toLowerCase().includes('sample') &&
+          !data.serviceName.toLowerCase().includes('mock') &&
+          !data.serviceName.toLowerCase().includes('fake') &&
+          !data.serviceName.toLowerCase().includes('dummy') &&
+          
+          // Must have real customer name
+          data.customerName && 
+          data.customerName.trim().length > 0 &&
+          !data.customerName.toLowerCase().includes('test') &&
+          !data.customerName.toLowerCase().includes('demo') &&
+          !data.customerName.toLowerCase().includes('sample') &&
+          data.customerName.toLowerCase() !== 'customer' &&
+          
+          // Must have real phone number
+          data.customerPhone && 
+          data.customerPhone.trim().length > 0 &&
+          !data.customerPhone.includes('9999999999') &&
+          !data.customerPhone.includes('1234567890') &&
+          !data.customerPhone.includes('0000000000') &&
+          
+          // Must not be test company
+          data.companyId !== 'test-company-id' &&
+          (!data.companyId || !data.companyId.toLowerCase().includes('test'))
+        );
+        
+        if (!isRealBooking) {
+          console.log(`🚫 BLOCKING NON-REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
+          return; // Skip non-real bookings
+        }
+        
+        console.log(`✅ REAL USER BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
+        
+        
+        bookings.push({
+          id: doc.id,
+          serviceName: data.serviceName || '',
+          workName: data.workName || data.serviceName || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || data.phone,
+          customerAddress: data.customerAddress || data.address,
+          customerId: data.customerId,
+          date: data.date || '',
+          time: data.time || '',
+          status: data.status || 'pending',
+          companyId: data.companyId,
+          technicianName: data.technicianName,
+          technicianId: data.technicianId,
+          totalPrice: data.totalPrice,
+          addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2,
+          startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
+          otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
+          assignedAt: data.assignedAt,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+          rejectedAt: data.rejectedAt,
+          expiredAt: data.expiredAt,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
+        });
+      });
+
+      // Sort by createdAt descending on client side (newest first)
+      bookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        // Handle Firestore timestamps
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime; // Descending order (newest first)
+      });
+
+      // Limit to requested number after filtering and sorting
+      const limitedBookings = bookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} REAL bookings for logged-in user ${userId}`);
+      
+      if (limitedBookings.length === 0) {
+        console.log(`ℹ️ No real bookings found for user ${userId}. This means:`);
+        console.log(`   - User hasn't made any real bookings yet, OR`);
+        console.log(`   - All bookings are test/demo data (filtered out)`);
+      }
+      
+      return limitedBookings;
+    } catch (error: any) {
+      console.error('❌ Error fetching user bookings:', error);
+      console.error('❌ Error code:', error?.code);
+      console.error('❌ Error message:', error?.message);
+      console.error('❌ Full error:', JSON.stringify(error, null, 2));
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      // Check if it's the specific index error
+      if (error?.code === 'firestore/failed-precondition' && error?.message?.includes('index')) {
+        console.error('❌ FIRESTORE INDEX ERROR - This should not happen with the fixed query!');
+        throw new Error('Database configuration issue. Please contact support.');
+      }
+      
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings filtered by status for currently logged-in user only
+   */
+  static async getUserBookingsByStatus(
+    status: ServiceBooking['status'] | 'all' | 'active',
+    limit: number = 50
+  ): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching user bookings with status: ${status} for logged-in user: ${userId}`);
+      
+      // Get ALL user bookings first using simple fetch, then filter by status
+      const allUserBookings = await this.getSimpleUserBookings(limit * 2);
+
+      // Filter client-side based on status
+      let filteredBookings: ServiceBooking[] = [];
+      
+      if (status === 'all') {
+        filteredBookings = allUserBookings;
+      } else if (status === 'active') {
+        // Active bookings: pending, assigned, started
+        filteredBookings = allUserBookings.filter(booking => 
+          ['pending', 'assigned', 'started'].includes(booking.status)
+        );
+      } else {
+        // Specific status
+        filteredBookings = allUserBookings.filter(booking => booking.status === status);
+      }
+
+      // Limit the results
+      const limitedBookings = filteredBookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} user bookings with status: ${status} (from ${allUserBookings.length} total)`);
+      return limitedBookings;
+    } catch (error: any) {
+      console.error(`❌ Error fetching user bookings by status ${status}:`, error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+  static generateCompletionOtp(): string {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  }
+
+  /**
+   * Start service and generate completion OTP
+   */
+  static async startServiceWithOtp(bookingId: string, technicianId?: string): Promise<string> {
+    try {
+      console.log(`🔥 Starting service for booking ${bookingId}...`);
+      
+      const completionOtp = this.generateCompletionOtp();
+      
+      const updateData: any = {
+        status: 'started',
+        startedAt: new Date(),
+        completionOtp: completionOtp,
+        completionOtpVerified: false,
+        updatedAt: new Date(),
+      };
+
+      if (technicianId) {
+        updateData.technicianId = technicianId;
+      }
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Service started for booking ${bookingId} with completion OTP: ${completionOtp}`);
+      return completionOtp;
+    } catch (error) {
+      console.error(`❌ Error starting service for booking ${bookingId}:`, error);
+      throw new Error('Failed to start service. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Complete service with OTP verification
+   */
+  static async completeServiceWithOtp(bookingId: string, providedOtp: string): Promise<boolean> {
+    try {
+      console.log(`🔥 Completing service for booking ${bookingId} with OTP ${providedOtp}...`);
+      
+      // First, get the booking to verify OTP
+      const booking = await this.getServiceBookingById(bookingId);
+      if (!booking) {
+        throw new Error('Booking not found');
+      }
+
+      if (booking.completionOtp !== providedOtp) {
+        console.log(`❌ Invalid OTP provided: ${providedOtp}, expected: ${booking.completionOtp}`);
+        return false;
+      }
+
+      // OTP is correct, complete the service
+      const updateData: any = {
+        status: 'completed',
+        completedAt: new Date(),
+        completionOtpVerified: true,
+        updatedAt: new Date(),
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Service completed for booking ${bookingId} with OTP verification`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error completing service for booking ${bookingId}:`, error);
+      throw new Error('Failed to complete service. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings filtered by status (client-side filtering to avoid index requirements)
+   */
+  static async getBookingsByStatus(
+    status: ServiceBooking['status'] | 'all' | 'active',
+    limit: number = 50
+  ): Promise<ServiceBooking[]> {
+    try {
+      console.log(`🔥 Fetching bookings with status: ${status}...`);
+      
+      // Use the existing getServiceBookings method which works without indexes
+      const allBookings = await this.getServiceBookings(limit * 2);
+
+      // Filter client-side based on status
+      let filteredBookings: ServiceBooking[] = [];
+      
+      if (status === 'all') {
+        filteredBookings = allBookings;
+      } else if (status === 'active') {
+        // Active bookings: pending, assigned, started
+        filteredBookings = allBookings.filter(booking => 
+          ['pending', 'assigned', 'started'].includes(booking.status)
+        );
+      } else {
+        // Specific status
+        filteredBookings = allBookings.filter(booking => booking.status === status);
+      }
+
+      // Limit the results
+      const limitedBookings = filteredBookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} bookings with status: ${status} (from ${allBookings.length} total)`);
+      return limitedBookings;
+    } catch (error) {
+      console.error(`❌ Error fetching bookings by status ${status}:`, error);
+      throw new Error('Failed to fetch bookings. Please check your internet connection.');
+    }
+  }
   static listenToServiceBooking(
     bookingId: string,
     onUpdate: (booking: ServiceBooking | null) => void,
@@ -1749,10 +2508,43 @@ export class FirestoreService {
 
           const booking: ServiceBooking = {
             id: doc.id,
-            ...data,
-          } as ServiceBooking;
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || data.phone,
+            customerAddress: data.customerAddress || data.address,
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            technicianName: data.technicianName,
+            technicianId: data.technicianId,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          };
 
-          console.log(`🔄 Real-time update for booking ${bookingId}: status = ${booking.status}`);
+          console.log(`🔄 Real-time update for booking ${bookingId}:`);
+          console.log(`   - Status: ${booking.status}`);
+          console.log(`   - Customer ID: ${booking.customerId}`);
+          console.log(`   - Start OTP: ${booking.startOtp || 'None'}`);
+          console.log(`   - Completion OTP: ${booking.completionOtp || 'None'}`);
+          
           onUpdate(booking);
         },
         (error) => {
@@ -1764,5 +2556,736 @@ export class FirestoreService {
       );
 
     return unsubscribe;
+  }
+
+  /**
+   * DEBUG: Check current user and their bookings
+   */
+  static async debugCurrentUser(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      console.log(`👤 Current User ID: ${userId || 'NOT LOGGED IN'}`);
+      
+      if (!userId) {
+        console.log('❌ User is not logged in - this is why no bookings are showing');
+        return;
+      }
+      
+      // Check if user is properly authenticated
+      const isLoggedIn = this.isUserLoggedIn();
+      console.log(`🔐 Is user logged in: ${isLoggedIn}`);
+      
+      // Get all bookings in service_bookings collection
+      const allSnapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+      
+      console.log(`📊 Total bookings in service_bookings collection: ${allSnapshot.size}`);
+      
+      // Check how many belong to current user
+      let userBookingsCount = 0;
+      allSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.customerId === userId) {
+          userBookingsCount++;
+          console.log(`✅ User booking found: ${data.serviceName} | ${data.customerName} | ${data.status}`);
+        }
+      });
+      
+      console.log(`📋 Bookings belonging to current user: ${userBookingsCount}`);
+      
+      if (userBookingsCount === 0) {
+        console.log(`ℹ️ No bookings found for user ${userId}`);
+        console.log(`💡 Possible reasons:`);
+        console.log(`   - User hasn't created any bookings yet`);
+        console.log(`   - Bookings were created with different customerId`);
+        console.log(`   - User logged in with different account`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking current user:', error);
+    }
+  }
+
+  /**
+   * DEBUG: Show all bookings for current user (no filtering)
+   */
+  static async debugAllUserBookings(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔍 DEBUG: Showing ALL bookings for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} total bookings for user ${userId}:`);
+      
+      if (snapshot.size === 0) {
+        console.log('ℹ️ No bookings found for this user');
+        console.log('💡 This could mean:');
+        console.log('   - User has not created any bookings yet');
+        console.log('   - Bookings were created with different customerId');
+        console.log('   - User is not logged in properly');
+        return;
+      }
+      
+      snapshot.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`📋 Booking ${index + 1}:`);
+        console.log(`   ID: ${doc.id}`);
+        console.log(`   Service: ${data.serviceName || 'N/A'}`);
+        console.log(`   Customer: ${data.customerName || 'N/A'}`);
+        console.log(`   Phone: ${data.customerPhone || 'N/A'}`);
+        console.log(`   Status: ${data.status || 'N/A'}`);
+        console.log(`   Date: ${data.date || 'N/A'}`);
+        console.log(`   Time: ${data.time || 'N/A'}`);
+        console.log(`   CustomerId: ${data.customerId || 'N/A'}`);
+        console.log(`   CompanyId: ${data.companyId || 'N/A'}`);
+        console.log(`   Created: ${data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString() : 'N/A'}`);
+        console.log(`   ---`);
+      });
+      
+    } catch (error) {
+      console.error('❌ Error in debug function:', error);
+    }
+  }
+
+  /**
+   * MANUAL CLEANUP: Call this to immediately remove demo bookings
+   */
+  static async manualCleanupDemo(): Promise<void> {
+    try {
+      console.log('🚀 MANUAL DEMO CLEANUP STARTED...');
+      
+      // Step 1: Force delete specific demo names
+      const specificDeleted = await this.forceDeleteDemoBookings();
+      
+      // Step 2: General demo cleanup
+      const generalDeleted = await this.permanentlyRemoveDemoBookings();
+      
+      console.log('🎉 MANUAL CLEANUP COMPLETE!');
+      console.log(`   - Specific demo bookings deleted: ${specificDeleted}`);
+      console.log(`   - General demo bookings deleted: ${generalDeleted}`);
+      console.log(`   - Total deleted: ${specificDeleted + generalDeleted}`);
+      
+      // Step 3: Show remaining bookings
+      const remaining = await this.getRealUserBookingsOnly(50);
+      console.log(`   - Legitimate bookings remaining: ${remaining.length}`);
+      
+      if (remaining.length === 0) {
+        console.log('✅ SUCCESS: No demo bookings remain. Database contains only real customer bookings.');
+        console.log('💡 If you see an empty list, it means no real customer bookings exist yet.');
+        console.log('📱 Create a real booking through the app to test.');
+      } else {
+        console.log('✅ Remaining legitimate bookings:');
+        remaining.forEach(booking => {
+          console.log(`   - ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Manual cleanup failed:', error);
+    }
+  }
+
+  /**
+   * FORCE DELETE specific demo bookings (John Doe, Jane Smith, Bob Johnson, etc.)
+   */
+  static async forceDeleteDemoBookings(): Promise<number> {
+    try {
+      console.log('🗑️ FORCE DELETING SPECIFIC DEMO BOOKINGS...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Target specific demo names and services
+        const isSpecificDemo = (
+          // Demo customer names
+          data.customerName?.toLowerCase() === 'john doe' ||
+          data.customerName?.toLowerCase() === 'jane smith' ||
+          data.customerName?.toLowerCase() === 'bob johnson' ||
+          data.customerName?.toLowerCase() === 'alice brown' ||
+          data.customerName?.toLowerCase() === 'mike wilson' ||
+          data.customerName?.toLowerCase() === 'sarah davis' ||
+          
+          // Demo service names
+          data.serviceName?.toLowerCase() === 'home cleaning' ||
+          data.serviceName?.toLowerCase() === 'plumbing service' ||
+          data.serviceName?.toLowerCase() === 'electrical repair' ||
+          
+          // Demo combinations
+          (data.serviceName?.toLowerCase().includes('cleaning') && data.customerName?.toLowerCase().includes('bob')) ||
+          (data.serviceName?.toLowerCase().includes('plumbing') && data.customerName?.toLowerCase().includes('jane')) ||
+          (data.serviceName?.toLowerCase().includes('electrical') && data.customerName?.toLowerCase().includes('john'))
+        );
+        
+        if (isSpecificDemo) {
+          console.log(`🗑️ FORCE DELETING DEMO: "${data.serviceName}" | "${data.customerName}" | Status: ${data.status}`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ FORCE DELETED ${deletedCount} specific demo bookings`);
+      } else {
+        console.log(`ℹ️ No specific demo bookings found to delete`);
+      }
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error force deleting demo bookings:', error);
+      throw new Error('Failed to delete demo bookings');
+    }
+  }
+
+  /**
+   * PERMANENTLY remove all demo/test bookings from database
+   */
+  static async permanentlyRemoveDemoBookings(): Promise<number> {
+    try {
+      console.log('🗑️ PERMANENTLY REMOVING ALL DEMO/TEST BOOKINGS...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      let keptCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Identify demo/test bookings for deletion (including common demo names)
+        const isDemoBooking = (
+          !data.serviceName ||
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          // Common demo service names
+          data.serviceName.toLowerCase() === 'home cleaning' ||
+          data.serviceName.toLowerCase() === 'plumbing service' ||
+          data.serviceName.toLowerCase() === 'electrical repair' ||
+          data.serviceName.toLowerCase() === 'cleaning service' ||
+          data.serviceName.toLowerCase() === 'repair service' ||
+          
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          // Common demo customer names
+          data.customerName.toLowerCase() === 'john doe' ||
+          data.customerName.toLowerCase() === 'jane smith' ||
+          data.customerName.toLowerCase() === 'bob johnson' ||
+          data.customerName.toLowerCase() === 'alice brown' ||
+          data.customerName.toLowerCase() === 'mike wilson' ||
+          data.customerName.toLowerCase() === 'sarah davis' ||
+          data.customerName.toLowerCase() === 'david miller' ||
+          data.customerName.toLowerCase() === 'lisa garcia' ||
+          data.customerName.toLowerCase() === 'tom anderson' ||
+          data.customerName.toLowerCase() === 'mary johnson' ||
+          data.customerName.toLowerCase() === 'james smith' ||
+          data.customerName.toLowerCase() === 'jennifer brown' ||
+          data.customerName.toLowerCase() === 'michael davis' ||
+          data.customerName.toLowerCase() === 'jessica wilson' ||
+          
+          !data.customerPhone ||
+          data.customerPhone.includes('9999999999') ||
+          data.customerPhone.includes('1234567890') ||
+          data.customerPhone.includes('0000000000') ||
+          data.customerPhone.includes('5555555555') ||
+          data.customerPhone.includes('1111111111') ||
+          data.companyId === 'test-company-id' ||
+          
+          // Demo user IDs
+          data.customerId === 'demo-user' ||
+          data.customerId === 'test-user'
+        );
+        
+        if (isDemoBooking) {
+          console.log(`🗑️ DELETING: "${data.serviceName}" | "${data.customerName}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          console.log(`✅ KEEPING: "${data.serviceName}" | "${data.customerName}"`);
+          keptCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ PERMANENTLY DELETED ${deletedCount} demo bookings`);
+      }
+      
+      console.log(`📊 CLEANUP COMPLETE:`);
+      console.log(`   - Demo bookings deleted: ${deletedCount}`);
+      console.log(`   - Real bookings kept: ${keptCount}`);
+      console.log(`   - Database now contains ONLY legitimate customer bookings`);
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error removing demo bookings:', error);
+      throw new Error('Failed to remove demo bookings');
+    }
+  }
+
+  /**
+   * IMMEDIATE: Delete all demo bookings from database NOW
+   */
+  static async deleteDemoBookingsNow(): Promise<number> {
+    try {
+      console.log('🗑️ DELETING ALL DEMO BOOKINGS NOW...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Identify demo/test bookings
+        const isDemoBooking = (
+          !data.serviceName ||
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          !data.customerPhone ||
+          data.customerPhone.includes('9999999999') ||
+          data.customerPhone.includes('1234567890') ||
+          data.customerPhone.includes('0000000000') ||
+          data.companyId === 'test-company-id'
+        );
+        
+        if (isDemoBooking) {
+          console.log(`🗑️ DELETING: "${data.serviceName}" | Customer: "${data.customerName}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          console.log(`✅ KEEPING: "${data.serviceName}" | Customer: "${data.customerName}"`);
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ DELETED ${deletedCount} demo bookings from database`);
+      } else {
+        console.log(`✅ No demo bookings found to delete`);
+      }
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error deleting demo bookings:', error);
+      throw new Error('Failed to delete demo bookings');
+    }
+  }
+
+  /**
+   * COMPLETE CLEANUP: Remove all demo data and show only real bookings
+   * Call this function once to clean your database
+   */
+  static async completeCleanupAndVerify(): Promise<void> {
+    try {
+      console.log('🚀 STARTING COMPLETE CLEANUP AND VERIFICATION...');
+      
+      // Step 1: Show current state
+      console.log('\n📊 STEP 1: Current database state');
+      await this.debugBookingData();
+      
+      // Step 2: Force clean all demo data
+      console.log('\n🧹 STEP 2: Force cleaning demo data');
+      await this.forceCleanDemoData();
+      
+      // Step 3: Verify only real bookings remain
+      console.log('\n✅ STEP 3: Verification - showing only real bookings');
+      const realBookings = await this.showOnlyRealBookings();
+      
+      console.log('\n🎉 CLEANUP COMPLETE!');
+      console.log(`📊 Your database now contains ${realBookings.length} real customer bookings only`);
+      
+      if (realBookings.length === 0) {
+        console.log('\n💡 NEXT STEPS:');
+        console.log('   - No real customer bookings found');
+        console.log('   - Create a real booking through the app to test');
+        console.log('   - Or check if real bookings have different field patterns');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in complete cleanup:', error);
+    }
+  }
+
+  /**
+   * AGGRESSIVE: Remove ALL test/demo bookings and show only real customer bookings
+   */
+  static async forceCleanDemoData(): Promise<void> {
+    try {
+      console.log('🧹 FORCE CLEANING: Removing ALL demo/test bookings...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      console.log(`📊 Total bookings found: ${snapshot.size}`);
+      
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      let realBookingsCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Very aggressive filtering - anything that looks like test data
+        const isTestBooking = (
+          // Service name patterns
+          !data.serviceName || 
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          data.serviceName.toLowerCase().includes('mock') ||
+          data.serviceName.toLowerCase().includes('fake') ||
+          data.serviceName.toLowerCase().includes('dummy') ||
+          data.serviceName.toLowerCase().includes('electrical') && data.customerName?.toLowerCase().includes('test') ||
+          
+          // Customer name patterns
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase().includes('sample') ||
+          data.customerName.toLowerCase().includes('mock') ||
+          data.customerName.toLowerCase().includes('dummy') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          
+          // Work name patterns
+          data.workName?.toLowerCase().includes('test') ||
+          data.workName?.toLowerCase().includes('demo') ||
+          data.workName?.toLowerCase().includes('sample') ||
+          data.workName?.toLowerCase().includes('fix test') ||
+          
+          // Company ID patterns
+          data.companyId === 'test-company-id' ||
+          data.companyId?.toLowerCase().includes('test') ||
+          data.companyId?.toLowerCase().includes('demo') ||
+          
+          // Phone number patterns (test phone numbers)
+          data.customerPhone?.includes('9999999999') ||
+          data.customerPhone?.includes('1234567890') ||
+          data.customerPhone?.includes('0000000000') ||
+          data.customerPhone?.includes('+91 9999999999') ||
+          
+          // Address patterns
+          data.customerAddress?.toLowerCase().includes('test') ||
+          data.customerAddress?.toLowerCase().includes('demo') ||
+          
+          // Technician patterns
+          data.technicianName?.toLowerCase().includes('test') ||
+          data.technicianId?.toLowerCase().includes('test') ||
+          
+          // OTP patterns (test OTPs)
+          data.startOtp === '1234' ||
+          data.completionOtp === '4567' ||
+          data.completionOtp === '1234'
+        );
+        
+        if (isTestBooking) {
+          console.log(`🗑️ DELETING TEST BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          realBookingsCount++;
+          console.log(`✅ KEEPING REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ FORCE DELETED ${deletedCount} test/demo bookings`);
+      }
+      
+      console.log(`📊 FINAL RESULT:`);
+      console.log(`   - Real bookings remaining: ${realBookingsCount}`);
+      console.log(`   - Test bookings deleted: ${deletedCount}`);
+      console.log(`   - Database now contains ONLY real customer bookings`);
+      
+    } catch (error: any) {
+      console.error('❌ Error in force clean:', error);
+      throw new Error('Failed to clean demo data');
+    }
+  }
+
+  /**
+   * Verify and show only real customer bookings
+   */
+  static async showOnlyRealBookings(): Promise<ServiceBooking[]> {
+    try {
+      console.log('🔍 VERIFICATION: Showing only real customer bookings...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      console.log(`📊 Total bookings in database: ${snapshot.size}`);
+      
+      const realBookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Apply strict filtering - only real customer bookings
+        const isRealBooking = (
+          data.serviceName && 
+          !data.serviceName.toLowerCase().includes('test') &&
+          !data.serviceName.toLowerCase().includes('demo') &&
+          !data.serviceName.toLowerCase().includes('sample') &&
+          data.customerName && 
+          !data.customerName.toLowerCase().includes('test') &&
+          !data.customerName.toLowerCase().includes('demo') &&
+          data.customerPhone &&
+          !data.customerPhone.includes('9999999999') &&
+          !data.customerPhone.includes('1234567890') &&
+          data.companyId !== 'test-company-id'
+        );
+        
+        if (isRealBooking) {
+          console.log(`✅ REAL CUSTOMER BOOKING:`);
+          console.log(`   - Service: ${data.serviceName}`);
+          console.log(`   - Customer: ${data.customerName}`);
+          console.log(`   - Phone: ${data.customerPhone}`);
+          console.log(`   - Status: ${data.status}`);
+          console.log(`   - Date: ${data.date}`);
+          console.log(`   - Time: ${data.time}`);
+          console.log(`   - ID: ${doc.id}`);
+          console.log(`   ---`);
+          
+          realBookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || data.phone,
+            customerAddress: data.customerAddress || data.address,
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            technicianName: data.technicianName,
+            technicianId: data.technicianId,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        }
+      });
+      
+      console.log(`📊 VERIFICATION COMPLETE:`);
+      console.log(`   - Real customer bookings found: ${realBookings.length}`);
+      
+      if (realBookings.length === 0) {
+        console.log(`⚠️ NO REAL CUSTOMER BOOKINGS FOUND`);
+        console.log(`   This means either:`);
+        console.log(`   1. No customers have made real bookings yet`);
+        console.log(`   2. All bookings in database are test/demo data`);
+        console.log(`   3. Real bookings don't match our filtering criteria`);
+      }
+      
+      return realBookings;
+      
+    } catch (error) {
+      console.error('❌ Error verifying real bookings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Debug function to show all bookings and filtering results
+   */
+  static async debugBookingData(): Promise<void> {
+    try {
+      console.log('🔍 DEBUG: Analyzing all booking data...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .limit(50)
+        .get();
+
+      console.log(`📊 Total bookings in database: ${snapshot.size}`);
+      
+      let realBookings = 0;
+      let testBookings = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Apply the same filtering logic
+        const isTestBooking = (
+          // Service name patterns
+          (data.serviceName && (
+            data.serviceName.toLowerCase().includes('test') ||
+            data.serviceName.toLowerCase().includes('demo') ||
+            data.serviceName.toLowerCase().includes('sample') ||
+            data.serviceName.toLowerCase().includes('mock') ||
+            data.serviceName.toLowerCase().includes('fake') ||
+            data.serviceName.toLowerCase().includes('dummy')
+          )) ||
+          // Customer name patterns
+          (data.customerName && (
+            data.customerName.toLowerCase().includes('test') ||
+            data.customerName.toLowerCase().includes('demo') ||
+            data.customerName.toLowerCase().includes('sample') ||
+            data.customerName.toLowerCase().includes('mock') ||
+            data.customerName.toLowerCase().includes('dummy')
+          )) ||
+          // Work name patterns
+          (data.workName && (
+            data.workName.toLowerCase().includes('test') ||
+            data.workName.toLowerCase().includes('demo') ||
+            data.workName.toLowerCase().includes('sample')
+          )) ||
+          // Company ID patterns
+          (data.companyId && (
+            data.companyId === 'test-company-id' ||
+            data.companyId.toLowerCase().includes('test') ||
+            data.companyId.toLowerCase().includes('demo')
+          )) ||
+          // Phone number patterns (test phone numbers)
+          (data.customerPhone && (
+            data.customerPhone.includes('9999999999') ||
+            data.customerPhone.includes('1234567890') ||
+            data.customerPhone.includes('0000000000')
+          ))
+        );
+        
+        if (isTestBooking) {
+          testBookings++;
+          console.log(`🚫 TEST BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
+        } else {
+          realBookings++;
+          console.log(`✅ REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
+        }
+      });
+      
+      console.log(`📊 SUMMARY:`);
+      console.log(`   - Real bookings: ${realBookings}`);
+      console.log(`   - Test bookings (filtered out): ${testBookings}`);
+      console.log(`   - Total: ${realBookings + testBookings}`);
+      
+    } catch (error) {
+      console.error('❌ Error in debug function:', error);
+    }
+  }
+
+  /**
+   * Clean up test/demo bookings from the database (admin function)
+   */
+  static async cleanupTestBookings(): Promise<number> {
+    try {
+      console.log('🧹 Cleaning up test/demo bookings...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      let deletedCount = 0;
+      const batch = firestore().batch();
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Identify test/demo bookings with comprehensive patterns
+        const isTestBooking = (
+          // Service name patterns
+          (data.serviceName && (
+            data.serviceName.toLowerCase().includes('test') ||
+            data.serviceName.toLowerCase().includes('demo') ||
+            data.serviceName.toLowerCase().includes('sample') ||
+            data.serviceName.toLowerCase().includes('mock') ||
+            data.serviceName.toLowerCase().includes('fake') ||
+            data.serviceName.toLowerCase().includes('dummy')
+          )) ||
+          // Customer name patterns
+          (data.customerName && (
+            data.customerName.toLowerCase().includes('test') ||
+            data.customerName.toLowerCase().includes('demo') ||
+            data.customerName.toLowerCase().includes('sample') ||
+            data.customerName.toLowerCase().includes('mock') ||
+            data.customerName.toLowerCase().includes('dummy')
+          )) ||
+          // Work name patterns
+          (data.workName && (
+            data.workName.toLowerCase().includes('test') ||
+            data.workName.toLowerCase().includes('demo') ||
+            data.workName.toLowerCase().includes('sample')
+          )) ||
+          // Company ID patterns
+          (data.companyId && (
+            data.companyId === 'test-company-id' ||
+            data.companyId.toLowerCase().includes('test') ||
+            data.companyId.toLowerCase().includes('demo')
+          )) ||
+          // Phone number patterns (test phone numbers)
+          (data.customerPhone && (
+            data.customerPhone.includes('9999999999') ||
+            data.customerPhone.includes('1234567890') ||
+            data.customerPhone.includes('0000000000')
+          ))
+        );
+        
+        if (isTestBooking) {
+          console.log(`🗑️ Marking test booking for deletion: ${data.serviceName} (${doc.id})`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ Deleted ${deletedCount} test/demo bookings`);
+      } else {
+        console.log('✅ No test bookings found to delete');
+      }
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error cleaning up test bookings:', error);
+      throw new Error('Failed to clean up test bookings');
+    }
   }
 }
