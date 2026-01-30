@@ -8,10 +8,12 @@ import {
   ScrollView,
   Alert,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
+import { FirestoreService } from "../services/firestoreService";
 
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
@@ -21,8 +23,9 @@ export default function ServiceCheckoutScreen() {
   const { services, totalAmount } = route.params;
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [loading, setLoading] = useState(false);
 
-  const handleProceedToPayment = () => {
+  const handleProceedToPayment = async () => {
     Alert.alert(
       "Confirm Booking",
       `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}. Continue?`,
@@ -30,23 +33,69 @@ export default function ServiceCheckoutScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
-          onPress: () => {
-            // Generate booking IDs for all services
-            const bookings = services.map((service: ServiceCartItem) => ({
-              ...service,
-              bookingId: "BK" + Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 3),
-              notes,
-              paymentMethod,
-            }));
+          onPress: async () => {
+            setLoading(true);
+            try {
+              // Create bookings in Firebase service_bookings collection
+              const bookingPromises = services.map(async (service: ServiceCartItem) => {
+                const bookingData = {
+                  serviceName: service.serviceTitle,
+                  workName: service.issues?.join(', ') || service.serviceTitle,
+                  customerName: "Customer", // You might want to get this from user context
+                  customerPhone: "", // You might want to get this from user context
+                  customerAddress: "", // You might want to get this from user context
+                  date: service.selectedDate,
+                  time: service.selectedTime,
+                  status: 'pending' as const,
+                  companyId: service.company.id,
+                  totalPrice: service.totalPrice,
+                  addOns: service.addOns || [],
+                };
 
-            // Clear cart after successful booking
-            clearCart();
+                const bookingId = await FirestoreService.createServiceBooking(bookingData);
+                console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
+                
+                return {
+                  ...service,
+                  bookingId,
+                  notes,
+                  paymentMethod,
+                };
+              });
 
-            navigation.navigate("Payment", {
-              bookings,
-              totalAmount,
-              paymentMethod,
-            });
+              const bookings = await Promise.all(bookingPromises);
+              
+              // Clear cart after successful booking creation
+              clearCart();
+
+              // Navigate to booking confirmation screen with the first booking details
+              const firstBooking = bookings[0];
+              navigation.navigate("BookingConfirmation", {
+                bookingId: firstBooking.bookingId,
+                serviceName: firstBooking.serviceTitle,
+                companyName: firstBooking.company?.name || "Service Provider",
+                companyPhone: firstBooking.company?.phone || firstBooking.company?.contactInfo?.phone || "",
+                agencyName: firstBooking.company?.name || "Service Agency",
+                selectedIssues: firstBooking.issues || [],
+                advancePaid: 0,
+                totalPrice: totalAmount,
+                selectedDate: firstBooking.selectedDate,
+                selectedTime: firstBooking.selectedTime,
+                status: "Ongoing",
+                paymentMethod: paymentMethod,
+                notes: notes,
+              });
+
+            } catch (error) {
+              console.error('❌ Error creating bookings:', error);
+              Alert.alert(
+                "Booking Failed",
+                "Failed to create your bookings. Please try again.",
+                [{ text: "OK" }]
+              );
+            } finally {
+              setLoading(false);
+            }
           },
         },
       ]
@@ -199,10 +248,18 @@ export default function ServiceCheckoutScreen() {
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>
         </View>
         <TouchableOpacity
-          style={styles.proceedButton}
+          style={[styles.proceedButton, loading && styles.proceedButtonDisabled]}
           onPress={handleProceedToPayment}
+          disabled={loading}
         >
-          <Text style={styles.proceedButtonText}>Proceed to Payment</Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.proceedButtonText}>Creating Bookings...</Text>
+            </View>
+          ) : (
+            <Text style={styles.proceedButtonText}>Proceed to Payment</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -453,6 +510,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  proceedButtonDisabled: {
+    backgroundColor: "#A5D6A7",
+  },
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   proceedButtonText: {
     color: "#fff",

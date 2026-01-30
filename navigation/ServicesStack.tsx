@@ -11,6 +11,7 @@ import RazorpayWebView from "../screens/RazorpayWebView";
 import BookingDetailsScreen from "../screens/BookingDetailsScreen";
 import BookingHistoryScreen from "../screens/BookingHistoryScreen";
 import TrackBookingScreen from "../screens/TrackBookingScreen";
+import BookingConfirmationScreen from "../screens/BookingConfirmationScreen";
 import ServiceCartScreen from "../screens/ServiceCartScreen";
 import ServiceCheckoutScreen from "../screens/ServiceCheckoutScreen";
 import UnifiedCartScreen from "../screens/UnifiedCartScreen";
@@ -57,6 +58,7 @@ export default function ServicesStack() {
       {/* Booking Screens */}
       <Stack.Screen name="BookingDetails" component={BookingDetailsScreen} />
       <Stack.Screen name="BookingHistory" component={BookingHistoryScreen} />
+      <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} />
       <Stack.Screen name="TrackBooking" component={TrackBookingScreen} />
 
       {/* Other Services */}
