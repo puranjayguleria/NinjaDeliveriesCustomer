@@ -2331,25 +2331,53 @@ export class FirestoreService {
         throw new Error('Please log in to view your bookings');
       }
       
-      console.log(`🔥 Fetching user bookings with status: ${status} for logged-in user: ${userId}`);
+      console.log(`🔥 Fetching user bookings with status filter: ${status} for user: ${userId}`);
       
       // Get ALL user bookings first using simple fetch, then filter by status
       const allUserBookings = await this.getSimpleUserBookings(limit * 2);
+
+      console.log(`📊 Total user bookings before filtering: ${allUserBookings.length}`);
+      console.log(`🔍 Filtering for status: ${status}`);
 
       // Filter client-side based on status
       let filteredBookings: ServiceBooking[] = [];
       
       if (status === 'all') {
         filteredBookings = allUserBookings;
+        console.log(`✅ Showing ALL bookings: ${filteredBookings.length}`);
       } else if (status === 'active') {
         // Active bookings: pending, assigned, started
         filteredBookings = allUserBookings.filter(booking => 
           ['pending', 'assigned', 'started'].includes(booking.status)
         );
+        console.log(`✅ Showing ACTIVE bookings (pending/assigned/started): ${filteredBookings.length}`);
+      } else if (status === 'pending') {
+        // Only pending bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'pending');
+        console.log(`✅ Showing PENDING bookings: ${filteredBookings.length}`);
+      } else if (status === 'completed') {
+        // Only completed bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'completed');
+        console.log(`✅ Showing COMPLETED bookings: ${filteredBookings.length}`);
       } else {
-        // Specific status
+        // Specific status (for any other status)
         filteredBookings = allUserBookings.filter(booking => booking.status === status);
+        console.log(`✅ Showing bookings with status '${status}': ${filteredBookings.length}`);
       }
+
+      // Show what bookings are in each category for debugging
+      console.log(`📋 Bookings by status breakdown:`);
+      const statusCounts = allUserBookings.reduce((acc, booking) => {
+        acc[booking.status] = (acc[booking.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log(`   Status counts:`, statusCounts);
+      
+      // Show filtered results
+      console.log(`📋 Filtered bookings for '${status}':`);
+      filteredBookings.forEach((booking, index) => {
+        console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | Status: ${booking.status}`);
+      });
 
       // Limit the results
       const limitedBookings = filteredBookings.slice(0, limit);

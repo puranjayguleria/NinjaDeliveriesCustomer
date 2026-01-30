@@ -20,6 +20,7 @@ type FilterStatus = 'all' | 'active' | 'pending' | 'completed';
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
   const [bookings, setBookings] = useState<ServiceBooking[]>([]);
+  const [allBookings, setAllBookings] = useState<ServiceBooking[]>([]); // Store all bookings for count calculation
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +50,17 @@ export default function BookingHistoryScreen() {
       console.log('🔍 DEBUG: Checking all bookings for current user...');
       await FirestoreService.debugAllUserBookings();
       
-      // SIMPLE FETCH: Get all bookings from service_bookings collection
-      console.log('📱 Simple fetch: Getting all bookings from service_bookings...');
-      const fetchedBookings = await FirestoreService.getSimpleUserBookings(50);
+      // First, get ALL user bookings for count calculation
+      console.log('📊 Getting all user bookings for count calculation...');
+      const allUserBookings = await FirestoreService.getSimpleUserBookings(100);
+      setAllBookings(allUserBookings);
+      
+      // Then get filtered bookings for display
+      console.log(`📱 Fetching bookings with filter: ${filter}`);
+      const fetchedBookings = await FirestoreService.getUserBookingsByStatus(filter, 50);
       setBookings(fetchedBookings);
       
-      console.log(`✅ Loaded ${fetchedBookings.length} bookings from service_bookings collection`);
+      console.log(`✅ Loaded ${fetchedBookings.length} bookings with filter: ${filter} (${allUserBookings.length} total)`);
     } catch (error: any) {
       console.error('Error fetching user bookings:', error);
       
@@ -84,23 +90,20 @@ export default function BookingHistoryScreen() {
   };
 
   const getFilterCounts = () => {
-    // When we have bookings loaded, calculate counts from the current data
-    if (activeFilter === 'all' && bookings.length > 0) {
-      const all = bookings.length;
-      const active = bookings.filter(b => BookingUtils.isActiveBooking(b.status)).length;
-      const pending = bookings.filter(b => b.status === 'pending').length;
-      const completed = bookings.filter(b => b.status === 'completed').length;
+    // Calculate counts from ALL user bookings
+    if (allBookings.length > 0) {
+      const all = allBookings.length;
+      const active = allBookings.filter(b => ['pending', 'assigned', 'started'].includes(b.status)).length;
+      const pending = allBookings.filter(b => b.status === 'pending').length;
+      const completed = allBookings.filter(b => b.status === 'completed').length;
+      
+      console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}`);
       
       return { all, active, pending, completed };
     }
     
-    // For filtered views, show the current count
-    return {
-      all: activeFilter === 'all' ? bookings.length : 0,
-      active: activeFilter === 'active' ? bookings.length : 0,
-      pending: activeFilter === 'pending' ? bookings.length : 0,
-      completed: activeFilter === 'completed' ? bookings.length : 0,
-    };
+    // If no bookings loaded yet, return zeros
+    return { all: 0, active: 0, pending: 0, completed: 0 };
   };
 
   const renderFilterTabs = () => {
