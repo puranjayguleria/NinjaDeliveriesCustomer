@@ -238,7 +238,7 @@ const dates = getNext7Days();
               serviceTitle,
               issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
               company,
-              selectedDate: selected?.full || selectedDate,
+              selectedDate: selectedDate,
               selectedTime: time,
               bookingType,
               totalPrice: computedPrice,
