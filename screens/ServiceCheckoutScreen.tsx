@@ -177,9 +177,9 @@ export default function ServiceCheckoutScreen() {
           customerData = {
             name: currentUser.name || currentUser.displayName || `Customer ${currentUser.phone?.slice(-4) || ''}`,
             phone: currentUser.phone || currentUser.phoneNumber || "",
-            address: currentUser.address || ""
+            address: currentUser.address || currentUser.location || currentUser.fullAddress || ""
           };
-          console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
+          console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}, ${customerData.address}`);
         }
       } catch (userError) {
         console.error("Error fetching user data:", userError);

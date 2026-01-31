@@ -8,11 +8,10 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
-  RefreshControl,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { FirestoreService, ServiceBooking, ServicePayment } from "../services/firestoreService";
+import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import firestore from "@react-native-firebase/firestore";
 import AddOnServicesModal from "../components/AddOnServicesModal";
 
@@ -23,9 +22,7 @@ export default function BookingConfirmationScreen() {
   const { bookingId } = route.params || {};
   
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [bookingData, setBookingData] = useState<ServiceBooking | null>(null);
-  const [paymentData, setPaymentData] = useState<ServicePayment | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [companyPhone, setCompanyPhone] = useState<string>("");
   const [showAddOnModal, setShowAddOnModal] = useState(false);
@@ -33,37 +30,27 @@ export default function BookingConfirmationScreen() {
   const [addOnServices, setAddOnServices] = useState<any[]>([]);
   const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
 
-  // Fetch booking data from Firebase
+  // Set up real-time listener for booking data instead of manual fetch
   useEffect(() => {
-    fetchBookingData();
-  }, [bookingId]);
-
-  const fetchBookingData = async () => {
     if (!bookingId) {
       console.error("No bookingId provided");
       setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
-      console.log(`📱 Fetching booking data for ID: ${bookingId}`);
-      
-      const booking = await FirestoreService.getServiceBookingById(bookingId);
-      
-      if (booking) {
+    console.log(`📱 Setting up real-time listener for booking ${bookingId}...`);
+    
+    const unsubscribe = FirestoreService.listenToServiceBooking(
+      bookingId,
+      async (booking) => {
+        if (!booking) {
+          Alert.alert("Error", "Booking not found");
+          setLoading(false);
+          return;
+        }
+
         setBookingData(booking);
         setTotalWithAddOns(booking.totalPrice || 0);
-        
-        // Fetch payment data
-        try {
-          const payment = await FirestoreService.getPaymentByBookingId(bookingId);
-          setPaymentData(payment);
-          console.log(`📱 Payment data:`, payment);
-        } catch (paymentError) {
-          console.error("Error fetching payment data:", paymentError);
-          // Continue without payment data
-        }
         
         // Fetch company name if companyId exists
         if (booking.companyId) {
@@ -89,22 +76,22 @@ export default function BookingConfirmationScreen() {
 
         // Try to determine category ID for add-on services
         await determineCategoryId(booking.serviceName);
-      } else {
-        Alert.alert("Error", "Booking not found");
+        
+        console.log(`🔄 Real-time update: ${booking.serviceName} - Status: ${booking.status}`);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error in real-time listener:', error);
+        Alert.alert("Error", "Failed to load booking details");
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching booking:", error);
-      Alert.alert("Error", "Failed to load booking details");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchBookingData();
-  };
+    return () => {
+      console.log(`🔥 Cleaning up real-time listener for booking ${bookingId}...`);
+      unsubscribe();
+    };
+  }, [bookingId]);
 
   // Helper function to get status color and icon
   const getStatusInfo = (status: string) => {
@@ -123,22 +110,6 @@ export default function BookingConfirmationScreen() {
         return { color: '#6B7280', icon: 'time-outline', text: 'Expired' };
       default:
         return { color: '#6B7280', icon: 'help-circle-outline', text: status || 'Unknown' };
-    }
-  };
-
-  // Helper function to get payment status info
-  const getPaymentStatusInfo = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'paid':
-        return { color: '#10B981', icon: 'checkmark-circle', text: 'Paid' };
-      case 'pending':
-        return { color: '#F59E0B', icon: 'time', text: 'Pending' };
-      case 'failed':
-        return { color: '#EF4444', icon: 'close-circle', text: 'Failed' };
-      case 'refunded':
-        return { color: '#6B7280', icon: 'return-down-back', text: 'Refunded' };
-      default:
-        return { color: '#6B7280', icon: 'help-circle', text: status || 'Unknown' };
     }
   };
 
@@ -164,6 +135,7 @@ export default function BookingConfirmationScreen() {
     
     return `${date} at ${time || 'Time TBD'}`;
   };
+
   // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
     try {
@@ -201,7 +173,7 @@ export default function BookingConfirmationScreen() {
         customerAddress: bookingData.customerAddress,
         selectedDate: bookingData.date,
         selectedTime: bookingData.time,
-        status: bookingData.status,
+        status: bookingData.status, // Real-time status from Firebase
         totalPrice: bookingData.totalPrice || 0,
         addOns: bookingData.addOns || [],
         technicianName: bookingData.technicianName,
@@ -212,11 +184,6 @@ export default function BookingConfirmationScreen() {
         assignedAt: bookingData.assignedAt,
         startedAt: bookingData.startedAt,
         completedAt: bookingData.completedAt,
-        // Payment info from payment data
-        paymentMethod: paymentData?.paymentMethod || fallbackData.paymentMethod || 'cash',
-        paymentStatus: paymentData?.paymentStatus || fallbackData.paymentStatus || 'pending',
-        transactionId: paymentData?.transactionId,
-        paymentGateway: paymentData?.paymentGateway,
       };
     }
     
@@ -225,12 +192,13 @@ export default function BookingConfirmationScreen() {
       bookingId: fallbackData.bookingId || bookingId,
       serviceName: fallbackData.serviceName || "",
       workName: fallbackData.workName || fallbackData.serviceName || "",
+      customerName: fallbackData.customerName || "",
+      customerPhone: fallbackData.customerPhone || "",
+      customerAddress: fallbackData.customerAddress || "",
       selectedDate: fallbackData.selectedDate || "",
       selectedTime: fallbackData.selectedTime || "",
       status: fallbackData.status || "pending",
       totalPrice: fallbackData.totalAmount || fallbackData.totalPrice || 0,
-      paymentMethod: fallbackData.paymentMethod || "cash",
-      paymentStatus: fallbackData.paymentStatus || "pending",
       addOns: [],
     };
   };
@@ -373,14 +341,6 @@ export default function BookingConfirmationScreen() {
       <ScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#007AFF']}
-            tintColor="#007AFF"
-          />
-        }
       >
         
         {/* Booking Details Card */}
@@ -512,38 +472,6 @@ export default function BookingConfirmationScreen() {
             </View>
           </View>
 
-          {/* Payment Information */}
-          <View style={styles.detailRow}>
-            <View style={[styles.iconContainer, { backgroundColor: getPaymentStatusInfo(displayData.paymentStatus).color + '20' }]}>
-              <Ionicons 
-                name={getPaymentStatusInfo(displayData.paymentStatus).icon as any} 
-                size={20} 
-                color={getPaymentStatusInfo(displayData.paymentStatus).color} 
-              />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Payment:</Text>
-              <View style={styles.paymentContainer}>
-                <View style={[styles.paymentBadge, { backgroundColor: getPaymentStatusInfo(displayData.paymentStatus).color }]}>
-                  <Text style={styles.paymentBadgeText}>{getPaymentStatusInfo(displayData.paymentStatus).text}</Text>
-                </View>
-                <Text style={styles.paymentMethodText}>
-                  via {displayData.paymentMethod === 'cash' ? 'Cash on Service' : 'Online Payment'}
-                </Text>
-              </View>
-              {displayData.transactionId && (
-                <Text style={styles.transactionText}>
-                  Transaction ID: {displayData.transactionId}
-                </Text>
-              )}
-              {displayData.paymentGateway && (
-                <Text style={styles.gatewayText}>
-                  Gateway: {displayData.paymentGateway.toUpperCase()}
-                </Text>
-              )}
-            </View>
-          </View>
-
           {/* Total Amount */}
           <View style={styles.detailRow}>
             <View style={styles.iconContainer}>
@@ -646,7 +574,7 @@ export default function BookingConfirmationScreen() {
         onClose={() => setShowAddOnModal(false)}
         onAddServices={handleAddServicesConfirm}
         categoryId={categoryId}
-        existingServices={displayData.selectedIssues}
+        existingServices={displayData.addOns?.map(addon => addon.name) || []}
       />
     </View>
   );
@@ -725,27 +653,6 @@ const styles = StyleSheet.create({
     color: "#10B981",
     fontWeight: "700",
   },
-  issuesContainer: {
-    marginTop: 4,
-  },
-  issueItem: {
-    fontSize: 14,
-    color: "#374151",
-    marginBottom: 2,
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  statusLabel: {
-    fontSize: 16,
-    color: "#111827",
-    fontWeight: "600",
-  },
   statusBadge: {
     backgroundColor: "#10B981",
     paddingHorizontal: 12,
@@ -754,11 +661,6 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: {
     color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  statusText: {
-    textTransform: "capitalize",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -824,11 +726,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
   },
-  statusText: {
-    textTransform: "capitalize",
-    fontSize: 14,
-    fontWeight: "600",
-  },
   workNameText: {
     fontSize: 14,
     color: "#6B7280",
@@ -849,40 +746,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 4,
-  },
-  paymentContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 4,
-  },
-  paymentBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  paymentBadgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  paymentMethodText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 4,
-  },
-  transactionText: {
-    fontSize: 11,
-    color: "#6B7280",
-    marginTop: 4,
-    fontFamily: "monospace",
-  },
-  gatewayText: {
-    fontSize: 11,
-    color: "#8B5CF6",
-    marginTop: 2,
   },
   timestampRow: {
     borderTopWidth: 1,
