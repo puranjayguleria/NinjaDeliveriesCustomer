@@ -54,9 +54,8 @@ export default function ServiceCartScreen() {
           <Text style={styles.serviceTitle}>{item.serviceTitle}</Text>
           <Text style={styles.companyName}>{item.company.name}</Text>
           <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={14} color="#FFD700" />
             <Text style={styles.rating}>{item.company.rating}</Text>
-            <Text style={styles.experience}>• {item.company.experience}</Text>
+            <Text style={styles.experience}>{item.company.experience}</Text>
             {item.company.verified && (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
@@ -110,7 +109,7 @@ export default function ServiceCartScreen() {
         <View style={styles.specialtiesList}>
           {(item.company?.specialties || []).map((specialty, index) => (
             <Text key={index} style={styles.specialtyText}>
-              • {specialty}
+              {specialty}
             </Text>
           ))}
         </View>

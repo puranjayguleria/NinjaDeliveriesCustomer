@@ -280,9 +280,8 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.serviceDetails}>
         <Text style={styles.companyName}>{item.company.name}</Text>
         <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={14} color="#FFD700" />
           <Text style={styles.rating}>{item.company.rating}</Text>
-          <Text style={styles.experience}>• {item.company.experience}</Text>
+          <Text style={styles.experience}>{item.company.experience}</Text>
           {item.company.verified && (
             <View style={styles.verifiedBadge}>
               <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
