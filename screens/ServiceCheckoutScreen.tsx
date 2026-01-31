@@ -164,14 +164,36 @@ export default function ServiceCheckoutScreen() {
   const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any) => {
     setLoading(true);
     try {
+      // Get actual customer information from Firebase
+      let customerData = {
+        name: "Customer",
+        phone: "",
+        address: ""
+      };
+
+      try {
+        const currentUser = await FirestoreService.getCurrentUser();
+        if (currentUser) {
+          customerData = {
+            name: currentUser.name || currentUser.displayName || `Customer ${currentUser.phone?.slice(-4) || ''}`,
+            phone: currentUser.phone || currentUser.phoneNumber || "",
+            address: currentUser.address || ""
+          };
+          console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
+        }
+      } catch (userError) {
+        console.error("Error fetching user data:", userError);
+        // Continue with default values
+      }
+
       // Create bookings in Firebase service_bookings collection
       const bookingPromises = services.map(async (service: ServiceCartItem) => {
         const bookingData = {
           serviceName: service.serviceTitle,
           workName: service.issues?.join(', ') || service.serviceTitle,
-          customerName: "Customer", // You might want to get this from user context
-          customerPhone: "", // You might want to get this from user context
-          customerAddress: "", // You might want to get this from user context
+          customerName: customerData.name,
+          customerPhone: customerData.phone,
+          customerAddress: customerData.address,
           date: service.selectedDate,
           time: service.selectedTime,
           status: 'pending' as const,
