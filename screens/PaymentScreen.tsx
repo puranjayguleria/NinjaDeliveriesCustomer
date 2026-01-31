@@ -296,13 +296,19 @@ export default function PaymentScreen() {
         totalAmount: finalAmount
       });
     } else if (isMultipleBookings) {
-      // For multiple bookings, navigate to a summary or first booking
-      navigation.navigate("BookingDetails", {
-        bookings,
-        totalAmount,
-        paymentMethod: selectedPaymentMethod,
-        paymentStatus,
-      });
+      // For multiple bookings from service cart, call the success callback
+      const { onPaymentSuccess } = route.params;
+      if (onPaymentSuccess && paymentStatus === "paid") {
+        onPaymentSuccess();
+      } else {
+        // Fallback navigation
+        navigation.navigate("BookingDetails", {
+          bookings,
+          totalAmount,
+          paymentMethod: selectedPaymentMethod,
+          paymentStatus,
+        });
+      }
     } else {
       // For single booking (old format)
       navigation.navigate("BookingDetails", {
@@ -511,7 +517,7 @@ export default function PaymentScreen() {
             </Text>
             <Text style={styles.noteText}>
               {(selectedPaymentMethod === "online" || isAddOn)
-                ? "Pay securely using UPI, Cards, or Net Banking. Your payment is protected."
+                ? "Pay securely using UPI (Google Pay, PhonePe, Paytm), Cards, or Net Banking via Razorpay. Your payment is protected."
                 : "Pay the service provider directly when the service is completed."
               }
             </Text>

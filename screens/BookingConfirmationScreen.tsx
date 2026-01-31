@@ -8,10 +8,11 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { FirestoreService, ServiceBooking } from "../services/firestoreService";
+import { FirestoreService, ServiceBooking, ServicePayment } from "../services/firestoreService";
 import firestore from "@react-native-firebase/firestore";
 import AddOnServicesModal from "../components/AddOnServicesModal";
 
@@ -22,7 +23,9 @@ export default function BookingConfirmationScreen() {
   const { bookingId } = route.params || {};
   
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [bookingData, setBookingData] = useState<ServiceBooking | null>(null);
+  const [paymentData, setPaymentData] = useState<ServicePayment | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [companyPhone, setCompanyPhone] = useState<string>("");
   const [showAddOnModal, setShowAddOnModal] = useState(false);
@@ -32,62 +35,135 @@ export default function BookingConfirmationScreen() {
 
   // Fetch booking data from Firebase
   useEffect(() => {
-    const fetchBookingData = async () => {
-      if (!bookingId) {
-        console.error("No bookingId provided");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        console.log(`📱 Fetching booking data for ID: ${bookingId}`);
-        
-        const booking = await FirestoreService.getServiceBookingById(bookingId);
-        
-        if (booking) {
-          setBookingData(booking);
-          setTotalWithAddOns(booking.totalPrice || 0);
-          
-          // Fetch company name if companyId exists
-          if (booking.companyId) {
-            try {
-              const companyNameFetched = await FirestoreService.getActualCompanyName(booking.companyId);
-              setCompanyName(companyNameFetched);
-              
-              // Try to get company phone from service_company collection
-              const companyDoc = await firestore()
-                .collection('service_company')
-                .doc(booking.companyId)
-                .get();
-              
-              if (companyDoc.exists) {
-                const companyData = companyDoc.data();
-                setCompanyPhone(companyData?.phone || companyData?.contactInfo?.phone || "");
-              }
-            } catch (error) {
-              console.error("Error fetching company data:", error);
-              setCompanyName(`Company ${booking.companyId}`);
-            }
-          }
-
-          // Try to determine category ID for add-on services
-          // This is a simplified approach - you might need to adjust based on your data structure
-          await determineCategoryId(booking.serviceName);
-        } else {
-          Alert.alert("Error", "Booking not found");
-        }
-      } catch (error) {
-        console.error("Error fetching booking:", error);
-        Alert.alert("Error", "Failed to load booking details");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchBookingData();
   }, [bookingId]);
 
+  const fetchBookingData = async () => {
+    if (!bookingId) {
+      console.error("No bookingId provided");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`📱 Fetching booking data for ID: ${bookingId}`);
+      
+      const booking = await FirestoreService.getServiceBookingById(bookingId);
+      
+      if (booking) {
+        setBookingData(booking);
+        setTotalWithAddOns(booking.totalPrice || 0);
+        
+        // Fetch payment data
+        try {
+          const payment = await FirestoreService.getPaymentByBookingId(bookingId);
+          setPaymentData(payment);
+          console.log(`📱 Payment data:`, payment);
+        } catch (paymentError) {
+          console.error("Error fetching payment data:", paymentError);
+          // Continue without payment data
+        }
+        
+        // Fetch company name if companyId exists
+        if (booking.companyId) {
+          try {
+            const companyNameFetched = await FirestoreService.getActualCompanyName(booking.companyId);
+            setCompanyName(companyNameFetched);
+            
+            // Try to get company phone from service_company collection
+            const companyDoc = await firestore()
+              .collection('service_company')
+              .doc(booking.companyId)
+              .get();
+            
+            if (companyDoc.exists) {
+              const companyData = companyDoc.data();
+              setCompanyPhone(companyData?.phone || companyData?.contactInfo?.phone || "");
+            }
+          } catch (error) {
+            console.error("Error fetching company data:", error);
+            setCompanyName(`Company ${booking.companyId}`);
+          }
+        }
+
+        // Try to determine category ID for add-on services
+        await determineCategoryId(booking.serviceName);
+      } else {
+        Alert.alert("Error", "Booking not found");
+      }
+    } catch (error) {
+      console.error("Error fetching booking:", error);
+      Alert.alert("Error", "Failed to load booking details");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchBookingData();
+  };
+
+  // Helper function to get status color and icon
+  const getStatusInfo = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return { color: '#F59E0B', icon: 'time-outline', text: 'Pending' };
+      case 'assigned':
+        return { color: '#3B82F6', icon: 'person-outline', text: 'Assigned' };
+      case 'started':
+        return { color: '#8B5CF6', icon: 'play-outline', text: 'In Progress' };
+      case 'completed':
+        return { color: '#10B981', icon: 'checkmark-circle-outline', text: 'Completed' };
+      case 'rejected':
+        return { color: '#EF4444', icon: 'close-circle-outline', text: 'Rejected' };
+      case 'expired':
+        return { color: '#6B7280', icon: 'time-outline', text: 'Expired' };
+      default:
+        return { color: '#6B7280', icon: 'help-circle-outline', text: status || 'Unknown' };
+    }
+  };
+
+  // Helper function to get payment status info
+  const getPaymentStatusInfo = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'paid':
+        return { color: '#10B981', icon: 'checkmark-circle', text: 'Paid' };
+      case 'pending':
+        return { color: '#F59E0B', icon: 'time', text: 'Pending' };
+      case 'failed':
+        return { color: '#EF4444', icon: 'close-circle', text: 'Failed' };
+      case 'refunded':
+        return { color: '#6B7280', icon: 'return-down-back', text: 'Refunded' };
+      default:
+        return { color: '#6B7280', icon: 'help-circle', text: status || 'Unknown' };
+    }
+  };
+
+  // Helper function to format date and time
+  const formatDateTime = (date: string, time: string) => {
+    if (!date) return 'Not scheduled';
+    
+    try {
+      // Try to parse and format the date nicely
+      const dateObj = new Date(date);
+      if (!isNaN(dateObj.getTime())) {
+        const formattedDate = dateObj.toLocaleDateString('en-US', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+        return `${formattedDate} at ${time || 'Time TBD'}`;
+      }
+    } catch (error) {
+      console.log('Date parsing error:', error);
+    }
+    
+    return `${date} at ${time || 'Time TBD'}`;
+  };
   // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
     try {
@@ -111,43 +187,55 @@ export default function BookingConfirmationScreen() {
     }
   };
 
-  // Fallback data from route params (for backward compatibility)
-  const fallbackData = route.params || {};
-  
-  // Handle add-on payment completion
-  useEffect(() => {
-    if (fallbackData.addOnPaymentComplete) {
-      Alert.alert(
-        "Payment Successful! 🎉",
-        `Your add-on services have been added and payment completed successfully.`,
-        [{ text: "OK" }]
-      );
+  // Get display data - prioritize real booking data over fallback
+  const getDisplayData = () => {
+    const fallbackData = route.params || {};
+    
+    if (bookingData) {
+      return {
+        bookingId: bookingData.id || bookingId,
+        serviceName: bookingData.serviceName,
+        workName: bookingData.workName,
+        customerName: bookingData.customerName,
+        customerPhone: bookingData.customerPhone,
+        customerAddress: bookingData.customerAddress,
+        selectedDate: bookingData.date,
+        selectedTime: bookingData.time,
+        status: bookingData.status,
+        totalPrice: bookingData.totalPrice || 0,
+        addOns: bookingData.addOns || [],
+        technicianName: bookingData.technicianName,
+        technicianId: bookingData.technicianId,
+        estimatedDuration: bookingData.estimatedDuration,
+        createdAt: bookingData.createdAt,
+        updatedAt: bookingData.updatedAt,
+        assignedAt: bookingData.assignedAt,
+        startedAt: bookingData.startedAt,
+        completedAt: bookingData.completedAt,
+        // Payment info from payment data
+        paymentMethod: paymentData?.paymentMethod || fallbackData.paymentMethod || 'cash',
+        paymentStatus: paymentData?.paymentStatus || fallbackData.paymentStatus || 'pending',
+        transactionId: paymentData?.transactionId,
+        paymentGateway: paymentData?.paymentGateway,
+      };
     }
-  }, [fallbackData.addOnPaymentComplete]);
-  
-  const displayData = bookingData ? {
-    bookingId: bookingData.id || fallbackData.bookingId || bookingId,
-    serviceName: bookingData.serviceName || fallbackData.serviceName,
-    selectedIssues: bookingData.workName ? [bookingData.workName] : (fallbackData.selectedIssues || []),
-    totalPrice: bookingData.totalPrice || fallbackData.totalPrice || 0,
-    advancePaid: fallbackData.advancePaid || 0,
-    selectedDate: bookingData.date || fallbackData.selectedDate,
-    selectedTime: bookingData.time || fallbackData.selectedTime,
-    status: bookingData.status || fallbackData.status || "pending",
-    paymentMethod: fallbackData.paymentMethod || "cash",
-    notes: fallbackData.notes || "",
-  } : {
-    bookingId: fallbackData.bookingId || bookingId,
-    serviceName: fallbackData.serviceName || "",
-    selectedIssues: fallbackData.selectedIssues || [],
-    totalPrice: fallbackData.totalPrice || 0,
-    advancePaid: fallbackData.advancePaid || 0,
-    selectedDate: fallbackData.selectedDate || "",
-    selectedTime: fallbackData.selectedTime || "",
-    status: fallbackData.status || "pending",
-    paymentMethod: fallbackData.paymentMethod || "cash",
-    notes: fallbackData.notes || "",
+    
+    // Fallback to route params if no booking data
+    return {
+      bookingId: fallbackData.bookingId || bookingId,
+      serviceName: fallbackData.serviceName || "",
+      workName: fallbackData.workName || fallbackData.serviceName || "",
+      selectedDate: fallbackData.selectedDate || "",
+      selectedTime: fallbackData.selectedTime || "",
+      status: fallbackData.status || "pending",
+      totalPrice: fallbackData.totalAmount || fallbackData.totalPrice || 0,
+      paymentMethod: fallbackData.paymentMethod || "cash",
+      paymentStatus: fallbackData.paymentStatus || "pending",
+      addOns: [],
+    };
   };
+
+  const displayData = getDisplayData();
 
   const handleTrackBooking = () => {
     navigation.navigate("TrackBooking", {
@@ -282,7 +370,18 @@ export default function BookingConfirmationScreen() {
         <Text style={styles.headerTitle}>Booking Confirmed 🎉</Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#007AFF']}
+            tintColor="#007AFF"
+          />
+        }
+      >
         
         {/* Booking Details Card */}
         <View style={styles.bookingCard}>
@@ -306,6 +405,9 @@ export default function BookingConfirmationScreen() {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Service:</Text>
               <Text style={styles.detailValue}>{displayData.serviceName || "-"}</Text>
+              {displayData.workName && displayData.workName !== displayData.serviceName && (
+                <Text style={styles.workNameText}>Work: {displayData.workName}</Text>
+              )}
             </View>
           </View>
 
@@ -317,8 +419,13 @@ export default function BookingConfirmationScreen() {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Scheduled:</Text>
               <Text style={styles.detailValue}>
-                {displayData.selectedDate || "-"} | {displayData.selectedTime || "-"}
+                {formatDateTime(displayData.selectedDate, displayData.selectedTime)}
               </Text>
+              {displayData.estimatedDuration && (
+                <Text style={styles.durationText}>
+                  Duration: {displayData.estimatedDuration} hour{displayData.estimatedDuration > 1 ? 's' : ''}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -328,41 +435,112 @@ export default function BookingConfirmationScreen() {
               <Ionicons name="business" size={20} color="#6B7280" />
             </View>
             <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Company:</Text>
-              <Text style={styles.detailValue}>{companyName || "-"}</Text>
+              <Text style={styles.detailLabel}>Service Provider:</Text>
+              <Text style={styles.detailValue}>{companyName || "Assigning..."}</Text>
               {companyPhone && (
-                <Text style={styles.phoneText}>📞 {companyPhone}</Text>
+                <TouchableOpacity onPress={handleCallAgency}>
+                  <Text style={styles.phoneText}>📞 {companyPhone}</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
 
-          {/* Status */}
+          {/* Technician (if assigned) */}
+          {displayData.technicianName && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="person" size={20} color="#6B7280" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Technician:</Text>
+                <Text style={styles.detailValue}>{displayData.technicianName}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Customer Info */}
+          {displayData.customerName && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="person-circle" size={20} color="#6B7280" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Customer:</Text>
+                <Text style={styles.detailValue}>{displayData.customerName}</Text>
+                {displayData.customerPhone && (
+                  <Text style={styles.customerInfoText}>📱 {displayData.customerPhone}</Text>
+                )}
+                {displayData.customerAddress && (
+                  <Text style={styles.customerInfoText}>📍 {displayData.customerAddress}</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Status with enhanced display */}
           <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="information-circle" size={20} color="#6B7280" />
+            <View style={[styles.iconContainer, { backgroundColor: getStatusInfo(displayData.status).color + '20' }]}>
+              <Ionicons 
+                name={getStatusInfo(displayData.status).icon as any} 
+                size={20} 
+                color={getStatusInfo(displayData.status).color} 
+              />
             </View>
             <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Status:</Text>
-              <Text style={[styles.detailValue, styles.statusText]}>{displayData.status}</Text>
+              <Text style={styles.detailLabel}>Booking Status:</Text>
+              <View style={styles.statusContainer}>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusInfo(displayData.status).color }]}>
+                  <Text style={styles.statusBadgeText}>{getStatusInfo(displayData.status).text}</Text>
+                </View>
+              </View>
+              {/* Show timestamps based on status */}
+              {displayData.assignedAt && (
+                <Text style={styles.timestampText}>
+                  Assigned: {new Date(displayData.assignedAt.toDate()).toLocaleString()}
+                </Text>
+              )}
+              {displayData.startedAt && (
+                <Text style={styles.timestampText}>
+                  Started: {new Date(displayData.startedAt.toDate()).toLocaleString()}
+                </Text>
+              )}
+              {displayData.completedAt && (
+                <Text style={styles.timestampText}>
+                  Completed: {new Date(displayData.completedAt.toDate()).toLocaleString()}
+                </Text>
+              )}
             </View>
           </View>
 
-          {/* Selected Issues */}
+          {/* Payment Information */}
           <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="list" size={20} color="#6B7280" />
+            <View style={[styles.iconContainer, { backgroundColor: getPaymentStatusInfo(displayData.paymentStatus).color + '20' }]}>
+              <Ionicons 
+                name={getPaymentStatusInfo(displayData.paymentStatus).icon as any} 
+                size={20} 
+                color={getPaymentStatusInfo(displayData.paymentStatus).color} 
+              />
             </View>
             <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Selected Issues:</Text>
-              <View style={styles.issuesContainer}>
-                {displayData.selectedIssues.length > 0 ? (
-                  displayData.selectedIssues.map((issue: string, index: number) => (
-                    <Text key={index} style={styles.issueItem}>• {issue}</Text>
-                  ))
-                ) : (
-                  <Text style={styles.issueItem}>• {displayData.serviceName || "Service"}</Text>
-                )}
+              <Text style={styles.detailLabel}>Payment:</Text>
+              <View style={styles.paymentContainer}>
+                <View style={[styles.paymentBadge, { backgroundColor: getPaymentStatusInfo(displayData.paymentStatus).color }]}>
+                  <Text style={styles.paymentBadgeText}>{getPaymentStatusInfo(displayData.paymentStatus).text}</Text>
+                </View>
+                <Text style={styles.paymentMethodText}>
+                  via {displayData.paymentMethod === 'cash' ? 'Cash on Service' : 'Online Payment'}
+                </Text>
               </View>
+              {displayData.transactionId && (
+                <Text style={styles.transactionText}>
+                  Transaction ID: {displayData.transactionId}
+                </Text>
+              )}
+              {displayData.paymentGateway && (
+                <Text style={styles.gatewayText}>
+                  Gateway: {displayData.paymentGateway.toUpperCase()}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -378,7 +556,7 @@ export default function BookingConfirmationScreen() {
           </View>
 
           {/* Add-On Services */}
-          {addOnServices.length > 0 && (
+          {displayData.addOns && displayData.addOns.length > 0 && (
             <View style={styles.detailRow}>
               <View style={styles.iconContainer}>
                 <Ionicons name="add-circle" size={20} color="#6B7280" />
@@ -386,7 +564,7 @@ export default function BookingConfirmationScreen() {
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Add-On Services:</Text>
                 <View style={styles.addOnContainer}>
-                  {addOnServices.map((service, index) => (
+                  {displayData.addOns.map((service: any, index: number) => (
                     <View key={index} style={styles.addOnItem}>
                       <Text style={styles.addOnName}>• {service.name}</Text>
                       <Text style={styles.addOnPrice}>₹{service.price}</Text>
@@ -397,61 +575,19 @@ export default function BookingConfirmationScreen() {
             </View>
           )}
 
-          {/* Total with Add-Ons */}
-          {addOnServices.length > 0 && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="calculator" size={20} color="#6B7280" />
-              </View>
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Total with Add-Ons:</Text>
-                <Text style={styles.priceValue}>₹{totalWithAddOns}</Text>
-              </View>
+          {/* Created/Updated timestamps */}
+          {displayData.createdAt && (
+            <View style={styles.timestampRow}>
+              <Text style={styles.timestampLabel}>
+                Created: {new Date(displayData.createdAt.toDate()).toLocaleString()}
+              </Text>
+              {displayData.updatedAt && displayData.updatedAt !== displayData.createdAt && (
+                <Text style={styles.timestampLabel}>
+                  Updated: {new Date(displayData.updatedAt.toDate()).toLocaleString()}
+                </Text>
+              )}
             </View>
           )}
-
-          {/* Advance Paid */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="card" size={20} color="#6B7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Advance Paid:</Text>
-              <Text style={styles.detailValue}>₹{displayData.advancePaid || 0}</Text>
-            </View>
-          </View>
-
-          {/* Payment Method */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="wallet" size={20} color="#6B7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Payment Method:</Text>
-              <Text style={styles.detailValue}>{displayData.paymentMethod === "cash" ? "Cash on Service" : "Online Payment"}</Text>
-            </View>
-          </View>
-
-          {/* Notes */}
-          {displayData.notes && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="chatbubble-ellipses" size={20} color="#6B7280" />
-              </View>
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Notes:</Text>
-                <Text style={styles.detailValue}>{displayData.notes}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Status */}
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Status:</Text>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>{displayData.status}</Text>
-            </View>
-          </View>
 
         </View>
 
@@ -690,7 +826,79 @@ const styles = StyleSheet.create({
   },
   statusText: {
     textTransform: "capitalize",
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  workNameText: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+  durationText: {
+    fontSize: 12,
+    color: "#8B5CF6",
+    marginTop: 2,
+  },
+  customerInfoText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  statusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  paymentContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginTop: 4,
+  },
+  paymentBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  paymentBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  paymentMethodText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+  transactionText: {
+    fontSize: 11,
+    color: "#6B7280",
+    marginTop: 4,
+    fontFamily: "monospace",
+  },
+  gatewayText: {
+    fontSize: 11,
+    color: "#8B5CF6",
+    marginTop: 2,
+  },
+  timestampRow: {
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingTop: 12,
+    marginTop: 12,
+  },
+  timestampLabel: {
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginBottom: 4,
+  },
+  timestampText: {
+    fontSize: 11,
+    color: "#6B7280",
+    marginTop: 2,
   },
   addOnContainer: {
     marginTop: 4,

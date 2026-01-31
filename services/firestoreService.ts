@@ -48,6 +48,32 @@ export interface ServiceCompany {
   updatedAt?: any;
 }
 
+export interface ServicePayment {
+  id: string;
+  bookingId: string;
+  customerId: string;
+  amount: number;
+  paymentMethod: 'cash' | 'online';
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  transactionId?: string; // Razorpay payment ID
+  razorpayOrderId?: string; // Razorpay order ID
+  razorpaySignature?: string; // Razorpay signature for verification
+  serviceName: string;
+  companyName?: string;
+  companyId?: string;
+  paymentGateway?: 'razorpay' | 'upi' | 'cash';
+  paymentDetails?: {
+    cardLast4?: string;
+    cardType?: string;
+    upiId?: string;
+    bankName?: string;
+    method?: string; // UPI, card, netbanking, etc.
+  };
+  createdAt?: any;
+  updatedAt?: any;
+  paidAt?: any;
+}
+
 export interface ServiceBooking {
   id: string;
   serviceName: string;
@@ -3333,6 +3359,330 @@ export class FirestoreService {
     } catch (error) {
       console.error('❌ Error verifying real customer bookings:', error);
       return [];
+    }
+  }
+
+  /**
+   * Create a payment record in service_payments collection
+   */
+  static async createServicePayment(paymentData: Omit<ServicePayment, 'id'>): Promise<string> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to create a payment record');
+      }
+      
+      // Validate required fields
+      if (!paymentData.bookingId) {
+        throw new Error('Booking ID is required for payment record');
+      }
+      
+      if (!paymentData.amount && paymentData.amount !== 0) {
+        throw new Error('Amount is required for payment record');
+      }
+      
+      if (!paymentData.paymentMethod) {
+        throw new Error('Payment method is required for payment record');
+      }
+      
+      if (!paymentData.paymentStatus) {
+        throw new Error('Payment status is required for payment record');
+      }
+      
+      if (!paymentData.serviceName) {
+        throw new Error('Service name is required for payment record');
+      }
+      
+      console.log(`💳 Creating payment record for user: ${userId}`);
+      console.log('Payment data validation passed:', {
+        bookingId: paymentData.bookingId,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        paymentStatus: paymentData.paymentStatus,
+        serviceName: paymentData.serviceName,
+        companyName: paymentData.companyName,
+        companyId: paymentData.companyId
+      });
+      
+      // Filter out undefined values to prevent Firestore errors
+      const cleanPaymentData = Object.fromEntries(
+        Object.entries(paymentData).filter(([_, value]) => value !== undefined)
+      );
+      
+      console.log('Clean payment data (no undefined values):', cleanPaymentData);
+      
+      const docRef = await firestore()
+        .collection('service_payments')
+        .add({
+          ...cleanPaymentData,
+          customerId: userId, // Always set the logged-in user ID
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          paidAt: paymentData.paymentStatus === 'paid' ? new Date() : null,
+        });
+
+      console.log(`✅ Created payment record with ID: ${docRef.id} for user: ${userId}`);
+      return docRef.id;
+    } catch (error: any) {
+      console.error('❌ Error creating payment record:', error);
+      console.error('❌ Payment data that caused error:', paymentData);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      if (error?.message?.includes('required')) {
+        throw error; // Re-throw validation errors
+      }
+      
+      throw new Error('Failed to create payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update an existing payment record
+   */
+  static async updateServicePayment(paymentId: string, updates: Partial<ServicePayment>): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update payment record');
+      }
+      
+      console.log(`💳 Updating payment record ${paymentId} for user: ${userId}`);
+      
+      // Filter out undefined values to prevent Firestore errors
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, value]) => value !== undefined)
+      );
+      
+      const updateData: any = {
+        ...cleanUpdates,
+        updatedAt: new Date(),
+      };
+
+      // Set paidAt timestamp when payment status changes to paid
+      if (updates.paymentStatus === 'paid' && !updates.paidAt) {
+        updateData.paidAt = new Date();
+      }
+      
+      await firestore()
+        .collection('service_payments')
+        .doc(paymentId)
+        .update(updateData);
+
+      console.log(`✅ Updated payment record ${paymentId} successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating payment record:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to update payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get payment record by booking ID
+   */
+  static async getPaymentByBookingId(bookingId: string): Promise<ServicePayment | null> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view payment records');
+      }
+      
+      console.log(`💳 Fetching payment record for booking: ${bookingId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        console.log(`No payment record found for booking: ${bookingId}`);
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      
+      console.log(`✅ Found payment record for booking ${bookingId}:`, {
+        id: doc.id,
+        amount: data.amount,
+        paymentMethod: data.paymentMethod,
+        paymentStatus: data.paymentStatus,
+        transactionId: data.transactionId
+      });
+
+      return {
+        id: doc.id,
+        bookingId: data.bookingId || '',
+        customerId: data.customerId || '',
+        amount: data.amount || 0,
+        paymentMethod: data.paymentMethod || 'cash',
+        paymentStatus: data.paymentStatus || 'pending',
+        transactionId: data.transactionId,
+        razorpayOrderId: data.razorpayOrderId,
+        razorpaySignature: data.razorpaySignature,
+        serviceName: data.serviceName || '',
+        companyName: data.companyName,
+        companyId: data.companyId,
+        paymentGateway: data.paymentGateway,
+        paymentDetails: data.paymentDetails,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        paidAt: data.paidAt,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching payment record:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get all payment records for current user
+   */
+  static async getUserPaymentHistory(limit: number = 50): Promise<ServicePayment[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view payment history');
+      }
+      
+      console.log(`💳 Fetching payment history for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('customerId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} payment records for user ${userId}`);
+
+      const payments: ServicePayment[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`💳 Payment record ${doc.id}:`, {
+          bookingId: data.bookingId,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          paymentStatus: data.paymentStatus,
+          serviceName: data.serviceName,
+          createdAt: data.createdAt
+        });
+        
+        payments.push({
+          id: doc.id,
+          bookingId: data.bookingId || '',
+          customerId: data.customerId || '',
+          amount: data.amount || 0,
+          paymentMethod: data.paymentMethod || 'cash',
+          paymentStatus: data.paymentStatus || 'pending',
+          transactionId: data.transactionId,
+          razorpayOrderId: data.razorpayOrderId,
+          razorpaySignature: data.razorpaySignature,
+          serviceName: data.serviceName || '',
+          companyName: data.companyName,
+          companyId: data.companyId,
+          paymentGateway: data.paymentGateway,
+          paymentDetails: data.paymentDetails,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          paidAt: data.paidAt,
+        });
+      });
+
+      // Sort by creation date (newest first)
+      payments.sort((a, b) => {
+        if (a.createdAt && b.createdAt) {
+          return b.createdAt.toDate() - a.createdAt.toDate();
+        }
+        return 0;
+      });
+
+      console.log(`✅ Fetched ${payments.length} payment records for user ${userId}`);
+      return payments;
+    } catch (error: any) {
+      console.error('❌ Error fetching payment history:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch payment history. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update payment status after successful Razorpay payment
+   */
+  static async updatePaymentAfterRazorpaySuccess(
+    bookingId: string,
+    razorpayResponse: {
+      razorpay_payment_id: string;
+      razorpay_order_id: string;
+      razorpay_signature: string;
+    }
+  ): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update payment');
+      }
+      
+      console.log(`💳 Updating payment after Razorpay success for booking: ${bookingId}`);
+      
+      // Find the payment record for this booking
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        console.log(`No payment record found for booking: ${bookingId}, creating new one`);
+        // If no payment record exists, we might need to create one
+        // This could happen if payment was created after booking
+        return;
+      }
+
+      const doc = snapshot.docs[0];
+      
+      await firestore()
+        .collection('service_payments')
+        .doc(doc.id)
+        .update({
+          paymentStatus: 'paid',
+          transactionId: razorpayResponse.razorpay_payment_id,
+          razorpayOrderId: razorpayResponse.razorpay_order_id,
+          razorpaySignature: razorpayResponse.razorpay_signature,
+          paymentGateway: 'razorpay',
+          paidAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+      console.log(`✅ Updated payment record ${doc.id} with Razorpay success data`);
+    } catch (error: any) {
+      console.error('❌ Error updating payment after Razorpay success:', error);
+      throw new Error('Failed to update payment record. Please check your internet connection.');
     }
   }
 }

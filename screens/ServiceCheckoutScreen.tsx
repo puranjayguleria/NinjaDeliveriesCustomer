@@ -26,68 +26,226 @@ export default function ServiceCheckoutScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleProceedToPayment = async () => {
-    Alert.alert(
-      "Confirm Booking",
-      `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}. Continue?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Confirm",
-          onPress: async () => {
-            setLoading(true);
-            try {
-              // Create bookings in Firebase service_bookings collection
-              const bookingPromises = services.map(async (service: ServiceCartItem) => {
-                const bookingData = {
-                  serviceName: service.serviceTitle,
-                  workName: service.issues?.join(', ') || service.serviceTitle,
-                  customerName: "Customer", // You might want to get this from user context
-                  customerPhone: "", // You might want to get this from user context
-                  customerAddress: "", // You might want to get this from user context
-                  date: service.selectedDate,
-                  time: service.selectedTime,
-                  status: 'pending' as const,
-                  companyId: service.company.companyId || service.company.id,
-                  totalPrice: service.totalPrice,
-                  addOns: service.addOns || [],
-                };
-
-                const bookingId = await FirestoreService.createServiceBooking(bookingData);
-                console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
-                
-                return {
-                  ...service,
-                  bookingId,
-                  notes,
-                  paymentMethod,
-                };
-              });
-
-              const bookings = await Promise.all(bookingPromises);
-              
-              // Clear cart after successful booking creation
-              clearCart();
-
-              // Navigate to booking confirmation screen with the first booking details
-              const firstBooking = bookings[0];
-              navigation.navigate("BookingConfirmation", {
-                bookingId: firstBooking.bookingId,
-              });
-
-            } catch (error) {
-              console.error('❌ Error creating bookings:', error);
-              Alert.alert(
-                "Booking Failed",
-                "Failed to create your bookings. Please try again.",
-                [{ text: "OK" }]
-              );
-            } finally {
-              setLoading(false);
-            }
+    if (paymentMethod === "online") {
+      // For online payment, directly open Razorpay payment
+      await handleRazorpayPayment();
+    } else {
+      // For cash payment, create bookings directly
+      Alert.alert(
+        "Confirm Booking",
+        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}. Continue?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Confirm",
+            onPress: async () => {
+              await createBookings();
+            },
           },
+        ]
+      );
+    }
+  };
+
+  const handleRazorpayPayment = async () => {
+    setLoading(true);
+    try {
+      // Import auth and axios here to avoid issues
+      const auth = require("@react-native-firebase/auth").default;
+      const axios = require("axios").default;
+
+      // API Configuration for Razorpay
+      const api = axios.create({
+        timeout: 20000,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+      const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
+
+      const getAuthHeaders = async () => {
+        const user = auth().currentUser;
+        if (!user) throw new Error("Not logged in");
+        const token = await user.getIdToken(true);
+        return { Authorization: `Bearer ${token}` };
+      };
+
+      const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
+
+      // Create Razorpay order
+      console.log("Creating Razorpay order for services - Amount:", totalAmount);
+      const user = auth().currentUser;
+      if (!user) throw new Error("Not logged in");
+
+      const amountPaise = toPaise(totalAmount);
+      const headers = await getAuthHeaders();
+
+      const requestData = {
+        amountPaise,
+        currency: "INR",
+        receipt: `service_${user.uid}_${Date.now()}`,
+        notes: { uid: user.uid, type: "service_booking" },
+      };
+
+      const { data } = await api.post(CREATE_RZP_ORDER_URL, requestData, { headers });
+
+      if (!data?.orderId || !data?.keyId) {
+        throw new Error(data?.error || "Failed to create Razorpay order");
+      }
+
+      const contact = (user.phoneNumber || "").replace("+91", "");
+
+      // Navigate directly to Razorpay WebView
+      navigation.navigate("RazorpayWebView", {
+        orderId: String(data.orderId),
+        amount: totalAmount,
+        keyId: String(data.keyId),
+        currency: String(data.currency ?? "INR"),
+        name: "Ninja Services",
+        description: "Service booking payment",
+        prefill: {
+          contact,
+          email: "",
+          name: "",
         },
-      ]
-    );
+        onSuccess: async (response: any) => {
+          try {
+            console.log("Payment successful:", response);
+            
+            // Verify payment on server
+            const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+            const verifyHeaders = await getAuthHeaders();
+            const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, response, { headers: verifyHeaders });
+
+            if (!verifyData?.verified) {
+              throw new Error(verifyData?.error || "Payment verification failed");
+            }
+            
+            console.log("Payment verified, creating bookings with payment details...");
+            
+            // Create bookings with paid status and Razorpay response
+            await createBookings("paid", response);
+            
+          } catch (error) {
+            console.error("Payment verification failed:", error);
+            Alert.alert("Payment Verification Failed", "Please contact support.");
+          }
+        },
+        onFailure: (error: any) => {
+          console.log("Payment failed:", error);
+          Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+        },
+      });
+
+    } catch (error: any) {
+      console.error("Razorpay payment error:", error);
+      let message = "Payment failed. Please try again.";
+      
+      if (error?.description) {
+        message = error.description;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      
+      Alert.alert("Payment Failed", message, [
+        { text: "OK" },
+        {
+          text: "Use Cash Payment",
+          onPress: () => {
+            setPaymentMethod("cash");
+          }
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any) => {
+    setLoading(true);
+    try {
+      // Create bookings in Firebase service_bookings collection
+      const bookingPromises = services.map(async (service: ServiceCartItem) => {
+        const bookingData = {
+          serviceName: service.serviceTitle,
+          workName: service.issues?.join(', ') || service.serviceTitle,
+          customerName: "Customer", // You might want to get this from user context
+          customerPhone: "", // You might want to get this from user context
+          customerAddress: "", // You might want to get this from user context
+          date: service.selectedDate,
+          time: service.selectedTime,
+          status: 'pending' as const,
+          companyId: service.company.companyId || service.company.id,
+          totalPrice: service.totalPrice,
+          addOns: service.addOns || [],
+          paymentMethod,
+          paymentStatus,
+          notes,
+        };
+
+        const bookingId = await FirestoreService.createServiceBooking(bookingData);
+        console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
+        
+        // Create payment record in service_payments collection
+        // Ensure all required fields have valid values
+        if (!bookingId) {
+          throw new Error('Failed to create booking - no booking ID returned');
+        }
+        
+        const paymentData = {
+          bookingId,
+          amount: service.totalPrice || 0,
+          paymentMethod: paymentMethod as 'cash' | 'online',
+          paymentStatus: paymentStatus as 'pending' | 'paid',
+          serviceName: service.serviceTitle || 'Service',
+          companyName: service.company?.name || 'Service Provider',
+          companyId: service.company?.companyId || service.company?.id || '',
+          paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
+          // Add Razorpay details if payment was successful
+          ...(razorpayResponse && paymentStatus === 'paid' && {
+            transactionId: razorpayResponse.razorpay_payment_id || '',
+            razorpayOrderId: razorpayResponse.razorpay_order_id || '',
+            razorpaySignature: razorpayResponse.razorpay_signature || '',
+          }),
+        };
+
+        console.log('Creating payment record with data:', paymentData);
+        const paymentId = await FirestoreService.createServicePayment(paymentData);
+        console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
+        
+        return {
+          ...service,
+          bookingId,
+          paymentId,
+          notes,
+          paymentMethod,
+        };
+      });
+
+      const bookings = await Promise.all(bookingPromises);
+      
+      // Clear cart after successful booking creation
+      clearCart();
+
+      // Navigate to booking confirmation screen with the first booking details
+      const firstBooking = bookings[0];
+      navigation.navigate("BookingConfirmation", {
+        bookingId: firstBooking.bookingId,
+        paymentMethod,
+        paymentStatus,
+        totalAmount,
+      });
+
+    } catch (error) {
+      console.error('❌ Error creating bookings:', error);
+      Alert.alert(
+        "Booking Failed",
+        "Failed to create your bookings. Please try again.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderServiceItem = ({ item }: { item: ServiceCartItem }) => (
@@ -184,7 +342,10 @@ export default function ServiceCheckoutScreen() {
           >
             <View style={styles.paymentOptionContent}>
               <Ionicons name="cash-outline" size={24} color="#333" />
-              <Text style={styles.paymentOptionText}>Cash on Service</Text>
+              <View style={styles.paymentOptionTextContainer}>
+                <Text style={styles.paymentOptionText}>Cash on Service</Text>
+                <Text style={styles.paymentOptionSubtext}>Pay when service is completed</Text>
+              </View>
             </View>
             {paymentMethod === "cash" && (
               <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
@@ -200,12 +361,24 @@ export default function ServiceCheckoutScreen() {
           >
             <View style={styles.paymentOptionContent}>
               <Ionicons name="card-outline" size={24} color="#333" />
-              <Text style={styles.paymentOptionText}>Pay Online</Text>
+              <View style={styles.paymentOptionTextContainer}>
+                <Text style={styles.paymentOptionText}>Pay Online</Text>
+                <Text style={styles.paymentOptionSubtext}>UPI, Cards, Net Banking via Razorpay</Text>
+              </View>
             </View>
             {paymentMethod === "online" && (
               <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
             )}
           </TouchableOpacity>
+
+          {paymentMethod === "online" && (
+            <View style={styles.paymentNote}>
+              <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
+              <Text style={styles.paymentNoteText}>
+                Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.summarySection}>
@@ -246,7 +419,12 @@ export default function ServiceCheckoutScreen() {
               <Text style={styles.proceedButtonText}>Creating Bookings...</Text>
             </View>
           ) : (
-            <Text style={styles.proceedButtonText}>Proceed to Payment</Text>
+            <Text style={styles.proceedButtonText}>
+              {paymentMethod === "online" 
+                ? `Pay ₹${totalAmount} Online` 
+                : "Confirm Booking"
+              }
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -427,11 +605,38 @@ const styles = StyleSheet.create({
   paymentOptionContent: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
+  },
+  paymentOptionTextContainer: {
+    marginLeft: 12,
+    flex: 1,
   },
   paymentOptionText: {
     fontSize: 16,
     color: "#333",
-    marginLeft: 12,
+    fontWeight: "500",
+  },
+  paymentOptionSubtext: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 2,
+  },
+  paymentNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#f0f9ff",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+  },
+  paymentNoteText: {
+    fontSize: 12,
+    color: "#2563eb",
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
   },
   summarySection: {
     backgroundColor: "#fff",
