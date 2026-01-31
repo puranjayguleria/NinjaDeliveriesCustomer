@@ -248,27 +248,22 @@ export default function TrackBookingScreen() {
 
     setRatingLoading(true);
     try {
-      // Create a rating record in a separate collection
-      const ratingData = {
-        bookingId: booking.id,
-        serviceName: booking.serviceName,
-        customerName: booking.customerName,
-        rating: userRating,
-        feedback: userFeedback || "No feedback provided",
-        companyId: booking.companyId,
-        technicianId: booking.technicianId,
-        createdAt: new Date(),
-      };
+      console.log(`⭐ Submitting rating ${userRating} for booking ${booking.id}...`);
+      
+      // Use the FirestoreService method to submit rating to serviceRatings collection
+      await FirestoreService.submitBookingRating(
+        booking.id,
+        userRating,
+        userFeedback || undefined
+      );
 
-      // You can create a separate ratings collection or add rating to the booking
-      console.log("⭐ Rating data:", ratingData);
       Alert.alert("✅ Rating Submitted", "Thank you for your feedback!");
       
       // Reset rating state
       setUserRating(0);
       setUserFeedback("");
     } catch (error) {
-      console.log("Error submitting rating:", error);
+      console.error("Error submitting rating:", error);
       Alert.alert("Error", "Failed to submit rating. Please try again.");
     } finally {
       setRatingLoading(false);

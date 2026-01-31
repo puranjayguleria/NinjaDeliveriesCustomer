@@ -10,11 +10,7 @@ export default function ServiceEndScreen() {
   const { totalMinutes, company, serviceTitle, issueTitle, bookingId } = route.params || {};
 
   const handleGiveRating = () => {
-    navigation.navigate("ServiceRating", {
-      totalMinutes,
-      company,
-      serviceTitle,
-      issueTitle,
+    navigation.navigate("TrackBooking", {
       bookingId,
     });
   };

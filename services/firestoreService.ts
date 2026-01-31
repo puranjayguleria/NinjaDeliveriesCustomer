@@ -1733,30 +1733,133 @@ export class FirestoreService {
     feedback?: string
   ): Promise<void> {
     try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to submit a rating');
+      }
+
       console.log(`⭐ Submitting rating ${rating} for booking ${bookingId}...`);
       console.log(`📝 Feedback: "${feedback}"`);
 
-      const updateData: any = {
+      // First, get the booking details to include in the rating
+      const bookingDoc = await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .get();
+
+      if (!bookingDoc.exists) {
+        throw new Error('Booking not found');
+      }
+
+      const bookingData = bookingDoc.data();
+
+      // Create the rating document for serviceRatings collection
+      const ratingData = {
+        bookingId: bookingId,
+        customerId: userId,
+        customerName: bookingData?.customerName || 'Customer',
+        serviceName: bookingData?.serviceName || 'Service',
+        companyId: bookingData?.companyId || '',
+        technicianId: bookingData?.technicianId || '',
+        technicianName: bookingData?.technicianName || '',
+        rating: rating,
+        feedback: feedback?.trim() || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      console.log(`🔥 Creating rating document:`, ratingData);
+
+      // Add the rating to serviceRatings collection
+      const ratingRef = await firestore()
+        .collection('serviceRatings')
+        .add(ratingData);
+
+      console.log(`✅ Rating document created with ID: ${ratingRef.id}`);
+
+      // Update the booking with rating reference and basic rating info
+      const bookingUpdateData = {
         customerRating: rating,
+        customerFeedback: feedback?.trim() || '',
+        ratingId: ratingRef.id,
         ratedAt: new Date(),
         updatedAt: new Date(),
       };
 
-      if (feedback && feedback.trim()) {
-        updateData.customerFeedback = feedback.trim();
-      }
-
-      console.log(`🔥 Update data:`, updateData);
-
       await firestore()
         .collection('service_bookings')
         .doc(bookingId)
-        .update(updateData);
+        .update(bookingUpdateData);
 
-      console.log(`✅ Rating submitted for booking ${bookingId}`);
+      console.log(`✅ Rating ${rating} submitted for booking ${bookingId} and stored in serviceRatings collection`);
     } catch (error: any) {
       console.error(`❌ Error submitting rating for booking ${bookingId}:`, error);
       throw new Error('Failed to submit rating. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get all ratings for a specific service or company
+   */
+  static async getServiceRatings(companyId?: string, serviceName?: string, limit: number = 50): Promise<any[]> {
+    try {
+      console.log(`🔥 Fetching service ratings...`);
+      
+      let query = firestore().collection('serviceRatings').orderBy('createdAt', 'desc');
+      
+      if (companyId) {
+        query = query.where('companyId', '==', companyId);
+      }
+      
+      if (serviceName) {
+        query = query.where('serviceName', '==', serviceName);
+      }
+      
+      const snapshot = await query.limit(limit).get();
+      
+      const ratings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log(`✅ Found ${ratings.length} service ratings`);
+      return ratings;
+    } catch (error: any) {
+      console.error('❌ Error fetching service ratings:', error);
+      throw new Error('Failed to fetch service ratings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get rating for a specific booking
+   */
+  static async getBookingRating(bookingId: string): Promise<any | null> {
+    try {
+      console.log(`🔥 Fetching rating for booking ${bookingId}...`);
+      
+      const snapshot = await firestore()
+        .collection('serviceRatings')
+        .where('bookingId', '==', bookingId)
+        .limit(1)
+        .get();
+      
+      if (snapshot.empty) {
+        console.log(`❌ No rating found for booking ${bookingId}`);
+        return null;
+      }
+      
+      const ratingDoc = snapshot.docs[0];
+      const rating = {
+        id: ratingDoc.id,
+        ...ratingDoc.data()
+      };
+      
+      console.log(`✅ Found rating for booking ${bookingId}:`, rating);
+      return rating;
+    } catch (error: any) {
+      console.error(`❌ Error fetching rating for booking ${bookingId}:`, error);
+      throw new Error('Failed to fetch booking rating. Please check your internet connection.');
     }
   }
 

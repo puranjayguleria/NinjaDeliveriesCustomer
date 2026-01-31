@@ -30,9 +30,9 @@ export default function FinalCheckoutScreen() {
       <TouchableOpacity
         style={styles.btn}
         activeOpacity={0.9}
-        onPress={() => navigation.navigate("ServiceTimer", route.params)}
+        onPress={() => navigation.navigate("ServicesHome")}
       >
-        <Text style={styles.btnText}>Start Timer</Text>
+        <Text style={styles.btnText}>Complete Service</Text>
       </TouchableOpacity>
     </View>
   );
