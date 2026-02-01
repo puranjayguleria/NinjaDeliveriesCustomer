@@ -42,7 +42,43 @@ export default function TrackBookingScreen() {
   const [userRating, setUserRating] = useState<number>(0);
   const [userFeedback, setUserFeedback] = useState<string>("");
   const [ratingLoading, setRatingLoading] = useState(false);
+  const [hasAlreadyRated, setHasAlreadyRated] = useState(false);
+  const [checkingRatingStatus, setCheckingRatingStatus] = useState(false);
   const [animatedProgress] = useState(new Animated.Value(0));
+
+  // Check if booking has already been rated
+  const checkRatingStatus = async (bookingData: ServiceBooking) => {
+    if (bookingData.status !== 'completed') {
+      setHasAlreadyRated(false);
+      return;
+    }
+
+    try {
+      setCheckingRatingStatus(true);
+      
+      // First check if booking already has rating data
+      if (bookingData.customerRating && bookingData.ratedAt) {
+        console.log(`📊 Booking already has rating: ${bookingData.customerRating} stars`);
+        setHasAlreadyRated(true);
+        setUserRating(bookingData.customerRating);
+        setUserFeedback(bookingData.customerFeedback || "");
+        return;
+      }
+
+      // Check via FirestoreService method
+      const alreadyRated = await FirestoreService.hasBookingBeenRated(bookingData.id);
+      setHasAlreadyRated(alreadyRated);
+      
+      if (alreadyRated) {
+        console.log(`📊 User has already rated booking ${bookingData.id}`);
+      }
+    } catch (error) {
+      console.error('Error checking rating status:', error);
+      setHasAlreadyRated(false);
+    } finally {
+      setCheckingRatingStatus(false);
+    }
+  };
 
   // Fetch booking data from Firebase (initial load)
   const fetchBookingData = async () => {
@@ -65,6 +101,9 @@ export default function TrackBookingScreen() {
       }
 
       setBooking(bookingData);
+      
+      // Check rating status for completed bookings
+      await checkRatingStatus(bookingData);
       
       // Animate progress bar
       const progress = BookingUtils.getProgressPercentage(bookingData.status);
@@ -97,7 +136,7 @@ export default function TrackBookingScreen() {
 
     const unsubscribe = FirestoreService.listenToServiceBooking(
       bookingId,
-      (bookingData) => {
+      async (bookingData) => {
         if (!bookingData) {
           setError('Booking not found');
           setLoading(false);
@@ -105,6 +144,9 @@ export default function TrackBookingScreen() {
         }
 
         setBooking(bookingData);
+
+        // Check rating status for completed bookings
+        await checkRatingStatus(bookingData);
 
         // Animate progress bar
         const progress = BookingUtils.getProgressPercentage(bookingData.status);
@@ -247,6 +289,11 @@ export default function TrackBookingScreen() {
       return;
     }
 
+    if (hasAlreadyRated) {
+      Alert.alert("Already Rated", "You have already rated this booking");
+      return;
+    }
+
     setRatingLoading(true);
     try {
       console.log(`⭐ Submitting rating ${userRating} for booking ${booking.id}...`);
@@ -260,12 +307,17 @@ export default function TrackBookingScreen() {
 
       Alert.alert("✅ Rating Submitted", "Thank you for your feedback!");
       
-      // Reset rating state
-      setUserRating(0);
-      setUserFeedback("");
-    } catch (error) {
+      // Mark as already rated to prevent future submissions
+      setHasAlreadyRated(true);
+    } catch (error: any) {
       console.error("Error submitting rating:", error);
-      Alert.alert("Error", "Failed to submit rating. Please try again.");
+      
+      if (error.message === 'You have already rated this booking') {
+        Alert.alert("Already Rated", "You have already rated this booking");
+        setHasAlreadyRated(true);
+      } else {
+        Alert.alert("Error", "Failed to submit rating. Please try again.");
+      }
     } finally {
       setRatingLoading(false);
     }
@@ -577,29 +629,66 @@ export default function TrackBookingScreen() {
         {/* Rating Card - Show when completed */}
         {booking.status === "completed" && (
           <View style={styles.ratingCard}>
-            <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
-            <View style={styles.starsContainer}>
-              {[1, 2, 3, 4, 5].map((num) => (
-                <TouchableOpacity
-                  key={num}
-                  onPress={() => setUserRating(num)}
-                >
-                  <Ionicons
-                    name={userRating >= num ? "star" : "star-outline"}
-                    size={40}
-                    color={userRating >= num ? "#FFD700" : "#CCCCCC"}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-            {userRating > 0 && (
-              <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+            {hasAlreadyRated ? (
+              // Show existing rating
+              <View>
+                <Text style={styles.ratingTitle}>✅ Your Rating</Text>
+                <View style={styles.starsContainer}>
+                  {[1, 2, 3, 4, 5].map((num) => (
+                    <Ionicons
+                      key={num}
+                      name={userRating >= num ? "star" : "star-outline"}
+                      size={40}
+                      color={userRating >= num ? "#FFD700" : "#CCCCCC"}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+                {userFeedback && (
+                  <View style={styles.existingFeedbackContainer}>
+                    <Text style={styles.existingFeedbackLabel}>Your Feedback:</Text>
+                    <Text style={styles.existingFeedbackText}>{userFeedback}</Text>
+                  </View>
+                )}
+                <Text style={styles.alreadyRatedNote}>Thank you for rating this service!</Text>
+              </View>
+            ) : checkingRatingStatus ? (
+              // Show loading while checking rating status
+              <View>
+                <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+                <View style={styles.ratingLoadingContainer}>
+                  <ActivityIndicator size="small" color="#6D28D9" />
+                  <Text style={styles.ratingLoadingText}>Checking rating status...</Text>
+                </View>
+              </View>
+            ) : (
+              // Show rating interface for new ratings
+              <View>
+                <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+                <View style={styles.starsContainer}>
+                  {[1, 2, 3, 4, 5].map((num) => (
+                    <TouchableOpacity
+                      key={num}
+                      onPress={() => setUserRating(num)}
+                    >
+                      <Ionicons
+                        name={userRating >= num ? "star" : "star-outline"}
+                        size={40}
+                        color={userRating >= num ? "#FFD700" : "#CCCCCC"}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {userRating > 0 && (
+                  <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+                )}
+              </View>
             )}
           </View>
         )}
 
-        {/* Feedback Textarea - Show after rating selected */}
-        {booking.status === "completed" && userRating > 0 && (
+        {/* Feedback Textarea - Show after rating selected and not already rated */}
+        {booking.status === "completed" && userRating > 0 && !hasAlreadyRated && !checkingRatingStatus && (
           <View style={styles.feedbackContainer}>
             <Text style={styles.feedbackLabel}>Share Your Feedback</Text>
             <TextInput
@@ -618,8 +707,8 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
-        {/* Rating Submit Button */}
-        {booking.status === "completed" && userRating > 0 && (
+        {/* Rating Submit Button - Only show if not already rated */}
+        {booking.status === "completed" && userRating > 0 && !hasAlreadyRated && !checkingRatingStatus && (
           <View style={styles.ratingButtonContainer}>
             <TouchableOpacity
               style={[styles.submitRatingButton, ratingLoading && { opacity: 0.6 }]}
@@ -1102,6 +1191,43 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFD700",
     textAlign: "center",
+  },
+  ratingLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 20,
+  },
+  ratingLoadingText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  existingFeedbackContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: "#F0F9FF",
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#10B981",
+  },
+  existingFeedbackLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+  },
+  existingFeedbackText: {
+    fontSize: 14,
+    color: "#6B7280",
+    lineHeight: 20,
+  },
+  alreadyRatedNote: {
+    fontSize: 13,
+    color: "#10B981",
+    textAlign: "center",
+    marginTop: 12,
+    fontWeight: "500",
   },
   feedbackContainer: {
     backgroundColor: "#f8f9ff",

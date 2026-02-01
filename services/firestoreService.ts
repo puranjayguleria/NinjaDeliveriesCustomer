@@ -1798,6 +1798,58 @@ export class FirestoreService {
   }
 
   /**
+   * Check if a booking has already been rated by the current user
+   */
+  static async hasBookingBeenRated(bookingId: string): Promise<boolean> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        return false;
+      }
+
+      console.log(`🔍 Checking if booking ${bookingId} has been rated by user ${userId}...`);
+
+      // First check the booking document for rating info
+      const bookingDoc = await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .get();
+
+      if (bookingDoc.exists) {
+        const bookingData = bookingDoc.data();
+        
+        // Check if booking has rating fields populated
+        if (bookingData?.customerRating && bookingData?.ratedAt) {
+          console.log(`✅ Booking ${bookingId} already has rating: ${bookingData.customerRating} stars`);
+          return true;
+        }
+      }
+
+      // Also check serviceRatings collection as backup
+      const ratingsSnapshot = await firestore()
+        .collection('serviceRatings')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      const hasRating = !ratingsSnapshot.empty;
+      
+      if (hasRating) {
+        console.log(`✅ Found existing rating in serviceRatings collection for booking ${bookingId}`);
+      } else {
+        console.log(`❌ No existing rating found for booking ${bookingId}`);
+      }
+
+      return hasRating;
+    } catch (error) {
+      console.error(`❌ Error checking rating status for booking ${bookingId}:`, error);
+      return false; // Assume not rated if there's an error
+    }
+  }
+
+  /**
    * Submit customer rating and feedback for a completed booking
    */
   static async submitBookingRating(
@@ -1810,6 +1862,12 @@ export class FirestoreService {
       
       if (!userId) {
         throw new Error('Please log in to submit a rating');
+      }
+
+      // Check if booking has already been rated
+      const alreadyRated = await this.hasBookingBeenRated(bookingId);
+      if (alreadyRated) {
+        throw new Error('You have already rated this booking');
       }
 
       console.log(`⭐ Submitting rating ${rating} for booking ${bookingId}...`);
