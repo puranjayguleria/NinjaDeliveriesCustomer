@@ -1725,8 +1725,8 @@ export class FirestoreService {
         serviceName: data.serviceName,
         customerName: data.customerName,
         status: data.status,
-        date: data.date,
-        time: data.time
+        technicianName: data.technicianName || 'Not assigned',
+        assignedAt: data.assignedAt || 'Not set'
       });
       
       return {
@@ -1741,8 +1741,9 @@ export class FirestoreService {
         time: data.time || '',
         status: data.status || 'pending',
         companyId: data.companyId,
-        technicianName: data.technicianName,
-        technicianId: data.technicianId,
+        // Try multiple possible field names for technician
+        technicianName: data.technicianName || data.technician_name || data.workerName || data.worker_name || data.assignedTechnician || data.assigned_technician,
+        technicianId: data.technicianId || data.technician_id || data.workerId || data.worker_id || data.assignedTechnicianId || data.assigned_technician_id,
         totalPrice: data.totalPrice,
         addOns: data.addOns || [],
         estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
@@ -2922,8 +2923,9 @@ export class FirestoreService {
             time: data.time || '',
             status: data.status || 'pending',
             companyId: data.companyId,
-            technicianName: data.technicianName,
-            technicianId: data.technicianId,
+            // Try multiple possible field names for technician
+            technicianName: data.technicianName || data.technician_name || data.workerName || data.worker_name || data.assignedTechnician || data.assigned_technician,
+            technicianId: data.technicianId || data.technician_id || data.workerId || data.worker_id || data.assignedTechnicianId || data.assigned_technician_id,
             totalPrice: data.totalPrice,
             addOns: data.addOns || [],
             estimatedDuration: data.estimatedDuration || 2,
@@ -2945,9 +2947,9 @@ export class FirestoreService {
 
           console.log(`🔄 Real-time update for booking ${bookingId}:`);
           console.log(`   - Status: ${booking.status}`);
-          console.log(`   - Customer ID: ${booking.customerId}`);
-          console.log(`   - Start OTP: ${booking.startOtp || 'None'}`);
-          console.log(`   - Completion OTP: ${booking.completionOtp || 'None'}`);
+          console.log(`   - Technician Name: ${booking.technicianName || 'Not assigned'}`);
+          console.log(`   - Company ID: ${booking.companyId || 'Not set'}`);
+          console.log(`   - Assigned At: ${booking.assignedAt || 'Not set'}`);
           
           onUpdate(booking);
         },

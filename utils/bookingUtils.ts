@@ -148,16 +148,20 @@ export class BookingUtils {
   static getStatusMessage(booking: ServiceBooking): string {
     switch (booking.status) {
       case 'pending':
-        return `Your ${booking.serviceName} booking is confirmed. We're looking for a technician.`;
+        return `Your ${booking.serviceName} booking is confirmed. We're finding the best technician for your service.`;
       case 'assigned':
-        return `${booking.technicianName || 'A technician'} has been assigned to your booking.`;
+        return booking.technicianName 
+          ? `Great news! ${booking.technicianName} has been assigned to your ${booking.serviceName} service.`
+          : 'A technician has been assigned to your booking and will contact you soon.';
       case 'started':
+        const technicianInfo = booking.technicianName ? ` ${booking.technicianName} is` : ' Your technician is';
         const otpMessage = booking.completionOtp 
           ? ` Completion OTP: ${booking.completionOtp}` 
           : '';
-        return `Service work is in progress.${otpMessage}`;
+        return `${technicianInfo} currently working on your service.${otpMessage}`;
       case 'completed':
-        return 'Your service has been completed successfully. Thank you for choosing our service!';
+        const completedBy = booking.technicianName ? ` by ${booking.technicianName}` : '';
+        return `Your service has been completed successfully${completedBy}. Thank you for choosing our service!`;
       case 'rejected':
         return 'This booking has been rejected. Please contact support for assistance.';
       case 'expired':
@@ -184,6 +188,40 @@ export class BookingUtils {
     } catch (error) {
       return false;
     }
+  }
+
+  /**
+   * Get technician assignment status message
+   */
+  static getTechnicianStatusMessage(booking: ServiceBooking): string {
+    if (booking.technicianName) {
+      switch (booking.status) {
+        case 'assigned':
+          return `${booking.technicianName} has been assigned and will contact you soon`;
+        case 'started':
+          return `${booking.technicianName} is currently working on your service`;
+        case 'completed':
+          return `Service completed by ${booking.technicianName}`;
+        default:
+          return `Technician: ${booking.technicianName}`;
+      }
+    } else {
+      switch (booking.status) {
+        case 'pending':
+          return 'We\'re finding the best technician for your service';
+        case 'assigned':
+          return 'A technician has been assigned and will contact you soon';
+        default:
+          return 'Technician information not available';
+      }
+    }
+  }
+
+  /**
+   * Check if technician information should be prominently displayed
+   */
+  static shouldHighlightTechnician(booking: ServiceBooking): boolean {
+    return booking.status === 'assigned' || booking.status === 'started';
   }
 
   /**

@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import firestore from "@react-native-firebase/firestore";
 import AddOnServicesModal from "../components/AddOnServicesModal";
+import TechnicianInfo from "../components/TechnicianInfo";
 
 export default function BookingConfirmationScreen() {
   const route = useRoute<any>();
@@ -405,18 +406,28 @@ export default function BookingConfirmationScreen() {
             </View>
           </View>
 
-          {/* Technician (if assigned) */}
-          {displayData.technicianName && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="person" size={20} color="#6B7280" />
-              </View>
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Technician:</Text>
-                <Text style={styles.detailValue}>{displayData.technicianName}</Text>
-              </View>
-            </View>
-          )}
+          {/* Technician Information */}
+          <TechnicianInfo 
+            booking={{
+              ...displayData,
+              id: displayData.bookingId,
+              date: displayData.selectedDate,
+              time: displayData.selectedTime,
+            } as ServiceBooking}
+            onCallTechnician={() => {
+              if (displayData.technicianName) {
+                Alert.alert(
+                  "Call Technician",
+                  `Call ${displayData.technicianName}?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Call", onPress: () => console.log("Calling technician...") },
+                  ]
+                );
+              }
+            }}
+            compact={true}
+          />
 
           {/* Customer Info */}
           {displayData.customerName && (
@@ -741,6 +752,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
     marginTop: 2,
+  },
+  technicianNote: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 4,
+    fontStyle: "italic",
   },
   statusContainer: {
     flexDirection: "row",

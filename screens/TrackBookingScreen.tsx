@@ -14,6 +14,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
+import TechnicianInfo from "../components/TechnicianInfo";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -151,8 +152,8 @@ export default function TrackBookingScreen() {
         id: "assigned",
         title: "Technician Assigned",
         description: booking.technicianName 
-          ? `${booking.technicianName} has been assigned to your booking`
-          : "A technician will be assigned to your booking",
+          ? `${booking.technicianName} has been assigned to your booking and will contact you soon`
+          : "We're finding the best technician for your service",
         timestamp: currentStatusIndex >= 1 && booking.assignedAt ? formatTimestamp(booking.assignedAt) : undefined,
         status: currentStatusIndex > 1 ? "completed" : currentStatusIndex === 1 ? "current" : "pending",
         icon: "person-circle",
@@ -488,18 +489,23 @@ export default function TrackBookingScreen() {
             </View>
           )}
 
+          {/* Technician Information */}
+          <TechnicianInfo 
+            booking={booking}
+            onCallTechnician={handleCallTechnician}
+            showCallButton={isActive}
+          />
+
           {/* Show call button for active bookings with technician */}
           {isActive && booking.technicianName && (
             <View style={styles.etaContainer}>
               <Ionicons name="person-outline" size={18} color="#3B82F6" />
               <View style={{ marginLeft: 10 }}>
-                <Text style={styles.etaText}>Technician</Text>
-                <Text style={styles.etaTime}>{booking.technicianName}</Text>
+                <Text style={styles.etaText}>Technician Status</Text>
+                <Text style={styles.etaTime}>
+                  {booking.status === 'assigned' ? 'Will contact you soon' : 'Currently working on your service'}
+                </Text>
               </View>
-
-              <TouchableOpacity style={styles.callTechBtn} onPress={handleCallTechnician}>
-                <Ionicons name="call" size={16} color="#fff" />
-              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -907,6 +913,49 @@ const styles = StyleSheet.create({
     backgroundColor: "#10B981",
     padding: 8,
     borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  callTechText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  technicianContainer: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#F0F9FF",
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#10B981",
+  },
+  technicianHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  technicianIconBG: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  technicianInfo: {
+    flex: 1,
+  },
+  technicianLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  technicianName: {
+    fontSize: 16,
+    color: "#0F172A",
+    fontWeight: "700",
+    marginTop: 2,
   },
   timelineCard: {
     backgroundColor: "white",
