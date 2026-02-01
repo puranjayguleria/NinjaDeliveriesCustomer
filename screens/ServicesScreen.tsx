@@ -9,6 +9,7 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
+  Image,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
@@ -279,7 +280,18 @@ export default function ServicesScreen() {
         onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
       >
         <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
-          <Ionicons name={categoryStyle.icon as any} size={28} color="white" />
+          {item.imageUrl ? (
+            <Image 
+              source={{ uri: item.imageUrl }} 
+              style={styles.categoryImage}
+              resizeMode="cover"
+              onError={() => {
+                console.log(`⚠️ Failed to load image for ${item.name}, falling back to icon`);
+              }}
+            />
+          ) : (
+            <Ionicons name={categoryStyle.icon as any} size={28} color="white" />
+          )}
         </View>
         <Text style={styles.categoryTitle}>{item.name}</Text>
         <Text style={styles.categorySubtitle}>Professional service</Text>
@@ -298,11 +310,22 @@ export default function ServicesScreen() {
         onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
       >
         <View style={[styles.listIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
-          <Ionicons 
-            name={categoryStyle.icon as any} 
-            size={24} 
-            color={categoryStyle.color} 
-          />
+          {item.imageUrl ? (
+            <Image 
+              source={{ uri: item.imageUrl }} 
+              style={styles.listCategoryImage}
+              resizeMode="cover"
+              onError={() => {
+                console.log(`⚠️ Failed to load image for ${item.name} in list, falling back to icon`);
+              }}
+            />
+          ) : (
+            <Ionicons 
+              name={categoryStyle.icon as any} 
+              size={24} 
+              color={categoryStyle.color} 
+            />
+          )}
         </View>
         <View style={styles.listContent}>
           <Text style={styles.listTitle}>{item.name}</Text>
@@ -769,6 +792,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
+    overflow: "hidden", // Added for image clipping
+  },
+
+  categoryImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
 
   categoryIcon: {
@@ -816,6 +846,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
+    overflow: "hidden", // Added for image clipping
+  },
+
+  listCategoryImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
 
   listContent: {
