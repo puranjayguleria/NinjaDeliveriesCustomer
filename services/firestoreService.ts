@@ -87,8 +87,11 @@ export interface ServiceBooking {
   time: string;
   status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'expired' | 'reject';
   companyId?: string;
-  technicianName?: string;
-  technicianId?: string;
+  // Worker/Technician fields (using actual database field names)
+  workerName?: string;    // Primary field name in database
+  workerId?: string;      // Primary field name in database
+  technicianName?: string; // Legacy/fallback field name
+  technicianId?: string;   // Legacy/fallback field name
   totalPrice?: number;
   addOns?: Array<{
     name: string;
@@ -1741,9 +1744,11 @@ export class FirestoreService {
         time: data.time || '',
         status: data.status || 'pending',
         companyId: data.companyId,
-        // Try multiple possible field names for technician
-        technicianName: data.technicianName || data.technician_name || data.workerName || data.worker_name || data.assignedTechnician || data.assigned_technician,
-        technicianId: data.technicianId || data.technician_id || data.workerId || data.worker_id || data.assignedTechnicianId || data.assigned_technician_id,
+        // Use actual database field names first (workerName, workerId), then fallbacks
+        workerName: data.workerName || data.worker_name,
+        workerId: data.workerId || data.worker_id,
+        technicianName: data.workerName || data.worker_name || data.technicianName || data.technician_name || data.assignedTechnician || data.assigned_technician,
+        technicianId: data.workerId || data.worker_id || data.technicianId || data.technician_id || data.assignedTechnicianId || data.assigned_technician_id,
         totalPrice: data.totalPrice,
         addOns: data.addOns || [],
         estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
@@ -1885,6 +1890,61 @@ export class FirestoreService {
 
       const bookingData = bookingDoc.data();
 
+      // Enhanced technician info extraction with multiple fallbacks
+      // PRIMARY: Use workerId and workerName (the actual fields in service_bookings)
+      let technicianId = bookingData?.workerId || 
+                        bookingData?.worker_id || 
+                        bookingData?.technicianId || 
+                        bookingData?.technician_id || 
+                        bookingData?.assignedTechnicianId || 
+                        bookingData?.assigned_technician_id || '';
+
+      let technicianName = bookingData?.workerName || 
+                          bookingData?.worker_name || 
+                          bookingData?.technicianName || 
+                          bookingData?.technician_name || 
+                          bookingData?.assignedTechnician || 
+                          bookingData?.assigned_technician || '';
+
+      console.log(`🔍 Extracted technician info from booking:`, {
+        workerId: bookingData?.workerId,
+        workerName: bookingData?.workerName,
+        extractedTechnicianId: technicianId,
+        extractedTechnicianName: technicianName
+      });
+
+      // If still no technician info, try to get from company data
+      if (!technicianName && bookingData?.companyId) {
+        console.log(`🔍 No technician name found, trying to get from company ${bookingData.companyId}...`);
+        try {
+          const companyDoc = await firestore()
+            .collection('service_company')
+            .doc(bookingData.companyId)
+            .get();
+          
+          if (companyDoc.exists) {
+            const companyData = companyDoc.data();
+            technicianName = companyData?.companyName || companyData?.name || '';
+            technicianId = bookingData.companyId; // Use company ID as fallback
+            console.log(`✅ Using company name as technician: ${technicianName}`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Could not fetch company data: ${error}`);
+        }
+      }
+
+      // Final fallback - use service name or generic name
+      if (!technicianName) {
+        technicianName = `${bookingData?.serviceName || 'Service'} Provider`;
+        console.log(`⚠️ Using fallback technician name: ${technicianName}`);
+      }
+
+      console.log(`👷 Final worker info for rating:`, {
+        workerId: technicianId || 'N/A',
+        workerName: technicianName || 'N/A',
+        source: technicianId ? 'booking_data' : 'fallback'
+      });
+
       // Create the rating document for serviceRatings collection
       const ratingData = {
         bookingId: bookingId,
@@ -1892,8 +1952,8 @@ export class FirestoreService {
         customerName: bookingData?.customerName || 'Customer',
         serviceName: bookingData?.serviceName || 'Service',
         companyId: bookingData?.companyId || '',
-        technicianId: bookingData?.technicianId || '',
-        technicianName: bookingData?.technicianName || '',
+        workerId: technicianId,        // Using workerId to match service_bookings
+        workerName: technicianName,    // Using workerName to match service_bookings
         rating: rating,
         feedback: feedback?.trim() || '',
         createdAt: new Date(),
@@ -1928,6 +1988,51 @@ export class FirestoreService {
       console.error(`❌ Error submitting rating for booking ${bookingId}:`, error);
       throw new Error('Failed to submit rating. Please check your internet connection.');
     }
+  }
+
+  /**
+   * Update booking with worker information (helper method)
+   */
+  static async updateBookingWorkerInfo(
+    bookingId: string, 
+    workerId: string, 
+    workerName: string
+  ): Promise<void> {
+    try {
+      console.log(`👷 Updating booking ${bookingId} with worker info:`, {
+        workerId,
+        workerName
+      });
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update({
+          workerId: workerId,
+          workerName: workerName,
+          // Also update legacy fields for backward compatibility
+          technicianId: workerId,
+          technicianName: workerName,
+          updatedAt: new Date(),
+        });
+
+      console.log(`✅ Updated booking ${bookingId} with worker information`);
+    } catch (error) {
+      console.error(`❌ Error updating booking ${bookingId} with worker info:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update booking with technician information (helper method - legacy support)
+   */
+  static async updateBookingTechnicianInfo(
+    bookingId: string, 
+    technicianId: string, 
+    technicianName: string
+  ): Promise<void> {
+    // Redirect to the new worker method for consistency
+    return this.updateBookingWorkerInfo(bookingId, technicianId, technicianName);
   }
 
   /**
@@ -2981,9 +3086,11 @@ export class FirestoreService {
             time: data.time || '',
             status: data.status || 'pending',
             companyId: data.companyId,
-            // Try multiple possible field names for technician
-            technicianName: data.technicianName || data.technician_name || data.workerName || data.worker_name || data.assignedTechnician || data.assigned_technician,
-            technicianId: data.technicianId || data.technician_id || data.workerId || data.worker_id || data.assignedTechnicianId || data.assigned_technician_id,
+            // Use actual database field names first (workerName, workerId), then fallbacks
+            workerName: data.workerName || data.worker_name,
+            workerId: data.workerId || data.worker_id,
+            technicianName: data.workerName || data.worker_name || data.technicianName || data.technician_name || data.assignedTechnician || data.assigned_technician,
+            technicianId: data.workerId || data.worker_id || data.technicianId || data.technician_id || data.assignedTechnicianId || data.assigned_technician_id,
             totalPrice: data.totalPrice,
             addOns: data.addOns || [],
             estimatedDuration: data.estimatedDuration || 2,

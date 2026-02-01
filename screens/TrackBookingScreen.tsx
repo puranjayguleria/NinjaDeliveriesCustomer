@@ -633,6 +633,17 @@ export default function TrackBookingScreen() {
               // Show existing rating
               <View>
                 <Text style={styles.ratingTitle}>✅ Your Rating</Text>
+                
+                {/* Show technician info if available */}
+                {(booking.workerName || booking.technicianName || booking.companyId) && (
+                  <View style={styles.ratingTechnicianInfo}>
+                    <Ionicons name="person-circle" size={20} color="#6B7280" />
+                    <Text style={styles.ratingTechnicianText}>
+                      Rated: {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
+                    </Text>
+                  </View>
+                )}
+                
                 <View style={styles.starsContainer}>
                   {[1, 2, 3, 4, 5].map((num) => (
                     <Ionicons
@@ -665,6 +676,17 @@ export default function TrackBookingScreen() {
               // Show rating interface for new ratings
               <View>
                 <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+                
+                {/* Show technician info if available */}
+                {(booking.workerName || booking.technicianName || booking.companyId) && (
+                  <View style={styles.ratingTechnicianInfo}>
+                    <Ionicons name="person-circle" size={20} color="#6B7280" />
+                    <Text style={styles.ratingTechnicianText}>
+                      Rating: {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
+                    </Text>
+                  </View>
+                )}
+                
                 <View style={styles.starsContainer}>
                   {[1, 2, 3, 4, 5].map((num) => (
                     <TouchableOpacity
@@ -1316,5 +1338,23 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: 16,
     fontWeight: "600",
+  },
+  ratingTechnicianInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F0F9FF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E0F2FE",
+  },
+  ratingTechnicianText: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
   },
 });
