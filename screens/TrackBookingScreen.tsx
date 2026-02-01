@@ -9,6 +9,7 @@ import {
   Animated,
   TextInput,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -44,7 +45,41 @@ export default function TrackBookingScreen() {
   const [ratingLoading, setRatingLoading] = useState(false);
   const [hasAlreadyRated, setHasAlreadyRated] = useState(false);
   const [checkingRatingStatus, setCheckingRatingStatus] = useState(false);
+  const [workerPhone, setWorkerPhone] = useState<string>("");
   const [animatedProgress] = useState(new Animated.Value(0));
+
+  // Fetch worker phone number for calling
+  const fetchWorkerPhone = async (workerId: string) => {
+    if (!workerId) return;
+    
+    try {
+      console.log(`📞 Fetching worker phone for ID: ${workerId}`);
+      
+      // Import firestore from the firebase config
+      const { firestore } = require('../firebase.native');
+      
+      const workerDoc = await firestore()
+        .collection('service_workers')
+        .doc(workerId)
+        .get();
+      
+      if (workerDoc.exists) {
+        const workerData = workerDoc.data();
+        const phone = workerData?.phone || 
+                     workerData?.mobile || 
+                     workerData?.phoneNumber || 
+                     workerData?.contactNumber || 
+                     "";
+        
+        setWorkerPhone(phone); // Updated to use workerPhone state
+        console.log(`📞 Worker phone found: ${phone}`);
+      } else {
+        console.log(`📞 No worker document found for ID: ${workerId}`);
+      }
+    } catch (error) {
+      console.error(`📞 Error fetching worker phone:`, error);
+    }
+  };
 
   // Check if booking has already been rated
   const checkRatingStatus = async (bookingData: ServiceBooking) => {
@@ -105,6 +140,12 @@ export default function TrackBookingScreen() {
       // Check rating status for completed bookings
       await checkRatingStatus(bookingData);
       
+      // Fetch worker phone for calling functionality
+      const workerId = bookingData.workerId || bookingData.technicianId;
+      if (workerId) {
+        await fetchWorkerPhone(workerId);
+      }
+      
       // Animate progress bar
       const progress = BookingUtils.getProgressPercentage(bookingData.status);
       Animated.timing(animatedProgress, {
@@ -147,6 +188,12 @@ export default function TrackBookingScreen() {
 
         // Check rating status for completed bookings
         await checkRatingStatus(bookingData);
+
+        // Fetch worker phone for calling functionality
+        const workerId = bookingData.workerId || bookingData.technicianId;
+        if (workerId) {
+          await fetchWorkerPhone(workerId);
+        }
 
         // Animate progress bar
         const progress = BookingUtils.getProgressPercentage(bookingData.status);
@@ -324,13 +371,32 @@ export default function TrackBookingScreen() {
   };
 
   const handleCallTechnician = () => {
-    const technicianName = booking?.technicianName || "the technician";
+    const workerName = booking?.workerName || booking?.technicianName || "the worker";
+    
+    if (!workerPhone) {
+      Alert.alert(
+        "Phone Number Not Available", 
+        `Sorry, we don't have a phone number for ${workerName}. Please contact support for assistance.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     Alert.alert(
-      "Call Technician",
-      `Call ${technicianName}?`,
+      "Call Worker",
+      `Call ${workerName} at ${workerPhone}?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Call", onPress: () => console.log("Calling technician...") },
+        { 
+          text: "Call", 
+          onPress: () => {
+            console.log(`📞 Calling ${workerName} at ${workerPhone}`);
+            Linking.openURL(`tel:${workerPhone}`).catch((error) => {
+              console.error('📞 Error making phone call:', error);
+              Alert.alert("Error", "Unable to make phone call. Please try again.");
+            });
+          }
+        },
       ]
     );
   };
@@ -544,18 +610,18 @@ export default function TrackBookingScreen() {
           {/* Technician Information */}
           <TechnicianInfo 
             booking={booking}
-            onCallTechnician={handleCallTechnician}
-            showCallButton={isActive}
+            onCallTechnician={workerPhone ? handleCallTechnician : undefined}
+            showCallButton={isActive && !!workerPhone}
           />
 
-          {/* Show call button for active bookings with technician */}
-          {isActive && booking.technicianName && (
+          {/* Show call button for active bookings with worker phone */}
+          {isActive && workerPhone && (
             <View style={styles.etaContainer}>
-              <Ionicons name="person-outline" size={18} color="#3B82F6" />
+              <Ionicons name="call-outline" size={18} color="#10B981" />
               <View style={{ marginLeft: 10 }}>
-                <Text style={styles.etaText}>Technician Status</Text>
+                <Text style={styles.etaText}>Worker Contact</Text>
                 <Text style={styles.etaTime}>
-                  {booking.status === 'assigned' ? 'Will contact you soon' : 'Currently working on your service'}
+                  {workerPhone} - Tap call button to contact
                 </Text>
               </View>
             </View>
@@ -752,13 +818,13 @@ export default function TrackBookingScreen() {
         {/* Action Buttons */}
         {isActive && (
           <View style={styles.actionButtons}>
-            {booking.technicianName && (
+            {workerPhone && (
               <TouchableOpacity 
                 style={styles.callButton} 
                 onPress={handleCallTechnician}
               >
                 <Ionicons name="call" size={20} color="white" />
-                <Text style={styles.callButtonText}>Call Technician</Text>
+                <Text style={styles.callButtonText}>Call Worker</Text>
               </TouchableOpacity>
             )}
             
