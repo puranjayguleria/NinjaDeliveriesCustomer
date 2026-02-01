@@ -471,6 +471,8 @@ function AppTabs() {
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
+     // Services tab bounce animation
+     const serviceBounceAnim = useRef(new Animated.Value(0)).current;
 
    useEffect(() => {
     Animated.loop(
@@ -504,6 +506,22 @@ function AppTabs() {
             useNativeDriver: true,
           }),
         ]),
+      ])
+    ).start();
+
+    // Services tab bounce animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(serviceBounceAnim, {
+          toValue: -8,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(serviceBounceAnim, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
       ])
     ).start();
   }, []);
@@ -619,12 +637,13 @@ function AppTabs() {
               const iconName = iconMap[route.name];
 
               return (
-                <View
+                <Animated.View
                   style={{
                     width: size + 12,
                     height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
+                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
                   {isService && (
@@ -654,7 +673,7 @@ function AppTabs() {
                       <Text style={styles.badgeText}>{totalItems}</Text>
                     </View>
                   )}
-                </View>
+                </Animated.View>
               );
             },
           };
