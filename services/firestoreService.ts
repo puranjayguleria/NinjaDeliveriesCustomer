@@ -5,6 +5,7 @@ export interface ServiceCategory {
   name: string;
   isActive: boolean;
   masterCategoryId?: string;
+  imageUrl?: string | null; // Added for category images from service_categories_master
   createdAt?: any;
   updatedAt?: any;
 }
@@ -145,6 +146,7 @@ export class FirestoreService {
           name: data.name || '',
           isActive: data.isActive || false,
           masterCategoryId: data.masterCategoryId,
+          imageUrl: null, // Will be populated from service_categories_master
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });
@@ -153,13 +155,83 @@ export class FirestoreService {
       // Sort by name on the client side
       categories.sort((a, b) => a.name.localeCompare(b.name));
 
-      console.log(`✅ Fetched ${categories.length} active categories from app_categories`);
-      console.log('Categories:', categories.map(c => ({ id: c.id, name: c.name, isActive: c.isActive })));
+      // Now fetch images from service_categories_master collection
+      await this.populateCategoryImages(categories);
+
+      console.log(`✅ Fetched ${categories.length} active categories from app_categories with images from service_categories_master`);
+      console.log('Categories:', categories.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        isActive: c.isActive, 
+        hasImage: !!c.imageUrl,
+        masterCategoryId: c.masterCategoryId
+      })));
       
       return categories;
     } catch (error: any) {
       console.error('❌ Error fetching categories from app_categories:', error);
       throw new Error('Failed to fetch service categories. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Populate category images from service_categories_master collection
+   */
+  static async populateCategoryImages(categories: ServiceCategory[]): Promise<void> {
+    try {
+      console.log('🖼️ Fetching category images from service_categories_master collection...');
+      
+      // Fetch all documents from service_categories_master
+      const masterSnapshot = await firestore()
+        .collection('service_categories_master')
+        .get();
+
+      console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+
+      // Create a map of category names to images for efficient lookup
+      const imageMap = new Map<string, string>();
+      
+      masterSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.name && data.imageUrl) {
+          // Store both exact name and lowercase name for flexible matching
+          imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
+          console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
+        }
+      });
+
+      // Match categories with their images
+      let imagesFound = 0;
+      categories.forEach(category => {
+        const categoryNameLower = category.name.toLowerCase().trim();
+        
+        // Try exact match first
+        if (imageMap.has(categoryNameLower)) {
+          category.imageUrl = imageMap.get(categoryNameLower) || null;
+          imagesFound++;
+          console.log(`✅ Matched image for "${category.name}"`);
+        } else {
+          // Try partial matching for similar names
+          for (const [masterName, imageUrl] of imageMap.entries()) {
+            if (masterName.includes(categoryNameLower) || categoryNameLower.includes(masterName)) {
+              category.imageUrl = imageUrl;
+              imagesFound++;
+              console.log(`✅ Partial match: "${category.name}" matched with "${masterName}"`);
+              break;
+            }
+          }
+        }
+        
+        if (!category.imageUrl) {
+          console.log(`⚠️ No image found for "${category.name}"`);
+        }
+      });
+
+      console.log(`🖼️ Successfully matched ${imagesFound}/${categories.length} categories with images`);
+    } catch (error) {
+      console.error('❌ Error fetching category images from service_categories_master:', error);
+      // Don't throw error - just continue without images
+      console.log('⚠️ Continuing without category images...');
     }
   }
 

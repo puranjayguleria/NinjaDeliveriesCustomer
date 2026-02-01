@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -97,7 +98,13 @@ export default function AllServicesScreen() {
   const fetchServiceCategories = async () => {
     try {
       setLoading(true);
+      console.log('🏷️ AllServicesScreen: Fetching service categories with images...');
       const fetchedCategories = await FirestoreService.getServiceCategories();
+      
+      // Log image statistics
+      const categoriesWithImages = fetchedCategories.filter(cat => cat.imageUrl);
+      console.log(`🖼️ AllServicesScreen: ${categoriesWithImages.length}/${fetchedCategories.length} categories have images`);
+      
       setCategories(fetchedCategories);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -136,7 +143,18 @@ export default function AllServicesScreen() {
       onPress={() => handleServicePress(item)}
     >
       <View style={styles.serviceIconContainer}>
-        <Ionicons name={getCategoryIcon(item.name) as any} size={24} color="#64748b" />
+        {item.imageUrl ? (
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={styles.serviceImage}
+            resizeMode="cover"
+            onError={() => {
+              console.log(`⚠️ Failed to load image for ${item.name} in AllServices, falling back to icon`);
+            }}
+          />
+        ) : (
+          <Ionicons name={getCategoryIcon(item.name) as any} size={24} color="#64748b" />
+        )}
       </View>
       <View style={styles.serviceContent}>
         <Text style={styles.serviceName}>{item.name}</Text>
@@ -323,6 +341,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
+    overflow: 'hidden', // Added for image clipping
+  },
+
+  serviceImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   
   serviceContent: {
