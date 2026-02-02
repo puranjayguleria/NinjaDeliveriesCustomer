@@ -240,6 +240,38 @@ export default function BookingConfirmationScreen() {
     navigation.navigate("BookingHistory");
   };
 
+  // Helper function to check if technician is assigned
+  const isTechnicianAssigned = (): boolean => {
+    if (!bookingData) return false;
+    
+    // Check multiple conditions to determine if technician is assigned
+    const hasAssignedStatus = bookingData.status === 'assigned' || 
+                             bookingData.status === 'started' || 
+                             bookingData.status === 'completed';
+    
+    const hasTechnicianInfo = !!(bookingData.technicianName || 
+                                bookingData.technicianId || 
+                                bookingData.workerName || 
+                                bookingData.workerId);
+    
+    const hasAssignmentTimestamp = !!bookingData.assignedAt;
+    
+    // Technician is considered assigned if any of these conditions are met
+    const isAssigned = hasAssignedStatus || hasTechnicianInfo || hasAssignmentTimestamp;
+    
+    console.log(`🔍 Checking technician assignment:`, {
+      status: bookingData.status,
+      hasAssignedStatus,
+      hasTechnicianInfo,
+      hasAssignmentTimestamp,
+      technicianName: bookingData.technicianName,
+      workerName: bookingData.workerName,
+      isAssigned
+    });
+    
+    return isAssigned;
+  };
+
   const handleAddOnServices = () => {
     if (!categoryId) {
       Alert.alert(
@@ -491,8 +523,8 @@ export default function BookingConfirmationScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           
-          {/* Add-On Services Button */}
-          {categoryId && (
+          {/* Add-On Services Button - Only show when technician is assigned */}
+          {categoryId && isTechnicianAssigned() && (
             <TouchableOpacity 
               style={styles.addOnButton}
               onPress={handleAddOnServices}
