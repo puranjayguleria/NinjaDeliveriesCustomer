@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 
 interface AddOnService extends ServiceIssue {
@@ -23,6 +24,7 @@ interface AddOnServicesModalProps {
   onAddServices: (selectedServices: AddOnService[]) => void;
   categoryId: string;
   existingServices: string[]; // Services already booked
+  bookingId?: string; // Add booking ID for payment integration
 }
 
 export default function AddOnServicesModal({
@@ -31,10 +33,13 @@ export default function AddOnServicesModal({
   onAddServices,
   categoryId,
   existingServices,
+  bookingId,
 }: AddOnServicesModalProps) {
+  const navigation = useNavigation<any>();
   const [services, setServices] = useState<AddOnService[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedServices, setSelectedServices] = useState<AddOnService[]>([]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   useEffect(() => {
     if (visible && categoryId) {
@@ -50,13 +55,71 @@ export default function AddOnServicesModal({
       // Fetch all services for the category with complete details
       const allServices = await FirestoreService.getServicesWithCompanies(categoryId);
       
-      // Filter out services that are already booked
-      const availableServices = allServices.filter(service => 
-        !existingServices.some(existing => 
-          existing.toLowerCase().includes(service.name.toLowerCase()) ||
-          service.name.toLowerCase().includes(existing.toLowerCase())
-        )
-      );
+      // Filter out services that are already booked (main service + add-ons)
+      console.log(`🔍 Existing services to exclude:`, existingServices);
+      
+      const availableServices = allServices.filter(service => {
+        const serviceName = service.name.toLowerCase().trim();
+        
+        // Check if this service is already booked
+        const isAlreadyBooked = existingServices.some(existing => {
+          const existingName = existing.toLowerCase().trim();
+          
+          // Exact match
+          if (serviceName === existingName) {
+            console.log(`🚫 Excluding exact match: "${service.name}" = "${existing}"`);
+            return true;
+          }
+          
+          // Check if service name contains existing service name or vice versa
+          if (serviceName.includes(existingName) || existingName.includes(serviceName)) {
+            console.log(`🚫 Excluding partial match: "${service.name}" ~ "${existing}"`);
+            return true;
+          }
+          
+          // Check for common service variations (e.g., "Plumber" vs "Plumbing")
+          const serviceRoot = serviceName.replace(/ing$|er$|s$/, '');
+          const existingRoot = existingName.replace(/ing$|er$|s$/, '');
+          
+          if (serviceRoot.length > 3 && existingRoot.length > 3 && 
+              (serviceRoot.includes(existingRoot) || existingRoot.includes(serviceRoot))) {
+            console.log(`🚫 Excluding root match: "${service.name}" (${serviceRoot}) ~ "${existing}" (${existingRoot})`);
+            return true;
+          }
+          
+          // Check for common service variations and keywords
+          const serviceKeywords = serviceName.split(/\s+/);
+          const existingKeywords = existingName.split(/\s+/);
+          
+          // Check if any significant keywords overlap (ignore common words)
+          const commonWords = ['service', 'services', 'work', 'repair', 'maintenance', 'professional'];
+          const significantServiceWords = serviceKeywords.filter(word => 
+            word.length > 3 && !commonWords.includes(word)
+          );
+          const significantExistingWords = existingKeywords.filter(word => 
+            word.length > 3 && !commonWords.includes(word)
+          );
+          
+          const hasKeywordOverlap = significantServiceWords.some(serviceWord =>
+            significantExistingWords.some(existingWord =>
+              serviceWord.includes(existingWord) || existingWord.includes(serviceWord)
+            )
+          );
+          
+          if (hasKeywordOverlap && significantServiceWords.length > 0 && significantExistingWords.length > 0) {
+            console.log(`🚫 Excluding keyword match: "${service.name}" ~ "${existing}" (keywords: ${significantServiceWords.join(', ')} ~ ${significantExistingWords.join(', ')})`);
+            return true;
+          }
+          
+          return false;
+        });
+        
+        if (!isAlreadyBooked) {
+          console.log(`✅ Available add-on service: "${service.name}"`);
+        }
+        
+        return !isAlreadyBooked;
+      });
 
       // Get companies for these services to get proper pricing
       const serviceIds = availableServices.map(service => service.id);
@@ -103,6 +166,11 @@ export default function AddOnServicesModal({
 
       setServices(addOnServices);
       console.log(`✅ Found ${addOnServices.length} available add-on services with pricing`);
+      console.log(`📊 Summary: ${allServices.length} total services, ${allServices.length - addOnServices.length} excluded, ${addOnServices.length} available`);
+      
+      if (addOnServices.length === 0) {
+        console.log(`ℹ️ No add-on services available - all services from this category are already booked`);
+      }
     } catch (error) {
       console.error("Error fetching add-on services:", error);
       Alert.alert("Error", "Failed to load add-on services. Please try again.");
@@ -121,7 +189,7 @@ export default function AddOnServicesModal({
     );
   };
 
-  const handleAddServices = () => {
+  const handleAddServices = async () => {
     const selected = services.filter(service => service.selected);
     
     if (selected.length === 0) {
@@ -129,9 +197,199 @@ export default function AddOnServicesModal({
       return;
     }
 
-    setSelectedServices(selected);
-    onAddServices(selected);
-    onClose();
+    const totalAmount = getTotalPrice();
+    
+    // Show confirmation with payment
+    Alert.alert(
+      "Confirm Add-On Services",
+      `You are about to add ${selected.length} service${selected.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nPayment will be processed immediately via Razorpay.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Pay Now", 
+          onPress: () => handleRazorpayPayment(selected, totalAmount)
+        },
+      ]
+    );
+  };
+
+  const handleRazorpayPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
+    setPaymentLoading(true);
+    try {
+      // Import auth and axios here to avoid issues
+      const auth = require("@react-native-firebase/auth").default;
+      const axios = require("axios").default;
+
+      // API Configuration for Razorpay
+      const api = axios.create({
+        timeout: 20000,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+      const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
+
+      const getAuthHeaders = async () => {
+        const user = auth().currentUser;
+        if (!user) throw new Error("Not logged in");
+        const token = await user.getIdToken(true);
+        return { Authorization: `Bearer ${token}` };
+      };
+
+      const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
+
+      // Create Razorpay order
+      console.log("Creating Razorpay order for add-on services - Amount:", totalAmount);
+      const user = auth().currentUser;
+      if (!user) throw new Error("Not logged in");
+
+      const amountPaise = toPaise(totalAmount);
+      const headers = await getAuthHeaders();
+
+      const requestData = {
+        amountPaise,
+        currency: "INR",
+        receipt: `addon_${bookingId}_${Date.now()}`,
+        notes: { 
+          uid: user.uid, 
+          type: "addon_payment",
+          bookingId: bookingId || "",
+          serviceCount: selectedAddOns.length
+        },
+      };
+
+      const { data } = await api.post(CREATE_RZP_ORDER_URL, requestData, { headers });
+
+      if (!data?.orderId || !data?.keyId) {
+        throw new Error(data?.error || "Failed to create Razorpay order");
+      }
+
+      const contact = (user.phoneNumber || "").replace("+91", "");
+
+      // Navigate directly to Razorpay WebView
+      navigation.navigate("RazorpayWebView", {
+        orderId: String(data.orderId),
+        amount: totalAmount,
+        keyId: String(data.keyId),
+        currency: String(data.currency ?? "INR"),
+        name: "Ninja Add-On Services",
+        description: `Add-on services payment for booking ${bookingId}`,
+        prefill: {
+          contact,
+          email: "",
+          name: "",
+        },
+        onSuccess: async (response: any) => {
+          try {
+            console.log("Add-on payment successful:", response);
+            
+            // Verify payment on server
+            const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+            const verifyHeaders = await getAuthHeaders();
+            const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, response, { headers: verifyHeaders });
+
+            if (!verifyData?.verified) {
+              throw new Error(verifyData?.error || "Payment verification failed");
+            }
+            
+            console.log("Add-on payment verified, updating booking...");
+            
+            // Update booking with add-on services and payment info
+            await updateBookingWithAddOns(selectedAddOns, totalAmount, response);
+            
+            // Close modal and notify parent
+            onAddServices(selectedAddOns);
+            onClose();
+            
+            Alert.alert(
+              "Payment Successful! 🎉", 
+              `${selectedAddOns.length} add-on service${selectedAddOns.length > 1 ? 's' : ''} added to your booking.\n\nAmount Paid: ₹${totalAmount}`,
+              [{ text: "OK" }]
+            );
+            
+          } catch (error) {
+            console.error("Add-on payment verification failed:", error);
+            Alert.alert("Payment Verification Failed", "Please contact support.");
+          }
+        },
+        onFailure: (error: any) => {
+          console.log("Add-on payment failed:", error);
+          Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+        },
+      });
+
+    } catch (error: any) {
+      console.error("Razorpay add-on payment error:", error);
+      let message = "Payment failed. Please try again.";
+      
+      if (error?.description) {
+        message = error.description;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      
+      Alert.alert("Payment Failed", message);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const updateBookingWithAddOns = async (selectedAddOns: AddOnService[], totalAmount: number, razorpayResponse: any) => {
+    try {
+      if (!bookingId) {
+        console.warn("No booking ID provided for add-on update");
+        return;
+      }
+
+      // Get current booking data
+      const currentBooking = await FirestoreService.getServiceBookingById(bookingId);
+      if (!currentBooking) {
+        throw new Error("Booking not found");
+      }
+
+      // Prepare updated add-ons
+      const newAddOns = selectedAddOns.map(service => ({
+        name: service.name,
+        price: service.price
+      }));
+
+      const updatedAddOns = [
+        ...(currentBooking.addOns || []),
+        ...newAddOns
+      ];
+
+      const newTotalPrice = (currentBooking.totalPrice || 0) + totalAmount;
+
+      // Update booking with add-ons
+      await FirestoreService.updateServiceBooking(bookingId, {
+        addOns: updatedAddOns,
+        totalPrice: newTotalPrice,
+        updatedAt: new Date()
+      });
+
+      // Create payment record for add-on services
+      const paymentData = {
+        bookingId: bookingId,
+        amount: totalAmount,
+        paymentMethod: 'online' as const,
+        paymentStatus: 'paid' as const,
+        serviceName: `Add-on Services (${selectedAddOns.length} services)`,
+        companyName: 'Ninja Services',
+        companyId: currentBooking.companyId || '',
+        paymentGateway: 'razorpay' as const,
+        transactionId: razorpayResponse.razorpay_payment_id || '',
+        razorpayOrderId: razorpayResponse.razorpay_order_id || '',
+        razorpaySignature: razorpayResponse.razorpay_signature || '',
+      };
+
+      await FirestoreService.createServicePayment(paymentData);
+      
+      console.log(`✅ Updated booking ${bookingId} with ${selectedAddOns.length} add-on services and payment record`);
+      
+    } catch (error) {
+      console.error("Error updating booking with add-ons:", error);
+      throw error;
+    }
   };
 
   const getTotalPrice = () => {
@@ -198,9 +456,9 @@ export default function AddOnServicesModal({
         ) : services.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="construct-outline" size={48} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>No Additional Services</Text>
+            <Text style={styles.emptyTitle}>No Additional Services Available</Text>
             <Text style={styles.emptyText}>
-              All available services from this category are already included in your booking.
+              All services from this category are already included in your booking. You can add services from other categories if needed.
             </Text>
           </View>
         ) : (
@@ -229,14 +487,21 @@ export default function AddOnServicesModal({
             <TouchableOpacity
               style={[
                 styles.addButton,
-                getSelectedCount() === 0 && styles.addButtonDisabled
+                (getSelectedCount() === 0 || paymentLoading) && styles.addButtonDisabled
               ]}
               onPress={handleAddServices}
-              disabled={getSelectedCount() === 0}
+              disabled={getSelectedCount() === 0 || paymentLoading}
             >
-              <Text style={styles.addButtonText}>
-                Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''} to Booking
-              </Text>
+              {paymentLoading ? (
+                <View style={styles.loadingButtonContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.addButtonText}>Processing Payment...</Text>
+                </View>
+              ) : (
+                <Text style={styles.addButtonText}>
+                  Pay ₹{getTotalPrice()} for {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''}
+                </Text>
+              )}
             </TouchableOpacity>
           </>
         )}
@@ -408,5 +673,10 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  loadingButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
 });

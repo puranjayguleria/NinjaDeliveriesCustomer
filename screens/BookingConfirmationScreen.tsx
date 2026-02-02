@@ -253,74 +253,32 @@ export default function BookingConfirmationScreen() {
 
   const handleAddServicesConfirm = async (selectedServices: any[]) => {
     try {
+      // Add-on services are now handled with immediate payment in the modal
+      // This function is called after successful payment
       setAddOnServices(selectedServices);
       const addOnTotal = selectedServices.reduce((sum, service) => sum + service.price, 0);
       const newTotal = (bookingData?.totalPrice || 0) + addOnTotal;
       setTotalWithAddOns(newTotal);
       
-      // Update the booking in Firebase with add-on services
-      if (bookingId && bookingData) {
+      console.log(`✅ Add-on services confirmed with payment: ${selectedServices.length} services, ₹${addOnTotal}`);
+      
+      // Refresh booking data to show updated add-ons
+      if (bookingId) {
         try {
-          const updatedAddOns = [
-            ...(bookingData.addOns || []),
-            ...selectedServices.map(service => ({
-              name: service.name,
-              price: service.price
-            }))
-          ];
-
-          await FirestoreService.updateServiceBooking(bookingId, {
-            addOns: updatedAddOns,
-            totalPrice: newTotal,
-            updatedAt: new Date()
-          });
-
-          console.log(`✅ Updated booking ${bookingId} with add-on services`);
-        } catch (updateError) {
-          console.error("Error updating booking with add-ons:", updateError);
-          // Continue with payment flow even if update fails
+          const updatedBooking = await FirestoreService.getServiceBookingById(bookingId);
+          if (updatedBooking) {
+            setBookingData(updatedBooking);
+            console.log("✅ Refreshed booking data with add-ons");
+          }
+        } catch (refreshError) {
+          console.error("Error refreshing booking data:", refreshError);
         }
       }
       
-      Alert.alert(
-        "Services Added! 🎉",
-        `${selectedServices.length} add-on service${selectedServices.length > 1 ? 's' : ''} added to your booking.\n\nNew Total: ₹${newTotal}\nAdd-on Amount: ₹${addOnTotal}`,
-        [
-          {
-            text: "Make Payment",
-            onPress: () => handlePaymentForAddOns(selectedServices, addOnTotal, newTotal)
-          },
-          {
-            text: "Pay Later",
-            style: "cancel",
-            onPress: () => {
-              Alert.alert(
-                "Payment Pending",
-                "Add-on services have been added to your booking. You can pay when the service provider arrives.",
-                [{ text: "OK" }]
-              );
-            }
-          }
-        ]
-      );
     } catch (error) {
-      console.error("Error handling add-on services:", error);
-      Alert.alert("Error", "Failed to add services. Please try again.");
+      console.error("Error handling add-on services confirmation:", error);
+      Alert.alert("Error", "Failed to confirm add-on services. Please try again.");
     }
-  };
-
-  const handlePaymentForAddOns = (selectedServices: any[], addOnTotal: number, newTotal: number) => {
-    // Navigate to payment screen with add-on services
-    navigation.navigate("PaymentScreen", {
-      bookingId: bookingId,
-      addOnServices: selectedServices,
-      addOnTotal: addOnTotal,
-      totalAmount: newTotal,
-      originalAmount: bookingData?.totalPrice || 0,
-      isAddOnPayment: true,
-      serviceName: bookingData?.serviceName || "Service",
-      companyName: companyName
-    });
   };
 
   if (loading) {
@@ -585,7 +543,12 @@ export default function BookingConfirmationScreen() {
         onClose={() => setShowAddOnModal(false)}
         onAddServices={handleAddServicesConfirm}
         categoryId={categoryId}
-        existingServices={displayData.addOns?.map(addon => addon.name) || []}
+        existingServices={[
+          ...(displayData.serviceName ? [displayData.serviceName] : []),
+          ...(displayData.workName && displayData.workName !== displayData.serviceName ? [displayData.workName] : []),
+          ...(displayData.addOns?.map(addon => addon.name) || [])
+        ]}
+        bookingId={bookingId}
       />
     </View>
   );
