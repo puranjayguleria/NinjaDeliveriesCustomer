@@ -22,6 +22,14 @@ export class FirebaseConnectionTest {
         workName: 'Test work description',
         otherVerified: false,
         startOtp: null,
+        // Add location data for testing
+        location: {
+          lat: 28.6139,
+          lng: 77.2090,
+          address: 'Test Address, Test City',
+          houseNo: 'Test House',
+          placeLabel: 'Test Location',
+        },
       };
 
       const bookingId = await FirestoreService.createServiceBooking(testBookingData);

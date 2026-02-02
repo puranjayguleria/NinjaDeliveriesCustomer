@@ -31,6 +31,13 @@ export class TestBookingData {
         status: 'pending' as const,
         estimatedDuration: 2,
         totalPrice: 500,
+        location: {
+          lat: 28.6139,
+          lng: 77.2090,
+          address: '123 Main Street, City',
+          houseNo: '123',
+          placeLabel: 'Main Street Area',
+        },
       };
 
       // Sample booking 2: Started (with completion OTP)
@@ -49,6 +56,13 @@ export class TestBookingData {
         completionOtp: '4567', // Make sure OTP is included
         startedAt: new Date(Date.now() - 30 * 60 * 1000), // Started 30 minutes ago
         totalPrice: 300,
+        location: {
+          lat: 28.6200,
+          lng: 77.2100,
+          address: '456 Oak Avenue, City',
+          houseNo: '456',
+          placeLabel: 'Oak Avenue Area',
+        },
       };
 
       // Sample booking 3: Completed
@@ -71,6 +85,13 @@ export class TestBookingData {
         totalPrice: 800,
         customerRating: 5,
         customerFeedback: 'Excellent service! Very professional and thorough.',
+        location: {
+          lat: 28.6250,
+          lng: 77.2150,
+          address: '789 Pine Street, City',
+          houseNo: '789',
+          placeLabel: 'Pine Street Area',
+        },
       };
 
       // Create the bookings (customerId will be automatically set to logged-in user)
@@ -137,6 +158,13 @@ export class TestBookingData {
         completionOtpVerified: false,
         startedAt: new Date(),
         totalPrice: 400,
+        location: {
+          lat: 28.6300,
+          lng: 77.2200,
+          address: 'Test Address, Test City',
+          houseNo: 'Test House',
+          placeLabel: 'Test Area',
+        },
       };
 
       const bookingId = await FirestoreService.createServiceBooking(testBooking);

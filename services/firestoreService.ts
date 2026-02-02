@@ -97,6 +97,14 @@ export interface ServiceBooking {
     name: string;
     price: number;
   }>;
+  // Location data for website access
+  location?: {
+    lat: number | null;
+    lng: number | null;
+    address: string;
+    houseNo?: string;
+    placeLabel?: string;
+  };
   // Service duration and OTP system
   estimatedDuration?: number; // Duration in hours (1-2 hours)
   startOtp?: string;
@@ -2112,14 +2120,19 @@ export class FirestoreService {
       
       console.log(`🔥 Creating new service booking for logged-in user: ${userId}`);
       
+      // Clean the booking data to remove undefined values
+      const cleanedData = this.cleanBookingData({
+        ...bookingData,
+        customerId: userId, // Always set the logged-in user ID
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      
+      console.log(`🧹 Cleaned booking data for Firestore:`, JSON.stringify(cleanedData, null, 2));
+      
       const docRef = await firestore()
         .collection('service_bookings')
-        .add({
-          ...bookingData,
-          customerId: userId, // Always set the logged-in user ID
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+        .add(cleanedData);
 
       console.log(`✅ Created booking with ID: ${docRef.id} for logged-in user: ${userId}`);
       return docRef.id;
@@ -2135,6 +2148,36 @@ export class FirestoreService {
   }
 
   /**
+   * Clean booking data to remove undefined values that Firestore doesn't support
+   */
+  private static cleanBookingData(data: any): any {
+    const cleaned: any = {};
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        if (value === null) {
+          // Explicitly allow null values (Firestore supports null)
+          cleaned[key] = null;
+        } else if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          // Recursively clean nested objects
+          const cleanedNested = this.cleanBookingData(value);
+          if (Object.keys(cleanedNested).length > 0) {
+            cleaned[key] = cleanedNested;
+          }
+        } else if (Array.isArray(value)) {
+          // Handle arrays - filter out undefined values
+          const cleanedArray = value.filter(item => item !== undefined);
+          cleaned[key] = cleanedArray;
+        } else {
+          cleaned[key] = value;
+        }
+      }
+    }
+    
+    return cleaned;
+  }
+
+  /**
    * Update an existing service booking
    */
   static async updateServiceBooking(bookingId: string, updates: Partial<ServiceBooking>): Promise<void> {
@@ -2147,13 +2190,16 @@ export class FirestoreService {
       
       console.log(`🔥 Updating service booking ${bookingId} for user: ${userId}`);
       
+      // Clean the update data to remove undefined values
+      const cleanedUpdates = this.cleanBookingData({
+        ...updates,
+        updatedAt: new Date(),
+      });
+      
       await firestore()
         .collection('service_bookings')
         .doc(bookingId)
-        .update({
-          ...updates,
-          updatedAt: new Date(),
-        });
+        .update(cleanedUpdates);
 
       console.log(`✅ Updated booking ${bookingId} successfully`);
     } catch (error: any) {
@@ -2164,6 +2210,81 @@ export class FirestoreService {
       }
       
       throw new Error('Failed to update service booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get service bookings with location data for website access
+   * This method is specifically designed for website integration
+   */
+  static async getServiceBookingsWithLocation(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      console.log(`🌐 Fetching service bookings with location data for website (limit: ${limit})`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Only include bookings that have location data
+        if (data.location && data.location.address) {
+          bookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || '',
+            customerAddress: data.customerAddress || '',
+            customerId: data.customerId || '',
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId || '',
+            workerName: data.workerName || data.technicianName || '',
+            workerId: data.workerId || data.technicianId || '',
+            technicianName: data.technicianName || data.workerName || '',
+            technicianId: data.technicianId || data.workerId || '',
+            totalPrice: data.totalPrice || 0,
+            addOns: data.addOns || [],
+            location: {
+              lat: data.location.lat || null,
+              lng: data.location.lng || null,
+              address: data.location.address || '',
+              houseNo: data.location.houseNo || '',
+              placeLabel: data.location.placeLabel || '',
+            },
+            estimatedDuration: data.estimatedDuration,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified || false,
+            completionOtpVerified: data.completionOtpVerified || false,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        }
+      });
+
+      console.log(`✅ Fetched ${bookings.length} service bookings with location data for website`);
+      console.log(`📍 Location data available for all ${bookings.length} bookings`);
+      
+      return bookings;
+    } catch (error: any) {
+      console.error('❌ Error fetching service bookings with location:', error);
+      throw new Error('Failed to fetch service bookings with location data. Please check your internet connection.');
     }
   }
 

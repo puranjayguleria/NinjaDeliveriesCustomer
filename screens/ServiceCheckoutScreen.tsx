@@ -13,6 +13,7 @@ import {
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
+import { useLocationContext } from "../context/LocationContext";
 import { FirestoreService } from "../services/firestoreService";
 import { formatDateToDDMMYYYY } from "../utils/dateUtils";
 
@@ -20,6 +21,7 @@ export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { clearCart } = useServiceCart();
+  const { location } = useLocationContext();
   
   const { services, totalAmount } = route.params;
   const [notes, setNotes] = useState("");
@@ -27,6 +29,25 @@ export default function ServiceCheckoutScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleProceedToPayment = async () => {
+    // Validate that user has selected an address
+    if (!location.address || location.address.trim() === "") {
+      Alert.alert(
+        "Address Required",
+        "Please select a service address before proceeding with the booking.",
+        [
+          {
+            text: "Select Address",
+            onPress: () => navigation.navigate("LocationSelector")
+          },
+          {
+            text: "Cancel",
+            style: "cancel"
+          }
+        ]
+      );
+      return;
+    }
+
     if (paymentMethod === "online") {
       // For online payment, directly open Razorpay payment
       await handleRazorpayPayment();
@@ -165,11 +186,15 @@ export default function ServiceCheckoutScreen() {
   const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any) => {
     setLoading(true);
     try {
+      console.log(`🔍 Starting booking creation process...`);
+      console.log(`📍 Current location data:`, JSON.stringify(location, null, 2));
+      console.log(`💳 Payment status: ${paymentStatus}, method: ${paymentMethod}`);
+      
       // Get actual customer information from Firebase
       let customerData = {
         name: "Customer",
         phone: "",
-        address: ""
+        address: location.address || "" // Use address from LocationContext
       };
 
       try {
@@ -178,36 +203,68 @@ export default function ServiceCheckoutScreen() {
           customerData = {
             name: currentUser.name || currentUser.displayName || `Customer ${currentUser.phone?.slice(-4) || ''}`,
             phone: currentUser.phone || currentUser.phoneNumber || "",
-            address: currentUser.address || currentUser.location || currentUser.fullAddress || ""
+            address: location.address || currentUser.address || currentUser.location || currentUser.fullAddress || ""
           };
-          console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}, ${customerData.address}`);
+      console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
+      console.log(`📍 Using service address: ${customerData.address}`);
+      console.log(`🛒 Services to book: ${services.length}`);
+      
+      // Validate services array
+      if (!services || services.length === 0) {
+        throw new Error('No services to book');
+      }
+      
+      // Log each service for debugging
+      services.forEach((service, index) => {
+        console.log(`🔧 Service ${index + 1}:`, {
+          title: service.serviceTitle,
+          issues: service.issues,
+          company: service.company?.name || service.company?.id,
+          date: service.selectedDate,
+          time: service.selectedTime,
+          price: service.totalPrice
+        });
+      });
         }
       } catch (userError) {
         console.error("Error fetching user data:", userError);
-        // Continue with default values
+        // Continue with location address from context
+        customerData.address = location.address || "";
       }
 
       // Create bookings in Firebase service_bookings collection
       const bookingPromises = services.map(async (service: ServiceCartItem) => {
+        // Ensure all required fields have valid values
         const bookingData = {
-          serviceName: service.serviceTitle,
-          workName: service.issues?.join(', ') || service.serviceTitle,
-          customerName: customerData.name,
-          customerPhone: customerData.phone,
-          customerAddress: customerData.address,
-          date: service.selectedDate,
-          time: service.selectedTime,
+          serviceName: service.serviceTitle || "Service",
+          workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
+          customerName: customerData.name || "Customer",
+          customerPhone: customerData.phone || "",
+          customerAddress: customerData.address || "",
+          date: service.selectedDate || new Date().toISOString().split('T')[0],
+          time: service.selectedTime || "10:00 AM",
           status: 'pending' as const,
-          companyId: service.company.companyId || service.company.id,
-          totalPrice: service.totalPrice,
+          companyId: service.company?.companyId || service.company?.id || "",
+          totalPrice: service.totalPrice || 0,
           addOns: service.addOns || [],
-          paymentMethod,
-          paymentStatus,
-          notes,
+          // Add location data for website access (with strict validation)
+          location: {
+            lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
+            lng: (location.lng !== null && location.lng !== undefined) ? location.lng : null,
+            address: location.address || customerData.address || "",
+            ...(location.houseNo && location.houseNo.trim() !== "" && { houseNo: location.houseNo }),
+            ...(location.placeLabel && location.placeLabel.trim() !== "" && { placeLabel: location.placeLabel }),
+          },
+          paymentMethod: paymentMethod || "cash",
+          paymentStatus: paymentStatus || "pending",
+          notes: notes || "",
         };
+
+        console.log(`📋 About to create booking with data:`, JSON.stringify(bookingData, null, 2));
 
         const bookingId = await FirestoreService.createServiceBooking(bookingData);
         console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
+        console.log(`📍 Location data saved: lat=${location.lat}, lng=${location.lng}, address="${location.address}"`);
         
         // Create payment record in service_payments collection
         // Ensure all required fields have valid values
@@ -339,6 +396,64 @@ export default function ServiceCheckoutScreen() {
           contentContainerStyle={styles.servicesList}
         />
 
+        {/* Service Address Section */}
+        <View style={styles.addressSection}>
+          <Text style={styles.sectionTitle}>Service Address</Text>
+          <View style={[
+            styles.addressCard, 
+            (!location.address || location.address.trim() === "") && styles.addressCardEmpty
+          ]}>
+            <View style={styles.addressHeader}>
+              <Ionicons 
+                name="location" 
+                size={20} 
+                color={(!location.address || location.address.trim() === "") ? "#ef4444" : "#4CAF50"} 
+              />
+              <Text style={styles.addressTitle}>
+                {(!location.address || location.address.trim() === "") ? "No Address Selected" : "Selected Location"}
+              </Text>
+            </View>
+            
+            {(!location.address || location.address.trim() === "") ? (
+              <View style={styles.noAddressContainer}>
+                <Text style={styles.noAddressText}>
+                  Please select your service location to continue
+                </Text>
+                <TouchableOpacity 
+                  style={styles.selectAddressButton}
+                  onPress={() => navigation.navigate("LocationSelector")}
+                >
+                  <Ionicons name="add-circle" size={16} color="#fff" />
+                  <Text style={styles.selectAddressText}>Select Address</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.addressText}>
+                  {location.address}
+                </Text>
+                {location.houseNo && (
+                  <Text style={styles.houseNoText}>
+                    House/Flat: {location.houseNo}
+                  </Text>
+                )}
+                {location.placeLabel && (
+                  <Text style={styles.placeLabelText}>
+                    {location.placeLabel}
+                  </Text>
+                )}
+                <TouchableOpacity 
+                  style={styles.changeAddressButton}
+                  onPress={() => navigation.navigate("LocationSelector")}
+                >
+                  <Ionicons name="pencil" size={16} color="#2563eb" />
+                  <Text style={styles.changeAddressText}>Change Address</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+
         <View style={styles.notesSection}>
           <Text style={styles.sectionTitle}>Additional Notes (Optional)</Text>
           <TextInput
@@ -409,6 +524,19 @@ export default function ServiceCheckoutScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Services ({services.length})</Text>
             <Text style={styles.summaryValue}>₹{totalAmount}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Service Address</Text>
+            <Text style={[styles.summaryValue, styles.summaryAddressValue]}>
+              {location.address ? 
+                (location.address.length > 30 ? 
+                  `${location.address.substring(0, 30)}...` : 
+                  location.address
+                ) : 
+                "Not selected"
+              }
+            </Text>
           </View>
           
           <View style={styles.summaryRow}>
@@ -593,6 +721,89 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
   },
+  addressSection: {
+    marginBottom: 24,
+  },
+  addressCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  addressCardEmpty: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  addressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  addressTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
+  },
+  noAddressContainer: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  noAddressText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  selectAddressButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4CAF50",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  selectAddressText: {
+    fontSize: 14,
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  addressText: {
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  houseNoText: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 4,
+  },
+  placeLabelText: {
+    fontSize: 14,
+    color: "#666",
+    fontStyle: "italic",
+    marginBottom: 12,
+  },
+  changeAddressButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+  },
+  changeAddressText: {
+    fontSize: 14,
+    color: "#2563eb",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
   notesSection: {
     marginBottom: 24,
   },
@@ -679,6 +890,13 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 14,
     color: "#333",
+  },
+  summaryAddressValue: {
+    fontSize: 12,
+    color: "#666",
+    textAlign: "right",
+    flex: 1,
+    marginLeft: 8,
   },
   summaryDivider: {
     height: 1,
