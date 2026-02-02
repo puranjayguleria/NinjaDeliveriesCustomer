@@ -25,6 +25,43 @@ export default function CompanySelectionScreen() {
     fetchServiceCompanies();
   }, [selectedIssueIds]);
 
+  // Check if a company has active workers
+  const checkCompanyHasActiveWorkers = async (companyId: string): Promise<boolean> => {
+    try {
+      const { firestore } = require('../firebase.native');
+      
+      const workersQuery = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+      
+      const activeWorkers = workersQuery.docs.length;
+      console.log(`👷 Company ${companyId} has ${activeWorkers} active workers`);
+      
+      return activeWorkers > 0;
+    } catch (error) {
+      console.error(`❌ Error checking active workers for company ${companyId}:`, error);
+      return false; // If error, assume no active workers to be safe
+    }
+  };
+
+  // Filter companies that have active workers
+  const filterCompaniesWithActiveWorkers = async (companies: ServiceCompany[]): Promise<ServiceCompany[]> => {
+    const companiesWithActiveWorkers: ServiceCompany[] = [];
+    
+    for (const company of companies) {
+      const hasActiveWorkers = await checkCompanyHasActiveWorkers(company.companyId || company.id);
+      if (hasActiveWorkers) {
+        companiesWithActiveWorkers.push(company);
+      } else {
+        console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
+      }
+    }
+    
+    return companiesWithActiveWorkers;
+  };
+
   const fetchServiceCompanies = async () => {
     try {
       setLoading(true);
@@ -46,7 +83,7 @@ export default function CompanySelectionScreen() {
         fetchedCompanies = await FirestoreService.getServiceCompanies();
       }
       
-      console.log(`🏢 Found ${fetchedCompanies.length} companies:`, 
+      console.log(`🏢 Found ${fetchedCompanies.length} companies before filtering:`, 
         fetchedCompanies.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
@@ -58,7 +95,19 @@ export default function CompanySelectionScreen() {
         }))
       );
       
-      setCompanies(fetchedCompanies);
+      // Filter companies to only show those with active workers
+      const companiesWithActiveWorkers = await filterCompaniesWithActiveWorkers(fetchedCompanies);
+      
+      console.log(`🏢 After filtering: ${companiesWithActiveWorkers.length} companies with active workers:`, 
+        companiesWithActiveWorkers.map(c => ({ 
+          id: c.id, 
+          companyName: c.companyName,
+          serviceName: c.serviceName,
+          companyId: c.companyId
+        }))
+      );
+      
+      setCompanies(companiesWithActiveWorkers);
     } catch (error) {
       console.error('❌ Error fetching service companies:', error);
       setCompanies([]);
