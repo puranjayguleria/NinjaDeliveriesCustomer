@@ -47,40 +47,80 @@ export default function TrackBookingScreen() {
   const [hasAlreadyRated, setHasAlreadyRated] = useState(false);
   const [checkingRatingStatus, setCheckingRatingStatus] = useState(false);
   const [workerPhone, setWorkerPhone] = useState<string>("");
+  const [companyName, setCompanyName] = useState<string>("");
   const [animatedProgress] = useState(new Animated.Value(0));
   const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
-  // Fetch worker phone number for calling
-  const fetchWorkerPhone = async (workerId: string) => {
-    if (!workerId) return;
+  // Fetch company phone number for calling
+  const fetchCompanyPhone = async (companyId: string) => {
+    if (!companyId) return;
     
     try {
-      console.log(`📞 Fetching worker phone for ID: ${workerId}`);
+      console.log(`📞 Fetching company phone for ID: ${companyId}`);
       
       // Import firestore from the firebase config
       const { firestore } = require('../firebase.native');
       
-      const workerDoc = await firestore()
-        .collection('service_workers')
-        .doc(workerId)
+      const companyDoc = await firestore()
+        .collection('service_company')
+        .doc(companyId)
         .get();
       
-      if (workerDoc.exists) {
-        const workerData = workerDoc.data();
-        const phone = workerData?.phone || 
-                     workerData?.mobile || 
-                     workerData?.phoneNumber || 
-                     workerData?.contactNumber || 
+      if (companyDoc.exists) {
+        const companyData = companyDoc.data();
+        const phone = companyData?.phone || 
+                     companyData?.contactPhone || 
+                     companyData?.mobile || 
+                     companyData?.phoneNumber || 
+                     companyData?.contactNumber || 
                      "";
         
-        setWorkerPhone(phone); // Updated to use workerPhone state
-        console.log(`📞 Worker phone found: ${phone}`);
+        const name = companyData?.companyName || 
+                    companyData?.name || 
+                    companyData?.businessName ||
+                    `Company ${companyId}`;
+        
+        setWorkerPhone(phone); // Reusing the same state variable for simplicity
+        setCompanyName(name);
+        console.log(`📞 Company phone found: ${phone}, Name: ${name}`);
       } else {
-        console.log(`📞 No worker document found for ID: ${workerId}`);
+        console.log(`📞 No company document found for ID: ${companyId}`);
+        setCompanyName(`Company ${companyId}`);
       }
     } catch (error) {
-      console.error(`📞 Error fetching worker phone:`, error);
+      console.error(`📞 Error fetching company phone:`, error);
+      setCompanyName(`Company ${companyId}`);
     }
+  };
+
+  const handleCallCompany = () => {
+    if (!workerPhone) {
+      Alert.alert(
+        "Phone Number Not Available", 
+        `Sorry, we don't have a phone number for the service provider. Please contact support for assistance.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Call Service Provider",
+      `Call service provider at ${workerPhone}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Call", 
+          onPress: () => {
+            console.log(`📞 Calling service provider at ${workerPhone}`);
+            Linking.openURL(`tel:${workerPhone}`).catch((error) => {
+              console.error('📞 Error making phone call:', error);
+              Alert.alert("Error", "Unable to make phone call. Please try again.");
+            });
+          }
+        },
+      ]
+    );
   };
 
   // Check if booking has already been rated
@@ -142,10 +182,10 @@ export default function TrackBookingScreen() {
       // Check rating status for completed bookings
       await checkRatingStatus(bookingData);
       
-      // Fetch worker phone for calling functionality
-      const workerId = bookingData.workerId || bookingData.technicianId;
-      if (workerId) {
-        await fetchWorkerPhone(workerId);
+      // Fetch company phone for calling functionality
+      const companyId = bookingData.companyId;
+      if (companyId) {
+        await fetchCompanyPhone(companyId);
       }
       
       // Animate progress bar
@@ -191,10 +231,10 @@ export default function TrackBookingScreen() {
         // Check rating status for completed bookings
         await checkRatingStatus(bookingData);
 
-        // Fetch worker phone for calling functionality
-        const workerId = bookingData.workerId || bookingData.technicianId;
-        if (workerId) {
-          await fetchWorkerPhone(workerId);
+        // Fetch company phone for calling functionality
+        const companyId = bookingData.companyId;
+        if (companyId) {
+          await fetchCompanyPhone(companyId);
         }
 
         // Animate progress bar
@@ -372,36 +412,36 @@ export default function TrackBookingScreen() {
     }
   };
 
-  const handleCallTechnician = () => {
-    const workerName = booking?.workerName || booking?.technicianName || "the worker";
+  // const handleCallTechnician = () => {
+  //   const workerName = booking?.workerName || booking?.technicianName || "the worker";
     
-    if (!workerPhone) {
-      Alert.alert(
-        "Phone Number Not Available", 
-        `Sorry, we don't have a phone number for ${workerName}. Please contact support for assistance.`,
-        [{ text: "OK" }]
-      );
-      return;
-    }
+  //   if (!workerPhone) {
+  //     Alert.alert(
+  //       "Phone Number Not Available", 
+  //       `Sorry, we don't have a phone number for ${workerName}. Please contact support for assistance.`,
+  //       [{ text: "OK" }]
+  //     );
+  //     return;
+  //   }
 
-    Alert.alert(
-      "Call Worker",
-      `Call ${workerName} at ${workerPhone}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Call", 
-          onPress: () => {
-            console.log(`📞 Calling ${workerName} at ${workerPhone}`);
-            Linking.openURL(`tel:${workerPhone}`).catch((error) => {
-              console.error('📞 Error making phone call:', error);
-              Alert.alert("Error", "Unable to make phone call. Please try again.");
-            });
-          }
-        },
-      ]
-    );
-  };
+  //   Alert.alert(
+  //     "Call Worker",
+  //     `Call ${workerName} at ${workerPhone}?`,
+  //     [
+  //       { text: "Cancel", style: "cancel" },
+  //       { 
+  //         text: "Call", 
+  //         onPress: () => {
+  //           console.log(`📞 Calling ${workerName} at ${workerPhone}`);
+  //           Linking.openURL(`tel:${workerPhone}`).catch((error) => {
+  //             console.error('📞 Error making phone call:', error);
+  //             Alert.alert("Error", "Unable to make phone call. Please try again.");
+  //           });
+  //         }
+  //       },
+  //     ]
+  //   );
+  // };
 
   const handleCancelBooking = async () => {
     if (!booking || !BookingUtils.canCancelBooking(booking.status)) {
@@ -469,7 +509,6 @@ export default function TrackBookingScreen() {
   }
 
   const progressPercentage = BookingUtils.getProgressPercentage(booking.status);
-  const statusMessage = BookingUtils.getStatusMessage(booking);
   const isActive = BookingUtils.isActiveBooking(booking.status);
 
   return (
@@ -485,59 +524,6 @@ export default function TrackBookingScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Booking Info Card */}
-        <View style={styles.bookingCard}>
-          <View style={styles.bookingHeader}>
-            <Text style={styles.bookingId}>#{booking.id.substring(0, 8)}</Text>
-            <View style={[styles.statusBadge, { 
-              backgroundColor: BookingUtils.getStatusColor(booking.status)
-            }]}>
-              <Text style={styles.statusText}>
-                {BookingUtils.getStatusText(booking.status)}
-              </Text>
-            </View>
-          </View>
-          
-          <Text style={styles.serviceTitle}>{booking.serviceName}</Text>
-          
-          {booking.workName && booking.workName !== booking.serviceName && (
-            <Text style={styles.workDescription}>{booking.workName}</Text>
-          )}
-          
-          <View style={styles.bookingDetails}>
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{BookingUtils.formatBookingDate(booking.date)}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="time" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{BookingUtils.formatBookingTime(booking.time)}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="person" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>Customer: {booking.customerName}</Text>
-            </View>
-            {booking.customerPhone && (
-              <View style={styles.detailRow}>
-                <Ionicons name="call" size={16} color="#6B7280" />
-                <Text style={styles.detailText}>{booking.customerPhone}</Text>
-              </View>
-            )}
-            {booking.customerAddress && (
-              <View style={styles.detailRow}>
-                <Ionicons name="location" size={16} color="#6B7280" />
-                <Text style={styles.detailText}>{booking.customerAddress}</Text>
-              </View>
-            )}
-            {booking.technicianName && (
-              <View style={styles.detailRow}>
-                <Ionicons name="construct" size={16} color="#6B7280" />
-                <Text style={styles.detailText}>Technician: {booking.technicianName}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
         {/* Current Status */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
@@ -552,8 +538,6 @@ export default function TrackBookingScreen() {
               <Text style={styles.statusBadgeText}>{BookingUtils.getStatusText(booking.status)}</Text>
             </View>
           </View>
-
-          <Text style={styles.statusMessage}>{statusMessage}</Text>
 
           {/* Progress Row */}
           <View style={styles.progressWrap}>
@@ -603,25 +587,12 @@ export default function TrackBookingScreen() {
             </View>
           )}
 
-          {/* Technician Information */}
+          {/* Company Information */}
           <TechnicianInfo 
             booking={booking}
-            onCallTechnician={workerPhone ? handleCallTechnician : undefined}
-            showCallButton={isActive && !!workerPhone}
+            onCallTechnician={undefined}
+            showCallButton={false}
           />
-
-          {/* Show call button for active bookings with worker phone */}
-          {isActive && workerPhone && (
-            <View style={styles.etaContainer}>
-              <Ionicons name="call-outline" size={18} color="#10B981" />
-              <View style={{ marginLeft: 10 }}>
-                <Text style={styles.etaText}>Worker Contact</Text>
-                <Text style={styles.etaTime}>
-                  {workerPhone} - Tap call button to contact
-                </Text>
-              </View>
-            </View>
-          )}
         </View>
 
         {/* Tracking Timeline */}
@@ -660,6 +631,137 @@ export default function TrackBookingScreen() {
               </View>
             </View>
           ))}
+        </View>
+
+        {/* Booking Info Card */}
+        <View style={styles.bookingCard}>
+          <View style={styles.bookingHeader}>
+            <Text style={styles.bookingId}>#{booking.id.substring(0, 8)}</Text>
+            <View style={[styles.statusBadge, { 
+              backgroundColor: BookingUtils.getStatusColor(booking.status)
+            }]}>
+              <Text style={styles.statusText}>
+                {BookingUtils.getStatusText(booking.status)}
+              </Text>
+            </View>
+          </View>
+          
+          <Text style={styles.serviceTitle}>{booking.serviceName}</Text>
+          
+          {booking.workName && booking.workName !== booking.serviceName && (
+            <Text style={styles.workDescription}>{booking.workName}</Text>
+          )}
+          
+          {/* Essential Details - Always Visible */}
+          <View style={styles.essentialDetails}>
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar" size={16} color="#6B7280" />
+              <Text style={styles.detailText}>{BookingUtils.formatBookingDate(booking.date)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Ionicons name="time" size={16} color="#6B7280" />
+              <Text style={styles.detailText}>{BookingUtils.formatBookingTime(booking.time)}</Text>
+            </View>
+            {booking.customerAddress && (
+              <View style={styles.detailRow}>
+                <Ionicons name="location" size={16} color="#6B7280" />
+                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
+                  {booking.customerAddress}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* More Details Button */}
+          <TouchableOpacity 
+            style={styles.moreDetailsButton}
+            onPress={() => setShowMoreDetails(!showMoreDetails)}
+          >
+            <Text style={styles.moreDetailsText}>
+              {showMoreDetails ? 'Less Details' : 'More Details'}
+            </Text>
+            <Ionicons 
+              name={showMoreDetails ? "chevron-up" : "chevron-down"} 
+              size={16} 
+              color="#6D28D9" 
+            />
+          </TouchableOpacity>
+
+          {/* Expandable Details Section */}
+          {showMoreDetails && (
+            <View style={styles.expandedDetails}>
+              <View style={styles.detailsDivider} />
+              
+              <View style={styles.detailRow}>
+                <Ionicons name="person" size={16} color="#6B7280" />
+                <Text style={styles.detailText}>Customer: {booking.customerName}</Text>
+              </View>
+              
+              {booking.customerPhone && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="call" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>{booking.customerPhone}</Text>
+                </View>
+              )}
+              
+              {booking.customerAddress && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="location" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>Full Address: {booking.customerAddress}</Text>
+                </View>
+              )}
+              
+              {booking.technicianName && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="construct" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>Technician: {booking.technicianName}</Text>
+                </View>
+              )}
+              
+              {booking.companyId && companyName && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="business" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>Company: {companyName}</Text>
+                </View>
+              )}
+              
+              {booking.createdAt && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="time-outline" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>
+                    Booked: {formatTimestamp(booking.createdAt)}
+                  </Text>
+                </View>
+              )}
+              
+              {booking.assignedAt && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>
+                    Assigned: {formatTimestamp(booking.assignedAt)}
+                  </Text>
+                </View>
+              )}
+              
+              {booking.startedAt && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="play-circle-outline" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>
+                    Started: {formatTimestamp(booking.startedAt)}
+                  </Text>
+                </View>
+              )}
+              
+              {booking.completedAt && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="checkmark-done-circle-outline" size={16} color="#6B7280" />
+                  <Text style={styles.detailText}>
+                    Completed: {formatTimestamp(booking.completedAt)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Booking Details Card */}
@@ -817,10 +919,10 @@ export default function TrackBookingScreen() {
             {workerPhone && (
               <TouchableOpacity 
                 style={styles.callButton} 
-                onPress={handleCallTechnician}
+                onPress={handleCallCompany}
               >
                 <Ionicons name="call" size={20} color="white" />
-                <Text style={styles.callButtonText}>Call Worker</Text>
+                <Text style={styles.callButtonText}>Call Company</Text>
               </TouchableOpacity>
             )}
             
@@ -958,6 +1060,34 @@ const styles = StyleSheet.create({
   bookingDetails: {
     gap: 8,
   },
+  essentialDetails: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  expandedDetails: {
+    gap: 8,
+    marginTop: 8,
+  },
+  detailsDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 8,
+  },
+  moreDetailsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 8,
+    gap: 4,
+  },
+  moreDetailsText: {
+    fontSize: 14,
+    color: "#6D28D9",
+    fontWeight: "600",
+  },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1012,12 +1142,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
-  },
-  statusMessage: {
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 22,
-    marginBottom: 12,
   },
   progressWrap: {
     marginTop: 6,

@@ -18,13 +18,14 @@ export default function TechnicianInfo({
 }: TechnicianInfoProps) {
   
   const getTechnicianStatus = () => {
-    if (booking.technicianName) {
+    if (booking.technicianName || booking.workerName) {
+      const workerName = booking.technicianName || booking.workerName;
       switch (booking.status) {
         case 'assigned':
           return {
-            title: 'Technician Assigned',
-            message: `${booking.technicianName} has been assigned to your service`,
-            submessage: 'Will contact you before arriving',
+            title: 'Worker Assigned',
+            message: `${workerName} has been assigned to your service`,
+            submessage: 'Worker will contact you before service',
             color: '#10B981',
             icon: 'person-circle' as const,
             showCall: true
@@ -32,7 +33,7 @@ export default function TechnicianInfo({
         case 'started':
           return {
             title: 'Service In Progress',
-            message: `${booking.technicianName} is working on your service`,
+            message: `${workerName} is working on your service`,
             submessage: 'Service currently in progress',
             color: '#8B5CF6',
             icon: 'construct' as const,
@@ -41,7 +42,7 @@ export default function TechnicianInfo({
         case 'completed':
           return {
             title: 'Service Completed',
-            message: `Service completed by ${booking.technicianName}`,
+            message: `Service completed by ${workerName}`,
             submessage: 'Thank you for choosing our service',
             color: '#10B981',
             icon: 'checkmark-done-circle' as const,
@@ -49,18 +50,57 @@ export default function TechnicianInfo({
           };
         default:
           return {
-            title: 'Technician Assigned',
-            message: `Technician: ${booking.technicianName}`,
+            title: 'Worker Assigned',
+            message: `Worker: ${workerName}`,
             submessage: '',
             color: '#3B82F6',
             icon: 'person' as const,
             showCall: true
           };
       }
+    } else if (booking.companyId) {
+      switch (booking.status) {
+        case 'assigned':
+          return {
+            title: 'Service Provider Assigned',
+            message: `Service provider has been assigned to your booking`,
+            submessage: 'Company will contact you before service',
+            color: '#10B981',
+            icon: 'business' as const,
+            showCall: true
+          };
+        case 'started':
+          return {
+            title: 'Service In Progress',
+            message: `Service provider is working on your service`,
+            submessage: 'Service currently in progress',
+            color: '#8B5CF6',
+            icon: 'construct' as const,
+            showCall: true
+          };
+        case 'completed':
+          return {
+            title: 'Service Completed',
+            message: `Service completed successfully`,
+            submessage: 'Thank you for choosing our service',
+            color: '#10B981',
+            icon: 'checkmark-done-circle' as const,
+            showCall: false
+          };
+        default:
+          return {
+            title: 'Service Provider Assigned',
+            message: `Service provider assigned`,
+            submessage: '',
+            color: '#3B82F6',
+            icon: 'business' as const,
+            showCall: true
+          };
+      }
     } else {
       return {
-        title: 'Finding Technician',
-        message: 'We\'re finding the best technician for your service',
+        title: 'Finding Service Provider',
+        message: 'We\'re finding the best service provider for your service',
         submessage: 'You\'ll be notified once assigned',
         color: '#F59E0B',
         icon: 'search' as const,
