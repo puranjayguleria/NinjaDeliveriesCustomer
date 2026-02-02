@@ -14,6 +14,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import { FirestoreService } from "../services/firestoreService";
+import { formatDateToDDMMYYYY } from "../utils/dateUtils";
 
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
@@ -294,7 +295,7 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.bookingInfo}>
         <View style={styles.infoRow}>
           <Ionicons name="calendar-outline" size={16} color="#666" />
-          <Text style={styles.infoText}>{item.selectedDate}</Text>
+          <Text style={styles.infoText}>{formatDateToDDMMYYYY(item.selectedDate)}</Text>
         </View>
         <View style={styles.infoRow}>
           <Ionicons name="time-outline" size={16} color="#666" />
