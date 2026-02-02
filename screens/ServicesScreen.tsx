@@ -10,11 +10,12 @@ import {
   ActivityIndicator,
   TextInput,
   Image,
+  ImageBackground,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
-import { FirestoreService, ServiceCategory } from '../services/firestoreService';
+import { FirestoreService, ServiceCategory, ServiceBanner } from '../services/firestoreService';
 
 const { width } = Dimensions.get('window');
 
@@ -193,7 +194,9 @@ const getCategoryStyle = (categoryName: string, index: number) => {
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -214,8 +217,24 @@ export default function ServicesScreen() {
     }
   };
 
+  // Fetch banners function
+  const fetchServiceBanners = async () => {
+    try {
+      setBannersLoading(true);
+      const banners = await FirestoreService.getServiceBanners();
+      setServiceBanners(banners || []);
+    } catch (error) {
+      console.error('Error fetching service banners:', error);
+      // Don't show error for banners, just continue without them
+      setServiceBanners([]);
+    } finally {
+      setBannersLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchServiceCategories();
+    fetchServiceBanners();
   }, []);
 
   // Search functionality - simplified without useMemo to avoid React null error
@@ -238,12 +257,20 @@ export default function ServicesScreen() {
     navigation.navigate(screen, params);
   };
 
-  const handleMonsoonSpecial = () => {
-    navigation.navigate("ServiceCategory", { 
-      serviceTitle: "Monsoon Special",
-      specialOffer: true,
-      discount: 30
-    });
+  const handleBannerPress = (banner: ServiceBanner) => {
+    if (!banner.clickable) return;
+
+    if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
+      navigation.navigate("ServiceCategory", { 
+        serviceTitle: banner.title,
+        categoryId: banner.categoryId
+      });
+    } else if (banner.redirectType === "AllServices") {
+      navigation.navigate("AllServices");
+    } else if (banner.redirectUrl) {
+      // Handle external URLs or other navigation
+      console.log('Banner redirect URL:', banner.redirectUrl);
+    }
   };
 
   const handleViewAllCategories = () => {
@@ -268,6 +295,79 @@ export default function ServicesScreen() {
     : (serviceCategories || []).slice(0, 6);
 
   // Render functions
+  const renderBanner = (banner: ServiceBanner) => {
+    const backgroundColor = banner.backgroundColor || '#667eea';
+    const textColor = banner.textColor || 'white';
+    const iconName = banner.iconName || 'star';
+
+    return (
+      <TouchableOpacity 
+        key={banner.id}
+        activeOpacity={0.9}
+        onPress={() => handleBannerPress(banner)}
+      >
+        {banner.imageUrl ? (
+          <ImageBackground 
+            source={{ uri: banner.imageUrl }} 
+            style={styles.bannerImage}
+            resizeMode="cover"
+          >
+            <View style={styles.bannerOverlay}>
+              <View style={styles.bannerContent}>
+                <View style={styles.bannerTextSection}>
+                  <Text style={[styles.bannerTitle, { color: textColor }]}>
+                    {banner.title}
+                  </Text>
+                  {banner.subtitle && (
+                    <Text style={[styles.bannerSubTitle, { color: textColor }]}>
+                      {banner.subtitle}
+                    </Text>
+                  )}
+                  {banner.offerText && (
+                    <View style={styles.bannerOffer}>
+                      <Text style={styles.offerText}>{banner.offerText}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.bannerIcon}>
+                  <Ionicons name={iconName as any} size={40} color={textColor} />
+                </View>
+              </View>
+            </View>
+          </ImageBackground>
+        ) : (
+          <LinearGradient
+            colors={[backgroundColor, backgroundColor + 'CC']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.gradientBanner}
+          >
+            <View style={styles.bannerContent}>
+              <View style={styles.bannerTextSection}>
+                <Text style={[styles.bannerTitle, { color: textColor }]}>
+                  {banner.title}
+                </Text>
+                {banner.subtitle && (
+                  <Text style={[styles.bannerSubTitle, { color: textColor }]}>
+                    {banner.subtitle}
+                  </Text>
+                )}
+                {banner.offerText && (
+                  <View style={styles.bannerOffer}>
+                    <Text style={styles.offerText}>{banner.offerText}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.bannerIcon}>
+                <Ionicons name={iconName as any} size={40} color={textColor} />
+              </View>
+            </View>
+          </LinearGradient>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   const renderCategoryCard = ({ item, index }: { item: ServiceCategory; index: number }) => {
     if (!item || !item.name) return null; // Safety check
     
@@ -408,35 +508,12 @@ export default function ServicesScreen() {
         {/* Only show banner and sections when not searching */}
         {searchQuery.length === 0 && (
           <>
-            {/* Premium Banner */}
-            <View style={styles.bannerContainer}>
-              <TouchableOpacity 
-                activeOpacity={0.9}
-                onPress={handleMonsoonSpecial}
-              >
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientBanner}
-                >
-                  <View style={styles.bannerContent}>
-                    <View style={styles.bannerTextSection}>
-                      <Text style={styles.bannerTitle}>Monsoon Special</Text>
-                      <Text style={styles.bannerSubTitle}>
-                        Leak Proofing & Geyser Repair
-                      </Text>
-                      <View style={styles.bannerOffer}>
-                        <Text style={styles.offerText}>Up to 30% OFF</Text>
-                      </View>
-                    </View>
-                    <View style={styles.bannerIcon}>
-                      <Ionicons name="umbrella" size={40} color="white" />
-                    </View>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+            {/* Service Banners */}
+            {!bannersLoading && serviceBanners.length > 0 && (
+              <View style={styles.bannerContainer}>
+                {serviceBanners.slice(0, 1).map(banner => renderBanner(banner))}
+              </View>
+            )}
 
             {/* Service Categories */}
             <View style={styles.sectionContainer}>
@@ -529,7 +606,10 @@ export default function ServicesScreen() {
           contentContainerStyle={{ paddingBottom: 30 }}
           showsVerticalScrollIndicator={false}
           refreshing={loading}
-          onRefresh={fetchServiceCategories}
+          onRefresh={() => {
+            fetchServiceCategories();
+            fetchServiceBanners();
+          }}
           removeClippedSubviews={true}
           maxToRenderPerBatch={10}
           windowSize={10}
@@ -692,6 +772,19 @@ const styles = StyleSheet.create({
   gradientBanner: {
     borderRadius: 20,
     overflow: "hidden",
+  },
+
+  bannerImage: {
+    width: "100%",
+    height: 140,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+
+  bannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 20,
   },
 
   bannerContent: {

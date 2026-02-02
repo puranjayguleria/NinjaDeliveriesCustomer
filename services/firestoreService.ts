@@ -75,6 +75,26 @@ export interface ServicePayment {
   paidAt?: any;
 }
 
+export interface ServiceBanner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  imageUrl?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  isActive: boolean;
+  clickable?: boolean;
+  redirectType?: string;
+  redirectUrl?: string;
+  categoryId?: string;
+  offerText?: string;
+  iconName?: string;
+  priority?: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface ServiceBooking {
   id: string;
   serviceName: string;
@@ -4146,6 +4166,77 @@ export class FirestoreService {
     } catch (error: any) {
       console.error('❌ Error updating payment after Razorpay success:', error);
       throw new Error('Failed to update payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch service banners from service_banners collection
+   */
+  static async getServiceBanners(): Promise<ServiceBanner[]> {
+    try {
+      console.log('🎯 Fetching service banners from service_banners collection...');
+      
+      // Fetch all banners first, then filter and sort on client side to avoid index requirement
+      const snapshot = await firestore()
+        .collection('service_banners')
+        .get();
+
+      console.log(`Found ${snapshot.size} total service banners`);
+
+      const banners: ServiceBanner[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Only include active banners
+        if (data.isActive === true) {
+          console.log(`Banner ${doc.id}:`, {
+            title: data.title,
+            isActive: data.isActive,
+            priority: data.priority,
+            clickable: data.clickable,
+          });
+          
+          banners.push({
+            id: doc.id,
+            title: data.title || '',
+            subtitle: data.subtitle,
+            description: data.description,
+            imageUrl: data.imageUrl,
+            backgroundColor: data.backgroundColor,
+            textColor: data.textColor,
+            isActive: data.isActive || false,
+            clickable: data.clickable || false,
+            redirectType: data.redirectType,
+            redirectUrl: data.redirectUrl,
+            categoryId: data.categoryId,
+            offerText: data.offerText,
+            iconName: data.iconName,
+            priority: data.priority || 0,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          });
+        } else {
+          console.log(`Skipping inactive banner: ${data.title} (isActive: ${data.isActive})`);
+        }
+      });
+
+      // Sort by priority on client side (lowest priority first)
+      banners.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+      console.log(`✅ Fetched ${banners.length} active service banners`);
+      console.log('Active banners:', banners.map(b => ({ 
+        id: b.id, 
+        title: b.title, 
+        isActive: b.isActive, 
+        priority: b.priority,
+        hasImage: !!b.imageUrl
+      })));
+      
+      return banners;
+    } catch (error: any) {
+      console.error('❌ Error fetching service banners:', error);
+      throw new Error('Failed to fetch service banners. Please check your internet connection.');
     }
   }
 }
