@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { FirestoreServiceExtensions } from "../services/firestoreServiceExtensions";
 import { BookingUtils } from "../utils/bookingUtils";
+import ServiceCancellationModal from "../components/ServiceCancellationModal";
 
 type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected';
 
@@ -29,6 +30,8 @@ export default function BookingHistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('all');
   const [tabAnimation] = useState(new Animated.Value(0));
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState<{id: string, serviceName: string, totalPrice?: number} | null>(null);
 
   // Fetch bookings from Firebase for currently logged-in user only
   const fetchBookings = async (isRefresh = false, filter: FilterStatus = 'all') => {
@@ -234,44 +237,37 @@ export default function BookingHistoryScreen() {
     );
   };
 
-  const handleRejectBooking = async (bookingId: string, serviceName: string) => {
-    Alert.alert(
-      "Cancel Booking",
-      `Are you sure you want to cancel "${serviceName}"?`,
-      [
-        {
-          text: "No",
-          style: "cancel"
-        },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await FirestoreService.updateBookingStatus(bookingId, 'rejected', {
-                rejectedAt: new Date()
-              });
-              
-              Alert.alert(
-                "Booking Cancelled", 
-                "Your booking has been cancelled successfully.",
-                [{ text: "OK", onPress: () => fetchBookings(false, activeFilter) }]
-              );
-            } catch (error: any) {
-              console.error('Error rejecting booking:', error);
-              Alert.alert(
-                "Error", 
-                "Failed to cancel booking. Please try again.",
-                [{ text: "OK" }]
-              );
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
+  const handleRejectBooking = async (bookingId: string, serviceName: string, totalPrice?: number) => {
+    setBookingToCancel({ id: bookingId, serviceName, totalPrice });
+    setShowCancellationModal(true);
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!bookingToCancel) return;
+
+    try {
+      setShowCancellationModal(false);
+      setLoading(true);
+      await FirestoreService.updateBookingStatus(bookingToCancel.id, 'rejected', {
+        rejectedAt: new Date()
+      });
+      
+      Alert.alert(
+        "Booking Cancelled", 
+        "Your booking has been cancelled successfully.",
+        [{ text: "OK", onPress: () => fetchBookings(false, activeFilter) }]
+      );
+    } catch (error: any) {
+      console.error('Error rejecting booking:', error);
+      Alert.alert(
+        "Error", 
+        "Failed to cancel booking. Please try again.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setLoading(false);
+      setBookingToCancel(null);
+    }
   };
 
   const renderItem = ({ item }: { item: ServiceBooking }) => {
@@ -356,7 +352,7 @@ export default function BookingHistoryScreen() {
                   style={styles.rejectButton}
                   onPress={(e) => {
                     e.stopPropagation();
-                    handleRejectBooking(item.id, item.serviceName);
+                    handleRejectBooking(item.id, item.serviceName, item.totalPrice);
                   }}
                   activeOpacity={0.9}
                 >
@@ -459,6 +455,18 @@ export default function BookingHistoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Service Cancellation Modal */}
+      <ServiceCancellationModal
+        visible={showCancellationModal}
+        onClose={() => {
+          setShowCancellationModal(false);
+          setBookingToCancel(null);
+        }}
+        onConfirmCancel={handleConfirmCancellation}
+        totalAmount={bookingToCancel?.totalPrice || 0}
+        deductionPercentage={25}
+      />
 
       <TouchableOpacity
         style={styles.backBtn}

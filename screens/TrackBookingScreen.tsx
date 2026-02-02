@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
 import TechnicianInfo from "../components/TechnicianInfo";
+import ServiceCancellationModal from "../components/ServiceCancellationModal";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -47,6 +48,7 @@ export default function TrackBookingScreen() {
   const [checkingRatingStatus, setCheckingRatingStatus] = useState(false);
   const [workerPhone, setWorkerPhone] = useState<string>("");
   const [animatedProgress] = useState(new Animated.Value(0));
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
 
   // Fetch worker phone number for calling
   const fetchWorkerPhone = async (workerId: string) => {
@@ -407,26 +409,20 @@ export default function TrackBookingScreen() {
       return;
     }
 
-    Alert.alert(
-      "Cancel Booking",
-      "Are you sure you want to cancel this booking?",
-      [
-        { text: "No", style: "cancel" },
-        { 
-          text: "Yes, Cancel", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await FirestoreService.updateBookingStatus(booking.id, 'rejected');
-              Alert.alert("Booking Cancelled", "Your booking has been cancelled successfully.");
-              fetchBookingData(); // Refresh data
-            } catch (error) {
-              Alert.alert("Error", "Failed to cancel booking. Please try again.");
-            }
-          }
-        },
-      ]
-    );
+    setShowCancellationModal(true);
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!booking) return;
+
+    try {
+      setShowCancellationModal(false);
+      await FirestoreService.updateBookingStatus(booking.id, 'rejected');
+      Alert.alert("Booking Cancelled", "Your booking has been cancelled successfully.");
+      fetchBookingData(); // Refresh data
+    } catch (error) {
+      Alert.alert("Error", "Failed to cancel booking. Please try again.");
+    }
   };
 
   // Loading state
@@ -843,6 +839,15 @@ export default function TrackBookingScreen() {
         {/* Bottom spacing */}
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Service Cancellation Modal */}
+      <ServiceCancellationModal
+        visible={showCancellationModal}
+        onClose={() => setShowCancellationModal(false)}
+        onConfirmCancel={handleConfirmCancellation}
+        totalAmount={booking?.totalPrice || 0}
+        deductionPercentage={25}
+      />
     </View>
   );
 }
