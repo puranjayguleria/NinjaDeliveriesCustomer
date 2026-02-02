@@ -27,17 +27,23 @@ export default function ServiceCheckoutScreen() {
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
+  const [manualAddress, setManualAddress] = useState(""); // Optional manual address field
 
   const handleProceedToPayment = async () => {
-    // Validate that user has selected an address
-    if (!location.address || location.address.trim() === "") {
+    // Validate that user has selected an address or provided manual address
+    const hasSelectedAddress = location.address && location.address.trim() !== "";
+    const hasManualAddress = manualAddress.trim() !== "";
+    
+    if (!hasSelectedAddress && !hasManualAddress) {
       Alert.alert(
         "Address Required",
-        "Please select a service address before proceeding with the booking.",
+        "Please select a service address or enter a custom address before proceeding with the booking.",
         [
           {
             text: "Select Address",
-            onPress: () => navigation.navigate("LocationSelector")
+            onPress: () => navigation.navigate("LocationSelector", { 
+              fromScreen: "ServiceCheckout" 
+            })
           },
           {
             text: "Cancel",
@@ -53,9 +59,12 @@ export default function ServiceCheckoutScreen() {
       await handleRazorpayPayment();
     } else {
       // For cash payment, create bookings directly
+      const addressToUse = manualAddress.trim() !== "" ? manualAddress.trim() : location.address;
+      const addressType = manualAddress.trim() !== "" ? "custom address" : "selected location";
+      
       Alert.alert(
         "Confirm Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}. Continue?`,
+        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at your ${addressType}:\n${addressToUse.length > 50 ? addressToUse.substring(0, 50) + '...' : addressToUse}\n\nContinue?`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -234,13 +243,16 @@ export default function ServiceCheckoutScreen() {
 
       // Create bookings in Firebase service_bookings collection
       const bookingPromises = services.map(async (service: ServiceCartItem) => {
+        // Determine which address to use - manual address takes priority
+        const finalAddress = manualAddress.trim() !== "" ? manualAddress.trim() : (customerData.address || "");
+        
         // Ensure all required fields have valid values
         const bookingData = {
           serviceName: service.serviceTitle || "Service",
           workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "",
-          customerAddress: customerData.address || "",
+          customerAddress: finalAddress, // Use manual address if provided, otherwise use location address
           date: service.selectedDate || new Date().toISOString().split('T')[0],
           time: service.selectedTime || "10:00 AM",
           status: 'pending' as const,
@@ -251,7 +263,7 @@ export default function ServiceCheckoutScreen() {
           location: {
             lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
             lng: (location.lng !== null && location.lng !== undefined) ? location.lng : null,
-            address: location.address || customerData.address || "",
+            address: finalAddress || location.address || "", // Use manual address if provided
             ...(location.houseNo && location.houseNo.trim() !== "" && { houseNo: location.houseNo }),
             ...(location.placeLabel && location.placeLabel.trim() !== "" && { placeLabel: location.placeLabel }),
           },
@@ -261,6 +273,12 @@ export default function ServiceCheckoutScreen() {
         };
 
         console.log(`📋 About to create booking with data:`, JSON.stringify(bookingData, null, 2));
+        
+        if (manualAddress.trim() !== "") {
+          console.log(`📍 Using MANUAL address: "${manualAddress.trim()}" (overriding selected location)`);
+        } else {
+          console.log(`📍 Using SELECTED location address: "${location.address}"`);
+        }
 
         const bookingId = await FirestoreService.createServiceBooking(bookingData);
         console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
@@ -421,7 +439,9 @@ export default function ServiceCheckoutScreen() {
                 </Text>
                 <TouchableOpacity 
                   style={styles.selectAddressButton}
-                  onPress={() => navigation.navigate("LocationSelector")}
+                  onPress={() => navigation.navigate("LocationSelector", { 
+                    fromScreen: "ServiceCheckout" 
+                  })}
                 >
                   <Ionicons name="add-circle" size={16} color="#fff" />
                   <Text style={styles.selectAddressText}>Select Address</Text>
@@ -444,7 +464,9 @@ export default function ServiceCheckoutScreen() {
                 )}
                 <TouchableOpacity 
                   style={styles.changeAddressButton}
-                  onPress={() => navigation.navigate("LocationSelector")}
+                  onPress={() => navigation.navigate("LocationSelector", { 
+                    fromScreen: "ServiceCheckout" 
+                  })}
                 >
                   <Ionicons name="pencil" size={16} color="#2563eb" />
                   <Text style={styles.changeAddressText}>Change Address</Text>
@@ -452,6 +474,32 @@ export default function ServiceCheckoutScreen() {
               </>
             )}
           </View>
+        </View>
+
+        {/* Optional Manual Address Section */}
+        <View style={styles.manualAddressSection}>
+          <Text style={styles.sectionTitle}>Custom Address (Optional)</Text>
+          <Text style={styles.manualAddressSubtitle}>
+            Add a different address if needed (this will override the selected location)
+          </Text>
+          <TextInput
+            style={styles.manualAddressInput}
+            placeholder="Enter custom service address (optional)..."
+            placeholderTextColor="#999"
+            value={manualAddress}
+            onChangeText={setManualAddress}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+          {manualAddress.trim() !== "" && (
+            <View style={styles.manualAddressNote}>
+              <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
+              <Text style={styles.manualAddressNoteText}>
+                This custom address will be used instead of your selected location
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.notesSection}>
@@ -529,15 +577,27 @@ export default function ServiceCheckoutScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Service Address</Text>
             <Text style={[styles.summaryValue, styles.summaryAddressValue]}>
-              {location.address ? 
-                (location.address.length > 30 ? 
-                  `${location.address.substring(0, 30)}...` : 
-                  location.address
-                ) : 
-                "Not selected"
-              }
+              {(() => {
+                const displayAddress = manualAddress.trim() !== "" ? manualAddress.trim() : location.address;
+                if (displayAddress) {
+                  return displayAddress.length > 30 ? 
+                    `${displayAddress.substring(0, 30)}...` : 
+                    displayAddress;
+                } else {
+                  return "Not selected";
+                }
+              })()}
             </Text>
           </View>
+          
+          {manualAddress.trim() !== "" && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Address Type</Text>
+              <Text style={[styles.summaryValue, { color: "#2563eb", fontSize: 12 }]}>
+                Custom Address
+              </Text>
+            </View>
+          )}
           
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Service Charges</Text>
@@ -803,6 +863,43 @@ const styles = StyleSheet.create({
     color: "#2563eb",
     fontWeight: "500",
     marginLeft: 4,
+  },
+  manualAddressSection: {
+    marginBottom: 24,
+  },
+  manualAddressSubtitle: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  manualAddressInput: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: "#333",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  manualAddressNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: "#2563eb",
+  },
+  manualAddressNoteText: {
+    fontSize: 12,
+    color: "#2563eb",
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 16,
   },
   notesSection: {
     marginBottom: 24,

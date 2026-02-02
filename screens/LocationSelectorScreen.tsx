@@ -430,6 +430,9 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           setPlaceLabel("");
           setShowSaveForm(true);
         }
+      } else if (fromScreen === "ServiceCheckout" || fromScreen === "RestaurantCheckout") {
+        // Navigate back to checkout screen
+        navigation.goBack();
       } else {
         navigation.navigate("AppTabs", { screen: "Home" });
       }
@@ -538,6 +541,9 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
             params: { selectedLocation: newLoc },
           },
         });
+      } else if (fromScreen === "ServiceCheckout" || fromScreen === "RestaurantCheckout") {
+        // Navigate back to checkout screen
+        navigation.goBack();
       } else {
         navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
       }
