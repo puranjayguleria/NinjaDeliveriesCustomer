@@ -7,6 +7,7 @@ import {
   FlatList,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
@@ -17,8 +18,9 @@ export default function CompanySelectionScreen() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime } = route.params;
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
@@ -46,20 +48,56 @@ export default function CompanySelectionScreen() {
     }
   };
 
-  // Filter companies that have active workers
-  const filterCompaniesWithActiveWorkers = async (companies: ServiceCompany[]): Promise<ServiceCompany[]> => {
-    const companiesWithActiveWorkers: ServiceCompany[] = [];
+  // Check real-time availability for a specific date and time
+  const checkRealTimeAvailability = async (companyId: string, date: string, time: string): Promise<boolean> => {
+    try {
+      console.log(`🔍 Checking real-time availability for company ${companyId} on ${date} at ${time}`);
+      
+      // Use the FirestoreService method for consistency
+      const available = await FirestoreService.checkCompanyWorkerAvailability(companyId, date, time);
+      
+      console.log(`📊 Company ${companyId} availability: ${available ? 'Available' : 'All workers busy'}`);
+      return available;
+    } catch (error) {
+      console.error(`❌ Error checking real-time availability for company ${companyId}:`, error);
+      return false; // If error, assume not available to be safe
+    }
+  };
+
+  // Filter companies that have active workers and are available for the selected time
+  const filterCompaniesWithAvailability = async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
+    const availableCompanies: ServiceCompany[] = [];
     
     for (const company of companies) {
-      const hasActiveWorkers = await checkCompanyHasActiveWorkers(company.companyId || company.id);
-      if (hasActiveWorkers) {
-        companiesWithActiveWorkers.push(company);
-      } else {
+      const companyId = company.companyId || company.id;
+      
+      // First check if company has any active workers
+      const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+      if (!hasActiveWorkers) {
         console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
+        continue;
       }
+      
+      // If we need to check specific time slot availability
+      if (checkTimeSlot && selectedDate && selectedTime) {
+        const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime);
+        if (!isAvailableAtTime) {
+          console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - all workers busy at ${selectedDate} ${selectedTime}`);
+          continue;
+        }
+      }
+      
+      // Company passed all checks
+      availableCompanies.push({
+        ...company,
+        // Add availability info to display
+        availability: checkTimeSlot && selectedDate && selectedTime 
+          ? `Available on ${selectedDate} at ${selectedTime}`
+          : 'Available now'
+      });
     }
     
-    return companiesWithActiveWorkers;
+    return availableCompanies;
   };
 
   const fetchServiceCompanies = async () => {
@@ -95,24 +133,73 @@ export default function CompanySelectionScreen() {
         }))
       );
       
-      // Filter companies to only show those with active workers
-      const companiesWithActiveWorkers = await filterCompaniesWithActiveWorkers(fetchedCompanies);
+      // Filter companies to only show those with active workers and availability
+      const companiesWithAvailability = await filterCompaniesWithAvailability(
+        fetchedCompanies, 
+        !!(selectedDate && selectedTime) // Check time slot availability if date/time provided
+      );
       
-      console.log(`🏢 After filtering: ${companiesWithActiveWorkers.length} companies with active workers:`, 
-        companiesWithActiveWorkers.map(c => ({ 
+      console.log(`🏢 After filtering: ${companiesWithAvailability.length} companies with availability:`, 
+        companiesWithAvailability.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
           serviceName: c.serviceName,
-          companyId: c.companyId
+          companyId: c.companyId,
+          availability: c.availability
         }))
       );
       
-      setCompanies(companiesWithActiveWorkers);
+      setCompanies(companiesWithAvailability);
     } catch (error) {
       console.error('❌ Error fetching service companies:', error);
       setCompanies([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Add function to check availability for a specific time slot
+  const checkAvailabilityForTimeSlot = async (date: string, time: string) => {
+    if (companies.length === 0) return;
+    
+    setCheckingAvailability(true);
+    try {
+      console.log(`🔍 Checking availability for all companies on ${date} at ${time}`);
+      
+      const availableCompanies: ServiceCompany[] = [];
+      
+      for (const company of companies) {
+        const companyId = company.companyId || company.id;
+        const isAvailable = await checkRealTimeAvailability(companyId, date, time);
+        
+        if (isAvailable) {
+          availableCompanies.push({
+            ...company,
+            availability: `Available on ${date} at ${time}`
+          });
+        }
+      }
+      
+      console.log(`📊 ${availableCompanies.length}/${companies.length} companies available for ${date} at ${time}`);
+      
+      if (availableCompanies.length === 0) {
+        // Show message that all workers are busy for this time slot
+        Alert.alert(
+          "All Workers Busy",
+          `All service providers are busy for ${date} at ${time}. Please try:\n\n• Selecting a different time slot\n• Choosing a different date\n• Booking for later in the day`,
+          [
+            { text: "OK", style: "default" }
+          ]
+        );
+      } else {
+        // Update companies list to show only available ones
+        setCompanies(availableCompanies);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking time slot availability:', error);
+    } finally {
+      setCheckingAvailability(false);
     }
   };
 
@@ -145,11 +232,34 @@ export default function CompanySelectionScreen() {
         
         <Text style={styles.header}>Select Service Provider</Text>
         <Text style={styles.subHeader}>
-          {selectedIssueIds && selectedIssueIds.length > 0 
-            ? `Showing providers for your selected services (${companies.length} available)`
-            : "Choose from verified professionals"
+          {selectedDate && selectedTime 
+            ? `Showing available providers for ${selectedDate} at ${selectedTime} (${companies.length} available)`
+            : selectedIssueIds && selectedIssueIds.length > 0 
+              ? `Showing providers for your selected services (${companies.length} available)`
+              : "Choose from verified professionals"
           }
         </Text>
+        
+        {/* Add availability check button if date/time not provided */}
+        {!selectedDate && !selectedTime && companies.length > 0 && (
+          <TouchableOpacity 
+            style={styles.checkAvailabilityButton}
+            onPress={() => {
+              // Navigate to date/time selection first, then come back with availability check
+              navigation.navigate("SelectDateTime", {
+                serviceTitle,
+                categoryId,
+                issues,
+                selectedIssues,
+                selectedIssueIds,
+                checkAvailabilityMode: true, // Flag to indicate we want to check availability
+                returnToCompanySelection: true
+              });
+            }}
+          >
+            <Text style={styles.checkAvailabilityText}>Check Availability for Specific Time</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Service Info Card */}
@@ -181,16 +291,19 @@ export default function CompanySelectionScreen() {
           <ActivityIndicator size="large" color="#2563eb" />
           <Text style={styles.loadingText}>Loading service providers...</Text>
         </View>
+      ) : checkingAvailability ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Checking real-time availability...</Text>
+        </View>
       ) : companies.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Service Providers Found</Text>
+          <Text style={styles.emptyTitle}>No Service Providers Available</Text>
           <Text style={styles.emptyText}>
-            No companies currently provide the selected services in your area. This could be because:
-            {'\n'}• No providers are registered for these services
-            {'\n'}• All providers are currently inactive
-            {'\n'}• Services exist but categoryMasterId doesn't match
-            {'\n'}
-            {'\n'}Please try selecting different services or contact support for assistance.
+            {selectedDate && selectedTime 
+              ? `No providers are available for ${selectedDate} at ${selectedTime}. This could be because:\n• All workers are busy at this time\n• No providers work during this time slot\n\nPlease try:\n• Selecting a different time slot\n• Choosing a different date\n• Booking for later in the day`
+              : `No companies currently provide the selected services in your area. This could be because:\n• No providers are registered for these services\n• All providers are currently inactive\n• Services exist but categoryMasterId doesn't match\n\nPlease try selecting different services or contact support for assistance.`
+            }
           </Text>
           <TouchableOpacity 
             style={styles.retryButton}
@@ -393,6 +506,23 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     fontWeight: "400",
     lineHeight: 24,
+  },
+
+  checkAvailabilityButton: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    alignItems: "center",
+  },
+
+  checkAvailabilityText: {
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: "500",
   },
 
   // Info Card

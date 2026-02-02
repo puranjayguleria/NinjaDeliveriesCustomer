@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory, ServiceBanner } from '../services/firestoreService';
+import { AvailabilityIndicator } from '../components/AvailabilityIndicator';
 
 const { width } = Dimensions.get('window');
 
@@ -200,6 +201,7 @@ export default function ServicesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [categoryAvailability, setCategoryAvailability] = useState<Record<string, number>>({});
 
   // Fetch function
   const fetchServiceCategories = async () => {
@@ -232,10 +234,42 @@ export default function ServicesScreen() {
     }
   };
 
+  // Check availability for categories (simplified version)
+  const checkCategoryAvailability = async (categories: ServiceCategory[]) => {
+    try {
+      const availabilityMap: Record<string, number> = {};
+      
+      // For demo purposes, we'll simulate availability checking
+      // In a real implementation, you'd check each category's companies
+      for (const category of categories) {
+        try {
+          const companies = await FirestoreService.getCompaniesByCategory(category.id);
+          const activeCompanies = companies.filter(c => c.isActive);
+          availabilityMap[category.id] = activeCompanies.length;
+        } catch (error) {
+          console.error(`Error checking availability for ${category.name}:`, error);
+          availabilityMap[category.id] = 0;
+        }
+      }
+      
+      setCategoryAvailability(availabilityMap);
+      console.log('📊 Category availability:', availabilityMap);
+    } catch (error) {
+      console.error('Error checking category availability:', error);
+    }
+  };
+
   useEffect(() => {
     fetchServiceCategories();
     fetchServiceBanners();
   }, []);
+
+  // Check availability when categories are loaded
+  useEffect(() => {
+    if (serviceCategories.length > 0) {
+      checkCategoryAvailability(serviceCategories);
+    }
+  }, [serviceCategories]);
 
   // Search functionality - simplified without useMemo to avoid React null error
   const getFilteredCategories = () => {
@@ -403,6 +437,8 @@ export default function ServicesScreen() {
     if (!item || !item.name) return null; // Safety check
     
     const categoryStyle = getCategoryStyle(item.name, index);
+    const availableProviders = categoryAvailability[item.id] || 0;
+    
     return (
       <TouchableOpacity
         style={styles.listCard}
@@ -430,7 +466,13 @@ export default function ServicesScreen() {
         <View style={styles.listContent}>
           <Text style={styles.listTitle}>{item.name}</Text>
           <Text style={styles.listSubtitle}>Professional {item.name.toLowerCase()} services</Text>
-          <Text style={styles.listAvailability}>Available now</Text>
+          
+          {/* Availability Indicator */}
+          <AvailabilityIndicator
+            availableProviders={availableProviders}
+            showDetails={false}
+            style={styles.listAvailability}
+          />
         </View>
         <View style={styles.listArrowContainer}>
           <Ionicons name="chevron-forward" size={20} color="#64748b" />
@@ -968,9 +1010,7 @@ const styles = StyleSheet.create({
   },
 
   listAvailability: {
-    color: "#10b981",
-    fontSize: 12,
-    fontWeight: "500",
+    marginTop: 4,
   },
 
   listArrowContainer: {

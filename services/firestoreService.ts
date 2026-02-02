@@ -2234,6 +2234,255 @@ export class FirestoreService {
   }
 
   /**
+   * Check real-time availability for a service at a specific date and time
+   */
+  static async checkRealTimeAvailability(serviceId: string, date: string, time: string, location?: any): Promise<{
+    available: boolean;
+    availableCompanies: number;
+    companies: ServiceCompany[];
+    suggestions?: string[];
+  }> {
+    try {
+      console.log(`🔍 Checking real-time availability for service ${serviceId} on ${date} at ${time}`);
+      
+      // Get all companies that provide this service
+      const allCompanies = await this.getCompaniesByServiceIssues([serviceId]);
+      console.log(`📊 Found ${allCompanies.length} total companies for service ${serviceId}`);
+      
+      const availableCompanies: ServiceCompany[] = [];
+      
+      // Check each company's worker availability
+      for (const company of allCompanies) {
+        const companyId = company.companyId || company.id;
+        const hasAvailableWorkers = await this.checkCompanyWorkerAvailability(companyId, date, time);
+        
+        if (hasAvailableWorkers) {
+          availableCompanies.push(company);
+          console.log(`✅ Company ${company.companyName || company.serviceName} has available workers`);
+        } else {
+          console.log(`🚫 Company ${company.companyName || company.serviceName} - all workers busy`);
+        }
+      }
+      
+      const result = {
+        available: availableCompanies.length > 0,
+        availableCompanies: availableCompanies.length,
+        companies: availableCompanies,
+        suggestions: availableCompanies.length === 0 ? [
+          'Try selecting a different time slot',
+          'Check availability for tomorrow',
+          'Consider booking for later in the day'
+        ] : undefined
+      };
+      
+      console.log(`📊 Availability check result: ${availableCompanies.length}/${allCompanies.length} companies available`);
+      return result;
+      
+    } catch (error) {
+      console.error('❌ Error checking real-time availability:', error);
+      return {
+        available: false,
+        availableCompanies: 0,
+        companies: [],
+        suggestions: ['Please try again later', 'Check your internet connection']
+      };
+    }
+  }
+
+  /**
+   * Check if a company has available workers for a specific date and time
+   */
+  static async checkCompanyWorkerAvailability(companyId: string, date: string, time: string): Promise<boolean> {
+    try {
+      if (!companyId) return false;
+      
+      console.log(`👷 Checking worker availability for company ${companyId} on ${date} at ${time}`);
+      
+      // Get all active workers for this company
+      const workersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+      
+      const totalWorkers = workersSnapshot.size;
+      console.log(`👷 Company ${companyId} has ${totalWorkers} active workers`);
+      
+      if (totalWorkers === 0) {
+        console.log(`🚫 No active workers found for company ${companyId}`);
+        return false;
+      }
+      
+      // Check how many workers are busy at this time slot
+      const busyWorkers = await this.getBusyWorkersCount(companyId, date, time);
+      const availableWorkers = totalWorkers - busyWorkers;
+      
+      console.log(`📊 Company ${companyId}: ${totalWorkers} total, ${busyWorkers} busy, ${availableWorkers} available`);
+      
+      return availableWorkers > 0;
+      
+    } catch (error) {
+      console.error(`❌ Error checking worker availability for company ${companyId}:`, error);
+      return false; // If error, assume no availability to be safe
+    }
+  }
+
+  /**
+   * Get count of busy workers for a company at a specific date and time
+   */
+  static async getBusyWorkersCount(companyId: string, date: string, time: string): Promise<number> {
+    try {
+      // Check service_bookings for workers assigned to bookings at this time
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('companyId', '==', companyId)
+        .where('date', '==', date)
+        .where('time', '==', time)
+        .where('status', 'in', ['assigned', 'started']) // Only count active bookings
+        .get();
+      
+      const busyWorkerIds = new Set<string>();
+      
+      bookingsSnapshot.forEach(doc => {
+        const data = doc.data();
+        const workerId = data.workerId || data.technicianId;
+        if (workerId) {
+          busyWorkerIds.add(workerId);
+        }
+      });
+      
+      console.log(`📊 Company ${companyId} has ${busyWorkerIds.size} busy workers at ${date} ${time}`);
+      return busyWorkerIds.size;
+      
+    } catch (error) {
+      console.error(`❌ Error getting busy workers count for company ${companyId}:`, error);
+      return 0; // If error, assume no busy workers
+    }
+  }
+
+  /**
+   * Get available services with real-time availability check
+   */
+  static async getAvailableServices(location: any, date: string, time: string, serviceId?: string): Promise<{
+    success: boolean;
+    data: {
+      availableCompanies: number;
+      companies: ServiceCompany[];
+    };
+  }> {
+    try {
+      console.log(`🔍 Getting available services for ${date} at ${time}`);
+      
+      if (serviceId) {
+        // Check specific service availability
+        const availability = await this.checkRealTimeAvailability(serviceId, date, time, location);
+        return {
+          success: true,
+          data: {
+            availableCompanies: availability.availableCompanies,
+            companies: availability.companies
+          }
+        };
+      } else {
+        // Get all available services (this would need to be implemented based on your needs)
+        return {
+          success: false,
+          data: {
+            availableCompanies: 0,
+            companies: []
+          }
+        };
+      }
+      
+    } catch (error) {
+      console.error('❌ Error getting available services:', error);
+      return {
+        success: false,
+        data: {
+          availableCompanies: 0,
+          companies: []
+        }
+      };
+    }
+  }
+
+  /**
+   * Create or update service availability record
+   */
+  static async updateServiceAvailability(companyId: string, serviceId: string, date: string, time: string): Promise<void> {
+    try {
+      const availabilityId = `${companyId}_${serviceId}_${date}_${time.replace(/[^a-zA-Z0-9]/g, '')}`;
+      
+      // Check current availability
+      const available = await this.checkCompanyWorkerAvailability(companyId, date, time);
+      const totalWorkers = await this.getTotalActiveWorkers(companyId);
+      const busyWorkers = await this.getBusyWorkersCount(companyId, date, time);
+      const availableWorkers = totalWorkers - busyWorkers;
+      
+      const availabilityData = {
+        companyId,
+        serviceId,
+        date,
+        time,
+        available,
+        availableWorkers,
+        totalWorkers,
+        utilizationRate: totalWorkers > 0 ? ((busyWorkers / totalWorkers) * 100).toFixed(1) : "0",
+        lastUpdated: new Date(),
+        reason: available ? "WORKERS_AVAILABLE" : "ALL_WORKERS_BUSY"
+      };
+      
+      await firestore()
+        .collection('service_availability')
+        .doc(availabilityId)
+        .set(availabilityData, { merge: true });
+      
+      console.log(`✅ Updated availability for company ${companyId}, service ${serviceId}: ${available ? 'Available' : 'Not Available'}`);
+      
+    } catch (error) {
+      console.error('❌ Error updating service availability:', error);
+    }
+  }
+
+  /**
+   * Get total active workers for a company
+   */
+  static async getTotalActiveWorkers(companyId: string): Promise<number> {
+    try {
+      const workersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+      
+      return workersSnapshot.size;
+    } catch (error) {
+      console.error(`❌ Error getting total active workers for company ${companyId}:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Update service availability flag in service_services collection
+   */
+  static async updateServiceAvailabilityFlag(serviceId: string, available: boolean, reason: string): Promise<void> {
+    try {
+      await firestore()
+        .collection('service_services')
+        .doc(serviceId)
+        .update({
+          availableForBooking: available,
+          lastAvailabilityCheck: new Date(),
+          availabilityReason: reason
+        });
+      
+      console.log(`✅ Updated service ${serviceId} availability flag: ${available}`);
+    } catch (error) {
+      console.error(`❌ Error updating service availability flag for ${serviceId}:`, error);
+    }
+  }
+
+  /**
    * Get service bookings with location data for website access
    * This method is specifically designed for website integration
    */
