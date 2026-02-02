@@ -4239,4 +4239,64 @@ export class FirestoreService {
       throw new Error('Failed to fetch service banners. Please check your internet connection.');
     }
   }
+
+  /**
+   * Get user's saved addresses from service_bookings collection
+   */
+  static async getUserSavedAddressesFromBookings(): Promise<any[]> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('📍 Fetching saved addresses from service_bookings for user:', user.uid);
+
+      // Get current user data to match phone number
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser || !currentUser.phone) {
+        console.log('❌ No user phone found, cannot fetch addresses');
+        return [];
+      }
+
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerPhone', '==', currentUser.phone)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const uniqueAddresses = new Map();
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.serviceAddress && data.serviceAddress.fullAddress) {
+          const addressKey = data.serviceAddress.fullAddress.toLowerCase().trim();
+          if (!uniqueAddresses.has(addressKey)) {
+            uniqueAddresses.set(addressKey, {
+              id: data.serviceAddress.id || `addr_${Date.now()}_${Math.random()}`,
+              fullAddress: data.serviceAddress.fullAddress,
+              houseNo: data.serviceAddress.houseNo || '',
+              landmark: data.serviceAddress.landmark || '',
+              addressType: data.serviceAddress.addressType || 'Home',
+              isDefault: false, // Will be set for the most recent one
+              createdAt: data.createdAt || new Date(),
+            });
+          }
+        }
+      });
+
+      const addresses = Array.from(uniqueAddresses.values());
+      
+      // Set the most recent address as default
+      if (addresses.length > 0) {
+        addresses[0].isDefault = true;
+      }
+
+      console.log(`✅ Found ${addresses.length} unique addresses from bookings`);
+      return addresses;
+    } catch (error: any) {
+      console.error('❌ Error fetching saved addresses from bookings:', error);
+      return [];
+    }
+  }
 }

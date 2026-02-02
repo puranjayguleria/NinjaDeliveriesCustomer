@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,23 +28,107 @@ export default function ServiceCheckoutScreen() {
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
-  const [manualAddress, setManualAddress] = useState(""); // Optional manual address field
+  
+  // Address management states
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [loadingAddresses, setLoadingAddresses] = useState(true);
+  
+  // New address form states
+  const [newAddress, setNewAddress] = useState({
+    fullAddress: "",
+    houseNo: "",
+    landmark: "",
+    addressType: "Home", // Home, Office, Other
+    isDefault: false
+  });
+
+  // Load saved addresses on component mount
+  useEffect(() => {
+    loadSavedAddresses();
+  }, []);
+
+  const loadSavedAddresses = async () => {
+    try {
+      setLoadingAddresses(true);
+      const addresses = await FirestoreService.getUserSavedAddressesFromBookings();
+      setSavedAddresses(addresses || []);
+      
+      // Auto-select default address if available
+      const defaultAddress = addresses?.find(addr => addr.isDefault);
+      if (defaultAddress) {
+        setSelectedAddressId(defaultAddress.id);
+      } else if (addresses && addresses.length > 0) {
+        setSelectedAddressId(addresses[0].id);
+      }
+      
+      console.log(`📍 Loaded ${addresses?.length || 0} saved addresses from bookings`);
+    } catch (error) {
+      console.error('❌ Error loading saved addresses:', error);
+      setSavedAddresses([]);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
+  const saveNewAddress = async () => {
+    if (!newAddress.fullAddress.trim()) {
+      Alert.alert("Address Required", "Please enter a complete address");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const addressData = {
+        id: `addr_${Date.now()}`, // Generate unique ID
+        fullAddress: newAddress.fullAddress.trim(),
+        houseNo: newAddress.houseNo.trim(),
+        landmark: newAddress.landmark.trim(),
+        addressType: newAddress.addressType,
+        isDefault: newAddress.isDefault || savedAddresses.length === 0, // First address is default
+        createdAt: new Date(),
+      };
+
+      // Add to local state immediately
+      const updatedAddresses = [...savedAddresses, addressData];
+      setSavedAddresses(updatedAddresses);
+      setSelectedAddressId(addressData.id);
+      
+      // Reset form and close modal
+      setNewAddress({
+        fullAddress: "",
+        houseNo: "",
+        landmark: "",
+        addressType: "Home",
+        isDefault: false
+      });
+      setShowAddAddressModal(false);
+      
+      Alert.alert("Success", "Address added successfully!");
+    } catch (error) {
+      console.error('❌ Error adding address:', error);
+      Alert.alert("Error", "Failed to add address. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getSelectedAddress = () => {
+    return savedAddresses.find(addr => addr.id === selectedAddressId);
+  };
 
   const handleProceedToPayment = async () => {
-    // Validate that user has selected an address or provided manual address
-    const hasSelectedAddress = location.address && location.address.trim() !== "";
-    const hasManualAddress = manualAddress.trim() !== "";
-    
-    if (!hasSelectedAddress && !hasManualAddress) {
+    // Validate that user has selected an address
+    if (!selectedAddressId || !getSelectedAddress()) {
       Alert.alert(
         "Address Required",
-        "Please select a service address or enter a custom address before proceeding with the booking.",
+        "Please select or add a service address before proceeding with the booking.",
         [
           {
-            text: "Select Address",
-            onPress: () => navigation.navigate("LocationSelector", { 
-              fromScreen: "ServiceCheckout" 
-            })
+            text: "Add Address",
+            onPress: () => setShowAddAddressModal(true)
           },
           {
             text: "Cancel",
@@ -54,17 +139,16 @@ export default function ServiceCheckoutScreen() {
       return;
     }
 
+    const selectedAddress = getSelectedAddress();
+    
     if (paymentMethod === "online") {
       // For online payment, directly open Razorpay payment
       await handleRazorpayPayment();
     } else {
       // For cash payment, create bookings directly
-      const addressToUse = manualAddress.trim() !== "" ? manualAddress.trim() : location.address;
-      const addressType = manualAddress.trim() !== "" ? "custom address" : "selected location";
-      
       Alert.alert(
         "Confirm Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at your ${addressType}:\n${addressToUse.length > 50 ? addressToUse.substring(0, 50) + '...' : addressToUse}\n\nContinue?`,
+        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at:\n${selectedAddress.fullAddress}\n\nContinue?`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -243,8 +327,7 @@ export default function ServiceCheckoutScreen() {
 
       // Create bookings in Firebase service_bookings collection
       const bookingPromises = services.map(async (service: ServiceCartItem) => {
-        // Determine which address to use - manual address takes priority
-        const finalAddress = manualAddress.trim() !== "" ? manualAddress.trim() : (customerData.address || "");
+        const selectedAddress = getSelectedAddress();
         
         // Ensure all required fields have valid values
         const bookingData = {
@@ -252,20 +335,23 @@ export default function ServiceCheckoutScreen() {
           workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "",
-          customerAddress: finalAddress, // Use manual address if provided, otherwise use location address
+          customerAddress: selectedAddress?.fullAddress || "", // Use saved address
           date: service.selectedDate || new Date().toISOString().split('T')[0],
           time: service.selectedTime || "10:00 AM",
           status: 'pending' as const,
           companyId: service.company?.companyId || service.company?.id || "",
           totalPrice: service.totalPrice || 0,
           addOns: service.addOns || [],
-          // Add location data for website access (with strict validation)
-          location: {
+          // Add detailed address data for website access
+          serviceAddress: {
+            id: selectedAddress?.id || "",
+            fullAddress: selectedAddress?.fullAddress || "",
+            houseNo: selectedAddress?.houseNo || "",
+            landmark: selectedAddress?.landmark || "",
+            addressType: selectedAddress?.addressType || "Home",
+            // Include location coordinates if available
             lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
             lng: (location.lng !== null && location.lng !== undefined) ? location.lng : null,
-            address: finalAddress || location.address || "", // Use manual address if provided
-            ...(location.houseNo && location.houseNo.trim() !== "" && { houseNo: location.houseNo }),
-            ...(location.placeLabel && location.placeLabel.trim() !== "" && { placeLabel: location.placeLabel }),
           },
           paymentMethod: paymentMethod || "cash",
           paymentStatus: paymentStatus || "pending",
@@ -273,16 +359,11 @@ export default function ServiceCheckoutScreen() {
         };
 
         console.log(`📋 About to create booking with data:`, JSON.stringify(bookingData, null, 2));
-        
-        if (manualAddress.trim() !== "") {
-          console.log(`📍 Using MANUAL address: "${manualAddress.trim()}" (overriding selected location)`);
-        } else {
-          console.log(`📍 Using SELECTED location address: "${location.address}"`);
-        }
+        console.log(`📍 Using saved address: "${selectedAddress?.fullAddress}"`);
 
         const bookingId = await FirestoreService.createServiceBooking(bookingData);
         console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
-        console.log(`📍 Location data saved: lat=${location.lat}, lng=${location.lng}, address="${location.address}"`);
+        console.log(`📍 Address data saved for website access`);
         
         // Create payment record in service_payments collection
         // Ensure all required fields have valid values
@@ -416,89 +497,79 @@ export default function ServiceCheckoutScreen() {
 
         {/* Service Address Section */}
         <View style={styles.addressSection}>
-          <Text style={styles.sectionTitle}>Service Address</Text>
-          <View style={[
-            styles.addressCard, 
-            (!location.address || location.address.trim() === "") && styles.addressCardEmpty
-          ]}>
-            <View style={styles.addressHeader}>
-              <Ionicons 
-                name="location" 
-                size={20} 
-                color={(!location.address || location.address.trim() === "") ? "#ef4444" : "#4CAF50"} 
-              />
-              <Text style={styles.addressTitle}>
-                {(!location.address || location.address.trim() === "") ? "No Address Selected" : "Selected Location"}
-              </Text>
-            </View>
-            
-            {(!location.address || location.address.trim() === "") ? (
-              <View style={styles.noAddressContainer}>
-                <Text style={styles.noAddressText}>
-                  Please select your service location to continue
-                </Text>
-                <TouchableOpacity 
-                  style={styles.selectAddressButton}
-                  onPress={() => navigation.navigate("LocationSelector", { 
-                    fromScreen: "ServiceCheckout" 
-                  })}
-                >
-                  <Ionicons name="add-circle" size={16} color="#fff" />
-                  <Text style={styles.selectAddressText}>Select Address</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.addressText}>
-                  {location.address}
-                </Text>
-                {location.houseNo && (
-                  <Text style={styles.houseNoText}>
-                    House/Flat: {location.houseNo}
-                  </Text>
-                )}
-                {location.placeLabel && (
-                  <Text style={styles.placeLabelText}>
-                    {location.placeLabel}
-                  </Text>
-                )}
-                <TouchableOpacity 
-                  style={styles.changeAddressButton}
-                  onPress={() => navigation.navigate("LocationSelector", { 
-                    fromScreen: "ServiceCheckout" 
-                  })}
-                >
-                  <Ionicons name="pencil" size={16} color="#2563eb" />
-                  <Text style={styles.changeAddressText}>Change Address</Text>
-                </TouchableOpacity>
-              </>
-            )}
+          <View style={styles.addressHeader}>
+            <Text style={styles.sectionTitle}>Service Address</Text>
+            <TouchableOpacity 
+              style={styles.addAddressButton}
+              onPress={() => setShowAddAddressModal(true)}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
+              <Text style={styles.addAddressText}>Add New</Text>
+            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Optional Manual Address Section */}
-        <View style={styles.manualAddressSection}>
-          <Text style={styles.sectionTitle}>Custom Address (Optional)</Text>
-          <Text style={styles.manualAddressSubtitle}>
-            Add a different address if needed (this will override the selected location)
-          </Text>
-          <TextInput
-            style={styles.manualAddressInput}
-            placeholder="Enter custom service address (optional)..."
-            placeholderTextColor="#999"
-            value={manualAddress}
-            onChangeText={setManualAddress}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-          {manualAddress.trim() !== "" && (
-            <View style={styles.manualAddressNote}>
-              <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
-              <Text style={styles.manualAddressNoteText}>
-                This custom address will be used instead of your selected location
-              </Text>
+          {loadingAddresses ? (
+            <View style={styles.loadingAddressContainer}>
+              <ActivityIndicator size="small" color="#4CAF50" />
+              <Text style={styles.loadingAddressText}>Loading addresses...</Text>
             </View>
+          ) : savedAddresses.length === 0 ? (
+            <View style={styles.noAddressContainer}>
+              <Ionicons name="location-outline" size={48} color="#ccc" />
+              <Text style={styles.noAddressTitle}>No Saved Addresses</Text>
+              <Text style={styles.noAddressText}>Add your first address to continue</Text>
+              <TouchableOpacity 
+                style={styles.addFirstAddressButton}
+                onPress={() => setShowAddAddressModal(true)}
+              >
+                <Ionicons name="add-circle" size={16} color="#fff" />
+                <Text style={styles.addFirstAddressText}>Add Address</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={savedAddresses}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.addressCard,
+                    selectedAddressId === item.id && styles.addressCardSelected
+                  ]}
+                  onPress={() => setSelectedAddressId(item.id)}
+                >
+                  <View style={styles.addressCardHeader}>
+                    <View style={styles.addressTypeContainer}>
+                      <Ionicons 
+                        name={item.addressType === 'Home' ? 'home' : item.addressType === 'Office' ? 'business' : 'location'} 
+                        size={16} 
+                        color="#4CAF50" 
+                      />
+                      <Text style={styles.addressType}>{item.addressType}</Text>
+                      {item.isDefault && (
+                        <View style={styles.defaultBadge}>
+                          <Text style={styles.defaultText}>Default</Text>
+                        </View>
+                      )}
+                    </View>
+                    {selectedAddressId === item.id && (
+                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                    )}
+                  </View>
+                  
+                  <Text style={styles.addressText}>{item.fullAddress}</Text>
+                  
+                  {item.houseNo && (
+                    <Text style={styles.addressDetail}>House/Flat: {item.houseNo}</Text>
+                  )}
+                  
+                  {item.landmark && (
+                    <Text style={styles.addressDetail}>Landmark: {item.landmark}</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
           )}
         </View>
 
@@ -578,26 +649,18 @@ export default function ServiceCheckoutScreen() {
             <Text style={styles.summaryLabel}>Service Address</Text>
             <Text style={[styles.summaryValue, styles.summaryAddressValue]}>
               {(() => {
-                const displayAddress = manualAddress.trim() !== "" ? manualAddress.trim() : location.address;
-                if (displayAddress) {
-                  return displayAddress.length > 30 ? 
-                    `${displayAddress.substring(0, 30)}...` : 
-                    displayAddress;
+                const selectedAddress = getSelectedAddress();
+                if (selectedAddress) {
+                  const address = selectedAddress.fullAddress;
+                  return address.length > 30 ? 
+                    `${address.substring(0, 30)}...` : 
+                    address;
                 } else {
                   return "Not selected";
                 }
               })()}
             </Text>
           </View>
-          
-          {manualAddress.trim() !== "" && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Address Type</Text>
-              <Text style={[styles.summaryValue, { color: "#2563eb", fontSize: 12 }]}>
-                Custom Address
-              </Text>
-            </View>
-          )}
           
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Service Charges</Text>
@@ -638,6 +701,126 @@ export default function ServiceCheckoutScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Add Address Modal */}
+      <Modal
+        visible={showAddAddressModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddAddressModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setShowAddAddressModal(false)}
+            >
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Add New Address</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>Complete Address *</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="Enter your complete address..."
+                placeholderTextColor="#999"
+                value={newAddress.fullAddress}
+                onChangeText={(text) => setNewAddress(prev => ({ ...prev, fullAddress: text }))}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>House/Flat/Building No.</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="e.g., 123, Apartment Name"
+                placeholderTextColor="#999"
+                value={newAddress.houseNo}
+                onChangeText={(text) => setNewAddress(prev => ({ ...prev, houseNo: text }))}
+              />
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>Landmark (Optional)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="e.g., Near Metro Station, Mall"
+                placeholderTextColor="#999"
+                value={newAddress.landmark}
+                onChangeText={(text) => setNewAddress(prev => ({ ...prev, landmark: text }))}
+              />
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>Address Type</Text>
+              <View style={styles.addressTypeOptions}>
+                {['Home', 'Office', 'Other'].map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.addressTypeOption,
+                      newAddress.addressType === type && styles.addressTypeOptionSelected
+                    ]}
+                    onPress={() => setNewAddress(prev => ({ ...prev, addressType: type }))}
+                  >
+                    <Ionicons 
+                      name={type === 'Home' ? 'home' : type === 'Office' ? 'business' : 'location'} 
+                      size={16} 
+                      color={newAddress.addressType === type ? "#fff" : "#666"} 
+                    />
+                    <Text style={[
+                      styles.addressTypeOptionText,
+                      newAddress.addressType === type && styles.addressTypeOptionTextSelected
+                    ]}>
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.defaultAddressOption}
+              onPress={() => setNewAddress(prev => ({ ...prev, isDefault: !prev.isDefault }))}
+            >
+              <Ionicons 
+                name={newAddress.isDefault ? "checkbox" : "checkbox-outline"} 
+                size={20} 
+                color="#4CAF50" 
+              />
+              <Text style={styles.defaultAddressText}>Set as default address</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowAddAddressModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.saveAddressButton, loading && styles.saveAddressButtonDisabled]}
+              onPress={saveNewAddress}
+              disabled={loading || !newAddress.fullAddress.trim()}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.saveAddressButtonText}>Save Address</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -781,42 +964,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
   },
+  // Address Section Styles
   addressSection: {
     marginBottom: 24,
   },
-  addressCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-  },
-  addressCardEmpty: {
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-  },
   addressHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  addressTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
+  addAddressButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#4CAF50",
+  },
+  addAddressText: {
+    fontSize: 14,
+    color: "#4CAF50",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+  loadingAddressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+  },
+  loadingAddressText: {
+    fontSize: 14,
+    color: "#666",
     marginLeft: 8,
   },
   noAddressContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 32,
     alignItems: "center",
-    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderStyle: "dashed",
+  },
+  noAddressTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginTop: 12,
+    marginBottom: 4,
   },
   noAddressText: {
     fontSize: 14,
     color: "#666",
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  selectAddressButton: {
+  addFirstAddressButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#4CAF50",
@@ -824,56 +1033,101 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
   },
-  selectAddressText: {
+  addFirstAddressText: {
     fontSize: 14,
     color: "#fff",
     fontWeight: "600",
     marginLeft: 4,
   },
+  addressCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  addressCardSelected: {
+    borderColor: "#4CAF50",
+    backgroundColor: "#f8fff8",
+  },
+  addressCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  addressTypeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addressType: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 6,
+  },
+  defaultBadge: {
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  defaultText: {
+    fontSize: 10,
+    color: "#fff",
+    fontWeight: "600",
+  },
   addressText: {
     fontSize: 14,
     color: "#333",
     lineHeight: 20,
-    marginBottom: 8,
-  },
-  houseNoText: {
-    fontSize: 14,
-    color: "#666",
     marginBottom: 4,
   },
-  placeLabelText: {
-    fontSize: 14,
+  addressDetail: {
+    fontSize: 12,
     color: "#666",
-    fontStyle: "italic",
-    marginBottom: 12,
+    marginBottom: 2,
   },
-  changeAddressButton: {
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#f0f9ff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e0f2fe",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+    paddingTop: 50,
   },
-  changeAddressText: {
+  modalCloseButton: {
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  formSection: {
+    marginBottom: 20,
+  },
+  formLabel: {
     fontSize: 14,
-    color: "#2563eb",
-    fontWeight: "500",
-    marginLeft: 4,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
   },
-  manualAddressSection: {
-    marginBottom: 24,
-  },
-  manualAddressSubtitle: {
-    fontSize: 13,
-    color: "#666",
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  manualAddressInput: {
+  formInput: {
     backgroundColor: "#fff",
     borderRadius: 8,
     padding: 12,
@@ -881,25 +1135,97 @@ const styles = StyleSheet.create({
     color: "#333",
     borderWidth: 1,
     borderColor: "#e0e0e0",
-    minHeight: 80,
-    textAlignVertical: "top",
+    minHeight: 44,
   },
-  manualAddressNote: {
+  addressTypeOptions: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 8,
-    padding: 10,
-    backgroundColor: "#f0f9ff",
-    borderRadius: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: "#2563eb",
+    gap: 12,
   },
-  manualAddressNoteText: {
-    fontSize: 12,
-    color: "#2563eb",
+  addressTypeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    backgroundColor: "#fff",
+  },
+  addressTypeOptionSelected: {
+    backgroundColor: "#4CAF50",
+    borderColor: "#4CAF50",
+  },
+  addressTypeOptionText: {
+    fontSize: 14,
+    color: "#666",
     marginLeft: 6,
+    fontWeight: "500",
+  },
+  addressTypeOptionTextSelected: {
+    color: "#fff",
+  },
+  defaultAddressOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  defaultAddressText: {
+    fontSize: 14,
+    color: "#333",
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  modalFooter: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    gap: 12,
+  },
+  cancelButton: {
     flex: 1,
-    lineHeight: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    color: "#666",
+    fontWeight: "500",
+  },
+  saveAddressButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#4CAF50",
+    alignItems: "center",
+  },
+  saveAddressButtonDisabled: {
+    backgroundColor: "#A5D6A7",
+  },
+  saveAddressButtonText: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "600",
+  },
+  summaryAddressValue: {
+    fontSize: 12,
+    color: "#666",
+    textAlign: "right",
+    flex: 1,
+    marginLeft: 8,
   },
   notesSection: {
     marginBottom: 24,
@@ -987,13 +1313,6 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 14,
     color: "#333",
-  },
-  summaryAddressValue: {
-    fontSize: 12,
-    color: "#666",
-    textAlign: "right",
-    flex: 1,
-    marginLeft: 8,
   },
   summaryDivider: {
     height: 1,
