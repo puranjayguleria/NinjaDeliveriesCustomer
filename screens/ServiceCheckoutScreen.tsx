@@ -415,13 +415,47 @@ export default function ServiceCheckoutScreen() {
         totalAmount,
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error creating bookings:', error);
-      Alert.alert(
-        "Booking Failed",
-        "Failed to create your bookings. Please try again.",
-        [{ text: "OK" }]
-      );
+      
+      // Check if error is due to busy workers
+      if (error.message && error.message.includes('BOOKING BLOCKED')) {
+        Alert.alert(
+          "Booking Blocked - Workers Busy",
+          "All workers for this company are currently busy with the selected service. This prevents overbooking.\n\nPlease select another company or try again later.",
+          [
+            {
+              text: "Select Another Company",
+              onPress: () => navigation.goBack()
+            },
+            {
+              text: "OK",
+              style: "cancel"
+            }
+          ]
+        );
+      } else if (error.message && error.message.includes('All workers for this company are currently busy')) {
+        Alert.alert(
+          "Workers Busy for Service",
+          "All workers for the selected company are currently busy with this service. Please select another company or try again later.",
+          [
+            {
+              text: "Select Another Company",
+              onPress: () => navigation.goBack()
+            },
+            {
+              text: "OK",
+              style: "cancel"
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          "Booking Failed",
+          "Failed to create your bookings. Please try again.",
+          [{ text: "OK" }]
+        );
+      }
     } finally {
       setLoading(false);
     }

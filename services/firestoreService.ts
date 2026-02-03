@@ -40,6 +40,7 @@ export interface ServiceCompany {
   rating?: number;
   reviewCount?: number;
   availability?: string;
+  isBusy?: boolean; // Indicates if all workers are busy
   contactInfo?: {
     phone?: string;
     email?: string;
@@ -2064,8 +2065,346 @@ export class FirestoreService {
   }
 
   /**
-   * Get all ratings for a specific service or company
+   * NEW: Check company availability using the new website integration system
+   * This uses the company_availability collection created by cloud functions
    */
+  static async checkCompanyAvailabilityNew(
+    companyId: string,
+    startTime: string,
+    endTime: string
+  ): Promise<boolean> {
+    try {
+      console.log(`🔍 NEW AVAILABILITY CHECK - Company: ${companyId}`);
+      console.log(`   Start Time: ${startTime}`);
+      console.log(`   End Time: ${endTime}`);
+      
+      // Check the company_availability collection first (real-time data from website)
+      const availabilityDoc = await firestore()
+        .collection('company_availability')
+        .doc(companyId)
+        .get();
+      
+      if (availabilityDoc.exists) {
+        const availabilityData = availabilityDoc.data();
+        console.log(`📊 COMPANY AVAILABILITY DATA:`, availabilityData);
+        
+        const isAvailable = availabilityData?.isAvailable === true;
+        const availableWorkers = availabilityData?.availableWorkers || 0;
+        const totalWorkers = availabilityData?.totalWorkers || 0;
+        const lastUpdated = availabilityData?.lastUpdated;
+        
+        console.log(`   Available: ${isAvailable}`);
+        console.log(`   Available Workers: ${availableWorkers}/${totalWorkers}`);
+        console.log(`   Last Updated: ${lastUpdated?.toDate?.()}`);
+        
+        if (!isAvailable) {
+          console.log(`❌ COMPANY ${companyId} - MARKED AS UNAVAILABLE BY WEBSITE SYSTEM`);
+          return false;
+        }
+        
+        if (availableWorkers === 0) {
+          console.log(`❌ COMPANY ${companyId} - NO AVAILABLE WORKERS`);
+          return false;
+        }
+        
+        console.log(`✅ COMPANY ${companyId} - AVAILABLE (${availableWorkers} workers free)`);
+        return true;
+      } else {
+        console.log(`⚠️ No availability data found for company ${companyId}, falling back to old method`);
+        // Fallback to old method if no availability data
+        return this.checkCompanyWorkerAvailabilityOld(companyId, startTime, endTime);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error checking new company availability for ${companyId}:`, error);
+      // Fallback to old method on error
+      return this.checkCompanyWorkerAvailabilityOld(companyId, startTime, endTime);
+    }
+  }
+
+  /**
+   * OLD METHOD: Renamed for fallback use - FIXED to return accurate worker counts
+   */
+  static async checkCompanyWorkerAvailabilityOld(
+    companyId: string,
+    startTime: string,
+    endTime: string
+  ): Promise<boolean> {
+    try {
+      console.log(`🔍 FALLBACK AVAILABILITY CHECK - Company: ${companyId}`);
+      
+      // Get all active workers for this company
+      const workersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+
+      if (workersSnapshot.empty) {
+        console.log(`❌ No active workers found for company ${companyId}`);
+        return false;
+      }
+
+      const totalWorkers = workersSnapshot.size;
+      const workerIds = workersSnapshot.docs.map(doc => doc.id);
+      
+      console.log(`👷 FALLBACK CHECK - Total active workers: ${totalWorkers}`);
+      console.log(`   Worker IDs:`, workerIds);
+      
+      // Check for active bookings
+      const busyWorkers = new Set();
+      
+      for (let i = 0; i < workerIds.length; i += 10) {
+        const batch = workerIds.slice(i, i + 10);
+        
+        const bookingsSnapshot = await firestore()
+          .collection('service_bookings')
+          .where('workerId', 'in', batch)
+          .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+          .get();
+
+        console.log(`📋 Found ${bookingsSnapshot.size} active bookings for batch`);
+
+        bookingsSnapshot.docs.forEach(doc => {
+          const booking = doc.data();
+          if (booking.workerId) {
+            busyWorkers.add(booking.workerId);
+            console.log(`   Worker ${booking.workerId} is BUSY with booking ${doc.id} (${booking.status})`);
+          }
+        });
+      }
+
+      const availableWorkers = totalWorkers - busyWorkers.size;
+      console.log(`📊 FALLBACK CHECK RESULT:`);
+      console.log(`   Total Workers: ${totalWorkers}`);
+      console.log(`   Busy Workers: ${busyWorkers.size}`);
+      console.log(`   Available Workers: ${availableWorkers}`);
+      
+      if (busyWorkers.size > 0) {
+        console.log(`   Busy Worker IDs:`, Array.from(busyWorkers));
+      }
+      
+      const isAvailable = availableWorkers > 0;
+      
+      if (!isAvailable) {
+        console.log(`❌ FALLBACK: Company ${companyId} - ALL ${totalWorkers} WORKERS BUSY`);
+      } else {
+        console.log(`✅ FALLBACK: Company ${companyId} - ${availableWorkers}/${totalWorkers} workers available`);
+      }
+      
+      return isAvailable;
+      
+    } catch (error) {
+      console.error(`❌ Error in fallback availability check:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * UPDATED: Main method now uses the new system
+   */
+  static async checkCompanyWorkerAvailability(
+    companyId: string, 
+    date: string, 
+    time: string,
+    serviceIds?: string[],
+    serviceTitle?: string
+  ): Promise<boolean> {
+    try {
+      // Convert date/time to ISO strings for the new API
+      const startTime = new Date(`${date}T${time.split(' - ')[0] || '10:00'}`).toISOString();
+      const endTime = new Date(`${date}T${time.split(' - ')[1] || '12:00'}`).toISOString();
+      
+      console.log(`🔄 USING NEW AVAILABILITY SYSTEM`);
+      console.log(`   Company: ${companyId}`);
+      console.log(`   Start: ${startTime}`);
+      console.log(`   End: ${endTime}`);
+      
+      // Use the new availability system
+      return await this.checkCompanyAvailabilityNew(companyId, startTime, endTime);
+      
+    } catch (error) {
+      console.error(`❌ Error in main availability check:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * NEW: Bulk check company availability for multiple companies
+   * This uses the new website integration system
+   */
+  static async checkBulkCompanyAvailability(
+    companyIds: string[],
+    startTime: string,
+    endTime: string
+  ): Promise<{[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}}> {
+    try {
+      console.log(`🔍 BULK AVAILABILITY CHECK for ${companyIds.length} companies`);
+      console.log(`   Companies:`, companyIds);
+      console.log(`   Time Range: ${startTime} to ${endTime}`);
+      
+      const results: {[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}} = {};
+      
+      // Get availability data for all companies at once
+      const availabilitySnapshot = await firestore()
+        .collection('company_availability')
+        .where(firestore.FieldPath.documentId(), 'in', companyIds.slice(0, 10)) // Firestore limit
+        .get();
+      
+      console.log(`📊 Found availability data for ${availabilitySnapshot.size} companies`);
+      
+      // Process companies with availability data
+      availabilitySnapshot.docs.forEach(doc => {
+        const companyId = doc.id;
+        const data = doc.data();
+        
+        results[companyId] = {
+          isAvailable: data.isAvailable === true && (data.availableWorkers || 0) > 0,
+          availableWorkers: data.availableWorkers || 0,
+          totalWorkers: data.totalWorkers || 0
+        };
+        
+        console.log(`   Company ${companyId}: ${results[companyId].isAvailable ? 'Available' : 'Busy'} (${results[companyId].availableWorkers}/${results[companyId].totalWorkers})`);
+      });
+      
+      // For companies without availability data, use fallback method
+      const companiesWithoutData = companyIds.filter(id => !results[id]);
+      if (companiesWithoutData.length > 0) {
+        console.log(`⚠️ ${companiesWithoutData.length} companies missing availability data, using fallback`);
+        
+        for (const companyId of companiesWithoutData) {
+          try {
+            // Get accurate worker counts using fallback method
+            const workersSnapshot = await firestore()
+              .collection('service_workers')
+              .where('companyId', '==', companyId)
+              .where('isActive', '==', true)
+              .get();
+
+            const totalWorkers = workersSnapshot.size;
+            
+            if (totalWorkers === 0) {
+              results[companyId] = {
+                isAvailable: false,
+                availableWorkers: 0,
+                totalWorkers: 0
+              };
+              continue;
+            }
+
+            const workerIds = workersSnapshot.docs.map(doc => doc.id);
+            const busyWorkers = new Set();
+            
+            // Check for active bookings
+            for (let i = 0; i < workerIds.length; i += 10) {
+              const batch = workerIds.slice(i, i + 10);
+              
+              const bookingsSnapshot = await firestore()
+                .collection('service_bookings')
+                .where('workerId', 'in', batch)
+                .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+                .get();
+
+              bookingsSnapshot.docs.forEach(doc => {
+                const booking = doc.data();
+                if (booking.workerId) {
+                  busyWorkers.add(booking.workerId);
+                }
+              });
+            }
+
+            const availableWorkers = totalWorkers - busyWorkers.size;
+            const isAvailable = availableWorkers > 0;
+            
+            results[companyId] = {
+              isAvailable,
+              availableWorkers,
+              totalWorkers
+            };
+            
+            console.log(`   FALLBACK Company ${companyId}: ${isAvailable ? 'Available' : 'Busy'} (${availableWorkers}/${totalWorkers})`);
+            
+          } catch (error) {
+            console.error(`❌ Error checking fallback for company ${companyId}:`, error);
+            results[companyId] = {
+              isAvailable: false,
+              availableWorkers: 0,
+              totalWorkers: 0
+            };
+          }
+        }
+      }
+      
+      console.log(`✅ BULK CHECK COMPLETE:`, results);
+      return results;
+      
+    } catch (error) {
+      console.error(`❌ Error in bulk availability check:`, error);
+      
+      // Fallback: check each company individually with accurate worker counts
+      const results: {[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}} = {};
+      for (const companyId of companyIds) {
+        try {
+          // Get accurate worker counts
+          const workersSnapshot = await firestore()
+            .collection('service_workers')
+            .where('companyId', '==', companyId)
+            .where('isActive', '==', true)
+            .get();
+
+          const totalWorkers = workersSnapshot.size;
+          
+          if (totalWorkers === 0) {
+            results[companyId] = {
+              isAvailable: false,
+              availableWorkers: 0,
+              totalWorkers: 0
+            };
+            continue;
+          }
+
+          const workerIds = workersSnapshot.docs.map(doc => doc.id);
+          const busyWorkers = new Set();
+          
+          // Check for active bookings
+          for (let i = 0; i < workerIds.length; i += 10) {
+            const batch = workerIds.slice(i, i + 10);
+            
+            const bookingsSnapshot = await firestore()
+              .collection('service_bookings')
+              .where('workerId', 'in', batch)
+              .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+              .get();
+
+            bookingsSnapshot.docs.forEach(doc => {
+              const booking = doc.data();
+              if (booking.workerId) {
+                busyWorkers.add(booking.workerId);
+              }
+            });
+          }
+
+          const availableWorkers = totalWorkers - busyWorkers.size;
+          const isAvailable = availableWorkers > 0;
+          
+          results[companyId] = {
+            isAvailable,
+            availableWorkers,
+            totalWorkers
+          };
+          
+        } catch (err) {
+          console.error(`❌ Error in individual fallback for company ${companyId}:`, err);
+          results[companyId] = {
+            isAvailable: false,
+            availableWorkers: 0,
+            totalWorkers: 0
+          };
+        }
+      }
+      return results;
+    }
+  }
   static async getServiceRatings(companyId?: string, serviceName?: string, limit: number = 50): Promise<any[]> {
     try {
       console.log(`🔥 Fetching service ratings...`);
@@ -2140,6 +2479,101 @@ export class FirestoreService {
       
       console.log(`🔥 Creating new service booking for logged-in user: ${userId}`);
       
+      // CRITICAL: Double-check worker availability using NEW SYSTEM before creating booking
+      if (bookingData.companyId) {
+        console.log(`🔒 CRITICAL VALIDATION - Using NEW availability system before booking creation`);
+        
+        // Convert to ISO strings
+        const startTime = new Date(`${bookingData.date || new Date().toISOString().split('T')[0]}T10:00:00`).toISOString();
+        const endTime = new Date(`${bookingData.date || new Date().toISOString().split('T')[0]}T12:00:00`).toISOString();
+        
+        // First try new system
+        let isAvailable = false;
+        let availableWorkers = 0;
+        let totalWorkers = 0;
+        
+        try {
+          // Check company_availability collection
+          const availabilityDoc = await firestore()
+            .collection('company_availability')
+            .doc(bookingData.companyId)
+            .get();
+          
+          if (availabilityDoc.exists) {
+            const data = availabilityDoc.data();
+            isAvailable = data?.isAvailable === true && (data?.availableWorkers || 0) > 0;
+            availableWorkers = data?.availableWorkers || 0;
+            totalWorkers = data?.totalWorkers || 0;
+            
+            console.log(`🔍 NEW SYSTEM CHECK:`, {
+              isAvailable,
+              availableWorkers,
+              totalWorkers,
+              lastUpdated: data?.lastUpdated?.toDate?.()
+            });
+          } else {
+            console.log(`⚠️ No availability data found, using fallback validation`);
+            
+            // Fallback: Check manually
+            const workersSnapshot = await firestore()
+              .collection('service_workers')
+              .where('companyId', '==', bookingData.companyId)
+              .where('isActive', '==', true)
+              .get();
+
+            totalWorkers = workersSnapshot.size;
+            
+            if (totalWorkers > 0) {
+              const workerIds = workersSnapshot.docs.map(doc => doc.id);
+              const busyWorkers = new Set();
+              
+              for (let i = 0; i < workerIds.length; i += 10) {
+                const batch = workerIds.slice(i, i + 10);
+                
+                const bookingsSnapshot = await firestore()
+                  .collection('service_bookings')
+                  .where('workerId', 'in', batch)
+                  .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+                  .get();
+
+                bookingsSnapshot.docs.forEach(doc => {
+                  const booking = doc.data();
+                  if (booking.workerId) {
+                    busyWorkers.add(booking.workerId);
+                  }
+                });
+              }
+
+              availableWorkers = totalWorkers - busyWorkers.size;
+              isAvailable = availableWorkers > 0;
+              
+              console.log(`🔍 FALLBACK VALIDATION:`, {
+                totalWorkers,
+                busyWorkers: busyWorkers.size,
+                availableWorkers,
+                isAvailable
+              });
+            }
+          }
+        } catch (validationError) {
+          console.error(`❌ Error in booking validation:`, validationError);
+          isAvailable = false;
+        }
+        
+        if (!isAvailable || availableWorkers === 0) {
+          console.log(`🚫 BOOKING CREATION BLOCKED - Company validation failed`);
+          console.log(`   Company: ${bookingData.companyId}`);
+          console.log(`   Available Workers: ${availableWorkers}/${totalWorkers}`);
+          console.log(`   Service: ${(bookingData as any).serviceTitle || (bookingData as any).serviceName}`);
+          console.log(`   Start Time: ${startTime}`);
+          
+          throw new Error(`BOOKING BLOCKED: All workers (${totalWorkers}) for this company are currently busy. No workers available for new bookings.`);
+        }
+        
+        console.log(`✅ BOOKING VALIDATION PASSED - Company: ${bookingData.companyId}`);
+        console.log(`   Available Workers: ${availableWorkers}/${totalWorkers}`);
+      }
+      
       // Clean the booking data to remove undefined values
       const cleanedData = this.cleanBookingData({
         ...bookingData,
@@ -2155,6 +2589,7 @@ export class FirestoreService {
         .add(cleanedData);
 
       console.log(`✅ Created booking with ID: ${docRef.id} for logged-in user: ${userId}`);
+      console.log(`🏢 Company: ${bookingData.companyId} - Booking confirmed with available workers`);
       return docRef.id;
     } catch (error: any) {
       console.error('❌ Error creating service booking:', error);
