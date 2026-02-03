@@ -147,13 +147,8 @@ export default function ServiceCheckoutScreen() {
     } else {
       // For cash payment, create bookings directly
       Alert.alert(
-<<<<<<< HEAD
         "Confirm Booking",
         `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at:\n${selectedAddress.fullAddress}\n\nContinue?`,
-=======
-        "Confirm Cash Payment Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\n💰 Payment Method: Cash on Service\n📍 Service Location: ${addressType}\n${addressToUse.length > 50 ? addressToUse.substring(0, 50) + '...' : addressToUse}\n\nYou will pay the technician directly when the service is completed.\n\nContinue?`,
->>>>>>> 79fd6b4c11e6f6144bc6fa58b36dc1d354218bca
         [
           { text: "Cancel", style: "cancel" },
           {

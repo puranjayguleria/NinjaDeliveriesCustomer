@@ -4241,7 +4241,6 @@ export class FirestoreService {
   }
 
   /**
-<<<<<<< HEAD
    * Get user's saved addresses from service_bookings collection
    */
   static async getUserSavedAddressesFromBookings(): Promise<any[]> {
@@ -4298,7 +4297,10 @@ export class FirestoreService {
     } catch (error: any) {
       console.error('❌ Error fetching saved addresses from bookings:', error);
       return [];
-=======
+    }
+  }
+
+  /**
    * 🏢 NEW: Fetch detailed package information for companies
    */
   static async getDetailedPackagesForCompanies(companies: ServiceCompany[]): Promise<ServiceCompany[]> {
@@ -4468,7 +4470,6 @@ export class FirestoreService {
         totalPackages: 0,
         companiesCount: 0,
       };
->>>>>>> 79fd6b4c11e6f6144bc6fa58b36dc1d354218bca
     }
   }
 }

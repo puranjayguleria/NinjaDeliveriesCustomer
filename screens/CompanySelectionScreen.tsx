@@ -106,11 +106,7 @@ export default function CompanySelectionScreen() {
       
       let fetchedCompanies: ServiceCompany[];
       
-      // 🏢 NEW: Use pre-fetched companies with packages if available
-      if (allCompanies && allCompanies.length > 0) {
-        console.log('🏢 Using pre-fetched companies with packages:', allCompanies.length);
-        fetchedCompanies = allCompanies;
-      } else if (selectedIssueIds && selectedIssueIds.length > 0) {
+      if (selectedIssueIds && selectedIssueIds.length > 0) {
         console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
         // 🏢 NEW: Use enhanced method to get companies with detailed packages
         fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
@@ -286,43 +282,6 @@ export default function CompanySelectionScreen() {
                       <View style={styles.priceRow}>
                         <Text style={styles.priceLabel}>Starting Price:</Text>
                         <Text style={styles.price}>₹{item.price}</Text>
-                      </View>
-                    )}
-                    
-                    {/* Packages if available - Enhanced Display */}
-                    {item.packages && Array.isArray(item.packages) && item.packages.length > 0 && (
-                      <View style={styles.packagesRow}>
-                        <Text style={styles.detailLabel}>Available Packages:</Text>
-                        <View style={styles.packagesList}>
-                          {item.packages.slice(0, 3).map((pkg: any, index: number) => {
-                            const packageName = typeof pkg === 'string' ? pkg : pkg.name || `Package ${index + 1}`;
-                            const packagePrice = typeof pkg === 'object' && pkg.price ? pkg.price : null;
-                            
-                            return (
-                              <View key={index} style={styles.packageTag}>
-                                <Text style={styles.packageText}>{packageName}</Text>
-                                {packagePrice && (
-                                  <Text style={styles.packagePriceTag}>₹{packagePrice}</Text>
-                                )}
-                              </View>
-                            );
-                          })}
-                          {item.packages.length > 3 && (
-                            <Text style={styles.morePackages}>+{item.packages.length - 3} more</Text>
-                          )}
-                        </View>
-                        
-                        {/* Show package features if available */}
-                        {item.packages[0] && typeof item.packages[0] === 'object' && item.packages[0].features && (
-                          <View style={styles.featuresRow}>
-                            <Text style={styles.featuresLabel}>Features:</Text>
-                            <View style={styles.featuresList}>
-                              {item.packages[0].features.slice(0, 3).map((feature: string, index: number) => (
-                                <Text key={index} style={styles.featureText}>• {feature}</Text>
-                              ))}
-                            </View>
-                          </View>
-                        )}
                       </View>
                     )}
                     
@@ -699,79 +658,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0c4a6e",
     letterSpacing: -0.2,
-  },
-
-  packagesRow: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-
-  packagesList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 6,
-    gap: 6,
-  },
-
-  packageTag: {
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-    marginRight: 6,
-    marginBottom: 4,
-  },
-
-  packageText: {
-    fontSize: 11,
-    color: "#92400e",
-    fontWeight: "500",
-    marginBottom: 2,
-  },
-
-  packagePriceTag: {
-    fontSize: 10,
-    color: "#059669",
-    fontWeight: "700",
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: "flex-start",
-  },
-
-  featuresRow: {
-    marginTop: 8,
-  },
-
-  featuresLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-
-  featuresList: {
-    marginLeft: 8,
-  },
-
-  featureText: {
-    fontSize: 11,
-    color: "#374151",
-    fontWeight: "400",
-    lineHeight: 16,
-    marginBottom: 2,
-  },
-
-  morePackages: {
-    fontSize: 11,
-    color: "#64748b",
-    fontWeight: "500",
-    fontStyle: "italic",
-    alignSelf: "center",
-    marginLeft: 4,
   },
 
   descriptionRow: {
