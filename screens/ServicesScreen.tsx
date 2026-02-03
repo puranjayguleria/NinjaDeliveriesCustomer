@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
 
   // Banner Styles
   bannerContainer: {
-    paddingVertical: 20,
+    paddingVertical: 25,
   },
 
   bannerScrollContent: {
@@ -790,7 +790,7 @@ const styles = StyleSheet.create({
 
   bannerImage: {
     width: "100%",
-    height: 140,
+    height: 220,
     borderRadius: 20,
     overflow: "hidden",
   },
@@ -829,7 +829,7 @@ const styles = StyleSheet.create({
   },
 
   bannerOffer: {
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(236, 227, 227, 0.95)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
