@@ -20,16 +20,7 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { 
-    serviceTitle, 
-    issues, 
-    selectedIssues, 
-    company, 
-    checkAvailabilityMode, 
-    returnToCompanySelection,
-    categoryId,
-    selectedIssueIds
-  } = route.params;
+  const { serviceTitle, issues, selectedIssues, company } = route.params;
 
   // Calculate price from selected issue objects (they include optional `price`)
   const issueTotalPrice = Array.isArray(selectedIssues)
@@ -228,20 +219,6 @@ const dates = getNext7Days();
           style={styles.confirmBtn}
           activeOpacity={0.7}
           onPress={() => {
-            if (checkAvailabilityMode && returnToCompanySelection) {
-              // Return to company selection with selected date/time for availability check
-              navigation.navigate("CompanySelection", {
-                serviceTitle,
-                categoryId,
-                issues,
-                selectedIssues,
-                selectedIssueIds,
-                selectedDate,
-                selectedTime
-              });
-              return;
-            }
-
             const selected = dates.find(d => d.key === selectedDate);
             
             // Determine booking type based on service title
@@ -283,9 +260,7 @@ const dates = getNext7Days();
             );
           }}
         >
-          <Text style={styles.confirmText}>
-            {checkAvailabilityMode ? "Check Availability" : "Add to Cart"}
-          </Text>
+          <Text style={styles.confirmText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
     </View>
