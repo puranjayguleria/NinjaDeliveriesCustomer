@@ -18,6 +18,7 @@ import { BookingUtils } from "../utils/bookingUtils";
 import TechnicianInfo from "../components/TechnicianInfo";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 import BookingRejectionModal from "../components/BookingRejectionModal";
+import AddOnServicesModal from "../components/AddOnServicesModal";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -54,6 +55,106 @@ export default function TrackBookingScreen() {
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [previousStatus, setPreviousStatus] = useState<BookingStatus | null>(null);
+  const [showAddOnModal, setShowAddOnModal] = useState(false);
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [addOnServices, setAddOnServices] = useState<any[]>([]);
+  const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
+
+  // Helper function to determine category ID based on service name
+  const determineCategoryId = async (serviceName: string) => {
+    try {
+      // Fetch all categories and find the one that matches the service
+      const categories = await FirestoreService.getServiceCategories();
+      
+      // Simple matching logic - you might need to improve this based on your data structure
+      const matchingCategory = categories.find(category => 
+        serviceName.toLowerCase().includes(category.name.toLowerCase()) ||
+        category.name.toLowerCase().includes(serviceName.toLowerCase())
+      );
+
+      if (matchingCategory) {
+        setCategoryId(matchingCategory.id);
+        console.log(`📱 Found matching category: ${matchingCategory.name} (${matchingCategory.id})`);
+      } else {
+        console.log(`📱 No matching category found for service: ${serviceName}`);
+      }
+    } catch (error) {
+      console.error("Error determining category ID:", error);
+    }
+  };
+
+  // Helper function to check if technician is assigned
+  const isTechnicianAssigned = (): boolean => {
+    if (!booking) return false;
+    
+    // Check multiple conditions to determine if technician is assigned
+    const hasAssignedStatus = booking.status === 'assigned' || 
+                             booking.status === 'started' || 
+                             booking.status === 'completed';
+    
+    const hasTechnicianInfo = !!(booking.technicianName || 
+                                booking.technicianId || 
+                                booking.workerName || 
+                                booking.workerId);
+    
+    const hasAssignmentTimestamp = !!booking.assignedAt;
+    
+    // Technician is considered assigned if any of these conditions are met
+    const isAssigned = hasAssignedStatus || hasTechnicianInfo || hasAssignmentTimestamp;
+    
+    console.log(`🔍 Checking technician assignment:`, {
+      status: booking.status,
+      hasAssignedStatus,
+      hasTechnicianInfo,
+      hasAssignmentTimestamp,
+      technicianName: booking.technicianName,
+      workerName: booking.workerName,
+      isAssigned
+    });
+    
+    return isAssigned;
+  };
+
+  const handleAddOnServices = () => {
+    if (!categoryId) {
+      Alert.alert(
+        "Category Not Found", 
+        "Unable to determine service category for add-on services."
+      );
+      return;
+    }
+    setShowAddOnModal(true);
+  };
+
+  const handleAddServicesConfirm = async (selectedServices: any[]) => {
+    try {
+      // Add-on services are now handled with immediate payment in the modal
+      // This function is called after successful payment
+      setAddOnServices(selectedServices);
+      const addOnTotal = selectedServices.reduce((sum, service) => sum + service.price, 0);
+      const newTotal = (booking?.totalPrice || 0) + addOnTotal;
+      setTotalWithAddOns(newTotal);
+      
+      console.log(`✅ Add-on services confirmed with payment: ${selectedServices.length} services, ₹${addOnTotal}`);
+      
+      // Refresh booking data to show updated add-ons
+      if (bookingId) {
+        try {
+          const updatedBooking = await FirestoreService.getServiceBookingById(bookingId);
+          if (updatedBooking) {
+            setBooking(updatedBooking);
+            console.log("✅ Refreshed booking data with add-ons");
+          }
+        } catch (refreshError) {
+          console.error("Error refreshing booking data:", refreshError);
+        }
+      }
+      
+    } catch (error) {
+      console.error("Error handling add-on services confirmation:", error);
+      Alert.alert("Error", "Failed to confirm add-on services. Please try again.");
+    }
+  };
 
   // Fetch company phone number for calling
   const fetchCompanyPhone = async (companyId: string) => {
@@ -182,6 +283,9 @@ export default function TrackBookingScreen() {
 
       setBooking(bookingData);
       
+      // Try to determine category ID for add-on services
+      await determineCategoryId(bookingData.serviceName);
+      
       // Check rating status for completed bookings
       await checkRatingStatus(bookingData);
       
@@ -246,6 +350,9 @@ export default function TrackBookingScreen() {
         // Update previous status for next comparison (set after the rejection check)
         setPreviousStatus(bookingData.status);
         setBooking(bookingData);
+
+        // Try to determine category ID for add-on services
+        await determineCategoryId(bookingData.serviceName);
 
         // If this is the first load and booking is already rejected, show modal
         if (previousStatus === null && bookingData.status === 'rejected') {
@@ -336,7 +443,7 @@ export default function TrackBookingScreen() {
 
     // Handle rejected/expired/cancelled bookings
     if (booking.status === 'rejected' || booking.status === 'expired' || booking.status === 'cancelled') {
-      const statusStep = {
+      const statusStep: TrackingStep = {
         id: booking.status,
         title: booking.status === 'rejected' ? 'Booking Rejected by Admin' : 
                booking.status === 'cancelled' ? 'Booking Cancelled by You' : 'Booking Expired',
@@ -352,7 +459,7 @@ export default function TrackBookingScreen() {
           : booking.status === 'expired' && booking.expiredAt 
           ? formatTimestamp(booking.expiredAt)
           : "Recently",
-        status: "completed",
+        status: "completed" as const,
         icon: booking.status === 'rejected' ? 'close-circle' : 
               booking.status === 'cancelled' ? 'remove-circle' : 'time',
       };
@@ -980,6 +1087,19 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
+        {/* Add-On Services Button - Only show when technician is assigned and booking is active */}
+        {categoryId && isTechnicianAssigned() && isActive && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.addOnButton}
+              onPress={handleAddOnServices}
+            >
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.addOnButtonText}>Add More Services</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Action Buttons */}
         {isActive && (
           <View style={styles.actionButtons}>
@@ -1046,6 +1166,20 @@ export default function TrackBookingScreen() {
           time: booking.time,
           customerAddress: booking.customerAddress,
         } : null}
+      />
+
+      {/* Add-On Services Modal */}
+      <AddOnServicesModal
+        visible={showAddOnModal}
+        onClose={() => setShowAddOnModal(false)}
+        onAddServices={handleAddServicesConfirm}
+        categoryId={categoryId}
+        existingServices={[
+          ...(booking?.serviceName ? [booking.serviceName] : []),
+          ...(booking?.workName && booking.workName !== booking.serviceName ? [booking.workName] : []),
+          ...(booking?.addOns?.map(addon => addon.name) || [])
+        ]}
+        bookingId={bookingId}
       />
     </View>
   );
@@ -1663,5 +1797,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     fontWeight: "500",
+  },
+  addOnButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#F59E0B",
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  addOnButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
