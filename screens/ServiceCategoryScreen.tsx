@@ -194,10 +194,10 @@ export default function ServiceCategoryScreen() {
       return;
     }
 
-    // Go to company selection
+    // Go to slot selection first (new flow)
     const selectedIssuesObjects = issues.filter(i => selectedIds.includes(i.id));
 
-    navigation.navigate("CompanySelection", {
+    navigation.navigate("SelectDateTime", {
       serviceTitle,
       categoryId,
       issues: selectedIssueTitles,

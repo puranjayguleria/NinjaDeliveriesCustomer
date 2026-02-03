@@ -11,16 +11,18 @@ import {
 } from "react-native";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
+import { useServiceCart } from "../context/ServiceCartContext";
 
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime, selectedDateFull } = route.params;
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
@@ -303,26 +305,47 @@ export default function CompanySelectionScreen() {
   const selectCompany = () => {
     if (!selectedCompany) return;
     
-    // Check if selected company is busy
-    const isBusy = (selectedCompany as any).isBusy === true;
-    if (isBusy) {
-      Alert.alert(
-        "Workers Busy",
-        "All workers for this company are currently busy with the selected service. Please select another company or try again later.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
+    // Determine booking type based on service title
+    let bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash' = 'electrician';
+    const lowerTitle = serviceTitle?.toLowerCase() || '';
     
-    navigation.navigate("SelectDateTime", {
+    if (lowerTitle.includes('plumber')) bookingType = 'plumber';
+    else if (lowerTitle.includes('cleaning')) bookingType = 'cleaning';
+    else if (lowerTitle.includes('health')) bookingType = 'health';
+    else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
+    else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
+
+    // Calculate price from selected issues or company price
+    const issueTotalPrice = Array.isArray(selectedIssues)
+      ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
+      : 0;
+    const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 99);
+
+    // Add service to cart
+    addService({
       serviceTitle,
-      categoryId,
-      // Keep the existing `issues` (names) for backward compatibility but also pass the full objects
-      issues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name) : issues,
-      selectedIssues: selectedIssues || [],
+      issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
       company: selectedCompany,
-      selectedIssueIds,
+      selectedDate: selectedDate,
+      selectedTime: selectedTime,
+      bookingType,
+      totalPrice: computedPrice,
     });
+
+    Alert.alert(
+      "Added to Cart",
+      `${serviceTitle} service has been added to your cart for ${selectedDateFull || selectedDate} at ${selectedTime}.`,
+      [
+        {
+          text: "Continue Services",
+          onPress: () => navigation.navigate("ServicesHome"),
+        },
+        {
+          text: "View Cart",
+          onPress: () => navigation.navigate("ServiceCart"),
+        },
+      ]
+    );
   }; 
 
   return (
@@ -405,6 +428,16 @@ export default function CompanySelectionScreen() {
       {/* Service Info Card */}
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
+        
+        {/* Selected Slot Info */}
+        {selectedDate && selectedTime && (
+          <View style={styles.slotInfoSection}>
+            <Text style={styles.slotInfoTitle}>Selected Slot:</Text>
+            <Text style={styles.slotInfoText}>
+              {selectedDateFull || selectedDate} at {selectedTime}
+            </Text>
+          </View>
+        )}
         
         <View style={styles.issuesSection}>
           <Text style={styles.issuesTitle}>Selected Issues:</Text>
@@ -594,12 +627,7 @@ export default function CompanySelectionScreen() {
             activeOpacity={selectedCompany && (selectedCompany as any).isBusy ? 0.3 : 0.7}
             onPress={selectCompany}
           >
-            <Text style={[
-              styles.continueText,
-              selectedCompany && (selectedCompany as any).isBusy && styles.continueTextDisabled
-            ]}>
-              {selectedCompany && (selectedCompany as any).isBusy ? 'Workers Busy for Service' : 'Continue'}
-            </Text>
+            <Text style={styles.continueText}>Add to Cart</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -720,6 +748,30 @@ const styles = StyleSheet.create({
 
   issuesSection: {
     marginTop: 8,
+  },
+
+  slotInfoSection: {
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+  },
+
+  slotInfoTitle: {
+    fontSize: 13,
+    color: "#0369a1",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+
+  slotInfoText: {
+    fontSize: 15,
+    color: "#0c4a6e",
+    fontWeight: "600",
+    letterSpacing: -0.2,
   },
 
   issuesTitle: { 
