@@ -199,18 +199,48 @@ export default function AddOnServicesModal({
 
     const totalAmount = getTotalPrice();
     
-    // Show confirmation with payment
+    // Show confirmation with payment options
     Alert.alert(
       "Confirm Add-On Services",
-      `You are about to add ${selected.length} service${selected.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nPayment will be processed immediately via Razorpay.`,
+      `You are about to add ${selected.length} service${selected.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nChoose your payment method:`,
       [
         { text: "Cancel", style: "cancel" },
+        { 
+          text: "Pay as Cash", 
+          onPress: () => handleCashPayment(selected, totalAmount)
+        },
         { 
           text: "Pay Now", 
           onPress: () => handleRazorpayPayment(selected, totalAmount)
         },
       ]
     );
+  };
+
+  const handleCashPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
+    setPaymentLoading(true);
+    try {
+      console.log(`💰 Processing cash payment for ${selectedAddOns.length} add-on services - Amount: ₹${totalAmount}`);
+      
+      // Update booking with add-on services and cash payment info
+      await updateBookingWithAddOns(selectedAddOns, totalAmount, null, 'cash');
+      
+      // Close modal and notify parent
+      onAddServices(selectedAddOns);
+      onClose();
+      
+      Alert.alert(
+        "Services Added! 💰", 
+        `${selectedAddOns.length} add-on service${selectedAddOns.length > 1 ? 's' : ''} added to your booking.\n\nAmount: ₹${totalAmount} (Cash Payment)\n\nPlease pay the technician when the service is completed.`,
+        [{ text: "OK" }]
+      );
+      
+    } catch (error: any) {
+      console.error("Cash payment processing error:", error);
+      Alert.alert("Error", "Failed to add services with cash payment. Please try again.");
+    } finally {
+      setPaymentLoading(false);
+    }
   };
 
   const handleRazorpayPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
@@ -295,7 +325,7 @@ export default function AddOnServicesModal({
             console.log("Add-on payment verified, updating booking...");
             
             // Update booking with add-on services and payment info
-            await updateBookingWithAddOns(selectedAddOns, totalAmount, response);
+            await updateBookingWithAddOns(selectedAddOns, totalAmount, response, 'online');
             
             // Close modal and notify parent
             onAddServices(selectedAddOns);
@@ -334,7 +364,7 @@ export default function AddOnServicesModal({
     }
   };
 
-  const updateBookingWithAddOns = async (selectedAddOns: AddOnService[], totalAmount: number, razorpayResponse: any) => {
+  const updateBookingWithAddOns = async (selectedAddOns: AddOnService[], totalAmount: number, razorpayResponse: any, paymentMethod: 'online' | 'cash' = 'online') => {
     try {
       if (!bookingId) {
         console.warn("No booking ID provided for add-on update");
@@ -371,20 +401,20 @@ export default function AddOnServicesModal({
       const paymentData = {
         bookingId: bookingId,
         amount: totalAmount,
-        paymentMethod: 'online' as const,
-        paymentStatus: 'paid' as const,
+        paymentMethod: paymentMethod,
+        paymentStatus: paymentMethod === 'cash' ? 'pending' as const : 'paid' as const,
         serviceName: `Add-on Services (${selectedAddOns.length} services)`,
         companyName: 'Ninja Services',
         companyId: currentBooking.companyId || '',
-        paymentGateway: 'razorpay' as const,
-        transactionId: razorpayResponse.razorpay_payment_id || '',
-        razorpayOrderId: razorpayResponse.razorpay_order_id || '',
-        razorpaySignature: razorpayResponse.razorpay_signature || '',
+        paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : undefined,
+        transactionId: razorpayResponse?.razorpay_payment_id || '',
+        razorpayOrderId: razorpayResponse?.razorpay_order_id || '',
+        razorpaySignature: razorpayResponse?.razorpay_signature || '',
       };
 
       await FirestoreService.createServicePayment(paymentData);
       
-      console.log(`✅ Updated booking ${bookingId} with ${selectedAddOns.length} add-on services and payment record`);
+      console.log(`✅ Updated booking ${bookingId} with ${selectedAddOns.length} add-on services and ${paymentMethod} payment record`);
       
     } catch (error) {
       console.error("Error updating booking with add-ons:", error);
@@ -495,11 +525,11 @@ export default function AddOnServicesModal({
               {paymentLoading ? (
                 <View style={styles.loadingButtonContent}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.addButtonText}>Processing Payment...</Text>
+                  <Text style={styles.addButtonText}>Processing...</Text>
                 </View>
               ) : (
                 <Text style={styles.addButtonText}>
-                  Pay ₹{getTotalPrice()} for {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''}
+                  Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''} - ₹{getTotalPrice()}
                 </Text>
               )}
             </TouchableOpacity>

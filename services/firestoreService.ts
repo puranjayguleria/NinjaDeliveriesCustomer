@@ -106,7 +106,7 @@ export interface ServiceBooking {
   customerId?: string; // User ID who created the booking
   date: string;
   time: string;
-  status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'expired' | 'reject';
+  status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'cancelled' | 'expired' | 'reject';
   companyId?: string;
   // Worker/Technician fields (using actual database field names)
   workerName?: string;    // Primary field name in database
@@ -137,9 +137,13 @@ export interface ServiceBooking {
   startedAt?: any;
   completedAt?: any;
   rejectedAt?: any;
+  cancelledAt?: any; // New field for user cancellation
   expiredAt?: any;
   createdAt?: any;
   updatedAt?: any;
+  // Cancellation/Rejection tracking
+  cancelledBy?: 'user' | 'admin'; // New field to track who cancelled
+  rejectedBy?: 'user' | 'admin'; // New field to track who rejected
   // Rating and feedback fields
   customerRating?: number;
   customerFeedback?: string;
@@ -1832,6 +1836,66 @@ export class FirestoreService {
   }
 
   /**
+   * Cancel booking by user - sets status to 'cancelled'
+   */
+  static async cancelBookingByUser(
+    bookingId: string,
+    additionalData?: Partial<ServiceBooking>
+  ): Promise<void> {
+    try {
+      console.log(`🚫 User cancelling booking ${bookingId}...`);
+      
+      const updateData: any = {
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        cancelledBy: 'user',
+        updatedAt: new Date(),
+        ...additionalData
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ User cancelled booking ${bookingId} - status set to 'cancelled'`);
+    } catch (error: any) {
+      console.error(`❌ Error cancelling booking ${bookingId}:`, error);
+      throw new Error('Failed to cancel booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Reject booking by admin - sets status to 'rejected'
+   */
+  static async rejectBookingByAdmin(
+    bookingId: string,
+    additionalData?: Partial<ServiceBooking>
+  ): Promise<void> {
+    try {
+      console.log(`❌ Admin rejecting booking ${bookingId}...`);
+      
+      const updateData: any = {
+        status: 'rejected',
+        rejectedAt: new Date(),
+        rejectedBy: 'admin',
+        updatedAt: new Date(),
+        ...additionalData
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Admin rejected booking ${bookingId} - status set to 'rejected'`);
+    } catch (error: any) {
+      console.error(`❌ Error rejecting booking ${bookingId}:`, error);
+      throw new Error('Failed to reject booking. Please check your internet connection.');
+    }
+  }
+
+  /**
    * Check if a booking has already been rated by the current user
    */
   static async hasBookingBeenRated(bookingId: string): Promise<boolean> {
@@ -3334,11 +3398,15 @@ export class FirestoreService {
         filteredBookings = allUserBookings.filter(booking => booking.status === 'completed');
         console.log(`✅ Showing COMPLETED bookings: ${filteredBookings.length}`);
       } else if (status === 'rejected') {
-        // Only rejected bookings (handle both 'rejected' and 'reject' for backward compatibility)
+        // Only admin rejected bookings (handle both 'rejected' and 'reject' for backward compatibility)
         filteredBookings = allUserBookings.filter(booking => 
           booking.status === 'rejected' || booking.status === 'reject'
         );
-        console.log(`✅ Showing REJECTED bookings (rejected/reject): ${filteredBookings.length}`);
+        console.log(`✅ Showing ADMIN REJECTED bookings (rejected/reject): ${filteredBookings.length}`);
+      } else if (status === 'cancelled') {
+        // Only user cancelled bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'cancelled');
+        console.log(`✅ Showing USER CANCELLED bookings: ${filteredBookings.length}`);
       } else {
         // Specific status (for any other status)
         filteredBookings = allUserBookings.filter(booking => booking.status === status);
@@ -3405,16 +3473,20 @@ export class FirestoreService {
         // Fix 'reject' to 'rejected'
         if (data.status === 'reject') {
           updates.status = 'rejected';
+          updates.rejectedBy = 'admin'; // Assume admin rejection for legacy 'reject' status
           needsUpdate = true;
           console.log(`🔧 Fixing booking ${doc.id}: 'reject' → 'rejected'`);
         }
         
-        // Fix 'cancelled' to 'rejected' (if any exist)
-        if (data.status === 'cancelled' || data.status === 'canceled') {
-          updates.status = 'rejected';
+        // Fix 'canceled' (typo) to 'cancelled' (keep cancelled separate from rejected)
+        if (data.status === 'canceled') {
+          updates.status = 'cancelled';
+          updates.cancelledBy = 'user'; // Assume user cancellation
           needsUpdate = true;
-          console.log(`🔧 Fixing booking ${doc.id}: '${data.status}' → 'rejected'`);
+          console.log(`🔧 Fixing booking ${doc.id}: 'canceled' → 'cancelled'`);
         }
+        
+        // Note: We no longer convert 'cancelled' to 'rejected' - they are now separate statuses
         
         // Fix timestamp field names
         if (data.rejectAt && !data.rejectedAt) {
@@ -3492,14 +3564,18 @@ export class FirestoreService {
       });
       
       // Check for problematic statuses
-      const problematicStatuses = ['reject', 'cancelled', 'canceled'];
+      const problematicStatuses = ['reject', 'canceled']; // Removed 'cancelled' as it's now a valid separate status
       const hasProblems = problematicStatuses.some(status => statusCounts[status] > 0);
       
       if (hasProblems) {
         console.log(`⚠️ Found problematic statuses that should be fixed:`);
         problematicStatuses.forEach(status => {
           if (statusCounts[status] > 0) {
-            console.log(`   - '${status}' should be 'rejected'`);
+            if (status === 'reject') {
+              console.log(`   - '${status}' should be 'rejected'`);
+            } else if (status === 'canceled') {
+              console.log(`   - '${status}' should be 'cancelled'`);
+            }
           }
         });
         console.log(`💡 Run FirestoreService.fixBookingStatusInconsistencies() to fix these`);

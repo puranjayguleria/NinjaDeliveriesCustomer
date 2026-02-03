@@ -21,7 +21,9 @@ export class BookingUtils {
         return '#10B981'; // Green - work finished
       case 'rejected':
       case 'expired':
-        return '#EF4444'; // Red - cancelled/expired
+        return '#EF4444'; // Red - admin rejected/expired
+      case 'cancelled':
+        return '#F97316'; // Orange - user cancelled
       default:
         return '#6B7280'; // Gray
     }
@@ -42,6 +44,8 @@ export class BookingUtils {
         return 'Completed';
       case 'rejected':
         return 'Rejected';
+      case 'cancelled':
+        return 'Cancelled';
       case 'expired':
         return 'Expired';
       default:
@@ -57,10 +61,10 @@ export class BookingUtils {
   }
 
   /**
-   * Check if booking is active (not completed, rejected, or expired)
+   * Check if booking is active (not completed, rejected, cancelled, or expired)
    */
   static isActiveBooking(status: ServiceBooking['status']): boolean {
-    return !['completed', 'rejected', 'expired'].includes(status);
+    return !['completed', 'rejected', 'cancelled', 'expired'].includes(status);
   }
 
   /**
@@ -69,13 +73,14 @@ export class BookingUtils {
   static getNextStatus(currentStatus: ServiceBooking['status']): ServiceBooking['status'][] {
     switch (currentStatus) {
       case 'pending':
-        return ['assigned', 'rejected', 'expired'];
+        return ['assigned', 'rejected', 'cancelled', 'expired'];
       case 'assigned':
-        return ['started', 'rejected'];
+        return ['started', 'rejected', 'cancelled'];
       case 'started':
         return ['completed'];
       case 'completed':
       case 'rejected':
+      case 'cancelled':
       case 'expired':
         return []; // Terminal states
       default:
@@ -135,6 +140,7 @@ export class BookingUtils {
       case 'completed':
         return 100;
       case 'rejected':
+      case 'cancelled':
       case 'expired':
         return 0;
       default:
@@ -163,7 +169,9 @@ export class BookingUtils {
         const completedBy = booking.technicianName ? ` by ${booking.technicianName}` : '';
         return `Your service has been completed successfully${completedBy}. Thank you for choosing our service!`;
       case 'rejected':
-        return 'This booking has been rejected. Please contact support for assistance.';
+        return 'This booking has been rejected by the admin. Please contact support for assistance or find alternative service providers.';
+      case 'cancelled':
+        return 'You have cancelled this booking. You can create a new booking if you still need the service.';
       case 'expired':
         return 'This booking has expired. Please create a new booking if you still need the service.';
       default:

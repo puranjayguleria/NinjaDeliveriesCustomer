@@ -17,6 +17,8 @@ import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
 import TechnicianInfo from "../components/TechnicianInfo";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
+import BookingRejectionModal from "../components/BookingRejectionModal";
+import AddOnServicesModal from "../components/AddOnServicesModal";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -51,6 +53,108 @@ export default function TrackBookingScreen() {
   const [animatedProgress] = useState(new Animated.Value(0));
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [previousStatus, setPreviousStatus] = useState<BookingStatus | null>(null);
+  const [showAddOnModal, setShowAddOnModal] = useState(false);
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [addOnServices, setAddOnServices] = useState<any[]>([]);
+  const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
+
+  // Helper function to determine category ID based on service name
+  const determineCategoryId = async (serviceName: string) => {
+    try {
+      // Fetch all categories and find the one that matches the service
+      const categories = await FirestoreService.getServiceCategories();
+      
+      // Simple matching logic - you might need to improve this based on your data structure
+      const matchingCategory = categories.find(category => 
+        serviceName.toLowerCase().includes(category.name.toLowerCase()) ||
+        category.name.toLowerCase().includes(serviceName.toLowerCase())
+      );
+
+      if (matchingCategory) {
+        setCategoryId(matchingCategory.id);
+        console.log(`📱 Found matching category: ${matchingCategory.name} (${matchingCategory.id})`);
+      } else {
+        console.log(`📱 No matching category found for service: ${serviceName}`);
+      }
+    } catch (error) {
+      console.error("Error determining category ID:", error);
+    }
+  };
+
+  // Helper function to check if technician is assigned
+  const isTechnicianAssigned = (): boolean => {
+    if (!booking) return false;
+    
+    // Check multiple conditions to determine if technician is assigned
+    const hasAssignedStatus = booking.status === 'assigned' || 
+                             booking.status === 'started' || 
+                             booking.status === 'completed';
+    
+    const hasTechnicianInfo = !!(booking.technicianName || 
+                                booking.technicianId || 
+                                booking.workerName || 
+                                booking.workerId);
+    
+    const hasAssignmentTimestamp = !!booking.assignedAt;
+    
+    // Technician is considered assigned if any of these conditions are met
+    const isAssigned = hasAssignedStatus || hasTechnicianInfo || hasAssignmentTimestamp;
+    
+    console.log(`🔍 Checking technician assignment:`, {
+      status: booking.status,
+      hasAssignedStatus,
+      hasTechnicianInfo,
+      hasAssignmentTimestamp,
+      technicianName: booking.technicianName,
+      workerName: booking.workerName,
+      isAssigned
+    });
+    
+    return isAssigned;
+  };
+
+  const handleAddOnServices = () => {
+    if (!categoryId) {
+      Alert.alert(
+        "Category Not Found", 
+        "Unable to determine service category for add-on services."
+      );
+      return;
+    }
+    setShowAddOnModal(true);
+  };
+
+  const handleAddServicesConfirm = async (selectedServices: any[]) => {
+    try {
+      // Add-on services are now handled with immediate payment in the modal
+      // This function is called after successful payment
+      setAddOnServices(selectedServices);
+      const addOnTotal = selectedServices.reduce((sum, service) => sum + service.price, 0);
+      const newTotal = (booking?.totalPrice || 0) + addOnTotal;
+      setTotalWithAddOns(newTotal);
+      
+      console.log(`✅ Add-on services confirmed with payment: ${selectedServices.length} services, ₹${addOnTotal}`);
+      
+      // Refresh booking data to show updated add-ons
+      if (bookingId) {
+        try {
+          const updatedBooking = await FirestoreService.getServiceBookingById(bookingId);
+          if (updatedBooking) {
+            setBooking(updatedBooking);
+            console.log("✅ Refreshed booking data with add-ons");
+          }
+        } catch (refreshError) {
+          console.error("Error refreshing booking data:", refreshError);
+        }
+      }
+      
+    } catch (error) {
+      console.error("Error handling add-on services confirmation:", error);
+      Alert.alert("Error", "Failed to confirm add-on services. Please try again.");
+    }
+  };
 
   // Fetch company phone number for calling
   const fetchCompanyPhone = async (companyId: string) => {
@@ -179,6 +283,9 @@ export default function TrackBookingScreen() {
 
       setBooking(bookingData);
       
+      // Try to determine category ID for add-on services
+      await determineCategoryId(bookingData.serviceName);
+      
       // Check rating status for completed bookings
       await checkRatingStatus(bookingData);
       
@@ -226,7 +333,34 @@ export default function TrackBookingScreen() {
           return;
         }
 
+        // Check if booking was just rejected or cancelled (only after initial load)
+        if (previousStatus !== null && previousStatus !== 'rejected' && previousStatus !== 'cancelled' && 
+            (bookingData.status === 'rejected' || bookingData.status === 'cancelled')) {
+          console.log(`🚫 Booking was ${bookingData.status}, handling accordingly`);
+          
+          // Only show rejection modal for admin rejections, not user cancellations
+          if (bookingData.status === 'rejected') {
+            console.log('🚫 Admin rejected booking, opening alternative companies modal');
+            setShowRejectionModal(true);
+          } else if (bookingData.status === 'cancelled') {
+            console.log('🚫 User cancelled booking, no alternative companies modal needed');
+          }
+        }
+
+        // Update previous status for next comparison (set after the rejection check)
+        setPreviousStatus(bookingData.status);
         setBooking(bookingData);
+
+        // Try to determine category ID for add-on services
+        await determineCategoryId(bookingData.serviceName);
+
+        // If this is the first load and booking is already rejected, show modal
+        if (previousStatus === null && bookingData.status === 'rejected') {
+          console.log('🚫 Booking is already rejected on first load, opening modal');
+          setTimeout(() => {
+            setShowRejectionModal(true);
+          }, 1000); // Longer delay for initial load
+        }
 
         // Check rating status for completed bookings
         await checkRatingStatus(bookingData);
@@ -307,24 +441,32 @@ export default function TrackBookingScreen() {
       },
     ];
 
-    // Handle rejected/expired bookings
-    if (booking.status === 'rejected' || booking.status === 'expired') {
+    // Handle rejected/expired/cancelled bookings
+    if (booking.status === 'rejected' || booking.status === 'expired' || booking.status === 'cancelled') {
+      const statusStep: TrackingStep = {
+        id: booking.status,
+        title: booking.status === 'rejected' ? 'Booking Rejected by Admin' : 
+               booking.status === 'cancelled' ? 'Booking Cancelled by You' : 'Booking Expired',
+        description: booking.status === 'rejected' 
+          ? 'This booking has been rejected by the admin. You can find alternative service providers below.'
+          : booking.status === 'cancelled'
+          ? 'You have cancelled this booking. You can create a new booking if needed.'
+          : 'This booking has expired. Please create a new booking.',
+        timestamp: booking.status === 'rejected' && booking.rejectedAt 
+          ? formatTimestamp(booking.rejectedAt)
+          : booking.status === 'cancelled' && booking.cancelledAt
+          ? formatTimestamp(booking.cancelledAt)
+          : booking.status === 'expired' && booking.expiredAt 
+          ? formatTimestamp(booking.expiredAt)
+          : "Recently",
+        status: "completed" as const,
+        icon: booking.status === 'rejected' ? 'close-circle' : 
+              booking.status === 'cancelled' ? 'remove-circle' : 'time',
+      };
+
       return [
         allSteps[0], // Keep confirmed step
-        {
-          id: booking.status,
-          title: booking.status === 'rejected' ? 'Booking Rejected' : 'Booking Expired',
-          description: booking.status === 'rejected' 
-            ? 'This booking has been rejected. Please contact support.'
-            : 'This booking has expired. Please create a new booking.',
-          timestamp: booking.status === 'rejected' && booking.rejectedAt 
-            ? formatTimestamp(booking.rejectedAt)
-            : booking.status === 'expired' && booking.expiredAt 
-            ? formatTimestamp(booking.expiredAt)
-            : "Recently",
-          status: "completed",
-          icon: "close-circle",
-        }
+        statusStep
       ];
     }
     
@@ -457,11 +599,43 @@ export default function TrackBookingScreen() {
 
     try {
       setShowCancellationModal(false);
-      await FirestoreService.updateBookingStatus(booking.id, 'rejected');
+      await FirestoreService.cancelBookingByUser(booking.id);
       Alert.alert("Booking Cancelled", "Your booking has been cancelled successfully.");
       fetchBookingData(); // Refresh data
     } catch (error) {
       Alert.alert("Error", "Failed to cancel booking. Please try again.");
+    }
+  };
+
+  const handleSelectNewCompany = async (selectedCompany: any) => {
+    if (!booking) return;
+
+    try {
+      console.log('🏢 User selected new company:', selectedCompany.companyName || selectedCompany.serviceName);
+      
+      // Since we don't have the original booking flow parameters, 
+      // we'll navigate to a simplified rebooking flow
+      navigation.navigate("CompanySelection", {
+        serviceTitle: booking.serviceName,
+        // Use the service name to try to find the category
+        categoryId: undefined,
+        issues: [booking.serviceName], // Use service name as the issue
+        selectedIssues: [{ name: booking.serviceName }],
+        selectedIssueIds: [],
+        // Pass the selected company to pre-select it
+        preSelectedCompany: selectedCompany,
+        // Pass original booking data for reference
+        originalBookingId: booking.id,
+        isRebooking: true,
+        // Pass the original date/time as defaults
+        defaultDate: booking.date,
+        defaultTime: booking.time,
+      });
+      
+      setShowRejectionModal(false);
+    } catch (error) {
+      console.error('❌ Error handling company selection:', error);
+      Alert.alert("Error", "Failed to proceed with selected company. Please try again.");
     }
   };
 
@@ -913,6 +1087,19 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
+        {/* Add-On Services Button - Only show when technician is assigned and booking is active */}
+        {categoryId && isTechnicianAssigned() && isActive && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.addOnButton}
+              onPress={handleAddOnServices}
+            >
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.addOnButtonText}>Add More Services</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Action Buttons */}
         {isActive && (
           <View style={styles.actionButtons}>
@@ -938,6 +1125,19 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
+        {/* Alternative Companies Button for Rejected Bookings */}
+        {booking.status === 'rejected' && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.findAlternativesButton} 
+              onPress={() => setShowRejectionModal(true)}
+            >
+              <Ionicons name="business" size={20} color="white" />
+              <Text style={styles.findAlternativesButtonText}>Find Alternative Companies</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Bottom spacing */}
         <View style={{ height: 30 }} />
       </ScrollView>
@@ -949,6 +1149,37 @@ export default function TrackBookingScreen() {
         onConfirmCancel={handleConfirmCancellation}
         totalAmount={booking?.totalPrice || 0}
         deductionPercentage={25}
+      />
+
+      {/* Booking Rejection Modal */}
+      <BookingRejectionModal
+        visible={showRejectionModal}
+        onClose={() => setShowRejectionModal(false)}
+        onSelectCompany={handleSelectNewCompany}
+        rejectedBooking={booking ? {
+          id: booking.id,
+          serviceName: booking.serviceName,
+          categoryId: undefined, // ServiceBooking doesn't have this field
+          selectedIssueIds: undefined, // ServiceBooking doesn't have this field  
+          issues: undefined, // ServiceBooking doesn't have this field
+          date: booking.date,
+          time: booking.time,
+          customerAddress: booking.customerAddress,
+        } : null}
+      />
+
+      {/* Add-On Services Modal */}
+      <AddOnServicesModal
+        visible={showAddOnModal}
+        onClose={() => setShowAddOnModal(false)}
+        onAddServices={handleAddServicesConfirm}
+        categoryId={categoryId}
+        existingServices={[
+          ...(booking?.serviceName ? [booking.serviceName] : []),
+          ...(booking?.workName && booking.workName !== booking.serviceName ? [booking.workName] : []),
+          ...(booking?.addOns?.map(addon => addon.name) || [])
+        ]}
+        bookingId={bookingId}
       />
     </View>
   );
@@ -1534,6 +1765,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  findAlternativesButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#3B82F6",
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  findAlternativesButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   ratingTechnicianInfo: {
     flexDirection: "row",
     alignItems: "center",
@@ -1551,5 +1797,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     fontWeight: "500",
+  },
+  addOnButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#F59E0B",
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  addOnButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
