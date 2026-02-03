@@ -342,7 +342,11 @@ const CartScreen: React.FC = () => {
     if (currentStore && currentStore !== prevStoreIdRef.current) {
       const allCartsEmpty = isAllCartsEmpty();
       
-      if (!allCartsEmpty) {
+      // Only clear cart if switching to a different store that can't deliver to current location
+      // Allow location changes within the same delivery area without clearing cart
+      const shouldClearCart = false; // Changed: Don't automatically clear cart on location change
+      
+      if (!allCartsEmpty && shouldClearCart) {
         // Clear all carts when store location changes and carts have items
         clearAllCarts();
       }
@@ -356,7 +360,7 @@ const CartScreen: React.FC = () => {
           navigation.navigate("LocationSelector", {
             fromScreen: "Cart",
           });
-        } else {
+        } else if (shouldClearCart) {
           storeChangeSerial += 1;
         unseenChangeId.current = storeChangeSerial;
         setNotificationModalMessage(
@@ -1434,8 +1438,11 @@ const CartScreen: React.FC = () => {
 
             const allCartsEmpty = isAllCartsEmpty();
             
-            // Only clear carts if they have items
-            if (!allCartsEmpty) {
+            // Don't clear carts when changing location - allow delivery to new address
+            // Only clear if explicitly switching to incompatible store
+            const shouldClearCart = false; // Changed: Don't clear cart on location change
+            
+            if (!allCartsEmpty && shouldClearCart) {
               clearAllCarts();
             }
 
