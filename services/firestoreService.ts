@@ -4239,4 +4239,177 @@ export class FirestoreService {
       throw new Error('Failed to fetch service banners. Please check your internet connection.');
     }
   }
+
+  /**
+   * 🏢 NEW: Fetch detailed package information for companies
+   */
+  static async getDetailedPackagesForCompanies(companies: ServiceCompany[]): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching detailed package information for ${companies.length} companies...`);
+      
+      const enhancedCompanies = await Promise.all(
+        companies.map(async (company) => {
+          try {
+            // If company already has packages, enhance them with more details
+            if (company.packages && Array.isArray(company.packages) && company.packages.length > 0) {
+              console.log(`🏢 Company "${company.companyName}" has ${company.packages.length} packages`);
+              
+              // Enhance package information
+              const enhancedPackages = company.packages.map((pkg: any, index: number) => {
+                if (typeof pkg === 'string') {
+                  return {
+                    id: `${company.id}_package_${index}`,
+                    name: pkg,
+                    price: company.price || 0,
+                    description: `${pkg} service package`,
+                    duration: '1-2 hours',
+                    features: [`${pkg} service`, 'Professional technician', 'Quality guarantee'],
+                  };
+                } else if (typeof pkg === 'object' && pkg !== null) {
+                  return {
+                    id: pkg.id || `${company.id}_package_${index}`,
+                    name: pkg.name || pkg.title || `Package ${index + 1}`,
+                    price: pkg.price || company.price || 0,
+                    description: pkg.description || `${pkg.name || 'Service'} package`,
+                    duration: pkg.duration || '1-2 hours',
+                    features: pkg.features || [
+                      pkg.name || 'Service',
+                      'Professional technician',
+                      'Quality guarantee'
+                    ],
+                    originalPrice: pkg.originalPrice,
+                    discount: pkg.discount,
+                    isPopular: pkg.isPopular || false,
+                  };
+                }
+                return pkg;
+              });
+              
+              return {
+                ...company,
+                packages: enhancedPackages,
+              };
+            } else {
+              // Create default package if none exists
+              console.log(`🏢 Company "${company.companyName}" has no packages, creating default package`);
+              
+              const defaultPackage = {
+                id: `${company.id}_default_package`,
+                name: `${company.serviceName} Service`,
+                price: company.price || 0,
+                description: `Professional ${company.serviceName} service`,
+                duration: '1-2 hours',
+                features: [
+                  company.serviceName || 'Service',
+                  'Professional technician',
+                  'Quality guarantee',
+                  'Customer support'
+                ],
+                isDefault: true,
+              };
+              
+              return {
+                ...company,
+                packages: [defaultPackage],
+              };
+            }
+          } catch (error) {
+            console.error(`❌ Error enhancing packages for company ${company.id}:`, error);
+            return company; // Return original company if enhancement fails
+          }
+        })
+      );
+      
+      console.log(`✅ Enhanced package information for ${enhancedCompanies.length} companies`);
+      return enhancedCompanies;
+      
+    } catch (error) {
+      console.error('❌ Error fetching detailed packages:', error);
+      return companies; // Return original companies if enhancement fails
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies with enhanced package details for specific services
+   */
+  static async getCompaniesWithDetailedPackages(serviceIds: string[]): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies with detailed packages for services: ${serviceIds.join(', ')}`);
+      
+      // First get companies using existing method
+      const companies = await this.getCompaniesByServiceIssues(serviceIds);
+      
+      // Then enhance with detailed package information
+      const companiesWithPackages = await this.getDetailedPackagesForCompanies(companies);
+      
+      console.log(`✅ Fetched ${companiesWithPackages.length} companies with detailed packages`);
+      return companiesWithPackages;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies with detailed packages:', error);
+      throw new Error('Failed to fetch companies with package details. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get package pricing summary for a service
+   */
+  static async getPackagePricingSummary(serviceId: string): Promise<{
+    minPrice: number | null;
+    maxPrice: number | null;
+    averagePrice: number | null;
+    totalPackages: number;
+    companiesCount: number;
+  }> {
+    try {
+      console.log(`🏢 Getting package pricing summary for service: ${serviceId}`);
+      
+      const companies = await this.getCompaniesByServiceIssues([serviceId]);
+      
+      const allPrices: number[] = [];
+      let totalPackages = 0;
+      
+      companies.forEach(company => {
+        if (company.price && company.price > 0) {
+          allPrices.push(company.price);
+        }
+        
+        if (company.packages && Array.isArray(company.packages)) {
+          totalPackages += company.packages.length;
+          
+          company.packages.forEach((pkg: any) => {
+            if (pkg && typeof pkg === 'object' && pkg.price && pkg.price > 0) {
+              allPrices.push(pkg.price);
+            }
+          });
+        }
+      });
+      
+      const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
+      const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : null;
+      const averagePrice = allPrices.length > 0 ? 
+        Math.round(allPrices.reduce((sum, price) => sum + price, 0) / allPrices.length) : null;
+      
+      const summary = {
+        minPrice,
+        maxPrice,
+        averagePrice,
+        totalPackages,
+        companiesCount: companies.length,
+      };
+      
+      console.log(`✅ Package pricing summary for service ${serviceId}:`, summary);
+      return summary;
+      
+    } catch (error) {
+      console.error(`❌ Error getting package pricing summary for service ${serviceId}:`, error);
+      return {
+        minPrice: null,
+        maxPrice: null,
+        averagePrice: null,
+        totalPackages: 0,
+        companiesCount: 0,
+      };
+    }
+  }
 }

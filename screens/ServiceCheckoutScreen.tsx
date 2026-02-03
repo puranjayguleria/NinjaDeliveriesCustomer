@@ -63,12 +63,12 @@ export default function ServiceCheckoutScreen() {
       const addressType = manualAddress.trim() !== "" ? "custom address" : "selected location";
       
       Alert.alert(
-        "Confirm Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at your ${addressType}:\n${addressToUse.length > 50 ? addressToUse.substring(0, 50) + '...' : addressToUse}\n\nContinue?`,
+        "Confirm Cash Payment Booking",
+        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\n💰 Payment Method: Cash on Service\n📍 Service Location: ${addressType}\n${addressToUse.length > 50 ? addressToUse.substring(0, 50) + '...' : addressToUse}\n\nYou will pay the technician directly when the service is completed.\n\nContinue?`,
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Confirm",
+            text: "Confirm Cash Booking",
             onPress: async () => {
               await createBookings();
             },
@@ -526,7 +526,9 @@ export default function ServiceCheckoutScreen() {
             onPress={() => setPaymentMethod("cash")}
           >
             <View style={styles.paymentOptionContent}>
-              <Ionicons name="cash-outline" size={24} color="#333" />
+              <View style={styles.cashIconContainer}>
+                <Ionicons name="cash-outline" size={24} color="#FF9800" />
+              </View>
               <View style={styles.paymentOptionTextContainer}>
                 <Text style={styles.paymentOptionText}>Cash on Service</Text>
                 <Text style={styles.paymentOptionSubtext}>Pay when service is completed</Text>
@@ -545,7 +547,9 @@ export default function ServiceCheckoutScreen() {
             onPress={() => setPaymentMethod("online")}
           >
             <View style={styles.paymentOptionContent}>
-              <Ionicons name="card-outline" size={24} color="#333" />
+              <View style={styles.onlineIconContainer}>
+                <Ionicons name="card-outline" size={24} color="#4CAF50" />
+              </View>
               <View style={styles.paymentOptionTextContainer}>
                 <Text style={styles.paymentOptionText}>Pay Online</Text>
                 <Text style={styles.paymentOptionSubtext}>UPI, Cards, Net Banking via Razorpay</Text>
@@ -561,6 +565,15 @@ export default function ServiceCheckoutScreen() {
               <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
               <Text style={styles.paymentNoteText}>
                 Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
+              </Text>
+            </View>
+          )}
+
+          {paymentMethod === "cash" && (
+            <View style={styles.cashPaymentNote}>
+              <Ionicons name="cash-outline" size={16} color="#FF9800" />
+              <Text style={styles.cashPaymentNoteText}>
+                Pay directly to the technician when the service is completed. No advance payment required.
               </Text>
             </View>
           )}
@@ -618,25 +631,44 @@ export default function ServiceCheckoutScreen() {
           <Text style={styles.footerTotalLabel}>Total: ₹{totalAmount}</Text>
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.proceedButton, loading && styles.proceedButtonDisabled]}
-          onPress={handleProceedToPayment}
-          disabled={loading}
-        >
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#fff" size="small" />
-              <Text style={styles.proceedButtonText}>Creating Bookings...</Text>
-            </View>
-          ) : (
-            <Text style={styles.proceedButtonText}>
-              {paymentMethod === "online" 
-                ? `Pay ₹${totalAmount} Online` 
-                : "Confirm Booking"
-              }
-            </Text>
-          )}
-        </TouchableOpacity>
+        
+        {paymentMethod === "cash" ? (
+          <TouchableOpacity
+            style={[styles.cashPayButton, loading && styles.proceedButtonDisabled]}
+            onPress={handleProceedToPayment}
+            disabled={loading}
+          >
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.proceedButtonText}>Creating Bookings...</Text>
+              </View>
+            ) : (
+              <View style={styles.cashPayButtonContent}>
+                <Ionicons name="cash-outline" size={20} color="#fff" />
+                <Text style={styles.proceedButtonText}>Pay as Cash</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.proceedButton, loading && styles.proceedButtonDisabled]}
+            onPress={handleProceedToPayment}
+            disabled={loading}
+          >
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.proceedButtonText}>Processing Payment...</Text>
+              </View>
+            ) : (
+              <View style={styles.onlinePayButtonContent}>
+                <Ionicons name="card-outline" size={20} color="#fff" />
+                <Text style={styles.proceedButtonText}>Pay ₹{totalAmount} Online</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -937,6 +969,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
   },
+  cashIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFF3E0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  onlineIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E8F5E8",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   paymentOptionTextContainer: {
     marginLeft: 12,
     flex: 1,
@@ -964,6 +1012,23 @@ const styles = StyleSheet.create({
   paymentNoteText: {
     fontSize: 12,
     color: "#2563eb",
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
+  },
+  cashPaymentNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#FFF8E1",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#FFE0B2",
+  },
+  cashPaymentNoteText: {
+    fontSize: 12,
+    color: "#FF9800",
     marginLeft: 8,
     flex: 1,
     lineHeight: 16,
@@ -1040,6 +1105,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  cashPayButton: {
+    backgroundColor: "#FF9800",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  cashPayButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  onlinePayButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   proceedButtonDisabled: {
     backgroundColor: "#A5D6A7",
