@@ -4548,4 +4548,44 @@ export class FirestoreService {
       };
     }
   }
+
+  /**
+   * Check if a company has available workers for a specific date and time
+   * This is a basic implementation that checks for active workers
+   * TODO: Implement actual slot-based availability checking
+   */
+  static async checkCompanyWorkerAvailability(companyId: string, date: string, time: string): Promise<boolean> {
+    try {
+      console.log(`🔍 Checking worker availability for company ${companyId} on ${date} at ${time}`);
+      
+      // Check if company has any active workers
+      const workersQuery = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+      
+      const activeWorkers = workersQuery.docs.length;
+      console.log(`👷 Company ${companyId} has ${activeWorkers} active workers`);
+      
+      if (activeWorkers === 0) {
+        console.log(`❌ Company ${companyId} has no active workers`);
+        return false;
+      }
+      
+      // TODO: Add more sophisticated availability checking here:
+      // - Check worker schedules
+      // - Check existing bookings for the date/time
+      // - Check worker capacity
+      // - Check company operating hours
+      
+      // For now, return true if company has active workers
+      console.log(`✅ Company ${companyId} is available (has ${activeWorkers} active workers)`);
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Error checking worker availability for company ${companyId}:`, error);
+      return false; // If error, assume not available to be safe
+    }
+  }
 }

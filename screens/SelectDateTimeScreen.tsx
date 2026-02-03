@@ -20,7 +20,7 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { serviceTitle, issues, selectedIssues, company } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
 
   // Calculate price from selected issue objects (they include optional `price`)
   const issueTotalPrice = Array.isArray(selectedIssues)
@@ -98,12 +98,6 @@ const dates = getNext7Days();
         {/* Service Info Card */}
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
-
-          {company?.name && (
-            <Text style={styles.companyText}>
-              {company.name} • ₹{company.price}
-            </Text>
-          )}
 
           {Array.isArray(issues) && issues.length > 0 && (
             <View style={styles.issuesSection}>
@@ -221,46 +215,31 @@ const dates = getNext7Days();
           onPress={() => {
             const selected = dates.find(d => d.key === selectedDate);
             
-            // Determine booking type based on service title
-            let bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash' = 'electrician';
-            const lowerTitle = serviceTitle?.toLowerCase() || '';
-            
-            if (lowerTitle.includes('plumber')) bookingType = 'plumber';
-            else if (lowerTitle.includes('cleaning')) bookingType = 'cleaning';
-            else if (lowerTitle.includes('health')) bookingType = 'health';
-            else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
-            else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
-
-            // Add service to cart
-            const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (company?.price || 99);
-
-            addService({
+            console.log('🎯 Navigating to CompanySelection with slot data:', {
               serviceTitle,
-              issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
-              company,
-              selectedDate: selectedDate,
+              categoryId,
+              selectedIssueIds,
+              selectedIssues,
+              issues,
+              selectedDate,
               selectedTime: time,
-              bookingType,
-              totalPrice: computedPrice,
+              selectedDateFull: selected?.full
             });
 
-            Alert.alert(
-              "Added to Cart",
-              `${serviceTitle} service has been added to your cart.`,
-              [
-                {
-                  text: "Continue Services",
-                  onPress: () => navigation.navigate("ServicesHome"),
-                },
-                {
-                  text: "View Cart",
-                  onPress: () => navigation.navigate("ServiceCart"),
-                },
-              ]
-            );
+            // Navigate to company selection with slot data
+            navigation.navigate("CompanySelection", {
+              serviceTitle,
+              categoryId,
+              selectedIssueIds,
+              selectedIssues,
+              issues,
+              selectedDate,
+              selectedTime: time,
+              selectedDateFull: selected?.full
+            });
           }}
         >
-          <Text style={styles.confirmText}>Add to Cart</Text>
+          <Text style={styles.confirmText}>Continue</Text>
         </TouchableOpacity>
       </View>
     </View>
