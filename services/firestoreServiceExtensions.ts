@@ -6,7 +6,7 @@ import { FirestoreService } from './firestoreService';
  */
 export class FirestoreServiceExtensions {
   /**
-   * Fix inconsistent booking statuses - convert 'reject' to 'rejected'
+   * Fix inconsistent booking statuses - convert 'reject' to 'rejected' but keep 'cancelled' separate
    */
   static async fixInconsistentBookingStatuses(): Promise<void> {
     try {
@@ -37,24 +37,20 @@ export class FirestoreServiceExtensions {
           console.log(`🔧 Fixing booking ${doc.id}: 'reject' → 'rejected'`);
           batch.update(doc.ref, { 
             status: 'rejected',
-            updatedAt: new Date()
-          });
-          fixedCount++;
-        } else if (data.status === 'cancelled') {
-          console.log(`🔧 Fixing booking ${doc.id}: 'cancelled' → 'rejected'`);
-          batch.update(doc.ref, { 
-            status: 'rejected',
+            rejectedBy: 'admin', // Assume admin rejection for legacy 'reject' status
             updatedAt: new Date()
           });
           fixedCount++;
         } else if (data.status === 'cancel') {
-          console.log(`🔧 Fixing booking ${doc.id}: 'cancel' → 'rejected'`);
+          console.log(`🔧 Fixing booking ${doc.id}: 'cancel' → 'cancelled'`);
           batch.update(doc.ref, { 
-            status: 'rejected',
+            status: 'cancelled',
+            cancelledBy: 'user', // Assume user cancellation for legacy 'cancel' status
             updatedAt: new Date()
           });
           fixedCount++;
         }
+        // Note: We no longer convert 'cancelled' to 'rejected' - they are now separate statuses
       });
 
       if (fixedCount > 0) {

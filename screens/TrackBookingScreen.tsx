@@ -229,12 +229,18 @@ export default function TrackBookingScreen() {
           return;
         }
 
-        // Check if booking was just rejected (only after initial load)
-        if (previousStatus !== null && previousStatus !== 'rejected' && bookingData.status === 'rejected') {
-          console.log('🚫 Booking was rejected, automatically opening alternative companies modal');
+        // Check if booking was just rejected or cancelled (only after initial load)
+        if (previousStatus !== null && previousStatus !== 'rejected' && previousStatus !== 'cancelled' && 
+            (bookingData.status === 'rejected' || bookingData.status === 'cancelled')) {
+          console.log(`🚫 Booking was ${bookingData.status}, handling accordingly`);
           
-          // Open modal immediately when booking is rejected
-          setShowRejectionModal(true);
+          // Only show rejection modal for admin rejections, not user cancellations
+          if (bookingData.status === 'rejected') {
+            console.log('🚫 Admin rejected booking, opening alternative companies modal');
+            setShowRejectionModal(true);
+          } else if (bookingData.status === 'cancelled') {
+            console.log('🚫 User cancelled booking, no alternative companies modal needed');
+          }
         }
 
         // Update previous status for next comparison (set after the rejection check)
@@ -328,26 +334,32 @@ export default function TrackBookingScreen() {
       },
     ];
 
-    // Handle rejected/expired bookings
-    if (booking.status === 'rejected' || booking.status === 'expired') {
-      const rejectedStep = {
+    // Handle rejected/expired/cancelled bookings
+    if (booking.status === 'rejected' || booking.status === 'expired' || booking.status === 'cancelled') {
+      const statusStep = {
         id: booking.status,
-        title: booking.status === 'rejected' ? 'Booking Rejected' : 'Booking Expired',
+        title: booking.status === 'rejected' ? 'Booking Rejected by Admin' : 
+               booking.status === 'cancelled' ? 'Booking Cancelled by You' : 'Booking Expired',
         description: booking.status === 'rejected' 
-          ? 'This booking has been rejected. You can find alternative service providers below.'
+          ? 'This booking has been rejected by the admin. You can find alternative service providers below.'
+          : booking.status === 'cancelled'
+          ? 'You have cancelled this booking. You can create a new booking if needed.'
           : 'This booking has expired. Please create a new booking.',
         timestamp: booking.status === 'rejected' && booking.rejectedAt 
           ? formatTimestamp(booking.rejectedAt)
+          : booking.status === 'cancelled' && booking.cancelledAt
+          ? formatTimestamp(booking.cancelledAt)
           : booking.status === 'expired' && booking.expiredAt 
           ? formatTimestamp(booking.expiredAt)
           : "Recently",
         status: "completed",
-        icon: "close-circle",
+        icon: booking.status === 'rejected' ? 'close-circle' : 
+              booking.status === 'cancelled' ? 'remove-circle' : 'time',
       };
 
       return [
         allSteps[0], // Keep confirmed step
-        rejectedStep
+        statusStep
       ];
     }
     
@@ -480,7 +492,7 @@ export default function TrackBookingScreen() {
 
     try {
       setShowCancellationModal(false);
-      await FirestoreService.updateBookingStatus(booking.id, 'rejected');
+      await FirestoreService.cancelBookingByUser(booking.id);
       Alert.alert("Booking Cancelled", "Your booking has been cancelled successfully.");
       fetchBookingData(); // Refresh data
     } catch (error) {

@@ -19,7 +19,7 @@ import { FirestoreServiceExtensions } from "../services/firestoreServiceExtensio
 import { BookingUtils } from "../utils/bookingUtils";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 
-type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected';
+type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected' | 'cancelled';
 
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
@@ -137,14 +137,15 @@ export default function BookingHistoryScreen() {
       const pending = allBookings.filter(b => b.status === 'pending').length;
       const completed = allBookings.filter(b => b.status === 'completed').length;
       const reject = allBookings.filter(b => b.status === 'rejected' || b.status === 'reject').length;
+      const cancelled = allBookings.filter(b => b.status === 'cancelled').length;
       
-      console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}`);
+      console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}, Rejected=${reject}, Cancelled=${cancelled}`);
       
-      return { all, active, pending, completed ,reject};
+      return { all, active, pending, completed, reject, cancelled };
     }
     
     // If no bookings loaded yet, return zeros
-    return { all: 0, active: 0, pending: 0, completed: 0 , reject: 0};
+    return { all: 0, active: 0, pending: 0, completed: 0, reject: 0, cancelled: 0 };
   };
 
   const renderFilterTabs = () => {
@@ -155,6 +156,7 @@ export default function BookingHistoryScreen() {
       { key: 'pending', label: 'Pending', count: counts.pending, icon: 'time', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
       { key: 'completed', label: 'Done', count: counts.completed, icon: 'checkmark-circle', color: '#059669', gradient: ['#059669', '#047857'] },
       { key: 'rejected', label: 'Reject', count: counts.reject, icon: 'close-circle', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
+      { key: 'cancelled', label: 'Cancel', count: counts.cancelled, icon: 'remove-circle', color: '#F97316', gradient: ['#F97316', '#EA580C'] },
     ];
 
     return (
@@ -248,9 +250,7 @@ export default function BookingHistoryScreen() {
     try {
       setShowCancellationModal(false);
       setLoading(true);
-      await FirestoreService.updateBookingStatus(bookingToCancel.id, 'rejected', {
-        rejectedAt: new Date()
-      });
+      await FirestoreService.cancelBookingByUser(bookingToCancel.id);
       
       Alert.alert(
         "Booking Cancelled", 
@@ -258,7 +258,7 @@ export default function BookingHistoryScreen() {
         [{ text: "OK", onPress: () => fetchBookings(false, activeFilter) }]
       );
     } catch (error: any) {
-      console.error('Error rejecting booking:', error);
+      console.error('Error cancelling booking:', error);
       Alert.alert(
         "Error", 
         "Failed to cancel booking. Please try again.",
