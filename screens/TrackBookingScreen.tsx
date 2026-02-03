@@ -17,6 +17,7 @@ import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { BookingUtils } from "../utils/bookingUtils";
 import TechnicianInfo from "../components/TechnicianInfo";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
+import BookingRejectionModal from "../components/BookingRejectionModal";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -51,6 +52,8 @@ export default function TrackBookingScreen() {
   const [animatedProgress] = useState(new Animated.Value(0));
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [previousStatus, setPreviousStatus] = useState<BookingStatus | null>(null);
 
   // Fetch company phone number for calling
   const fetchCompanyPhone = async (companyId: string) => {
@@ -226,7 +229,25 @@ export default function TrackBookingScreen() {
           return;
         }
 
+        // Check if booking was just rejected (only after initial load)
+        if (previousStatus !== null && previousStatus !== 'rejected' && bookingData.status === 'rejected') {
+          console.log('🚫 Booking was rejected, automatically opening alternative companies modal');
+          
+          // Open modal immediately when booking is rejected
+          setShowRejectionModal(true);
+        }
+
+        // Update previous status for next comparison (set after the rejection check)
+        setPreviousStatus(bookingData.status);
         setBooking(bookingData);
+
+        // If this is the first load and booking is already rejected, show modal
+        if (previousStatus === null && bookingData.status === 'rejected') {
+          console.log('🚫 Booking is already rejected on first load, opening modal');
+          setTimeout(() => {
+            setShowRejectionModal(true);
+          }, 1000); // Longer delay for initial load
+        }
 
         // Check rating status for completed bookings
         await checkRatingStatus(bookingData);
@@ -309,22 +330,24 @@ export default function TrackBookingScreen() {
 
     // Handle rejected/expired bookings
     if (booking.status === 'rejected' || booking.status === 'expired') {
+      const rejectedStep = {
+        id: booking.status,
+        title: booking.status === 'rejected' ? 'Booking Rejected' : 'Booking Expired',
+        description: booking.status === 'rejected' 
+          ? 'This booking has been rejected. You can find alternative service providers below.'
+          : 'This booking has expired. Please create a new booking.',
+        timestamp: booking.status === 'rejected' && booking.rejectedAt 
+          ? formatTimestamp(booking.rejectedAt)
+          : booking.status === 'expired' && booking.expiredAt 
+          ? formatTimestamp(booking.expiredAt)
+          : "Recently",
+        status: "completed",
+        icon: "close-circle",
+      };
+
       return [
         allSteps[0], // Keep confirmed step
-        {
-          id: booking.status,
-          title: booking.status === 'rejected' ? 'Booking Rejected' : 'Booking Expired',
-          description: booking.status === 'rejected' 
-            ? 'This booking has been rejected. Please contact support.'
-            : 'This booking has expired. Please create a new booking.',
-          timestamp: booking.status === 'rejected' && booking.rejectedAt 
-            ? formatTimestamp(booking.rejectedAt)
-            : booking.status === 'expired' && booking.expiredAt 
-            ? formatTimestamp(booking.expiredAt)
-            : "Recently",
-          status: "completed",
-          icon: "close-circle",
-        }
+        rejectedStep
       ];
     }
     
@@ -462,6 +485,38 @@ export default function TrackBookingScreen() {
       fetchBookingData(); // Refresh data
     } catch (error) {
       Alert.alert("Error", "Failed to cancel booking. Please try again.");
+    }
+  };
+
+  const handleSelectNewCompany = async (selectedCompany: any) => {
+    if (!booking) return;
+
+    try {
+      console.log('🏢 User selected new company:', selectedCompany.companyName || selectedCompany.serviceName);
+      
+      // Since we don't have the original booking flow parameters, 
+      // we'll navigate to a simplified rebooking flow
+      navigation.navigate("CompanySelection", {
+        serviceTitle: booking.serviceName,
+        // Use the service name to try to find the category
+        categoryId: undefined,
+        issues: [booking.serviceName], // Use service name as the issue
+        selectedIssues: [{ name: booking.serviceName }],
+        selectedIssueIds: [],
+        // Pass the selected company to pre-select it
+        preSelectedCompany: selectedCompany,
+        // Pass original booking data for reference
+        originalBookingId: booking.id,
+        isRebooking: true,
+        // Pass the original date/time as defaults
+        defaultDate: booking.date,
+        defaultTime: booking.time,
+      });
+      
+      setShowRejectionModal(false);
+    } catch (error) {
+      console.error('❌ Error handling company selection:', error);
+      Alert.alert("Error", "Failed to proceed with selected company. Please try again.");
     }
   };
 
@@ -938,6 +993,19 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
+        {/* Alternative Companies Button for Rejected Bookings */}
+        {booking.status === 'rejected' && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.findAlternativesButton} 
+              onPress={() => setShowRejectionModal(true)}
+            >
+              <Ionicons name="business" size={20} color="white" />
+              <Text style={styles.findAlternativesButtonText}>Find Alternative Companies</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Bottom spacing */}
         <View style={{ height: 30 }} />
       </ScrollView>
@@ -949,6 +1017,23 @@ export default function TrackBookingScreen() {
         onConfirmCancel={handleConfirmCancellation}
         totalAmount={booking?.totalPrice || 0}
         deductionPercentage={25}
+      />
+
+      {/* Booking Rejection Modal */}
+      <BookingRejectionModal
+        visible={showRejectionModal}
+        onClose={() => setShowRejectionModal(false)}
+        onSelectCompany={handleSelectNewCompany}
+        rejectedBooking={booking ? {
+          id: booking.id,
+          serviceName: booking.serviceName,
+          categoryId: undefined, // ServiceBooking doesn't have this field
+          selectedIssueIds: undefined, // ServiceBooking doesn't have this field  
+          issues: undefined, // ServiceBooking doesn't have this field
+          date: booking.date,
+          time: booking.time,
+          customerAddress: booking.customerAddress,
+        } : null}
       />
     </View>
   );
@@ -1531,6 +1616,21 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     color: "#EF4444",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  findAlternativesButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#3B82F6",
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  findAlternativesButtonText: {
+    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
