@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { FirestoreService, ServiceIssue, ServiceCompany } from "../services/firestoreService";
+import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
@@ -25,7 +25,6 @@ export default function ServiceCategoryScreen() {
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [companiesWithPackages, setCompaniesWithPackages] = useState<Map<string, ServiceCompany[]>>(new Map());
 
   // Fetch issues from Firestore
   useEffect(() => {
@@ -36,7 +35,7 @@ export default function ServiceCategoryScreen() {
     try {
       setLoading(true);
       
-      console.log('Fetching services with companies for category:', categoryId);
+      console.log('Fetching services for category:', categoryId);
       console.log('Category details:', { serviceTitle, categoryId });
 
       if (!categoryId) {
@@ -55,7 +54,7 @@ export default function ServiceCategoryScreen() {
       // Use the new method that fetches services with company info
       const fetchedIssues = await FirestoreService.getServicesWithCompanies(categoryId);
       
-      console.log(`Found ${fetchedIssues.length} services with companies for category ${categoryId}`);
+      console.log(`Found ${fetchedIssues.length} services for category ${categoryId}`);
       console.log('Fetched services:', fetchedIssues.map(s => ({ id: s.id, name: s.name, masterCategoryId: s.masterCategoryId, isActive: s.isActive })));
       
       // 🚨 EMERGENCY DEBUG: Log every single service before filtering
@@ -127,12 +126,9 @@ export default function ServiceCategoryScreen() {
       ];
       
       setIssues(issuesWithOther);
-
-      // 🏢 NEW: Fetch company packages for each service
-      await fetchCompanyPackagesForServices(activeIssues);
       
     } catch (error) {
-      console.error('Error fetching services with companies:', error);
+      console.error('Error fetching services:', error);
       
       // Set only "Other Issue" on error
       setIssues([
@@ -145,45 +141,6 @@ export default function ServiceCategoryScreen() {
       ]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // 🏢 NEW: Fetch company packages for services
-  const fetchCompanyPackagesForServices = async (services: ServiceIssue[]) => {
-    try {
-      console.log('🏢 Fetching company packages for services...');
-      const companiesMap = new Map<string, ServiceCompany[]>();
-      
-      for (const service of services) {
-        if (service.id === 'other') continue; // Skip "Other Issue"
-        
-        console.log(`🏢 Fetching companies with detailed packages for service: ${service.name}`);
-        
-        // 🏢 NEW: Use the enhanced method to get companies with detailed packages
-        const companies = await FirestoreService.getCompaniesWithDetailedPackages([service.id]);
-        
-        console.log(`🏢 Found ${companies.length} companies with packages for "${service.name}":`, 
-          companies.map(c => ({ 
-            companyName: c.companyName, 
-            price: c.price, 
-            packages: c.packages?.length || 0,
-            packageDetails: c.packages?.map(p => ({ 
-              name: typeof p === 'string' ? p : p.name, 
-              price: typeof p === 'object' ? p.price : c.price 
-            }))
-          }))
-        );
-        
-        if (companies.length > 0) {
-          companiesMap.set(service.id, companies);
-        }
-      }
-      
-      setCompaniesWithPackages(companiesMap);
-      console.log(`🏢 Total services with companies: ${companiesMap.size}`);
-      
-    } catch (error) {
-      console.error('❌ Error fetching company packages:', error);
     }
   };
 
@@ -237,24 +194,15 @@ export default function ServiceCategoryScreen() {
       return;
     }
 
-    // ✅ FIRST go to company selection
+    // Go to company selection
     const selectedIssuesObjects = issues.filter(i => selectedIds.includes(i.id));
-    
-    // 🏢 NEW: Collect all companies for selected services
-    const allCompaniesForSelectedServices: ServiceCompany[] = [];
-    selectedIds.forEach(serviceId => {
-      const companies = companiesWithPackages.get(serviceId) || [];
-      allCompaniesForSelectedServices.push(...companies);
-    });
 
     navigation.navigate("CompanySelection", {
       serviceTitle,
       categoryId,
       issues: selectedIssueTitles,
       selectedIssueIds: selectedIds, // Pass the actual issue IDs
-      selectedIssues: selectedIssuesObjects, // pass actual issue objects (with price)
-      companiesWithPackages: Object.fromEntries(companiesWithPackages), // Convert Map to object for navigation
-      allCompanies: allCompaniesForSelectedServices, // All companies for selected services
+      selectedIssues: selectedIssuesObjects, // pass actual issue objects
     });
   };
 
@@ -265,16 +213,6 @@ export default function ServiceCategoryScreen() {
 
   const renderItem = ({ item }: any) => {
     const checked = selectedIds.includes(item.id);
-    const companies = companiesWithPackages.get(item.id) || [];
-    const hasCompanies = companies.length > 0;
-    
-    // Calculate price range for this service
-    const prices = companies.map(c => c.price).filter((p): p is number => p != null && p > 0);
-    const minPrice = prices.length > 0 ? Math.min(...prices) : null;
-    const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
-    
-    // Get total packages count
-    const totalPackages = companies.reduce((sum, c) => sum + (c.packages?.length || 0), 0);
 
     return (
       <TouchableOpacity
@@ -290,76 +228,6 @@ export default function ServiceCategoryScreen() {
             <Text style={styles.subTitle}>
               {checked ? "Selected for service" : "Tap to select this issue"}
             </Text>
-            
-            {/* 🏢 NEW: Company and pricing information */}
-            {hasCompanies && item.id !== 'other' && (
-              <View style={styles.companyInfo}>
-                <View style={styles.companyStats}>
-                  <Text style={styles.companyCount}>
-                    {companies.length} provider{companies.length !== 1 ? 's' : ''} available
-                  </Text>
-                  
-                  {minPrice && (
-                    <View style={styles.priceRange}>
-                      <Text style={styles.priceText}>
-                        ₹{minPrice}{maxPrice && maxPrice !== minPrice ? ` - ₹${maxPrice}` : ''}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                
-                {totalPackages > 0 && (
-                  <Text style={styles.packagesInfo}>
-                    {totalPackages} package{totalPackages !== 1 ? 's' : ''} available
-                  </Text>
-                )}
-                
-                {/* Show top 2 companies with package details */}
-                {companies.slice(0, 2).map((company, index) => (
-                  <View key={company.id} style={styles.companyPreview}>
-                    <View style={styles.companyHeader}>
-                      <Text style={styles.companyName}>
-                        {company.companyName || `Provider ${index + 1}`}
-                      </Text>
-                      {company.price && (
-                        <Text style={styles.companyPrice}>₹{company.price}</Text>
-                      )}
-                    </View>
-                    
-                    {/* Show package details */}
-                    {company.packages && company.packages.length > 0 && (
-                      <View style={styles.packageDetails}>
-                        {company.packages.slice(0, 2).map((pkg: any, pkgIndex: number) => (
-                          <View key={pkgIndex} style={styles.packageItem}>
-                            <Text style={styles.packageName}>
-                              {typeof pkg === 'string' ? pkg : pkg.name || `Package ${pkgIndex + 1}`}
-                            </Text>
-                            {typeof pkg === 'object' && pkg.price && (
-                              <Text style={styles.packagePrice}>₹{pkg.price}</Text>
-                            )}
-                          </View>
-                        ))}
-                        {company.packages.length > 2 && (
-                          <Text style={styles.morePackagesText}>
-                            +{company.packages.length - 2} more package{company.packages.length - 2 !== 1 ? 's' : ''}
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                ))}
-                
-                {companies.length > 2 && (
-                  <Text style={styles.moreCompanies}>
-                    +{companies.length - 2} more provider{companies.length - 2 !== 1 ? 's' : ''}
-                  </Text>
-                )}
-              </View>
-            )}
-            
-            {!hasCompanies && item.id !== 'other' && (
-              <Text style={styles.noCompanies}>No providers available yet</Text>
-            )}
           </View>
         </View>
 
@@ -729,160 +597,5 @@ const styles = StyleSheet.create({
 
   btnDisabled: {
     opacity: 0.6,
-  },
-
-  // 🏢 NEW: Company and package information styles
-  companyInfo: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-  },
-
-  companyStats: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-
-  companyCount: {
-    fontSize: 12,
-    color: "#059669",
-    fontWeight: "600",
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-
-  priceRange: {
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-
-  priceText: {
-    fontSize: 12,
-    color: "#92400e",
-    fontWeight: "700",
-  },
-
-  packagesInfo: {
-    fontSize: 11,
-    color: "#7c3aed",
-    fontWeight: "500",
-    backgroundColor: "#f3e8ff",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    alignSelf: "flex-start",
-    marginBottom: 6,
-  },
-
-  companyPreview: {
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-
-  companyHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-
-  companyName: {
-    fontSize: 12,
-    color: "#374151",
-    fontWeight: "600",
-    flex: 1,
-    marginRight: 8,
-  },
-
-  companyPrice: {
-    fontSize: 12,
-    color: "#059669",
-    fontWeight: "700",
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-
-  packageDetails: {
-    marginTop: 4,
-  },
-
-  packageItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 2,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-
-  packageName: {
-    fontSize: 10,
-    color: "#64748b",
-    fontWeight: "500",
-    flex: 1,
-    marginRight: 6,
-  },
-
-  packagePrice: {
-    fontSize: 10,
-    color: "#7c3aed",
-    fontWeight: "600",
-    backgroundColor: "#f3e8ff",
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 3,
-  },
-
-  morePackagesText: {
-    fontSize: 9,
-    color: "#64748b",
-    fontWeight: "500",
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: 2,
-  },
-
-  companyPackages: {
-    fontSize: 10,
-    color: "#7c3aed",
-    fontWeight: "500",
-  },
-
-  moreCompanies: {
-    fontSize: 10,
-    color: "#64748b",
-    fontWeight: "500",
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: 4,
-  },
-
-  noCompanies: {
-    fontSize: 11,
-    color: "#ef4444",
-    fontWeight: "500",
-    fontStyle: "italic",
-    marginTop: 8,
-    backgroundColor: "#fef2f2",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
   },
 });
