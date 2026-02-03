@@ -19,7 +19,7 @@ export default function CompanySelectionScreen() {
   const [loading, setLoading] = useState(true);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
@@ -106,21 +106,29 @@ export default function CompanySelectionScreen() {
       
       let fetchedCompanies: ServiceCompany[];
       
-      if (selectedIssueIds && selectedIssueIds.length > 0) {
-        console.log('🏢 Fetching companies by selected issue IDs:', selectedIssueIds);
-        // Fetch companies that provide the specific selected services
-        fetchedCompanies = await FirestoreService.getCompaniesByServiceIssues(selectedIssueIds);
+      // 🏢 NEW: Use pre-fetched companies with packages if available
+      if (allCompanies && allCompanies.length > 0) {
+        console.log('🏢 Using pre-fetched companies with packages:', allCompanies.length);
+        fetchedCompanies = allCompanies;
+      } else if (selectedIssueIds && selectedIssueIds.length > 0) {
+        console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
+        // 🏢 NEW: Use enhanced method to get companies with detailed packages
+        fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
       } else if (categoryId) {
         console.log('🏢 Fetching companies by category ID:', categoryId);
         // Fetch companies that provide services in this category
         fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
+        // Enhance with detailed packages
+        fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
       } else {
         console.log('🏢 Fetching all companies as fallback');
         // Fallback to all companies
         fetchedCompanies = await FirestoreService.getServiceCompanies();
+        // Enhance with detailed packages
+        fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
       }
       
-      console.log(`🏢 Found ${fetchedCompanies.length} companies before filtering:`, 
+      console.log(`🏢 Found ${fetchedCompanies.length} companies:`, 
         fetchedCompanies.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
@@ -128,7 +136,12 @@ export default function CompanySelectionScreen() {
           price: c.price, 
           serviceType: c.serviceType,
           companyId: c.companyId,
-          isActive: c.isActive 
+          isActive: c.isActive,
+          packagesCount: c.packages?.length || 0,
+          packageDetails: c.packages?.slice(0, 2).map(p => ({
+            name: typeof p === 'string' ? p : p.name,
+            price: typeof p === 'object' ? p.price : c.price
+          }))
         }))
       );
       
@@ -276,22 +289,40 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
                     
-                    {/* Packages if available */}
+                    {/* Packages if available - Enhanced Display */}
                     {item.packages && Array.isArray(item.packages) && item.packages.length > 0 && (
                       <View style={styles.packagesRow}>
                         <Text style={styles.detailLabel}>Available Packages:</Text>
                         <View style={styles.packagesList}>
-                          {item.packages.slice(0, 2).map((pkg: any, index: number) => (
-                            <View key={index} style={styles.packageTag}>
-                              <Text style={styles.packageText}>
-                                {typeof pkg === 'string' ? pkg : pkg.name || `Package ${index + 1}`}
-                              </Text>
-                            </View>
-                          ))}
-                          {item.packages.length > 2 && (
-                            <Text style={styles.morePackages}>+{item.packages.length - 2} more</Text>
+                          {item.packages.slice(0, 3).map((pkg: any, index: number) => {
+                            const packageName = typeof pkg === 'string' ? pkg : pkg.name || `Package ${index + 1}`;
+                            const packagePrice = typeof pkg === 'object' && pkg.price ? pkg.price : null;
+                            
+                            return (
+                              <View key={index} style={styles.packageTag}>
+                                <Text style={styles.packageText}>{packageName}</Text>
+                                {packagePrice && (
+                                  <Text style={styles.packagePriceTag}>₹{packagePrice}</Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                          {item.packages.length > 3 && (
+                            <Text style={styles.morePackages}>+{item.packages.length - 3} more</Text>
                           )}
                         </View>
+                        
+                        {/* Show package features if available */}
+                        {item.packages[0] && typeof item.packages[0] === 'object' && item.packages[0].features && (
+                          <View style={styles.featuresRow}>
+                            <Text style={styles.featuresLabel}>Features:</Text>
+                            <View style={styles.featuresList}>
+                              {item.packages[0].features.slice(0, 3).map((feature: string, index: number) => (
+                                <Text key={index} style={styles.featureText}>• {feature}</Text>
+                              ))}
+                            </View>
+                          </View>
+                        )}
                       </View>
                     )}
                     
@@ -689,12 +720,49 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#fbbf24",
+    marginRight: 6,
+    marginBottom: 4,
   },
 
   packageText: {
     fontSize: 11,
     color: "#92400e",
     fontWeight: "500",
+    marginBottom: 2,
+  },
+
+  packagePriceTag: {
+    fontSize: 10,
+    color: "#059669",
+    fontWeight: "700",
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+  },
+
+  featuresRow: {
+    marginTop: 8,
+  },
+
+  featuresLabel: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+
+  featuresList: {
+    marginLeft: 8,
+  },
+
+  featureText: {
+    fontSize: 11,
+    color: "#374151",
+    fontWeight: "400",
+    lineHeight: 16,
+    marginBottom: 2,
   },
 
   morePackages: {

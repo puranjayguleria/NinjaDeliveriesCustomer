@@ -35,7 +35,7 @@ export default function ServiceCategoryScreen() {
     try {
       setLoading(true);
       
-      console.log('Fetching services with companies for category:', categoryId);
+      console.log('Fetching services for category:', categoryId);
       console.log('Category details:', { serviceTitle, categoryId });
 
       if (!categoryId) {
@@ -54,11 +54,11 @@ export default function ServiceCategoryScreen() {
       // Use the new method that fetches services with company info
       const fetchedIssues = await FirestoreService.getServicesWithCompanies(categoryId);
       
-      console.log(`Found ${fetchedIssues.length} services with companies for category ${categoryId}`);
+      console.log(`Found ${fetchedIssues.length} services for category ${categoryId}`);
       console.log('Fetched services:', fetchedIssues.map(s => ({ id: s.id, name: s.name, masterCategoryId: s.masterCategoryId, isActive: s.isActive })));
       
       // 🚨 EMERGENCY DEBUG: Log every single service before filtering
-      console.log('� EMERGENCY DEBUG: Services received from server:');
+      console.log('🔍 EMERGENCY DEBUG: Services received from server:');
       fetchedIssues.forEach((service, index) => {
         console.log(`${index + 1}. "${service.name}":`, {
           isActive: service.isActive,
@@ -81,7 +81,7 @@ export default function ServiceCategoryScreen() {
       console.log(`🔍 Before UI filtering: ${fetchedIssues.length} services received from server`);
       
       const activeIssues = fetchedIssues.filter(issue => {
-        console.log(`� Checking service "${issue.name}":`, {
+        console.log(`🔍 Checking service "${issue.name}":`, {
           isActive: issue.isActive,
           isActiveType: typeof issue.isActive,
           isActiveValue: JSON.stringify(issue.isActive)
@@ -90,16 +90,16 @@ export default function ServiceCategoryScreen() {
         // Multiple active checks
         let isActive = false;
         
-        // � EMERGENCY YOGA BLOCK - Hardcoded to prevent yoga service from showing
+        // 🚨 EMERGENCY YOGA BLOCK - Hardcoded to prevent yoga service from showing
         if (issue.name && issue.name.toLowerCase().includes('yoga')) {
           console.log(`🚨 YOGA SERVICE DETECTED IN UI: "${issue.name}"`);
           console.log(`🚫 HARDCODED YOGA BLOCK: This service will be blocked regardless of isActive value`);
           return false; // ALWAYS BLOCK YOGA SERVICE
         }
         
-        // �🚫 BULLETPROOF RULE: Only isActive === true is allowed
+        // 🚫 BULLETPROOF RULE: Only isActive === true is allowed
         if (issue.isActive !== true) {
-          console.log(`� UI BLOCK: "${issue.name}" - isActive is NOT true (value: ${JSON.stringify(issue.isActive)})`);
+          console.log(`🔍 UI BLOCK: "${issue.name}" - isActive is NOT true (value: ${JSON.stringify(issue.isActive)})`);
           return false; // BLOCK
         }
 
@@ -128,7 +128,7 @@ export default function ServiceCategoryScreen() {
       setIssues(issuesWithOther);
       
     } catch (error) {
-      console.error('Error fetching services with companies:', error);
+      console.error('Error fetching services:', error);
       
       // Set only "Other Issue" on error
       setIssues([
@@ -194,7 +194,7 @@ export default function ServiceCategoryScreen() {
       return;
     }
 
-    // ✅ FIRST go to company selection
+    // Go to company selection
     const selectedIssuesObjects = issues.filter(i => selectedIds.includes(i.id));
 
     navigation.navigate("CompanySelection", {
@@ -202,7 +202,7 @@ export default function ServiceCategoryScreen() {
       categoryId,
       issues: selectedIssueTitles,
       selectedIssueIds: selectedIds, // Pass the actual issue IDs
-      selectedIssues: selectedIssuesObjects, // pass actual issue objects (with price)
+      selectedIssues: selectedIssuesObjects, // pass actual issue objects
     });
   };
 

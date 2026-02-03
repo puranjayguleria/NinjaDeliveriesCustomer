@@ -11,6 +11,7 @@ import {
   TextInput,
   Image,
   ImageBackground,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
@@ -295,16 +296,16 @@ export default function ServicesScreen() {
     : (serviceCategories || []).slice(0, 6);
 
   // Render functions
-  const renderBanner = (banner: ServiceBanner) => {
+  const renderBanner = ({ item: banner, index }: { item: ServiceBanner; index: number }) => {
     const backgroundColor = banner.backgroundColor || '#667eea';
     const textColor = banner.textColor || 'white';
-    const iconName = banner.iconName || 'star';
 
     return (
       <TouchableOpacity 
         key={banner.id}
         activeOpacity={0.9}
         onPress={() => handleBannerPress(banner)}
+        style={styles.bannerItem}
       >
         {banner.imageUrl ? (
           <ImageBackground 
@@ -328,9 +329,6 @@ export default function ServicesScreen() {
                       <Text style={styles.offerText}>{banner.offerText}</Text>
                     </View>
                   )}
-                </View>
-                <View style={styles.bannerIcon}>
-                  <Ionicons name={iconName as any} size={40} color={textColor} />
                 </View>
               </View>
             </View>
@@ -357,9 +355,6 @@ export default function ServicesScreen() {
                     <Text style={styles.offerText}>{banner.offerText}</Text>
                   </View>
                 )}
-              </View>
-              <View style={styles.bannerIcon}>
-                <Ionicons name={iconName as any} size={40} color={textColor} />
               </View>
             </View>
           </LinearGradient>
@@ -511,7 +506,17 @@ export default function ServicesScreen() {
             {/* Service Banners */}
             {!bannersLoading && serviceBanners.length > 0 && (
               <View style={styles.bannerContainer}>
-                {serviceBanners.slice(0, 1).map(banner => renderBanner(banner))}
+                <FlatList
+                  data={serviceBanners}
+                  renderItem={renderBanner}
+                  keyExtractor={(item) => item.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.bannerScrollContent}
+                  snapToInterval={width - 32} // Snap to each banner
+                  decelerationRate="fast"
+                  pagingEnabled={false}
+                />
               </View>
             )}
 
@@ -765,18 +770,27 @@ const styles = StyleSheet.create({
 
   // Banner Styles
   bannerContainer: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingVertical: 25,
+  },
+
+  bannerScrollContent: {
+    paddingHorizontal: 16,
+  },
+
+  bannerItem: {
+    width: width - 48,
+    marginHorizontal: 8,
   },
 
   gradientBanner: {
     borderRadius: 20,
     overflow: "hidden",
+    height: 140,
   },
 
   bannerImage: {
     width: "100%",
-    height: 140,
+    height: 220,
     borderRadius: 20,
     overflow: "hidden",
   },
@@ -815,7 +829,7 @@ const styles = StyleSheet.create({
   },
 
   bannerOffer: {
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(236, 227, 227, 0.95)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
