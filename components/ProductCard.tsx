@@ -40,8 +40,8 @@ type ProductCardProps = {
 };
 
 const { width } = Dimensions.get("window");
-const SIDE_NAV_WIDTH = 100;
-const CARD_MARGIN = 6;
+const SIDE_NAV_WIDTH = 100;  // Change to 65
+const CARD_MARGIN =2;
 // Slightly adjusted width calculation to ensure it fits well
 const CARD_WIDTH = (width - SIDE_NAV_WIDTH - CARD_MARGIN * 6) / 2.05;
 const CARD_HEIGHT = 270;

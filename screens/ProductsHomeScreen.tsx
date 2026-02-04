@@ -258,6 +258,7 @@ const Header = memo(() => {
       </View>
       <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
       <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
+
         <Text style={styles.locationTxt} numberOfLines={1}>
           {location.address
             ? `Delivering to ${location.address}`
@@ -698,7 +699,7 @@ const HomeMessageBar = ({
   onClose?: () => void;
 }) => {
   if (!msg?.text) return null;
-  
+
   // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
   const iconMap: Record<string, string> = {
     bolt: "offline-bolt",
@@ -739,7 +740,7 @@ const HomeMessageBar = ({
   }
 
   // Calculate dynamic media height based on message text length AND active/inactive state
- // Smooth, responsive sizing based on message content
+  // Smooth, responsive sizing based on message content
 const messageText = String(msg.text || "").trim();
 const messageLength = messageText.length;
 
@@ -791,11 +792,7 @@ if (isMessageActive) {
       {/* Media section (image or video) - displayed above message */}
       {(hasImage || hasVideo) && (
         <View
-          style={[
-            styles.homeMsgMediaContainer,
-            { height: mediaHeight },
-          ]}
-        >
+          style={[styles.homeMsgMediaContainer, { height: mediaHeight }]}>
           {hasVideo ? (
             <Video
               source={{ uri: hasVideo }}
@@ -877,9 +874,9 @@ export default function ProductsHomeScreen() {
   // appear until a new homeMsg is received. This prevents fallback messages
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
-  const [headerGradientColors, setHeaderGradientColors] = useState<string[]>([
-    "#FF5FA2", "#FFD1E6", "#FFFFFF"
-  ]); // fallback defaults
+  const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
+    ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+  ); // fallback defaults
 
   const [activeVerticalMode, setActiveVerticalMode] =
     useState<"grocery" | "restaurants">("grocery");
@@ -903,6 +900,9 @@ export default function ProductsHomeScreen() {
 
   // new state to track order acceptance status (store activity)
   const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(false);
+
+  // state for category shortcuts from Firebase
+  const [categoryShortcuts, setCategoryShortcuts] = useState<any[]>([]);
 
   // Build a local message object for when the store is not accepting orders.
   // This object will be passed into HomeMessageBar and is inspired by quick‑commerce
@@ -1040,6 +1040,41 @@ export default function ProductsHomeScreen() {
           );
         },
         () => setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"])
+      );
+
+    return unsub;
+  }, [location.storeId]);
+
+  // Fetch category shortcuts from Firebase
+  useEffect(() => {
+    if (!location.storeId) {
+      setCategoryShortcuts([]);
+      return;
+    }
+
+    const unsub = firestore()
+      .collection("category_shortcuts")
+      .where("storeId", "==", location.storeId)
+      .where("enabled", "==", true)
+      .onSnapshot(
+        (snap) => {
+          const shortcuts = snap.docs
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }))
+            // Sort on the client to avoid composite index requirements.
+            .sort(
+              (a: any, b: any) =>
+                Number(a?.priority ?? Number.MAX_SAFE_INTEGER) -
+                Number(b?.priority ?? Number.MAX_SAFE_INTEGER)
+            );
+          setCategoryShortcuts(shortcuts);
+        },
+        (error) => {
+          console.warn("Error fetching category shortcuts:", error);
+          setCategoryShortcuts([]);
+        }
       );
 
     return unsub;
@@ -1686,23 +1721,38 @@ export default function ProductsHomeScreen() {
       });
       return;
     }
+
+    // Valentine should navigate to Gift Shop category
+    if (name === "Valentine") {
+      const giftShop = cats.find(c => 
+        c.name.toLowerCase().includes("gift") || 
+        c.name.toLowerCase() === "gift shop"
+      );
+      if (giftShop) {
+        maybeNavigateCat(giftShop);
+        return;
+      }
+      // Fallback: search for gift items
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Valentine",
+        searchQuery: "gift teddy rose flower chocolate perfume greeting card",
+      });
+      return;
+    }
     
     // Define keyword mappings for shortcuts that may not match category names exactly
     const keywordMappings: Record<string, string[]> = {
       "Chocolates": ["chocolate", "chocolates", "choco"],
-      "Valentine": ["valentine", "valentines", "love", "heart", "chocolate", "water", "ice cream", "condom", "wellness"],
       "Snacks": ["snack", "snacks", "chips", "namkeen"],
       "Dairy": ["dairy", "milk", "curd", "paneer", "cheese"],
     };
     
     // Find category
-    // Try exact match first, then partial
     let cat = cats.find(c => c.name.toLowerCase() === name.toLowerCase());
     if (!cat) {
       cat = cats.find(c => c.name.toLowerCase().includes(name.toLowerCase()));
     }
     
-    // Also try reverse match - category name contains any of our keywords
     if (!cat && keywordMappings[name]) {
       cat = cats.find(c => 
         keywordMappings[name].some(kw => c.name.toLowerCase().includes(kw))
@@ -1712,9 +1762,7 @@ export default function ProductsHomeScreen() {
     if (cat) {
       maybeNavigateCat(cat);
     } else {
-       // Fallback for specific hardcoded ones if not found in DB
        if (name === "Milk") {
-          // Try to find Dairy if Milk not found
           const dairy = cats.find(c => c.name.toLowerCase().includes("dairy"));
           if (dairy) {
             maybeNavigateCat(dairy);
@@ -1722,9 +1770,6 @@ export default function ProductsHomeScreen() {
           }
        }
        
-       // Final fallback: Navigate to product listing with keyword search
-       // This will search products by name/description/keywords containing the search term
-       // e.g., searching "chocolate" will find all products with "chocolate" in their name
        const searchTerm = keywordMappings[name]?.[0] || name.toLowerCase();
        nav.navigate("ProductListingFromHome", {
          categoryName: name,
@@ -1739,50 +1784,52 @@ export default function ProductsHomeScreen() {
       {/* Category Shortcuts */}
       <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
-          {[
-            { name: "Offers", image: require("../assets/shortcuts/offers.jpeg"), bg: "#963556ff" },
-            { name: "Valentine", image: require("../assets/shortcuts/valentine.jpeg"), bg: "#963556ff" },
-            { name: "Chocolates", image: require("../assets/shortcuts/chocolate.jpeg"), bg: "#963556ff" },
-            { name: "Snacks", image: require("../assets/shortcuts/snacks.jpeg"), bg: "#963556ff" },
-            { name: "Dairy", image: require("../assets/shortcuts/dairy.jpeg"), bg: "#963556ff" },
-          ].map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={{
-                alignItems: "center",
-                marginRight: 4,
-                width: 68,
-              }}
-              onPress={() => handleCategoryShortcut(item.name)}
-            >
-              <View
+          {(categoryShortcuts && categoryShortcuts.length > 0
+            ? categoryShortcuts
+            : [
+                     ]
+          ).map((item) => {
+            const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
+            return (
+              <TouchableOpacity
+                key={item.id}
                 style={{
-                  width: 60,
-                  height: 60,
-                  borderRadius: 20,
-                  backgroundColor: item.bg,
-                  justifyContent: "center",
                   alignItems: "center",
-                  marginBottom: 6,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                  shadowOffset: { width: 0, height: 2 },
-                  overflow: "hidden"
+                  marginRight: 4,
+                  width: 68,
                 }}
+                onPress={() => handleCategoryShortcut(item.name)}
               >
-                <Image
-                  source={item.image}
-                  style={{ width: "100%", height: "100%" }}
-                  contentFit="cover"
-                  transition={200}
-                />
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: 20,
+                    backgroundColor: item.bgColor || item.bcColor || item.bg || "#963556ff",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    marginBottom: 6,
+                    shadowColor: "#000",
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    shadowOffset: { width: 0, height: 2 },
+                    overflow: "hidden"
+                  }}
+                >
+                  <Image
+                    source={source}
+                    style={{ width: "100%", height: "100%" }}
+                    contentFit="cover"
+                    transition={200}
+                    placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+                  />
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -1922,22 +1969,12 @@ export default function ProductsHomeScreen() {
         ) : null}
 
         {/* Valentine Background - Starts below search bar */}
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { top: INITIAL_VIDEO_HEIGHT, zIndex: -1 }]}
-        >
-          <RNImage
-            source={require("../assets/valentine-banner.png")}
-            style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
-          />
-        </View>
+        
 
         {/* Collapsing header + background video */}
         <Animated.View
           pointerEvents="box-none"
-          style={[styles.headerWrapper, { paddingTop: topPadding }]}
-        >
+          style={[styles.headerWrapper, { paddingTop: topPadding }]}>
           {/* Background video */}
           <Animated.View
             pointerEvents="none"

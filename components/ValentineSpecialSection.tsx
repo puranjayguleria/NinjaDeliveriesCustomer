@@ -85,7 +85,7 @@ const ValentineSpecialSection = ({ storeId }: { storeId: string }) => {
         <View>
           <View style={styles.titleRow}>
              <MaterialIcons name="favorite" size={18} color="#D81B60" style={{ marginRight: 4 }} />
-             <Text style={styles.title}>Love Fresh, Love Local</Text>
+             <Text style={styles.title}>h, Love Local</Text>
              <MaterialIcons name="favorite" size={14} color="#F48FB1" style={{ marginLeft: 4, opacity: 0.6 }} />
           </View>
           <Text style={styles.subtitle}>From Dharamshala Today 💌</Text>

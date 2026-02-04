@@ -15,19 +15,20 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useCart } from "../context/CartContext";
+import { Image as ExpoImage } from "expo-image";
 
 const { width } = Dimensions.get("window");
 
 // Updated flower options with new prices
 const ROSE_OPTIONS = [
-  { id: "red_rose", name: "Red Rose", price: 70, image: "https://images.unsplash.com/photo-1678540184907-a5fe66786589?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "yellow_rose", name: "Yellow Rose", price: 80, image: "https://images.unsplash.com/photo-1673277848241-86e145cd7112?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "pink_rose", name: "Pink Rose", price: 80, image: "https://images.unsplash.com/photo-1694620131938-0f88d08610a4?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "carnation_white", name: "White Carnation", price: 70, image: "https://images.unsplash.com/photo-1768201795790-9be6cddff0f8?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "carnation_red", name: "Red Carnation", price: 70, image: "https://images.unsplash.com/photo-1717621959619-1039838d8061?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "carnation_pink", name: "Pink Carnation", price: 70, image: "https://plus.unsplash.com/premium_photo-1670601070138-1271415a7893?q=80&w=686&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "carnation_purple", name: "Purple Carnation", price: 70, image: "https://images.unsplash.com/photo-1693324295386-a627b3406e05?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "sunflower", name: "Sunflower", price: 220, image: "https://images.unsplash.com/photo-1526547541286-73a7aaa08f2a?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
+  { id: "red_rose", name: "Red Rose", price: 70, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1678540184907-a5fe66786589.avif?alt=media&token=b2988dae-a10c-44f4-b074-ff6dba26ad3c" },
+  { id: "yellow_rose", name: "Yellow Rose", price: 80, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1673277848241-86e145cd7112.avif?alt=media&token=5d7dc416-9aa4-4d65-800c-d9a2c3a11689" },
+  { id: "pink_rose", name: "Pink Rose", price: 80, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1694620131938-0f88d08610a4.avif?alt=media&token=3d05d3b9-bbba-44f4-90cd-66af7a6b356c" },
+  { id: "carnation_white", name: "White Carnation", price: 70, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1715520578911-05d2b82ad5a8.avif?alt=media&token=a905f76e-0ae2-4d38-8383-fe1642b24def" },
+  { id: "carnation_red", name: "Red Carnation", price: 70, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1717621959619-1039838d8061.avif?alt=media&token=ed1c2532-f291-4dd8-bc07-68f72da34c01" },
+  { id: "carnation_pink", name: "Pink Carnation", price: 70, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fpremium_photo-1670601070138-1271415a7893.avif?alt=media&token=1d472c3c-8169-4893-a14b-185196f45078" },
+  { id: "carnation_purple", name: "Purple Carnation", price: 70, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1693324295386-a627b3406e05.avif?alt=media&token=aab65426-cf9e-416e-a34a-a1e1a554f0e8" },
+  { id: "sunflower", name: "Sunflower", price: 220, image: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Frose%20bouquets%2Fmake%20your%20bouquet%2Fphoto-1526547541286-73a7aaa08f2a.avif?alt=media&token=0b352590-fe6d-4d98-83b9-0da159bdc76d" },
 ];
 
 // Bouquet configurations
@@ -203,7 +204,7 @@ const MakeBouquetScreen = () => {
                    const count = customComposition[rose.id] || 0;
                    return (
                      <View key={rose.id} style={styles.mixRow}>
-                        <Image source={{ uri: rose.image }} style={styles.mixImage} />
+                        <ExpoImage source={{ uri: rose.image }} style={styles.roseImage} contentFit="cover" />
                         <View style={{flex: 1}}>
                            <Text style={styles.mixName}>{rose.name}</Text>
                            <Text style={styles.mixPrice}>₹{rose.price}/stem</Text>
@@ -243,7 +244,7 @@ const MakeBouquetScreen = () => {
                     ]}
                     onPress={() => setSelectedRose(rose)}
                   >
-                    <Image source={{ uri: rose.image }} style={styles.roseImage} />
+                    <ExpoImage source={{ uri: rose.image }} style={styles.roseImage} contentFit="cover" />
                     <View style={styles.roseInfo}>
                       <Text style={styles.roseName}>{rose.name}</Text>
                       <Text style={styles.rosePrice}>₹{rose.price}/stem</Text>

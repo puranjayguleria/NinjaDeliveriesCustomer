@@ -13,7 +13,7 @@ import {
   Image,
   StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";  // <-- ADD THIS
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -25,10 +25,7 @@ import ProductCard from "../components/ProductCard";
 import Toast from "react-native-toast-message";
 import { useCart } from "../context/CartContext";
 import { useLocationContext } from "../context/LocationContext"; // ⬅️ NEW
-import { ProductGridSkeleton } from "../components/Skeleton";
 import Loader from "@/components/VideoLoader";
-import { Colors } from "@/constants/colors";
-import { Typography } from "@/constants/typography";
 
 /********** NAV TYPES **********/
 type ProductListingScreenNavigationProp = StackNavigationProp<
@@ -59,16 +56,10 @@ const IMAGE_SIZE = 50;
 
 /********** COMPONENT **********/
 const ProductListingScreen: React.FC<Props> = () => {
-  /***** NAV / ROUTE / CONTEXT *****/
-  const navigation = useNavigation<ProductListingScreenNavigationProp>();
-  const route = useRoute<ProductListingScreenRouteProp>();
-  const { categoryId, searchQuery: initialQuery } = route.params || {};
-  const { location } = useLocationContext();
-
   /***** STATE *****/
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState(initialQuery || "");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
@@ -77,20 +68,24 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  /***** NAV / ROUTE / CONTEXT *****/
+  const navigation = useNavigation<ProductListingScreenNavigationProp>();
+  const route = useRoute<ProductListingScreenRouteProp>();
+  const { categoryId } = route.params || {};
+  const { location } = useLocationContext(); // ⬅️ NEW (storeId)
+
   /***** CART HOOKS *****/
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
-  useEffect(() => {
-    if (!location.storeId) return;
 
-    // If we have a categoryId, fetch by category
-    if (categoryId) {
-      fetchSubcategories(categoryId, location.storeId);
-      fetchProducts(categoryId, selectedSubcategory, location.storeId);
-    } else if (initialQuery) {
-      // If no categoryId but we have a search query, fetch products by keyword
-      fetchProductsByKeyword(initialQuery, location.storeId);
-    }
-  }, [categoryId, selectedSubcategory, location.storeId, initialQuery]);
+  /**********************************************************************
+   * EFFECT: fetch sub-cats (once) & products (whenever filters change)
+   *********************************************************************/
+  useEffect(() => {
+    if (!categoryId || !location.storeId) return;
+
+    fetchSubcategories(categoryId, location.storeId);
+    fetchProducts(categoryId, selectedSubcategory, location.storeId);
+  }, [categoryId, selectedSubcategory, location.storeId]);
 
   /**********************************************************************
    * EFFECT: search filter
@@ -168,56 +163,6 @@ const ProductListingScreen: React.FC<Props> = () => {
     }
   };
 
-  /**
-   * Fetch products by keyword/name search (when no categoryId is provided)
-   */
-  const fetchProductsByKeyword = async (keyword: string, storeId: string) => {
-    setLoading(true);
-    try {
-      // Fetch all products from the store and filter by keyword
-      const snap = await firestore()
-        .collection("products")
-        .where("storeId", "==", storeId)
-        .get();
-
-      const q = keyword.toLowerCase();
-      const data = snap.docs
-        .map((d) => {
-          const doc = d.data() as any;
-          const base = doc.discount ? doc.price - doc.discount : doc.price;
-          return {
-            id: d.id,
-            ...doc,
-            outOfStock: doc.quantity <= 0,
-            priceInclTax:
-              (base ?? 0) + (doc.CGST ?? 0) + (doc.SGST ?? 0) + (doc.cess ?? 0),
-          };
-        })
-        .filter((p) => {
-          const name = (p.name || p.title || "").toLowerCase();
-          const desc = (p.description || "").toLowerCase();
-          const keywords = Array.isArray(p.keywords)
-            ? p.keywords.map((k: string) => k.toLowerCase())
-            : [];
-          return (
-            name.includes(q) ||
-            desc.includes(q) ||
-            keywords.some((kw: string) => kw.includes(q))
-          );
-        })
-        .sort((a, b) => (b.discount || 0) - (a.discount || 0));
-
-      setProducts(data);
-      setFilteredProducts(data);
-      // Clear subcategories since we're doing keyword search
-      setSubcategories([]);
-    } catch {
-      Alert.alert("Error", "Failed to fetch products.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   /*******************************
    * Modal helpers
    *******************************/
@@ -236,145 +181,113 @@ const ProductListingScreen: React.FC<Props> = () => {
   /*******************************
    * Renderers
    *******************************/
-  const renderProductItem = useCallback(
-    ({ item }: { item: any }) => {
-      /** protect against undefined quantity */
-      const maxStock = typeof item.quantity === "number" ? item.quantity : 0;
+  const renderProductItem = ({ item }: { item: any }) => {
+    /** protect against undefined quantity */
+    const maxStock = typeof item.quantity === "number" ? item.quantity : 0;
 
-      return (
-        <ProductCard
-          item={item}
-          quantity={cart[item.id] || 0}
-          displayPrice={item.priceInclTax}
-          onAddToCart={() => addToCart(item.id, maxStock)}
-          onIncrease={() => increaseQuantity(item.id, maxStock)}
-          onDecrease={() => decreaseQuantity(item.id)}
-        />
-      );
-    },
-    [cart, addToCart, increaseQuantity, decreaseQuantity]
+    return (
+      <ProductCard
+        item={item}
+        quantity={cart[item.id] || 0}
+        displayPrice={item.priceInclTax}
+        onAddToCart={() => addToCart(item.id, maxStock)}
+        onIncrease={() => increaseQuantity(item.id, maxStock)}
+        onDecrease={() => decreaseQuantity(item.id)}
+      />
+    );
+  };
+
+  const renderSubcategoryItem = ({ item }: { item: Subcategory }) => (
+    <TouchableOpacity
+      style={[
+        styles.subcategoryItem,
+        item.id === selectedSubcategory && styles.selectedSubcategory,
+      ]}
+      onPress={() => selectSubcategory(item.id)}
+    >
+      <Image source={{ uri: item.image }} style={styles.subcategoryImage} />
+      <Text
+        style={[
+          styles.subcategoryText,
+          item.id === selectedSubcategory && styles.selectedSubcategoryText,
+        ]}
+      >
+        {item.name}
+      </Text>
+    </TouchableOpacity>
   );
 
-  const keyExtractor = useCallback((item: any) => item.id, []);
-
+  /*******************************
+   * JSX
+   *******************************/
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f9f9f9" }}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <View style={styles.searchContainer}>
-            <MaterialIcons
-              name="search"
-              size={20}
-              color="#666"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search products..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#999"
-              accessibilityLabel="Search products"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity 
-                onPress={() => setSearchQuery("")}
-                accessibilityLabel="Clear search"
-                accessibilityRole="button"
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MaterialIcons name="close" size={20} color="#666" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
 
-        {/* Subcategories (Horizontal Scroll) */}
-        {subcategories.length > 0 && (
-          <View style={styles.subCatContainer}>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={subcategories}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingHorizontal: 4 }}
-              renderItem={({ item }) => {
-                const isSelected = selectedSubcategory === item.id;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.subCatItem,
-                      isSelected && styles.subCatItemSelected,
-                    ]}
-                    onPress={() =>
-                      setSelectedSubcategory(isSelected ? null : item.id)
-                    }
-                    accessibilityLabel={`Filter by ${item.name}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <Image
-                      source={{ uri: item.image }}
-                      style={[
-                        styles.subCatImage,
-                        isSelected && { borderColor: Colors.primary, borderWidth: 1 },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.subCatText,
-                        isSelected && styles.subCatTextSelected,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {item.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
-        )}
+      {/* ---------- Side nav ---------- */}
+      <View style={styles.sideNav}>
+        <FlatList
+          data={subcategories}
+          keyExtractor={(i) => i.id}
+          renderItem={renderSubcategoryItem}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptySubcategoryContainer}>
+              <Text style={styles.emptySubcategoryText}>No sub-categories</Text>
+            </View>
+          }
+        />
       </View>
 
-      {/* Main Content */}
-      {loading ? (
-        <View style={styles.center}>
-          <ProductGridSkeleton />
+      {/* ---------- Main content ---------- */}
+      <View style={styles.mainContent}>
+        {/* Search */}
+        <View style={styles.searchContainer}>
+          <MaterialIcons
+            name="search"
+            size={24}
+            color="#555"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchBar}
+            placeholder="Search for products…"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery("")}
+              style={styles.clearIcon}
+            >
+              <MaterialIcons name="clear" size={24} color="#555" />
+            </TouchableOpacity>
+          )}
         </View>
-      ) : filteredProducts.length === 0 ? (
-        <View style={styles.center}>
-          <MaterialIcons name="search-off" size={48} color="#ccc" />
-          <Text style={{ marginTop: 10, color: "#888" }}>
-            No products found.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredProducts}
-          keyExtractor={keyExtractor}
-          renderItem={renderProductItem}
-          numColumns={2}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.columnWrapper}
-          showsVerticalScrollIndicator={false}
-          initialNumToRender={8}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          removeClippedSubviews={true}
-        />
-      )}
+
+        {/* List */}
+        {loading ? (
+          <View style={styles.loaderContainer}>
+            <Loader />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredProducts}
+            keyExtractor={(i) => i.id}
+            renderItem={renderProductItem}
+            numColumns={2}
+            columnWrapperStyle={styles.columnWrapper}
+            contentContainerStyle={styles.productList}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No products found.</Text>
+              </View>
+            }
+          />
+        )}
+      </View>
 
       {/* Error modal & toast */}
       <ErrorModal
@@ -393,98 +306,81 @@ export default ProductListingScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    flexDirection: "row",
     backgroundColor: "#FAFAFA",
   },
-  /* Header Layout */
-  header: {
-    backgroundColor: Colors.white,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.background.light,
-    elevation: 2,
-    shadowColor: Colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 2 },
-    zIndex: 10,
+
+  /* side nav */
+  sideNav: {
+    width: SIDE_NAV_WIDTH,
+    backgroundColor: "#fff",
+    paddingTop: 20,
+    paddingHorizontal: 10,
+    borderRightWidth: 1,
+    borderRightColor: "#ddd",
   },
-  headerRow: {
-    flexDirection: "row",
+  subcategoryItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 5,
+    borderRadius: 5,
+    marginBottom: 8,
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
   },
-  backButton: {
-    marginRight: 12,
-    padding: 4,
+  subcategoryImage: {
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
+    borderRadius: IMAGE_SIZE / 2,
+    marginBottom: 5,
   },
+  selectedSubcategory: { backgroundColor: "#E67E22" },
+  subcategoryText: {
+    fontSize: 12,
+    color: "#333",
+    textAlign: "center",
+  },
+  selectedSubcategoryText: { color: "#fff", fontWeight: "600" },
+  emptySubcategoryContainer: { alignItems: "center", marginTop: 20 },
+  emptySubcategoryText: { fontSize: 12, color: "#999", textAlign: "center" },
+
+  /* main content */
+  mainContent: { flex: 1, padding: 10 },
+
+  /* search */
   searchContainer: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 15,
     position: "relative",
   },
-  searchIcon: {
-    position: "absolute",
-    left: 12,
-    zIndex: 1,
-  },
-  searchInput: {
+  searchIcon: { position: "absolute", left: 16, zIndex: 1 },
+  searchBar: {
     flex: 1,
-    backgroundColor: Colors.background.light,
-    borderRadius: 8,
-    paddingLeft: 40,
-    paddingRight: 40,
-    height: 40,
-    fontSize: 14,
-    color: Colors.text.primary,
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    paddingLeft: 48,
+    paddingRight: 48,
+    height: 45,
+    fontSize: 16,
+    color: "#333",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  
-  /* Subcategories (Horizontal) */
-  subCatContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  subCatItem: {
-    alignItems: "center",
-    marginRight: 16,
-    padding: 4,
-    opacity: 0.7,
-  },
-  subCatItemSelected: {
-    opacity: 1,
-  },
-  subCatImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginBottom: 4,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  subCatText: {
-    fontSize: 12,
-    color: Colors.text.muted,
-    textAlign: "center",
-    maxWidth: 60,
-  },
-  subCatTextSelected: {
-    color: Colors.primary,
-    fontWeight: "600",
-  },
+  clearIcon: { position: "absolute", right: 16 },
 
-  /* Content */
-  listContent: {
-    padding: 8,
-    paddingBottom: 20,
-  },
-  columnWrapper: {
-    justifyContent: "space-between",
-  },
-  center: {
+  /* list */
+  productList: { paddingBottom: 20 },
+  columnWrapper: { justifyContent: "space-between" },
+
+  /* misc */
+  loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyContainer: {
     flex: 1,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
+    marginTop: 50,
   },
+  emptyText: { fontSize: 18, color: "#999" },
 });
