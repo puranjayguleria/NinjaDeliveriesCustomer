@@ -20,7 +20,6 @@ export default function CompanySelectionScreen() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
-  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime, selectedDateFull } = route.params;
 
@@ -29,15 +28,7 @@ export default function CompanySelectionScreen() {
     fetchServiceCompanies();
   }, [selectedIssueIds]);
 
-  // Add a refresh mechanism to check worker availability more frequently
-  useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('🔄 AUTO-REFRESH - Checking real-time worker availability...');
-      fetchServiceCompanies();
-    }, 10000); // Refresh every 10 seconds for real-time updates
 
-    return () => clearInterval(interval);
-  }, [selectedIssueIds]);
 
   // Refresh when screen comes into focus
   useFocusEffect(
@@ -69,38 +60,38 @@ export default function CompanySelectionScreen() {
   };
 
   // Check real-time availability for a specific date and time
-  const checkRealTimeAvailability = async (companyId: string, date: string, time: string): Promise<boolean> => {
+  const checkRealTimeAvailability = async (companyId: string, date: string, time: string, serviceType?: string): Promise<boolean> => {
     try {
       console.log(`🔍 DETAILED CHECK - Company ${companyId}:`);
       console.log(`   Date: ${date}, Time: ${time}`);
+      console.log(`   Service Type:`, serviceType);
       console.log(`   Selected Service IDs:`, selectedIssueIds);
       console.log(`   Service Title:`, serviceTitle);
-      console.log(`   Route Params:`, { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues });
       
-      // CRITICAL: Log all route params to debug
-      console.log(`🔍 DEBUGGING ROUTE PARAMS:`);
-      console.log(`   serviceTitle:`, serviceTitle);
-      console.log(`   categoryId:`, categoryId);
-      console.log(`   issues:`, issues);
-      console.log(`   selectedIssueIds:`, selectedIssueIds);
-      console.log(`   selectedIssues:`, selectedIssues);
-      
-      // Use the FirestoreService method for consistency and pass selected service IDs
-      const available = await FirestoreService.checkCompanyWorkerAvailability(
+      // Use the specific FirestoreService method that returns detailed availability info
+      // Call the method with exact signature: (companyId, date, time, serviceType?)
+      const result: any = await FirestoreService.checkCompanyWorkerAvailability(
         companyId, 
         date, 
         time, 
-        selectedIssueIds, // Pass the selected service IDs for service-specific checking
-        serviceTitle // Pass service title for fallback matching
+        serviceType || serviceTitle
       );
       
+      // Ensure we have the expected object structure
+      if (typeof result === 'boolean') {
+        console.warn('⚠️ Got boolean result instead of object, using fallback');
+        return result;
+      }
+      
       console.log(`📊 RESULT - Company ${companyId}:`, {
-        available,
-        serviceIds: selectedIssueIds,
-        message: available ? 'Available' : 'All workers busy for this service'
+        available: result.available,
+        status: result.status,
+        availableWorkers: result.availableWorkers,
+        totalWorkers: result.totalWorkers,
+        serviceType: serviceType || serviceTitle
       });
       
-      return available;
+      return result.available;
     } catch (error) {
       console.error(`❌ Error checking real-time availability for company ${companyId}:`, error);
       return false; // If error, assume not available to be safe
@@ -134,6 +125,20 @@ export default function CompanySelectionScreen() {
     
     // Use new slot-based availability system
     console.log(`🎯 Using slot-based availability for ${selectedDate} at ${selectedTime}`);
+    console.log(`🔍 Service filtering details:`, {
+      serviceTitle,
+      selectedIssues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name || s) : selectedIssues,
+      issues: Array.isArray(issues) ? issues : [issues],
+      selectedIssueIds,
+      routeParams: { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues }
+    });
+    
+    // Determine the exact service name to use for worker filtering
+    const exactServiceName = (Array.isArray(selectedIssues) && selectedIssues.length > 0 && selectedIssues[0].name) 
+      ? selectedIssues[0].name 
+      : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
+    
+    console.log(`🎯 Using exact service name for worker filtering: "${exactServiceName}"`);
     
     try {
       const companiesWithSlotAvailability = await FirestoreService.getCompaniesWithSlotAvailability(
@@ -141,7 +146,7 @@ export default function CompanySelectionScreen() {
         selectedIssueIds,
         selectedDate,
         selectedTime,
-        serviceTitle // Pass service type for worker filtering
+        exactServiceName // Pass the exact service name for precise worker filtering
       );
       
       // Transform to match expected format
@@ -168,7 +173,13 @@ export default function CompanySelectionScreen() {
         if (hasActiveWorkers) {
           // Additional check: verify workers are actually available for the time slot
           if (selectedDate && selectedTime) {
-            const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime);
+            const exactServiceName = (Array.isArray(selectedIssues) && selectedIssues.length > 0 && selectedIssues[0].name) 
+              ? selectedIssues[0].name 
+              : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
+            
+            console.log(`🔍 Fallback check using service name: "${exactServiceName}"`);
+            
+            const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime, exactServiceName);
             if (isAvailableAtTime) {
               availableCompanies.push({
                 ...company,
@@ -278,10 +289,17 @@ export default function CompanySelectionScreen() {
     addService({
       serviceTitle,
       issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
-      company: selectedCompany,
+      company: {
+        id: selectedCompany.id,
+        name: selectedCompany.companyName || selectedCompany.serviceName,
+        price: selectedCompany.price,
+        rating: selectedCompany.rating,
+        verified: selectedCompany.isActive,
+      },
       selectedDate: selectedDate,
       selectedTime: selectedTime,
       bookingType,
+      unitPrice: computedPrice,
       totalPrice: computedPrice,
     });
 
@@ -312,61 +330,6 @@ export default function CompanySelectionScreen() {
           >
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          
-          <View style={styles.headerButtons}>
-            <TouchableOpacity 
-              style={styles.refreshButton}
-              onPress={() => {
-                console.log('🔄 Manual refresh triggered');
-                fetchServiceCompanies();
-              }}
-            >
-              <Text style={styles.refreshButtonText}>🔄 Refresh</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.debugButton}
-              onPress={async () => {
-                console.log('🐛 DEBUG - Testing NEW availability system');
-                if (companies.length > 0) {
-                  const firstCompany = companies[0];
-                  const companyId = firstCompany.companyId || firstCompany.id;
-                  console.log('🐛 Testing company:', companyId);
-                  
-                  // Test new system
-                  const startTime = new Date().toISOString();
-                  const endTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours later
-                  
-                  const newResult = await FirestoreService.checkCompanyAvailabilityNew(
-                    companyId,
-                    startTime,
-                    endTime
-                  );
-                  
-                  console.log('🐛 NEW SYSTEM Result:', newResult);
-                  
-                  // Test bulk system
-                  const bulkResult = await FirestoreService.checkBulkCompanyAvailability(
-                    [companyId],
-                    startTime,
-                    endTime
-                  );
-                  
-                  console.log('🐛 BULK SYSTEM Result:', bulkResult);
-                  
-                  Alert.alert('Debug Results', 
-                    `Company ${companyId}:\n` +
-                    `New System: ${newResult ? 'Available' : 'Busy'}\n` +
-                    `Bulk System: ${JSON.stringify(bulkResult[companyId], null, 2)}`
-                  );
-                } else {
-                  Alert.alert('Debug', 'No companies to test');
-                }
-              }}
-            >
-              <Text style={styles.debugButtonText}>🐛 Debug</Text>
-            </TouchableOpacity>
-          </View>
         </View>
         
         <Text style={styles.header}>Select Service Provider</Text>
@@ -419,20 +382,16 @@ export default function CompanySelectionScreen() {
         </View>
       ) : companies.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Service Providers Found</Text>
+          <Text style={styles.emptyTitle}>No Companies Available</Text>
           <Text style={styles.emptyText}>
-            No companies currently provide the selected services in your area. This could be because:
-            {'\n'}• No providers are registered for these services
-            {'\n'}• All providers are currently inactive
-            {'\n'}• Services exist but categoryMasterId doesn't match
-            {'\n'}
-            {'\n'}Please try selecting different services or contact support for assistance.
+            Please try choosing different slots or check back later.
+             {'\n'}
           </Text>
           <TouchableOpacity 
             style={styles.retryButton}
-            onPress={() => fetchServiceCompanies()}
+            onPress={() => navigation.goBack()}
           >
-            <Text style={styles.retryText}>Retry Loading</Text>
+            <Text style={styles.retryText}>Choose Different Slot</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -526,7 +485,7 @@ export default function CompanySelectionScreen() {
                       <Text style={styles.detailLabel}>Availability:</Text>
                       <View style={[
                         styles.availabilityBadge,
-                        (item as any).isAllWorkersBusy ? styles.busyBadge : styles.availableBadge
+                        (item as any).isAllWorkersBusy ? styles.busyAvailabilityBadge : styles.availableBadge
                       ]}>
                         <Text style={[
                           styles.availabilityStatusText,
@@ -632,11 +591,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  headerButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
   backButton: {
     alignSelf: 'flex-start',
     paddingVertical: 8,
@@ -644,36 +598,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  refreshButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
 
-  refreshButtonText: {
-    color: "#64748b",
-    fontSize: 14,
-    fontWeight: "500",
-  },
-
-  debugButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#fef3c7",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#f59e0b",
-    marginLeft: 8,
-  },
-
-  debugButtonText: {
-    color: "#92400e",
-    fontSize: 14,
-    fontWeight: "500",
-  },
 
   backButtonText: {
     color: "#2563eb",
@@ -854,12 +779,6 @@ const styles = StyleSheet.create({
     color: "#065f46",
   },
 
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-
   rating: {
     fontSize: 14,
     fontWeight: "500",
@@ -881,13 +800,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#64748b",
     fontWeight: "400",
-  },
-
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    flexWrap: "wrap",
   },
 
   phone: {
@@ -1060,7 +972,7 @@ const styles = StyleSheet.create({
     borderColor: "#bbf7d0",
   },
 
-  busyBadge: {
+  busyAvailabilityBadge: {
     backgroundColor: "#fef2f2",
     borderColor: "#fecaca",
   },
@@ -1072,10 +984,6 @@ const styles = StyleSheet.create({
 
   availableText: {
     color: "#059669",
-  },
-
-  busyText: {
-    color: "#dc2626",
   },
 
   workerCountRow: {
