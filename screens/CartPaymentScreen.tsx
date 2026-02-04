@@ -403,7 +403,7 @@ export default function CartPaymentScreen() {
             <Text style={styles.debugText}>Debug Info:</Text>
             <Text style={styles.debugText}>Total: ₹{finalTotal}</Text>
             <Text style={styles.debugText}>Store ID: {selectedLocation?.storeId || "Not set"}</Text>
-            <Text style={styles.debugText}>Razorpay Available: {RazorpayCheckout ? "Yes" : "No"}</Text>
+            <Text style={styles.debugText}>WebView Payment: Available</Text>
           </View>
 
           <TouchableOpacity

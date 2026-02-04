@@ -44,6 +44,7 @@ import axios from "axios";
 import { useWeather } from "../context/WeatherContext";
 import { useRestaurantCart } from "../context/RestaurantCartContext";
 import { useServiceCart } from "../context/ServiceCartContext";
+import PaymentMethodModal from "../components/PaymentMethodModal";
 
 
 
@@ -256,6 +257,7 @@ const CartScreen: React.FC = () => {
 
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
   const [showPausedModal, setShowPausedModal] = useState<boolean>(false);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
 
   const [navigating, setNavigating] = useState<boolean>(false);
 
@@ -948,34 +950,89 @@ const CartScreen: React.FC = () => {
     } else if (!selectedLocation && userLocations.length > 0) {
       setShowLocationSheet(true);
     } else {
-      // Navigate to CartPaymentScreen instead of showing payment modal
-      console.log("Navigating to CartPayment with data:", {
-        cartItems: cartItems.length,
-        finalTotal,
-        selectedLocation: selectedLocation?.placeLabel,
-        storeId: selectedLocation?.storeId,
-      });
+      // Show payment method selection modal
+      setShowPaymentModal(true);
+    }
+  };
+
+  /***************************************
+   * PAYMENT METHOD HANDLERS
+   ***************************************/
+  const handleCODPayment = async () => {
+    try {
+      setShowPaymentModal(false);
+      await handlePaymentComplete("cod");
+    } catch (error) {
+      console.error("COD payment error:", error);
+      Alert.alert("Error", "COD payment failed. Please try again.");
+    }
+  };
+
+  const handleOnlinePayment = async () => {
+    try {
+      setShowPaymentModal(false);
       
-      navigation.navigate("TestPayment", {
-        paymentData: {
-          cartItems,
-          subtotal,
-          discount,
-          deliveryCharge,
-          platformFee,
-          convenienceFee,
-          surgeFee: surgeLine,
-          finalTotal,
-          selectedLocation,
-          selectedPromo,
-          productCgst,
-          productSgst,
-          productCess,
-          rideCgst,
-          rideSgst,
+      // Show loading immediately
+      setNavigating(true);
+
+      // Create Razorpay order on server
+      const serverOrder = await createRazorpayOrderOnServer(finalTotal);
+      
+      // Navigate directly to RazorpayWebView for immediate payment
+      const user = auth().currentUser;
+      if (!user) throw new Error("Not logged in");
+
+      const contact = (user.phoneNumber || "").replace("+91", "");
+
+      // Navigate immediately to Razorpay WebView
+      navigation.navigate('RazorpayWebView', {
+        orderId: serverOrder.orderId,
+        amount: finalTotal,
+        keyId: serverOrder.keyId,
+        currency: serverOrder.currency || 'INR',
+        name: 'Ninja Deliveries',
+        description: 'Grocery Order Payment',
+        prefill: {
+          contact,
+          email: '',
+          name: '',
         },
-        onPaymentComplete: handlePaymentComplete,
+        onSuccess: async (response: any) => {
+          try {
+            console.log('Payment successful:', response);
+            const razorpayMeta = {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            };
+            
+            // Verify payment on server
+            await verifyRazorpayPaymentOnServer(razorpayMeta);
+
+            // Complete the order
+            await handlePaymentComplete("online", razorpayMeta, serverOrder);
+          } catch (error) {
+            console.error("Payment completion error:", error);
+            Alert.alert("Error", "Payment verification failed. Please contact support.");
+          } finally {
+            setNavigating(false);
+          }
+        },
+        onFailure: (error: any) => {
+          console.error("Payment failed:", error);
+          Alert.alert("Payment Failed", error.description || "Payment was not completed. Please try again.");
+          setNavigating(false);
+        },
       });
+    } catch (error: any) {
+      console.error("Online payment error:", error);
+      
+      if (error.code === "payment_cancelled") {
+        Alert.alert("Payment Cancelled", "You cancelled the payment. Please try again.");
+      } else {
+        Alert.alert("Payment Failed", error.message || "Failed to initiate payment. Please try again.");
+      }
+      setNavigating(false);
     }
   };
 
@@ -1023,45 +1080,6 @@ const CartScreen: React.FC = () => {
   if (!data?.verified) throw new Error(data?.error || "Payment verification failed");
   return true;
 };
-
-
- const openRazorpayCheckout = async (
-  keyId: string,
-  orderId: string,
-  amountPaise: number,
-  currency: string
-) => {
-  const user = auth().currentUser;
-  if (!user) throw new Error("Not logged in");
-
-  const contact = (user.phoneNumber || "").replace("+91", "");
-
-  const options: any = {
-    key: keyId,
-    order_id: orderId,
-    amount: String(amountPaise),
-    currency: currency || "INR",
-    name: "Ninja Deliveries",
-    description: "Order payment",
-
-    prefill: {
-      contact,
-      email: "",
-      name: "",
-      method: "upi", // ✅ this is the correct way on mobile :contentReference[oaicite:1]{index=1}
-    },
-
-    theme: { color: "#00C853" },
-  };
-
-  return RazorpayCheckout.open(options) as Promise<{
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }>;
-};
-
-
 
   /***************************************
    * PAYMENT COMPLETION HANDLER
@@ -1930,6 +1948,15 @@ const CartScreen: React.FC = () => {
           visible={errorModalVisible}
           message={errorModalMessage}
           onClose={() => setErrorModalVisible(false)}
+        />
+
+        <PaymentMethodModal
+          visible={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSelectCOD={handleCODPayment}
+          onSelectOnline={handleOnlinePayment}
+          totalAmount={finalTotal}
+          loading={navigating}
         />
       </View>
     </SafeAreaView>

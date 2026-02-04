@@ -70,7 +70,6 @@ import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
 import CartPaymentScreen from "./screens/CartPaymentScreen";
-import TestPaymentScreen from "./screens/TestPaymentScreen";
 import UnifiedCartScreen from "./screens/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
@@ -427,7 +426,6 @@ const CartStack = () => (
     <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
     <Stack.Screen name="GroceryCart" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
-    <Stack.Screen name="TestPayment" component={TestPaymentScreen} />
     <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen
       name="OrderAllocating"
