@@ -68,38 +68,85 @@ export default function CompanySelectionScreen() {
 
   // Filter companies that have active workers and are available for the selected time
   const filterCompaniesWithAvailability = async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
-    const availableCompanies: ServiceCompany[] = [];
-    
-    for (const company of companies) {
-      const companyId = company.companyId || company.id;
+    if (!checkTimeSlot || !selectedDate || !selectedTime) {
+      // If not checking time slots, use the old logic for backward compatibility
+      const availableCompanies: ServiceCompany[] = [];
       
-      // First check if company has any active workers
-      const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
-      if (!hasActiveWorkers) {
-        console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
-        continue;
-      }
-      
-      // If we need to check specific time slot availability
-      if (checkTimeSlot && selectedDate && selectedTime) {
-        const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime);
-        if (!isAvailableAtTime) {
-          console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - all workers busy at ${selectedDate} ${selectedTime}`);
+      for (const company of companies) {
+        const companyId = company.companyId || company.id;
+        
+        // Check if company has any active workers
+        const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+        if (!hasActiveWorkers) {
+          console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
           continue;
         }
+        
+        availableCompanies.push({
+          ...company,
+          availability: 'Available now'
+        });
       }
       
-      // Company passed all checks
-      availableCompanies.push({
-        ...company,
-        // Add availability info to display
-        availability: checkTimeSlot && selectedDate && selectedTime 
-          ? `Available on ${selectedDate} at ${selectedTime}`
-          : 'Available now'
-      });
+      return availableCompanies;
     }
     
-    return availableCompanies;
+    // Use new slot-based availability system
+    console.log(`🎯 Using slot-based availability for ${selectedDate} at ${selectedTime}`);
+    
+    try {
+      const companiesWithSlotAvailability = await FirestoreService.getCompaniesWithSlotAvailability(
+        categoryId,
+        selectedIssueIds,
+        selectedDate,
+        selectedTime,
+        serviceTitle // Pass service type for worker filtering
+      );
+      
+      // Transform to match expected format
+      return companiesWithSlotAvailability.map(company => ({
+        ...company,
+        availability: company.availabilityInfo.statusMessage,
+        // Add visual indicators for different statuses
+        isAllWorkersBusy: company.availabilityInfo.status === 'all_busy',
+        availableWorkerCount: company.availabilityInfo.availableWorkers,
+        totalWorkerCount: company.availabilityInfo.totalWorkers
+      }));
+      
+    } catch (error) {
+      console.error('❌ Error using slot-based availability, falling back to basic check:', error);
+      
+      // Fallback to basic availability check
+      const availableCompanies: ServiceCompany[] = [];
+      
+      for (const company of companies) {
+        const companyId = company.companyId || company.id;
+        const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+        
+        // Only show companies that have active workers (no busy workers shown)
+        if (hasActiveWorkers) {
+          // Additional check: verify workers are actually available for the time slot
+          if (selectedDate && selectedTime) {
+            const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime);
+            if (isAvailableAtTime) {
+              availableCompanies.push({
+                ...company,
+                availability: 'Available now'
+              });
+            }
+            // If not available at time, don't add to list (hide company)
+          } else {
+            availableCompanies.push({
+              ...company,
+              availability: 'Available now'
+            });
+          }
+        }
+        // If no active workers, don't add to list (hide company)
+      }
+      
+      return availableCompanies;
+    }
   };
 
   const fetchServiceCompanies = async () => {
@@ -144,10 +191,10 @@ export default function CompanySelectionScreen() {
         }))
       );
       
-      // Filter companies to only show those with active workers
-      const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies);
+      // Filter companies to only show those with active workers and check slot availability
+      const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
-      console.log(`🏢 After filtering: ${companiesWithActiveWorkers.length} companies with active workers:`, 
+      console.log(`🏢 After filtering: ${companiesWithActiveWorkers.length} companies with worker availability:`, 
         companiesWithActiveWorkers.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
@@ -366,8 +413,33 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
                     
-                    {/* Availability if available */}
-                    {item.availability && (
+                    {/* Worker Availability Status */}
+                    <View style={styles.availabilityStatusRow}>
+                      <Text style={styles.detailLabel}>Availability:</Text>
+                      <View style={[
+                        styles.availabilityBadge,
+                        (item as any).isAllWorkersBusy ? styles.busyBadge : styles.availableBadge
+                      ]}>
+                        <Text style={[
+                          styles.availabilityStatusText,
+                          (item as any).isAllWorkersBusy ? styles.busyText : styles.availableText
+                        ]}>
+                          {item.availability || 'Checking availability...'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Worker Count Details */}
+                    {(item as any).totalWorkerCount && (
+                      <View style={styles.workerCountRow}>
+                        <Text style={styles.workerCountText}>
+                          {(item as any).availableWorkerCount || 0} of {(item as any).totalWorkerCount} workers available
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {/* Availability if available (legacy) */}
+                    {item.availability && !(item as any).totalWorkerCount && (
                       <View style={styles.availabilityRow}>
                         <Text style={styles.detailLabel}>Available:</Text>
                         <Text style={styles.availabilityText}>{item.availability}</Text>
@@ -803,6 +875,56 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+  },
+
+  // New availability status styles
+  availabilityStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 6,
+  },
+
+  availabilityBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+
+  availableBadge: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+  },
+
+  busyBadge: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
+  },
+
+  availabilityStatusText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  availableText: {
+    color: "#059669",
+  },
+
+  busyText: {
+    color: "#dc2626",
+  },
+
+  workerCountRow: {
+    marginTop: 4,
+    marginBottom: 6,
+  },
+
+  workerCountText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+    fontStyle: "italic",
   },
 
   time: {

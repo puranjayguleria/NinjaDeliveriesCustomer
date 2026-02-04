@@ -4554,38 +4554,232 @@ export class FirestoreService {
    * This is a basic implementation that checks for active workers
    * TODO: Implement actual slot-based availability checking
    */
-  static async checkCompanyWorkerAvailability(companyId: string, date: string, time: string): Promise<boolean> {
+  static async checkCompanyWorkerAvailability(companyId: string, date: string, time: string, serviceType?: string): Promise<{
+    available: boolean;
+    status: 'available' | 'all_busy' | 'no_workers' | 'service_disabled';
+    availableWorkers: number;
+    totalWorkers: number;
+    busyWorkers: string[];
+  }> {
     try {
-      console.log(`🔍 Checking worker availability for company ${companyId} on ${date} at ${time}`);
+      console.log(`🔍 Checking worker availability for company ${companyId} on ${date} at ${time} for service: ${serviceType || 'any'}`);
       
-      // Check if company has any active workers
-      const workersQuery = await firestore()
-        .collection('service_workers')
-        .where('companyId', '==', companyId)
-        .where('isActive', '==', true)
-        .get();
-      
-      const activeWorkers = workersQuery.docs.length;
-      console.log(`👷 Company ${companyId} has ${activeWorkers} active workers`);
-      
-      if (activeWorkers === 0) {
-        console.log(`❌ Company ${companyId} has no active workers`);
-        return false;
+      // Use the new utility for enhanced availability checking
+      if (serviceType) {
+        const { WorkerAvailabilityUtils } = require('../utils/workerAvailabilityUtils');
+        
+        const summary = await WorkerAvailabilityUtils.getCompanyAvailabilitySummary(
+          companyId,
+          serviceType,
+          date,
+          time
+        );
+        
+        console.log(`📊 Enhanced availability check result:`, summary);
+        
+        return {
+          available: summary.status === 'available',
+          status: summary.status,
+          availableWorkers: summary.availableCount,
+          totalWorkers: summary.totalCount,
+          busyWorkers: [] // Details are in summary.details if needed
+        };
       }
       
-      // TODO: Add more sophisticated availability checking here:
-      // - Check worker schedules
-      // - Check existing bookings for the date/time
-      // - Check worker capacity
-      // - Check company operating hours
+      // Fallback to basic availability checking for backward compatibility
+      console.log(`🔄 Using basic availability check (no service type specified)`);
       
-      // For now, return true if company has active workers
-      console.log(`✅ Company ${companyId} is available (has ${activeWorkers} active workers)`);
-      return true;
+      // Check if company has any active workers for this service
+      let workersQuery = firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true);
+      
+      const workersSnapshot = await workersQuery.get();
+      const totalWorkers = workersSnapshot.docs.length;
+      
+      console.log(`👷 Company ${companyId} has ${totalWorkers} active workers`);
+      
+      if (totalWorkers === 0) {
+        console.log(`❌ Company ${companyId} has no active workers`);
+        return {
+          available: false,
+          status: 'no_workers',
+          availableWorkers: 0,
+          totalWorkers: 0,
+          busyWorkers: []
+        };
+      }
+      
+      // Check existing bookings for the same date and time slot
+      const busyWorkers: string[] = [];
+      const workerIds = workersSnapshot.docs.map(doc => doc.id);
+      
+      // Query bookings for this date and time slot
+      const bookingsQuery = await firestore()
+        .collection('service_bookings')
+        .where('date', '==', date)
+        .where('time', '==', time)
+        .where('status', 'in', ['assigned', 'started']) // Active bookings
+        .get();
+      
+      // Check which workers are busy
+      bookingsQuery.docs.forEach(doc => {
+        const booking = doc.data();
+        const workerId = booking.workerId || booking.technicianId;
+        if (workerId && workerIds.includes(workerId)) {
+          busyWorkers.push(workerId);
+        }
+      });
+      
+      const availableWorkers = totalWorkers - busyWorkers.length;
+      
+      console.log(`📊 Company ${companyId} availability:`, {
+        totalWorkers,
+        busyWorkers: busyWorkers.length,
+        availableWorkers,
+        busyWorkerIds: busyWorkers
+      });
+      
+      if (availableWorkers === 0) {
+        console.log(`🚫 All workers busy for company ${companyId} on ${date} at ${time}`);
+        return {
+          available: false,
+          status: 'all_busy',
+          availableWorkers: 0,
+          totalWorkers,
+          busyWorkers
+        };
+      }
+      
+      console.log(`✅ Company ${companyId} has ${availableWorkers} available workers`);
+      return {
+        available: true,
+        status: 'available',
+        availableWorkers,
+        totalWorkers,
+        busyWorkers
+      };
       
     } catch (error) {
       console.error(`❌ Error checking worker availability for company ${companyId}:`, error);
-      return false; // If error, assume not available to be safe
+      return {
+        available: false,
+        status: 'no_workers',
+        availableWorkers: 0,
+        totalWorkers: 0,
+        busyWorkers: []
+      };
+    }
+  }
+
+  /**
+   * Get companies with slot-based availability for a service
+   */
+  static async getCompaniesWithSlotAvailability(
+    categoryId: string, 
+    selectedIssueIds: string[], 
+    date: string, 
+    time: string,
+    serviceType?: string
+  ): Promise<(ServiceCompany & { 
+    availabilityInfo: {
+      available: boolean;
+      status: 'available' | 'all_busy' | 'no_workers' | 'service_disabled';
+      availableWorkers: number;
+      totalWorkers: number;
+      statusMessage: string;
+    }
+  })[]> {
+    try {
+      console.log(`🏢 Fetching companies with slot availability for ${date} at ${time}`);
+      
+      // Get companies based on selected issues
+      let companies: ServiceCompany[];
+      if (selectedIssueIds && selectedIssueIds.length > 0) {
+        companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
+      } else if (categoryId) {
+        companies = await this.getCompaniesByCategory(categoryId);
+        companies = await this.getDetailedPackagesForCompanies(companies);
+      } else {
+        companies = await this.getServiceCompanies();
+        companies = await this.getDetailedPackagesForCompanies(companies);
+      }
+      
+      console.log(`🏢 Found ${companies.length} companies, checking availability...`);
+      
+      // Check availability for each company
+      const companiesWithAvailability = await Promise.all(
+        companies.map(async (company) => {
+          const companyId = company.companyId || company.id;
+          const availability = await this.checkCompanyWorkerAvailability(
+            companyId, 
+            date, 
+            time, 
+            serviceType
+          );
+          
+          let statusMessage = '';
+          switch (availability.status) {
+            case 'available':
+              statusMessage = `${availability.availableWorkers} worker${availability.availableWorkers > 1 ? 's' : ''} available`;
+              break;
+            case 'all_busy':
+              statusMessage = `All ${availability.totalWorkers} workers busy`;
+              break;
+            case 'no_workers':
+              statusMessage = 'No workers available';
+              break;
+            case 'service_disabled':
+              statusMessage = 'Service not offered';
+              break;
+          }
+          
+          return {
+            ...company,
+            availabilityInfo: {
+              ...availability,
+              statusMessage
+            }
+          };
+        })
+      );
+      
+      // Filter based on your requirements:
+      // 1. Show ONLY companies with available workers
+      // 2. Hide companies with no workers, service disabled, or all workers busy
+      const filteredCompanies = companiesWithAvailability.filter(company => {
+        const { status } = company.availabilityInfo;
+        return status === 'available'; // Only show companies with available workers
+      });
+      
+      console.log(`🏢 After slot filtering: ${filteredCompanies.length}/${companies.length} companies shown (only available workers)`);
+      console.log('Available companies only:', filteredCompanies.map(c => ({
+        name: c.companyName || c.serviceName,
+        status: c.availabilityInfo.status,
+        message: c.availabilityInfo.statusMessage,
+        availableWorkers: c.availabilityInfo.availableWorkers
+      })));
+      
+      // Log hidden companies for debugging
+      const hiddenCompanies = companiesWithAvailability.filter(company => {
+        const { status } = company.availabilityInfo;
+        return status !== 'available';
+      });
+      
+      if (hiddenCompanies.length > 0) {
+        console.log(`🚫 Hidden ${hiddenCompanies.length} companies:`, hiddenCompanies.map(c => ({
+          name: c.companyName || c.serviceName,
+          reason: c.availabilityInfo.status,
+          message: c.availabilityInfo.statusMessage
+        })));
+      }
+      
+      return filteredCompanies;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies with slot availability:', error);
+      throw error;
     }
   }
 }
