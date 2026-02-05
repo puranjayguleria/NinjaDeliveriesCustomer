@@ -436,10 +436,10 @@ export default function CompanySelectionScreen() {
                       </Text>
                     </View>
                     
-                    {/* Price */}
-                    {item.price && (
+                    {/* Price - Only show for simple services (no packages) */}
+                    {item.price && !(item.packages && Array.isArray(item.packages) && item.packages.length > 0) && (
                       <View style={styles.priceRow}>
-                        <Text style={styles.priceLabel}>Starting Price:</Text>
+                        <Text style={styles.priceLabel}>Service Price:</Text>
                         <Text style={styles.price}>₹{item.price}</Text>
                       </View>
                     )}
@@ -480,21 +480,60 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
                     
-                    {/* Worker Availability Status */}
-                    <View style={styles.availabilityStatusRow}>
-                      <Text style={styles.detailLabel}>Availability:</Text>
-                      <View style={[
-                        styles.availabilityBadge,
-                        (item as any).isAllWorkersBusy ? styles.busyAvailabilityBadge : styles.availableBadge
-                      ]}>
-                        <Text style={[
-                          styles.availabilityStatusText,
-                          (item as any).isAllWorkersBusy ? styles.busyText : styles.availableText
-                        ]}>
-                          {item.availability || 'Checking availability...'}
-                        </Text>
-                      </View>
-                    </View>
+                    {/* Service/Package Availability Status - Two separate flows */}
+                    {item.packages && Array.isArray(item.packages) && item.packages.length > 0 ? (
+                      // PACKAGE FLOW
+                      <>
+                        <View style={styles.availabilityStatusRow}>
+                          <Text style={styles.detailLabel}>Package Availability:</Text>
+                          <View style={[
+                            styles.availabilityBadge,
+                            (item as any).isAllWorkersBusy ? styles.busyAvailabilityBadge : styles.availableBadge
+                          ]}>
+                            <Text style={[
+                              styles.availabilityStatusText,
+                              (item as any).isAllWorkersBusy ? styles.busyText : styles.availableText
+                            ]}>
+                              {item.availability || 'Checking availability...'}
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        {/* Package Information */}
+                        <View style={styles.packageInfoRow}>
+                          <Text style={styles.packageInfoText}>
+                            📦 {item.packages.length} package{item.packages.length > 1 ? 's' : ''} available
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      // PRICE FLOW (Simple Service)
+                      <>
+                        <View style={styles.availabilityStatusRow}>
+                          <Text style={styles.detailLabel}>Service Availability:</Text>
+                          <View style={[
+                            styles.availabilityBadge,
+                            (item as any).isAllWorkersBusy ? styles.busyAvailabilityBadge : styles.availableBadge
+                          ]}>
+                            <Text style={[
+                              styles.availabilityStatusText,
+                              (item as any).isAllWorkersBusy ? styles.busyText : styles.availableText
+                            ]}>
+                              {item.availability || 'Checking availability...'}
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        {/* Simple Service Information - NO PACKAGE INFO */}
+                        {item.price && (
+                          <View style={styles.simpleServiceRow}>
+                            <Text style={styles.simpleServiceText}>
+                              💰 Fixed service pricing: ₹{item.price}
+                            </Text>
+                          </View>
+                        )}
+                      </>
+                    )}
                     
                     {/* Worker Count Details */}
                     {(item as any).totalWorkerCount && (
@@ -996,6 +1035,41 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "500",
     fontStyle: "italic",
+  },
+
+  // Package and Simple Service Info Styles
+  packageInfoRow: {
+    marginTop: 6,
+    marginBottom: 4,
+  },
+
+  packageInfoText: {
+    fontSize: 12,
+    color: "#7c3aed",
+    fontWeight: "600",
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  simpleServiceRow: {
+    marginTop: 6,
+    marginBottom: 4,
+  },
+
+  simpleServiceText: {
+    fontSize: 12,
+    color: "#059669",
+    fontWeight: "600",
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
   },
 
   time: {

@@ -296,10 +296,7 @@ export default function ServiceCategoryScreen() {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No Services Available</Text>
           <Text style={styles.emptyText}>
-            No services found for {serviceTitle}. This might be because:
-            {'\n'}• No services are configured for this category
-            {'\n'}• Services exist but masterCategoryId doesn't match
-            {'\n'}• All services are marked as inactive
+            No services found for {serviceTitle}. 
           </Text>
           <TouchableOpacity 
             style={styles.retryButton}
