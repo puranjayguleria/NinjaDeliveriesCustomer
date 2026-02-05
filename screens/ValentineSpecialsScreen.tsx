@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,27 +15,154 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { VALENTINE_PRODUCTS, SPECIAL_OFFERS } from "@/constants/ValentineProducts";
 import { Colors } from "@/constants/colors";
+import firestore from "@react-native-firebase/firestore";
+import { useLocationContext } from "@/context/LocationContext";
 
 const { width } = Dimensions.get("window");
 
 const ValentineSpecialsScreen = () => {
   const navigation = useNavigation<any>();
+  const visibleOffers = SPECIAL_OFFERS.filter((item) => item.id !== "v5" && item.id !== "v6");
+  const { location } = useLocationContext();
+  const [teddyImageUrl, setTeddyImageUrl] = useState<string | null>(null);
 
-  const handleProductPress = (item: any) => {
-    if (item.id === "v1") {
-      // Luxury Chocolate Box -> All chocolates
-      navigation.navigate("ProductListingFromHome", { 
-        categoryName: "Chocolates",
-        searchQuery: "chocolate" 
+  const openSubcategoryListing = async (
+    subcategoryName: string,
+    fallbackCategoryId: string,
+    fallbackCategoryName: string
+  ) => {
+    const storeId = location?.storeId;
+
+    if (!storeId) {
+      navigation.navigate("ProductListingFromHome", {
+        categoryId: fallbackCategoryId,
+        categoryName: fallbackCategoryName,
       });
+      return;
+    }
+
+    try {
+      const snap = await firestore()
+        .collection("subcategories")
+        .where("storeId", "==", storeId)
+        .where("name", "==", subcategoryName)
+        .limit(1)
+        .get();
+
+      if (snap.empty) {
+        navigation.navigate("ProductListingFromHome", {
+          categoryId: fallbackCategoryId,
+          categoryName: fallbackCategoryName,
+        });
+        return;
+      }
+
+      const doc = snap.docs[0];
+      const data: any = doc.data() || {};
+      const categoryId = data.categoryId || fallbackCategoryId;
+
+      navigation.navigate("ProductListingFromHome", {
+        categoryId,
+        categoryName: subcategoryName,
+        subcategoryId: doc.id,
+      });
+    } catch {
+      navigation.navigate("ProductListingFromHome", {
+        categoryId: fallbackCategoryId,
+        categoryName: fallbackCategoryName,
+      });
+    }
+  };
+
+  useEffect(() => {
+    const storeId = location?.storeId;
+    if (!storeId) {
+      setTeddyImageUrl(null);
+      return;
+    }
+
+    const unsub = firestore()
+      .collection("subcategories")
+      .where("storeId", "==", storeId)
+      .where("name", "==", "Teddy Bear")
+      .limit(1)
+      .onSnapshot(
+        (snap) => {
+          if (snap.empty) {
+            setTeddyImageUrl(null);
+            return;
+          }
+          const data: any = snap.docs[0].data() || {};
+          const raw = String(data.image || "").replace(/`/g, "").trim();
+          setTeddyImageUrl(raw || null);
+        },
+        () => setTeddyImageUrl(null)
+      );
+
+    return () => unsub();
+  }, [location?.storeId]);
+
+  const handleProductPress = async (item: any) => {
+    if (item.id === "v1") {
+      await openSubcategoryListing(
+        "Chocolate & Sweets",
+        "Snacks & Ready-to-Eat",
+        "Snacks & Ready-to-Eat"
+      );
     } else if (item.id === "v2" || item.id === "v6") {
       // Rose Bouquet or Mixed Flower Arrangement -> Make Bouquet
       navigation.navigate("MakeBouquetScreen");
+    } else if (item.id === "v3") {
+      await openSubcategoryListing("Teddy Bear", "Gift Shop", "Gift Shop");
+    } else if (item.id === "v4") {
+      await openSubcategoryListing(
+        "Condoms",
+        "Sexual Wellness",
+        "Sexual Wellness"
+      );
     } else {
       // Default behavior
       navigation.navigate("ProductDetails", { product: item });
     }
   };
+
+  const valentineProducts = useMemo(() => {
+    const bouquetImageUrl = String(
+      "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Fval_specialScreen%2FbouquetImg.jpeg?alt=media&token=31cff32e-dcbb-4616-8a70-55814aa47ff1"
+    )
+      .replace(/`/g, "")
+      .trim();
+    const luxuryChocoImageUrl = String(
+      "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Fval_specialScreen%2Fval_chocoBox.webp?alt=media&token=b07b0ca1-a1ce-4226-b4cc-85a006a38407"
+    )
+      .replace(/`/g, "")
+      .trim();
+    const sexualWellnessImageUrl = String(
+      "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Fval_specialScreen%2FsexualWell.png?alt=media&token=4a5103bb-969c-4a37-b2f8-94193238bf45"
+    )
+      .replace(/`/g, "")
+      .trim();
+
+    return VALENTINE_PRODUCTS.map((p) => {
+      if (p.id === "v1" && luxuryChocoImageUrl) {
+        return { ...p, image: luxuryChocoImageUrl };
+      }
+      if (p.id === "v2" && bouquetImageUrl) {
+        return { ...p, image: bouquetImageUrl };
+      }
+      if (p.id === "v4") {
+        return {
+          ...p,
+          name: "Sexual Wellness",
+          image: sexualWellnessImageUrl || p.image,
+          description: "Explore Sexual Wellness products",
+        };
+      }
+      if (p.id !== "v3") return p;
+      if (!teddyImageUrl) return p;
+      return { ...p, image: teddyImageUrl };
+    });
+  }, [teddyImageUrl]);
 
   return (
     <View style={styles.container}>
@@ -43,7 +170,7 @@ const ValentineSpecialsScreen = () => {
           User should replace uri with their local asset if needed */}
       <ImageBackground
         source={{
-          uri: "https://images.unsplash.com/photo-1503455637927-730bce8583c0?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+          uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Fval_specialScreen%2Fval_spesBG.png?alt=media&token=2a0aecd1-f5cd-441f-b149-5877f9985e00",
         }}
         style={styles.backgroundImage}
         resizeMode="cover"
@@ -85,17 +212,13 @@ const ValentineSpecialsScreen = () => {
                     <Text style={styles.discountText}>
                       UP TO <Text style={styles.percentText}>40%</Text> OFF
                     </Text>
-                    <TouchableOpacity 
-                      style={styles.shopNowButton}
-                      accessibilityLabel="Shop Valentine's Specials"
-                      accessibilityRole="button"
-                    >
+                    <View style={styles.shopNowButton}>
                       <Text style={styles.shopNowText}>Special</Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                   <Image
                     source={{
-                      uri: "https://images.unsplash.com/photo-1581938165093-050aeb5ef218?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+                      uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/valentine%20week%2Fval_specialScreen%2FvalSaleTheme.png?alt=media&token=14bc4bca-854b-45d9-a996-a4f80f0ebd03",
                     }}
                     style={styles.bannerImage}
                     accessibilityLabel="Valentine's day chocolates and gifts"
@@ -108,64 +231,50 @@ const ValentineSpecialsScreen = () => {
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle} accessibilityRole="header">Best Gifts for Your Valentine</Text>
               <View style={styles.gridContainer}>
-                {VALENTINE_PRODUCTS.map((item) => {
-                  const isComingSoon = item.id === "v4"; // Valentine Gift Basket
+                {valentineProducts.map((item) => {
                   return (
-                    <View key={item.id} style={styles.productCard}>
-                      <TouchableOpacity 
-                        onPress={() => !isComingSoon && handleProductPress(item)}
-                        activeOpacity={isComingSoon ? 1 : 0.2}
-                        accessibilityLabel={isComingSoon ? `${item.name}, Coming Soon` : `View details for ${item.name}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: isComingSoon }}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.productImage} accessibilityLabel={item.name} />
-                        {isComingSoon && (
-                          <View style={styles.comingSoonOverlay}>
-                            <Text style={styles.comingSoonText}>Coming Soon</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                      <View style={styles.productInfo}>
-                        <Text style={styles.productName}>{item.name}</Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Special Offers Section */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle} accessibilityRole="header">Special Offers</Text>
-              </View>
-              <View style={styles.offersRow}>
-                {SPECIAL_OFFERS.map((item) => {
-                   const isComingSoon = item.id === "v5"; // Assorted Truffles
-                   return (
                     <TouchableOpacity
                       key={item.id}
-                      style={styles.offerCard}
-                      onPress={() => !isComingSoon && handleProductPress(item)}
-                      activeOpacity={isComingSoon ? 1 : 0.2}
-                      accessibilityLabel={isComingSoon ? `${item.name}, Coming Soon` : `View details for ${item.name}`}
+                      style={styles.productCard}
+                      onPress={() => handleProductPress(item)}
+                      activeOpacity={0.2}
+                      accessibilityLabel={`View details for ${item.name}`}
                       accessibilityRole="button"
-                      accessibilityState={{ disabled: isComingSoon }}
                     >
-                      <Image source={{ uri: item.image }} style={styles.offerImage} accessibilityLabel={item.name} />
-                      <View style={styles.offerOverlay}>
-                        {isComingSoon ? (
-                           <Text style={styles.comingSoonText}>Coming Soon</Text>
-                        ) : (
-                           <Text style={styles.offerName}>{item.name}</Text>
-                        )}
+                      <Image source={{ uri: item.image }} style={styles.productImage} accessibilityLabel={item.name} />
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName}>{item.name}</Text>
                       </View>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
+
+            {visibleOffers.length > 0 && (
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle} accessibilityRole="header">Special Offers</Text>
+                </View>
+                <View style={styles.offersRow}>
+                  {visibleOffers.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.offerCard}
+                      onPress={() => handleProductPress(item)}
+                      activeOpacity={0.2}
+                      accessibilityLabel={`View details for ${item.name}`}
+                      accessibilityRole="button"
+                    >
+                      <Image source={{ uri: item.image }} style={styles.offerImage} accessibilityLabel={item.name} />
+                      <View style={styles.offerOverlay}>
+                        <Text style={styles.offerName}>{item.name}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
             
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -309,12 +418,12 @@ const styles = StyleSheet.create({
   },
   productCard: {
     width: (width - 48) / 2,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.valentine.primary,
     borderRadius: 16,
     marginBottom: 16,
     overflow: "hidden",
     elevation: 3,
-    shadowColor: Colors.black,
+    shadowColor: Colors.white,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -330,7 +439,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 16,
     fontWeight: "600",
-    color: Colors.text.primary,
+    color: Colors.white,
     marginBottom: 4,
   },
   sectionHeaderRow: {

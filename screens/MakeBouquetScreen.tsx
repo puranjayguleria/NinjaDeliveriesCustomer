@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { useCart } from "../context/CartContext";
 import { Image as ExpoImage } from "expo-image";
+import { useLocationContext } from "../context/LocationContext";
 
 const { width } = Dimensions.get("window");
+const EMPTY_FLOWER = { id: "", name: "", price: 0, image: "" };
 
 // Updated flower options with new prices
 const ROSE_OPTIONS = [
@@ -49,19 +51,89 @@ const BOUQUET_SHAPES = {
 
 const MakeBouquetScreen = () => {
   const navigation = useNavigation<any>();
+  const { location } = useLocationContext();
   
   // State
   const [bouquetShape, setBouquetShape] = useState<"front" | "round">("front");
-  const [selectedRose, setSelectedRose] = useState(ROSE_OPTIONS[0]);
+  const [flowerOptions, setFlowerOptions] = useState(ROSE_OPTIONS);
+  const [selectedRose, setSelectedRose] = useState<any>(ROSE_OPTIONS[0]);
   // Initialize size with the first available size for the default shape
   const [bouquetSize, setBouquetSize] = useState(BOUQUET_SHAPES.front.sizes[0]);
   const [addingToCart, setAddingToCart] = useState(false);
+  const [hasRemoteFlowerDocs, setHasRemoteFlowerDocs] = useState(false);
   
   // Custom Mix State
   const [isCustomMix, setIsCustomMix] = useState(false);
   const [customComposition, setCustomComposition] = useState<{ [id: string]: number }>({});
   
   const { addToCart } = useCart();
+
+  useEffect(() => {
+    const storeId = location?.storeId;
+    if (!storeId) return;
+
+    const unsub = firestore()
+      .collection("zbouquet_flowers")
+      .where("storeId", "==", storeId)
+      .onSnapshot(
+        (snap) => {
+          setHasRemoteFlowerDocs(!snap.empty);
+          if (snap.empty) {
+            setFlowerOptions(ROSE_OPTIONS);
+            setSelectedRose((prev: any) => prev?.id ? prev : ROSE_OPTIONS[0]);
+            return;
+          }
+
+          const enabledRows = snap.docs
+            .map((d) => {
+              const data: any = d.data() || {};
+              const id = data.flowerId || d.id;
+              const name = String(data.name || "").trim();
+              const price = typeof data.price === "number" ? data.price : Number(data.price);
+              const image = String(data.imageUrl || "").trim();
+              const enabled = data.enabled === true;
+              const priority = typeof data.priority === "number" ? data.priority : Number(data.priority);
+              if (!id || !name || !Number.isFinite(price) || !image) return null;
+              if (!enabled) return null;
+              return { id, name, price, image, priority: Number.isFinite(priority) ? priority : Number.MAX_SAFE_INTEGER };
+            })
+            .filter(Boolean)
+            .sort((a: any, b: any) => (a.priority ?? 0) - (b.priority ?? 0))
+            .map(({ priority: _p, ...rest }: any) => rest) as any[];
+
+          if (!enabledRows.length) {
+            setFlowerOptions([]);
+            setSelectedRose(EMPTY_FLOWER);
+            setCustomComposition({});
+            return;
+          }
+
+          setFlowerOptions(enabledRows);
+          setSelectedRose((prev: any) => enabledRows.find((r) => r.id === prev?.id) || enabledRows[0]);
+        },
+        () => {
+          setHasRemoteFlowerDocs(false);
+          setFlowerOptions([]);
+          setSelectedRose(EMPTY_FLOWER);
+          setCustomComposition({});
+        }
+      );
+
+    return () => unsub();
+  }, [location?.storeId]);
+
+  useEffect(() => {
+    if (flowerOptions.length) {
+      if (selectedRose && flowerOptions.some((f) => f.id === selectedRose.id)) return;
+      setSelectedRose(flowerOptions[0]);
+      return;
+    }
+    if (hasRemoteFlowerDocs) {
+      setSelectedRose(EMPTY_FLOWER);
+      return;
+    }
+    setSelectedRose(ROSE_OPTIONS[0]);
+  }, [flowerOptions, selectedRose]);
 
   // Derived state for custom mix
   const totalSelectedCount = Object.values(customComposition).reduce((sum, count) => sum + count, 0);
@@ -70,10 +142,10 @@ const MakeBouquetScreen = () => {
   // Price Calculation
   const calculatedPrice = isCustomMix
     ? Object.entries(customComposition).reduce((total, [id, count]) => {
-        const rose = ROSE_OPTIONS.find(r => r.id === id);
+        const rose = flowerOptions.find(r => r.id === id);
         return total + (rose ? rose.price * count : 0);
       }, 0)
-    : selectedRose.price * bouquetSize;
+    : (selectedRose?.price || 0) * bouquetSize;
 
   // Handlers
   const handleShapeChange = (shape: "front" | "round") => {
@@ -84,11 +156,15 @@ const MakeBouquetScreen = () => {
 
   const handleQuantityChange = (roseId: string, delta: number) => {
     setCustomComposition(prev => {
+      const currentTotalSelectedCount = Object.values(prev).reduce(
+        (sum, count) => sum + count,
+        0
+      );
       const current = prev[roseId] || 0;
       const next = Math.max(0, current + delta);
       
       // Don't exceed bouquet size
-      if (delta > 0 && totalSelectedCount >= bouquetSize) return prev;
+      if (delta > 0 && currentTotalSelectedCount >= bouquetSize) return prev;
       
       const newComp = { ...prev, [roseId]: next };
       if (next === 0) delete newComp[roseId];
@@ -102,6 +178,10 @@ const MakeBouquetScreen = () => {
     // Validation for custom mix
     if (isCustomMix && totalSelectedCount !== bouquetSize) {
       alert(`Please select exactly ${bouquetSize} flowers. You have ${remainingSlots} slots remaining.`);
+      return;
+    }
+    if (!isCustomMix && !selectedRose?.id) {
+      alert("No flowers available right now.");
       return;
     }
 
@@ -118,11 +198,11 @@ const MakeBouquetScreen = () => {
         name = `${bouquetSize} Stem Custom Mix (${shapeLabel})`;
         // Use the image of the first selected flower or default
         const firstId = Object.keys(customComposition)[0];
-        image = ROSE_OPTIONS.find(r => r.id === firstId)?.image || ROSE_OPTIONS[0].image;
+        image = flowerOptions.find(r => r.id === firstId)?.image || flowerOptions[0]?.image || ROSE_OPTIONS[0].image;
         
         // Build description
         const parts = Object.entries(customComposition).map(([id, count]) => {
-          const rose = ROSE_OPTIONS.find(r => r.id === id);
+          const rose = flowerOptions.find(r => r.id === id);
           return `${count} ${rose?.name}`;
         });
         description = `Custom Mix (${shapeLabel}): ${parts.join(", ")}`;
@@ -190,75 +270,33 @@ const MakeBouquetScreen = () => {
            </TouchableOpacity>
         </View>
 
-        {/* Step 1: Select Flowers */}
+        {/* Step 1: Select Bouquet Size */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>1. Select Flowers</Text>
-          {isCustomMix ? (
-             <View>
-                <Text style={styles.sectionSubtitle}>
-                   Mix and match! Selected: <Text style={{fontWeight:'bold', color: remainingSlots === 0 ? 'green' : 'red'}}>{totalSelectedCount}/{bouquetSize}</Text>
-                   {remainingSlots > 0 ? ` (Pick ${remainingSlots} more)` : " (Full)"}
-                </Text>
-
-                {ROSE_OPTIONS.map((rose) => {
-                   const count = customComposition[rose.id] || 0;
-                   return (
-                     <View key={rose.id} style={styles.mixRow}>
-                        <ExpoImage source={{ uri: rose.image }} style={styles.roseImage} contentFit="cover" />
-                        <View style={{flex: 1}}>
-                           <Text style={styles.mixName}>{rose.name}</Text>
-                           <Text style={styles.mixPrice}>₹{rose.price}/stem</Text>
-                        </View>
-                        
-                        <View style={styles.counterControl}>
-                           <TouchableOpacity 
-                             onPress={() => handleQuantityChange(rose.id, -1)}
-                             style={[styles.counterBtn, count === 0 && styles.disabledBtn]}
-                             disabled={count === 0}
-                           >
-                              <Ionicons name="remove" size={20} color={count === 0 ? "#ccc" : "#333"} />
-                           </TouchableOpacity>
-                           <Text style={styles.counterValue}>{count}</Text>
-                           <TouchableOpacity 
-                             onPress={() => handleQuantityChange(rose.id, 1)}
-                             style={[styles.counterBtn, remainingSlots === 0 && styles.disabledBtn]}
-                             disabled={remainingSlots === 0}
-                           >
-                              <Ionicons name="add" size={20} color={remainingSlots === 0 ? "#ccc" : "#333"} />
-                           </TouchableOpacity>
-                        </View>
-                     </View>
-                   );
-                })}
-             </View>
-          ) : (
-             <View>
-               <Text style={styles.sectionSubtitle}>Choose the base flower for your bouquet</Text>
-               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roseList}>
-                {ROSE_OPTIONS.map((rose) => (
-                  <TouchableOpacity
-                    key={rose.id}
-                    style={[
-                      styles.roseCard,
-                      selectedRose.id === rose.id && styles.selectedRoseCard
-                    ]}
-                    onPress={() => setSelectedRose(rose)}
-                  >
-                    <ExpoImage source={{ uri: rose.image }} style={styles.roseImage} contentFit="cover" />
-                    <View style={styles.roseInfo}>
-                      <Text style={styles.roseName}>{rose.name}</Text>
-                      <Text style={styles.rosePrice}>₹{rose.price}/stem</Text>
-                    </View>
-                    {selectedRose.id === rose.id && (
-                      <View style={styles.checkIcon}>
-                        <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-             </View>
-          )}
+          <Text style={styles.sectionTitle}>1. Select Bouquet Size</Text>
+          <Text style={styles.sectionSubtitle}>
+             Available sizes for {BOUQUET_SHAPES[bouquetShape].label}
+          </Text>
+          
+          <View style={styles.sizeGrid}>
+            {BOUQUET_SHAPES[bouquetShape].sizes.map((size) => (
+              <TouchableOpacity
+                key={size}
+                style={[
+                  styles.sizeOption,
+                  bouquetSize === size && styles.selectedSizeOption
+                ]}
+                onPress={() => {
+                  setBouquetSize(size);
+                  setCustomComposition({});
+                }}
+              >
+                <Text style={[
+                  styles.sizeText,
+                  bouquetSize === size && styles.selectedSizeText
+                ]}>{size} Stems</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Step 2: Select Bouquet */}
@@ -291,33 +329,87 @@ const MakeBouquetScreen = () => {
           </View>
         </View>
 
-        {/* Step 3: Select Bouquet Size */}
+        {/* Step 3: Select Flowers */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>3. Select Bouquet Size</Text>
-          <Text style={styles.sectionSubtitle}>
-             Available sizes for {BOUQUET_SHAPES[bouquetShape].label}
-          </Text>
-          
-          <View style={styles.sizeGrid}>
-            {BOUQUET_SHAPES[bouquetShape].sizes.map((size) => (
-              <TouchableOpacity
-                key={size}
-                style={[
-                  styles.sizeOption,
-                  bouquetSize === size && styles.selectedSizeOption
-                ]}
-                onPress={() => {
-                  setBouquetSize(size);
-                  setCustomComposition({});
-                }}
-              >
-                <Text style={[
-                  styles.sizeText,
-                  bouquetSize === size && styles.selectedSizeText
-                ]}>{size} Stems</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={styles.sectionTitle}>3. Select Flowers</Text>
+          {isCustomMix ? (
+             <View>
+                <Text style={styles.sectionSubtitle}>
+                   Mix and match! Selected: <Text style={{fontWeight:'bold', color: remainingSlots === 0 ? 'green' : 'red'}}>{totalSelectedCount}/{bouquetSize}</Text>
+                   {remainingSlots > 0 ? ` (Pick ${remainingSlots} more)` : " (Full)"}
+                </Text>
+
+                {!flowerOptions.length ? (
+                  <Text style={{ color: "#999", fontStyle: "italic", textAlign: "center", paddingVertical: 12 }}>
+                    No flowers available right now.
+                  </Text>
+                ) : null}
+
+                {flowerOptions.map((rose) => {
+                   const count = customComposition[rose.id] || 0;
+                   return (
+                     <View key={rose.id} style={styles.mixRow}>
+                       <ExpoImage source={{ uri: rose.image }} style={styles.mixImage} contentFit="cover" />
+                        <View style={{flex: 1}}>
+                           <Text style={styles.mixName}>{rose.name}</Text>
+                           <Text style={styles.mixPrice}>₹{rose.price}/stem</Text>
+                        </View>
+                        
+                        <View style={styles.counterControl}>
+                           <TouchableOpacity 
+                             onPress={() => handleQuantityChange(rose.id, -1)}
+                             style={[styles.counterBtn, count === 0 && styles.disabledBtn]}
+                             disabled={count === 0}
+                           >
+                              <Ionicons name="remove" size={20} color={count === 0 ? "#ccc" : "#333"} />
+                           </TouchableOpacity>
+                           <Text style={styles.counterValue}>{count}</Text>
+                           <TouchableOpacity 
+                             onPress={() => handleQuantityChange(rose.id, 1)}
+                             style={[styles.counterBtn, remainingSlots === 0 && styles.disabledBtn]}
+                             disabled={remainingSlots === 0}
+                           >
+                              <Ionicons name="add" size={20} color={remainingSlots === 0 ? "#ccc" : "#333"} />
+                           </TouchableOpacity>
+                        </View>
+                     </View>
+                   );
+                })}
+             </View>
+          ) : (
+             <View>
+               <Text style={styles.sectionSubtitle}>Choose the base flower for your bouquet</Text>
+               {!flowerOptions.length ? (
+                 <Text style={{ color: "#999", fontStyle: "italic", textAlign: "center", paddingVertical: 12 }}>
+                   No flowers available right now.
+                 </Text>
+               ) : (
+                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roseList}>
+                  {flowerOptions.map((rose) => (
+                    <TouchableOpacity
+                      key={rose.id}
+                      style={[
+                        styles.roseCard,
+                        selectedRose?.id === rose.id && styles.selectedRoseCard
+                      ]}
+                      onPress={() => setSelectedRose(rose)}
+                    >
+                      <ExpoImage source={{ uri: rose.image }} style={styles.roseImage} contentFit="cover" />
+                      <View style={styles.roseInfo}>
+                        <Text style={styles.roseName}>{rose.name}</Text>
+                        <Text style={styles.rosePrice}>₹{rose.price}/stem</Text>
+                      </View>
+                      {selectedRose?.id === rose.id && (
+                        <View style={styles.checkIcon}>
+                          <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+               )}
+             </View>
+          )}
         </View>
 
         {/* Price Calculator Display */}
@@ -326,7 +418,7 @@ const MakeBouquetScreen = () => {
            {isCustomMix ? (
               <View>
                  {Object.entries(customComposition).map(([id, count]) => {
-                    const rose = ROSE_OPTIONS.find(r => r.id === id);
+                    const rose = flowerOptions.find(r => r.id === id) || ROSE_OPTIONS.find(r => r.id === id);
                     if (!rose) return null;
                     return (
                        <View key={id} style={styles.priceCalculationRow}>

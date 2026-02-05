@@ -62,16 +62,16 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const route = useRoute<ProductListingScreenRouteProp>();
+  const { categoryId, subcategoryId } = route.params || {};
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
-    null
+    subcategoryId ?? null
   );
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   /***** NAV / ROUTE / CONTEXT *****/
   const navigation = useNavigation<ProductListingScreenNavigationProp>();
-  const route = useRoute<ProductListingScreenRouteProp>();
-  const { categoryId } = route.params || {};
   const { location } = useLocationContext(); // ⬅️ NEW (storeId)
 
   /***** CART HOOKS *****/

@@ -455,34 +455,46 @@ const ProfileScreen: React.FC = () => {
 
       // Direct which screen to go to
       if (status === "pending") {
-        navigation.navigate("HomeTab", {
-          screen: "OrderAllocating",
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
           params: {
-            orderId: id,
-            pickupCoords,
-            dropoffCoords,
-            totalCost: finalTotal,
+            screen: "OrderAllocating",
+            params: {
+              orderId: id,
+              pickupCoords,
+              dropoffCoords,
+              totalCost: finalTotal,
+            },
           },
         });
       } else if (status === "cancelled") {
-        navigation.navigate("HomeTab", {
-          screen: "OrderCancelled",
-          params: { orderId: id, refundAmount: refundAmount || finalTotal },
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
+          params: {
+            screen: "OrderCancelled",
+            params: { orderId: id, refundAmount: refundAmount || finalTotal },
+          },
         });
       } else if (status === "tripEnded") {
-        navigation.navigate("HomeTab", {
-          screen: "RatingScreen",
-          params: { orderId: id },
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
+          params: {
+            screen: "RatingScreen",
+            params: { orderId: id },
+          },
         });
       } else {
         /* active / reachedPickup / etc. */
-        navigation.navigate("HomeTab", {
-          screen: "OrderTracking",
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
           params: {
-            orderId: id,
-            pickupCoords,
-            dropoffCoords,
-            totalCost: finalTotal,
+            screen: "OrderTracking",
+            params: {
+              orderId: id,
+              pickupCoords,
+              dropoffCoords,
+              totalCost: finalTotal,
+            },
           },
         });
       }

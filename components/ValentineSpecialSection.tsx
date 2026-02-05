@@ -85,13 +85,18 @@ const ValentineSpecialSection = ({ storeId }: { storeId: string }) => {
         <View>
           <View style={styles.titleRow}>
              <MaterialIcons name="favorite" size={18} color="#D81B60" style={{ marginRight: 4 }} />
-             <Text style={styles.title}>h, Love Local</Text>
+             <Text style={styles.title}> Nearby Favourites</Text>
              <MaterialIcons name="favorite" size={14} color="#F48FB1" style={{ marginLeft: 4, opacity: 0.6 }} />
           </View>
           <Text style={styles.subtitle}>From Dharamshala Today 💌</Text>
         </View>
         <TouchableOpacity 
-          onPress={() => navigation.navigate("ProductListingFromHome", { categoryName: "Valentine Specials", searchQuery: "valentine" })}
+          onPress={() =>
+            navigation.navigate("CategoriesTab", {
+              screen: "CategoriesHome",
+              params: { autoOpenFirstCategory: true },
+            })
+          }
           style={styles.seeMoreBtn}
         >
           <Text style={styles.seeMoreTxt}>See More {">"}</Text>

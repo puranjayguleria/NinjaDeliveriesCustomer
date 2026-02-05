@@ -1458,20 +1458,25 @@ export default function ProductsHomeScreen() {
     setLoadingMore(true);
 
     try {
-      const ids = slice.map((c) => c.id);
-      const snap = await firestore()
-        .collection("products")
-        .where("storeId", "==", location.storeId)
-        .where("categoryId", "in", ids as any)
-        .where("quantity", ">", 0)
-        .get();
-
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const up: typeof prodMap = {};
+
+      const perCat = await Promise.all(
+        slice.map(async (c) => {
+          const snap = await firestore()
+            .collection("products")
+            .where("storeId", "==", location.storeId)
+            .where("categoryId", "==", c.id)
+            .get();
+          const all = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+          return { catId: c.id, rows: all };
+        })
+      );
+
       slice.forEach((c) => {
-        const arr = all.filter((p) => p.categoryId === c.id);
+        const arr = perCat.find((p) => p.catId === c.id)?.rows || [];
         up[c.id] = {
           rows: arr
+            .filter((p: any) => (p.quantity ?? 0) > 0)
             .sort((a, b) => (b.quantity ?? 0) - (a.quantity ?? 0))
             .slice(0, ROW_LIMIT),
         };
@@ -1479,7 +1484,7 @@ export default function ProductsHomeScreen() {
       setProdMap((prev) => ({ ...prev, ...up }));
       setPage((p) => p + 1);
     } catch {
-      // ignore
+      setError("Could not load more categories.");
     } finally {
       pending.current = false;
       setLoadingMore(false);
@@ -1708,13 +1713,37 @@ export default function ProductsHomeScreen() {
   }, [loadHighlights]);
 
   // Handle category shortcut press
-  const handleCategoryShortcut = useCallback((name: string) => {
+  const handleCategoryShortcut = useCallback(async (name: string) => {
     if (name === "Offers") {
       nav.navigate("AllDiscountedProducts");
       return;
     }
 
     if (name === "Chocolates") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("name", "==", "Chocolate Gift Box")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            const data: any = doc.data() || {};
+            const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
+            nav.navigate("ProductListingFromHome", {
+              categoryId,
+              categoryName: categoryId,
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+
       nav.navigate("ProductListingFromHome", {
         categoryName: name,
         searchQuery: "chocolate",
@@ -1776,7 +1805,7 @@ export default function ProductsHomeScreen() {
          searchQuery: searchTerm,
        });
     }
-  }, [cats, nav, maybeNavigateCat]);
+  }, [cats, nav, maybeNavigateCat, location.storeId]);
 
   // Build the list header for the SectionList
   const listHeader = (
@@ -1798,7 +1827,9 @@ export default function ProductsHomeScreen() {
                   marginRight: 4,
                   width: 68,
                 }}
-                onPress={() => handleCategoryShortcut(item.name)}
+                onPress={() => {
+                  void handleCategoryShortcut(item.name);
+                }}
               >
                 <View
                   style={{

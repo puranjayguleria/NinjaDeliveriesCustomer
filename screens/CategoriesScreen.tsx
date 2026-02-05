@@ -21,7 +21,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 
 import { RootStackParamList } from "../types/navigation";
@@ -68,6 +68,7 @@ const isPanCorner = (p: { categoryId?: string; name: string }, catId: string) =>
 /* ────────── component ────────── */
 const CategoriesScreen: React.FC = () => {
   const navigation = useNavigation<CategoriesNav>();
+  const route = useRoute<any>();
   const { location } = useLocationContext();
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
 
@@ -77,6 +78,7 @@ const CategoriesScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [didAutoOpen, setDidAutoOpen] = useState(false);
 
   /* Pan Corner gate state */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
@@ -146,6 +148,17 @@ const CategoriesScreen: React.FC = () => {
       }
     })();
   }, [location.storeId]);
+
+  useEffect(() => {
+    if (didAutoOpen) return;
+    if (!route?.params?.autoOpenFirstCategory) return;
+    if (!categories.length) return;
+    setDidAutoOpen(true);
+    navigation.navigate("ProductListingFromCats", {
+      categoryId: categories[0].id,
+      categoryName: categories[0].name,
+    });
+  }, [route?.params?.autoOpenFirstCategory, categories, didAutoOpen, navigation]);
 
   /* ────────── gate helper ────────── */
   const askGate = useCallback(
