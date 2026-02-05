@@ -26,6 +26,8 @@ export default function ServiceCheckoutScreen() {
   const { location } = useLocationContext();
   
   const { services, totalAmount } = route.params;
+  // Ensure displayed total comes from the actual services (preserve package/company prices)
+  const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
@@ -126,7 +128,7 @@ export default function ServiceCheckoutScreen() {
       selectedAddressId,
       paymentMethod,
       servicesCount: services.length,
-      totalAmount,
+      totalAmount: computedTotalAmount,
       loading
     });
     
@@ -162,7 +164,7 @@ export default function ServiceCheckoutScreen() {
       // For cash payment, create bookings directly
       Alert.alert(
         "Confirm Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nService will be provided at:\n${selectedAddress.fullAddress}\n\nContinue?`,
+        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${computedTotalAmount}.\n\nService will be provided at:\n${selectedAddress.fullAddress}\n\nContinue?`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -204,11 +206,11 @@ export default function ServiceCheckoutScreen() {
       const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
 
       // Create Razorpay order
-      console.log("Creating Razorpay order for services - Amount:", totalAmount);
+      console.log("Creating Razorpay order for services - Amount:", computedTotalAmount);
       const user = auth().currentUser;
       if (!user) throw new Error("Not logged in");
 
-      const amountPaise = toPaise(totalAmount);
+      const amountPaise = toPaise(computedTotalAmount);
       const headers = await getAuthHeaders();
 
       const requestData = {
@@ -233,7 +235,7 @@ export default function ServiceCheckoutScreen() {
       console.log(`🧭 Navigating to RazorpayWebView...`);
       navigation.navigate("RazorpayWebView", {
         orderId: String(data.orderId),
-        amount: totalAmount,
+        amount: computedTotalAmount,
         keyId: String(data.keyId),
         currency: String(data.currency ?? "INR"),
         name: "Ninja Services",
@@ -478,7 +480,7 @@ export default function ServiceCheckoutScreen() {
         bookingId: firstBooking.bookingId,
         paymentMethod,
         paymentStatus,
-        totalAmount,
+        totalAmount: computedTotalAmount,
       });
 
     } catch (error: any) {
@@ -724,7 +726,7 @@ export default function ServiceCheckoutScreen() {
           
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Services ({services.length})</Text>
-            <Text style={styles.summaryValue}>₹{totalAmount}</Text>
+            <Text style={styles.summaryValue}>₹{computedTotalAmount}</Text>
           </View>
 
           <View style={styles.summaryRow}>
@@ -744,23 +746,18 @@ export default function ServiceCheckoutScreen() {
             </Text>
           </View>
           
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Service Charges</Text>
-            <Text style={styles.summaryValue}>₹0</Text>
-          </View>
-          
           <View style={styles.summaryDivider} />
-          
+
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>₹{totalAmount}</Text>
+            <Text style={styles.totalValue}>₹{computedTotalAmount}</Text>
           </View>
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
-          <Text style={styles.footerTotalLabel}>Total: ₹{totalAmount}</Text>
+          <Text style={styles.footerTotalLabel}>Total: ₹{computedTotalAmount}</Text>
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>
         </View>
         
@@ -796,7 +793,7 @@ export default function ServiceCheckoutScreen() {
             ) : (
               <View style={styles.onlinePayButtonContent}>
                 <Ionicons name="card-outline" size={20} color="#fff" />
-                <Text style={styles.proceedButtonText}>Pay ₹{totalAmount} Online</Text>
+                <Text style={styles.proceedButtonText}>Pay ₹{computedTotalAmount} Online</Text>
               </View>
             )}
           </TouchableOpacity>

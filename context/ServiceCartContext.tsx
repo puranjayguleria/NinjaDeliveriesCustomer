@@ -66,21 +66,24 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
     items: {},
   });
 
-  const addService = (service: Omit<ServiceCartItem, "quantity" | "id" | "unitPrice" | "totalPrice"> & { totalPrice?: number }) => {
+  const addService = (service: Omit<ServiceCartItem, "quantity" | "id"> & { unitPrice?: number; totalPrice?: number }) => {
     // Generate unique ID for this service booking
     const serviceId = `${service.bookingType}_${service.company.id}_${Date.now()}`;
 
-    // Derive unitPrice from passed totalPrice (preferred), or company.price, or fallback to 0
-    const unitPrice = typeof (service as any).totalPrice === 'number'
-      ? (service as any).totalPrice
-      : (typeof service.company?.price === 'number' ? service.company.price : 0);
+    // Determine unitPrice and totalPrice from what was passed in.
+    // Priority: explicit `unitPrice` -> explicit `totalPrice` (used as unit if unit missing) -> company.price -> 0
+    const explicitUnit = typeof (service as any).unitPrice === 'number' ? (service as any).unitPrice : undefined;
+    const explicitTotal = typeof (service as any).totalPrice === 'number' ? (service as any).totalPrice : undefined;
+
+    const unitPrice = explicitUnit ?? explicitTotal ?? (typeof service.company?.price === 'number' ? service.company.price : 0);
+    const totalPrice = explicitTotal ?? unitPrice * 1;
 
     const newService: ServiceCartItem = {
       ...service,
       id: serviceId,
       quantity: 1,
       unitPrice,
-      totalPrice: unitPrice * 1,
+      totalPrice,
     } as ServiceCartItem;
 
     setState((prev) => ({
@@ -113,8 +116,10 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
         ...updates,
       };
 
-      // Recalculate total price using unitPrice (fallback to company.price or 0)
-      if (updates.quantity !== undefined || updates.unitPrice !== undefined || updates.company?.price !== undefined) {
+      // If an explicit totalPrice is provided in updates, use it. Otherwise recalculate from unitPrice/quantity/company.price.
+      if (updates.totalPrice !== undefined) {
+        updatedService.totalPrice = updates.totalPrice as number;
+      } else if (updates.quantity !== undefined || updates.unitPrice !== undefined || updates.company?.price !== undefined) {
         const unit = typeof updatedService.unitPrice === 'number'
           ? updatedService.unitPrice
           : (typeof updatedService.company?.price === 'number' ? updatedService.company.price : 0);
