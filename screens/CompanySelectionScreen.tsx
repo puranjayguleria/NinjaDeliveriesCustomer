@@ -1202,6 +1202,36 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
 
+  previewAvailability: {
+    fontSize: 12,
+    color: "#059669",
+    fontWeight: "500",
+  },
+
+  // ✅ NEW: Enhanced preview styles for separated pricing
+  packagePreview: {
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+
+  directPreview: {
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+
+  previewSubtext: {
+    fontSize: 11,
+    color: "#64748b",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+
   // Loading states
   loadingContainer: {
     flex: 1,

@@ -4891,7 +4891,8 @@ export class FirestoreService {
   }
 
   /**
-   * 🏢 NEW: Fetch detailed package information for companies
+   * 🏢 FIXED: Fetch detailed package information for companies
+   * Only enhances existing packages, doesn't create default packages for direct pricing services
    */
   static async getDetailedPackagesForCompanies(companies: ServiceCompany[]): Promise<ServiceCompany[]> {
     try {
@@ -4900,11 +4901,11 @@ export class FirestoreService {
       const enhancedCompanies = await Promise.all(
         companies.map(async (company) => {
           try {
-            // If company already has packages, enhance them with more details
+            // Only enhance if company actually has packages
             if (company.packages && Array.isArray(company.packages) && company.packages.length > 0) {
-              console.log(`🏢 Company "${company.companyName}" has ${company.packages.length} packages`);
+              console.log(`🏢 Company "${company.companyName}" has ${company.packages.length} packages - ENHANCING`);
               
-              // Enhance package information
+              // Enhance existing package information
               const enhancedPackages = company.packages.map((pkg: any, index: number) => {
                 if (typeof pkg === 'string') {
                   return {
@@ -4940,27 +4941,14 @@ export class FirestoreService {
                 packages: enhancedPackages,
               };
             } else {
-              // Create default package if none exists
-              console.log(`🏢 Company "${company.companyName}" has no packages, creating default package`);
-              
-              const defaultPackage = {
-                id: `${company.id}_default_package`,
-                name: `${company.serviceName} Service`,
-                price: company.price || 0,
-                description: `Professional ${company.serviceName} service`,
-                duration: '1-2 hours',
-                features: [
-                  company.serviceName || 'Service',
-                  'Professional technician',
-                  'Quality guarantee',
-                  'Customer support'
-                ],
-                isDefault: true,
-              };
+              // ✅ FIXED: Don't create default packages for direct pricing services
+              // Just return the company as-is for direct pricing
+              console.log(`🏢 Company "${company.companyName}" uses direct pricing - NO PACKAGES ADDED`);
               
               return {
                 ...company,
-                packages: [defaultPackage],
+                // Explicitly ensure no packages for direct pricing services
+                packages: undefined,
               };
             }
           } catch (error) {
@@ -4971,6 +4959,13 @@ export class FirestoreService {
       );
       
       console.log(`✅ Enhanced package information for ${enhancedCompanies.length} companies`);
+      
+      // Log the final result for debugging
+      enhancedCompanies.forEach(company => {
+        const hasPackages = company.packages && Array.isArray(company.packages) && company.packages.length > 0;
+        console.log(`📊 Final: "${company.companyName}" - ${hasPackages ? `${company.packages!.length} packages` : 'Direct pricing'}`);
+      });
+      
       return enhancedCompanies;
       
     } catch (error) {
