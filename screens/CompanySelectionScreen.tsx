@@ -278,29 +278,55 @@ export default function CompanySelectionScreen() {
     else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
     else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
-    // Calculate price from selected issues or company price
-    const issueTotalPrice = Array.isArray(selectedIssues)
-      ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
-      : 0;
-    const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 99);
+    // 🔧 FIXED: Calculate price properly for both packages and simple services
+    let computedPrice: number;
+    let serviceDescription: string;
+    let packageInfo: any = null;
 
-    // Add service to cart
+    // Check if user selected a package
+    if ((selectedCompany as any).selectedPackage) {
+      // PACKAGE FLOW: Use selected package price
+      const selectedPackage = (selectedCompany as any).selectedPackage;
+      computedPrice = selectedPackage.price || selectedCompany?.price || 99;
+      serviceDescription = `${serviceTitle} - ${selectedPackage.name}`;
+      packageInfo = {
+        packageName: selectedPackage.name,
+        packageType: selectedPackage.type,
+        packageDuration: selectedPackage.duration,
+        packageFeatures: selectedPackage.features,
+        isPackageService: true
+      };
+      
+      console.log(`💰 PACKAGE PRICING: Selected "${selectedPackage.name}" for ₹${computedPrice}`);
+    } else {
+      // SIMPLE SERVICE FLOW: Use issue prices or company price
+      const issueTotalPrice = Array.isArray(selectedIssues)
+        ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
+        : 0;
+      computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 99);
+      serviceDescription = serviceTitle;
+      
+      console.log(`💰 SIMPLE SERVICE PRICING: ₹${computedPrice} (issues: ₹${issueTotalPrice}, company: ₹${selectedCompany?.price})`);
+    }
+
+    // Add service to cart with correct pricing
     addService({
-      serviceTitle,
+      serviceTitle: serviceDescription, // Include package name in title if applicable
       issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
       company: {
         id: selectedCompany.id,
-        companyId: selectedCompany.companyId || selectedCompany.id, // Add companyId for website compatibility
+        companyId: selectedCompany.companyId || selectedCompany.id,
         name: selectedCompany.companyName || selectedCompany.serviceName,
-        price: selectedCompany.price,
+        price: selectedCompany.price, // Keep original company price for reference
         rating: selectedCompany.rating,
         verified: selectedCompany.isActive,
       },
       selectedDate: selectedDate,
       selectedTime: selectedTime,
       bookingType,
-      unitPrice: computedPrice,
-      totalPrice: computedPrice,
+      unitPrice: computedPrice, // ✅ CORRECT: Package price or service price
+      totalPrice: computedPrice, // ✅ CORRECT: Same as unit price for quantity 1
+      additionalInfo: packageInfo, // Store package details for cart display
     });
 
     Alert.alert(
@@ -485,7 +511,7 @@ export default function CompanySelectionScreen() {
                       // PACKAGE FLOW
                       <>
                         <View style={styles.availabilityStatusRow}>
-                          <Text style={styles.detailLabel}>Package Availability:</Text>
+                          <Text style={styles.detailLabel}>Package Options:</Text>
                           <View style={[
                             styles.availabilityBadge,
                             (item as any).isAllWorkersBusy ? styles.busyAvailabilityBadge : styles.availableBadge
@@ -494,16 +520,186 @@ export default function CompanySelectionScreen() {
                               styles.availabilityStatusText,
                               (item as any).isAllWorkersBusy ? styles.busyText : styles.availableText
                             ]}>
-                              {item.availability || 'Checking availability...'}
+                              {item.availability || 'Available'}
                             </Text>
                           </View>
                         </View>
                         
-                        {/* Package Information */}
-                        <View style={styles.packageInfoRow}>
-                          <Text style={styles.packageInfoText}>
-                            📦 {item.packages.length} package{item.packages.length > 1 ? 's' : ''} available
+                        {/* Enhanced Package Selection Modal */}
+                        <View style={styles.packageListContainer}>
+                          <Text style={styles.packageHeaderText}>
+                            📦 Choose Your Package
                           </Text>
+                          <Text style={styles.packageSubHeaderText}>
+                            Select the package that best fits your needs
+                          </Text>
+                          
+                          {/* Package Options Grid */}
+                          <View style={styles.packageGrid}>
+                            {item.packages.map((pkg: any, index: number) => {
+                              // Extract package information from website data
+                              const packageName = pkg.name || pkg.title || pkg.packageName || `Package ${index + 1}`;
+                              const packagePrice = pkg.price || pkg.amount || item.price || 0;
+                              const packageDuration = pkg.duration || pkg.validity || pkg.period;
+                              const packageType = pkg.type || pkg.frequency || pkg.interval || 'one-time';
+                              const packageDescription = pkg.description || pkg.details || '';
+                              const packageFeatures = pkg.features || pkg.services || pkg.includes || [];
+                              const isPopular = pkg.isPopular || pkg.recommended || false;
+                              const originalPrice = pkg.originalPrice || pkg.mrp;
+                              const discount = pkg.discount || pkg.offer;
+                              
+                              const isSelected = (item as any).selectedPackageIndex === index;
+                              
+                              return (
+                                <TouchableOpacity 
+                                  key={index} 
+                                  style={[
+                                    styles.packageCard,
+                                    isSelected && styles.packageCardSelected,
+                                    isPopular && styles.packageCardPopular
+                                  ]}
+                                  onPress={() => {
+                                    // Store selected package info
+                                    const updatedCompanies = companies.map(c => {
+                                      if (c.id === item.id) {
+                                        return {
+                                          ...c,
+                                          selectedPackageIndex: index,
+                                          selectedPackage: {
+                                            name: packageName,
+                                            price: packagePrice,
+                                            duration: packageDuration,
+                                            type: packageType,
+                                            description: packageDescription,
+                                            features: packageFeatures,
+                                            isPopular: isPopular,
+                                            originalPrice: originalPrice,
+                                            discount: discount,
+                                            index: index
+                                          }
+                                        } as any;
+                                      }
+                                      return c;
+                                    });
+                                    setCompanies(updatedCompanies);
+                                    setSelectedCompanyId(item.id);
+                                  }}
+                                >
+                                  {/* Popular Badge */}
+                                  {isPopular && (
+                                    <View style={styles.popularBadge}>
+                                      <Text style={styles.popularText}>POPULAR</Text>
+                                    </View>
+                                  )}
+                                  
+                                  {/* Package Header */}
+                                  <View style={styles.packageCardHeader}>
+                                    <View style={styles.packageTitleRow}>
+                                      <Text style={styles.packageCardTitle}>{packageName}</Text>
+                                      {isSelected && (
+                                        <View style={styles.selectedPackageBadge}>
+                                          <Text style={styles.selectedPackageText}>✓</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                    
+                                    {/* Package Type Badge */}
+                                    <View style={[
+                                      styles.packageTypeBadge,
+                                      packageType === 'weekly' && styles.weeklyBadge,
+                                      packageType === 'monthly' && styles.monthlyBadge,
+                                      packageType === 'yearly' && styles.yearlyBadge
+                                    ]}>
+                                      <Text style={styles.packageTypeText}>
+                                        {packageType.toUpperCase()}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  
+                                  {/* Package Price */}
+                                  <View style={styles.packagePriceSection}>
+                                    <View style={styles.priceRow}>
+                                      <Text style={styles.packageMainPrice}>₹{packagePrice}</Text>
+                                      {originalPrice && originalPrice > packagePrice && (
+                                        <Text style={styles.packageOriginalPrice}>₹{originalPrice}</Text>
+                                      )}
+                                    </View>
+                                    
+                                    {packageDuration && (
+                                      <Text style={styles.packageDurationText}>
+                                        {packageDuration}
+                                      </Text>
+                                    )}
+                                    
+                                    {discount && (
+                                      <View style={styles.discountBadge}>
+                                        <Text style={styles.discountText}>{discount}% OFF</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  
+                                  {/* Package Description */}
+                                  {packageDescription && (
+                                    <Text style={styles.packageDescription} numberOfLines={2}>
+                                      {packageDescription}
+                                    </Text>
+                                  )}
+                                  
+                                  {/* Package Features */}
+                                  {packageFeatures && packageFeatures.length > 0 && (
+                                    <View style={styles.packageFeaturesSection}>
+                                      <Text style={styles.featuresTitle}>Includes:</Text>
+                                      {packageFeatures.slice(0, 3).map((feature: string, fIndex: number) => (
+                                        <View key={fIndex} style={styles.featureItem}>
+                                          <Text style={styles.featureBullet}>•</Text>
+                                          <Text style={styles.featureText}>{feature}</Text>
+                                        </View>
+                                      ))}
+                                      {packageFeatures.length > 3 && (
+                                        <Text style={styles.moreFeatures}>
+                                          +{packageFeatures.length - 3} more features
+                                        </Text>
+                                      )}
+                                    </View>
+                                  )}
+                                  
+                                  {/* Selection Indicator */}
+                                  <View style={[
+                                    styles.packageSelectionIndicator,
+                                    isSelected && styles.packageSelectionIndicatorSelected
+                                  ]}>
+                                    <Text style={[
+                                      styles.packageSelectionText,
+                                      isSelected && styles.packageSelectionTextSelected
+                                    ]}>
+                                      {isSelected ? 'SELECTED' : 'SELECT'}
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          
+                          {/* Package Selection Status */}
+                          <View style={styles.packageSelectionStatus}>
+                            {(item as any).selectedPackage ? (
+                              <View style={styles.selectionConfirmed}>
+                                <Text style={styles.selectionConfirmedText}>
+                                  ✅ You selected: {(item as any).selectedPackage.name}
+                                </Text>
+                                <Text style={styles.selectionConfirmedPrice}>
+                                  ₹{(item as any).selectedPackage.price}
+                                  {(item as any).selectedPackage.type && ` (${(item as any).selectedPackage.type})`}
+                                </Text>
+                              </View>
+                            ) : (
+                              <View style={styles.selectionPending}>
+                                <Text style={styles.selectionPendingText}>
+                                  👆 Please select a package to continue
+                                </Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
                       </>
                     ) : (
@@ -583,24 +779,42 @@ export default function CompanySelectionScreen() {
           <View style={styles.selectedInfo}>
             <Text style={styles.selectedCompanyName}>{selectedCompany.companyName || selectedCompany.serviceName}</Text>
             <View style={styles.selectedDetailsRow}>
-              {selectedCompany.serviceType && (
-                <Text style={styles.selectedDetail}>{selectedCompany.serviceType}</Text>
-              )}
-              {selectedCompany.price && (
-                <Text style={styles.selectedPrice}>₹{selectedCompany.price}</Text>
+              {(selectedCompany as any).selectedPackage ? (
+                // Show selected package details
+                <>
+                  <Text style={styles.selectedDetail}>
+                    📦 {(selectedCompany as any).selectedPackage.name}
+                  </Text>
+                  <Text style={styles.selectedPrice}>
+                    ₹{(selectedCompany as any).selectedPackage.price}
+                    {(selectedCompany as any).selectedPackage.type && `/${(selectedCompany as any).selectedPackage.type}`}
+                  </Text>
+                </>
+              ) : (
+                // Show simple service details
+                <>
+                  {selectedCompany.serviceType && (
+                    <Text style={styles.selectedDetail}>{selectedCompany.serviceType}</Text>
+                  )}
+                  {selectedCompany.price && (
+                    <Text style={styles.selectedPrice}>₹{selectedCompany.price}</Text>
+                  )}
+                </>
               )}
             </View>
           </View>
           
           <TouchableOpacity
-            style={[
-              styles.continueBtn,
-              selectedCompany && (selectedCompany as any).isBusy && styles.continueBtnDisabled
-            ]}
-            activeOpacity={selectedCompany && (selectedCompany as any).isBusy ? 0.3 : 0.7}
+            style={styles.continueBtn}
+            activeOpacity={0.7}
             onPress={selectCompany}
           >
-            <Text style={styles.continueText}>Add to Cart</Text>
+            <Text style={styles.continueText}>
+              {selectedCompany && (selectedCompany as any).isBusy 
+                ? 'Book with Limited Availability' 
+                : 'Add to Cart'
+              }
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1312,5 +1526,426 @@ const styles = StyleSheet.create({
 
   continueTextDisabled: {
     color: "#f1f5f9",
+  },
+
+  // Enhanced Package Selection Styles
+  packageListContainer: {
+    marginTop: 12,
+    backgroundColor: "#f8f9ff",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e0e7ff",
+  },
+
+  packageHeaderText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4338ca",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+
+  packageSubHeaderText: {
+    fontSize: 12,
+    color: "#6366f1",
+    marginBottom: 12,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+
+  packageItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  packageItemSelected: {
+    backgroundColor: "#f0f9ff",
+    borderColor: "#3b82f6",
+    borderWidth: 2,
+  },
+
+  packageInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  packageNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+
+  packageName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    flex: 1,
+  },
+
+  selectedPackageBadge: {
+    backgroundColor: "#10b981",
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  selectedPackageText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+
+  packageDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+    gap: 12,
+  },
+
+  packageDuration: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: "500",
+  },
+
+  packageType: {
+    fontSize: 12,
+    color: "#7c3aed",
+    fontWeight: "600",
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+
+  packageFeaturesRow: {
+    marginTop: 4,
+  },
+
+  packageFeaturesText: {
+    fontSize: 11,
+    color: "#6b7280",
+    fontStyle: "italic",
+    lineHeight: 16,
+  },
+
+  packagePriceContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  packagePrice: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#7c3aed",
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    textAlign: "center",
+    minWidth: 80,
+  },
+
+  packagePriceType: {
+    fontSize: 10,
+    color: "#6b7280",
+    marginTop: 2,
+    textAlign: "center",
+  },
+
+  morePackagesButton: {
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 8,
+    alignItems: "center",
+  },
+
+  morePackagesText: {
+    fontSize: 12,
+    color: "#4338ca",
+    fontWeight: "500",
+  },
+
+  packageSelectionStatus: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+
+  packageSelectionText: {
+    fontSize: 12,
+    color: "#10b981",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  packageSelectionTextPending: {
+    fontSize: 12,
+    color: "#f59e0b",
+    fontWeight: "500",
+    textAlign: "center",
+  },
+
+  // Enhanced Package Selection Grid Styles
+  packageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+
+  packageCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    flex: 1,
+    minWidth: "45%",
+    position: "relative",
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+  },
+
+  packageCardSelected: {
+    borderColor: "#3b82f6",
+    borderWidth: 2,
+    backgroundColor: "#f0f9ff",
+    elevation: 2,
+    shadowOpacity: 0.1,
+  },
+
+  packageCardPopular: {
+    borderColor: "#f59e0b",
+    borderWidth: 2,
+    backgroundColor: "#fffbeb",
+  },
+
+  popularBadge: {
+    position: "absolute",
+    top: -8,
+    right: 8,
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+
+  popularText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  packageCardHeader: {
+    marginBottom: 12,
+  },
+
+  packageTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  packageCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1f2937",
+    flex: 1,
+    marginRight: 8,
+  },
+
+  packageTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#f3f4f6",
+  },
+
+  weeklyBadge: {
+    backgroundColor: "#dcfdf7",
+  },
+
+  monthlyBadge: {
+    backgroundColor: "#dbeafe",
+  },
+
+  yearlyBadge: {
+    backgroundColor: "#fef3c7",
+  },
+
+  packageTypeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#374151",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  packagePriceSection: {
+    marginBottom: 12,
+  },
+
+  packageMainPrice: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1f2937",
+    marginRight: 8,
+  },
+
+  packageOriginalPrice: {
+    fontSize: 14,
+    color: "#9ca3af",
+    textDecorationLine: "line-through",
+  },
+
+  packageDurationText: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+
+  discountBadge: {
+    backgroundColor: "#dc2626",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+
+  discountText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+
+  packageDescription: {
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+
+  packageFeaturesSection: {
+    marginBottom: 12,
+  },
+
+  featuresTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+  },
+
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 4,
+  },
+
+  featureBullet: {
+    fontSize: 12,
+    color: "#10b981",
+    marginRight: 6,
+    marginTop: 1,
+  },
+
+  featureText: {
+    fontSize: 11,
+    color: "#6b7280",
+    flex: 1,
+    lineHeight: 14,
+  },
+
+  moreFeatures: {
+    fontSize: 10,
+    color: "#3b82f6",
+    fontWeight: "500",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+
+  packageSelectionIndicator: {
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+
+  packageSelectionIndicatorSelected: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+  },
+
+  packageSelectionTextSelected: {
+    color: "#ffffff",
+    fontWeight: "600",
+  },
+
+  selectionConfirmed: {
+    backgroundColor: "#f0fdf4",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+
+  selectionConfirmedText: {
+    fontSize: 13,
+    color: "#059669",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+
+  selectionConfirmedPrice: {
+    fontSize: 16,
+    color: "#047857",
+    fontWeight: "700",
+  },
+
+  selectionPending: {
+    backgroundColor: "#fef3c7",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+
+  selectionPendingText: {
+    fontSize: 12,
+    color: "#d97706",
+    fontWeight: "500",
+    textAlign: "center",
   },
 });

@@ -81,6 +81,35 @@ export default function ServiceCartScreen() {
             </View>
           ))}
         </View>
+        
+        {/* 🔧 NEW: Show package information if available */}
+        {item.additionalInfo?.isPackageService && (
+          <View style={styles.packageInfoContainer}>
+            <Text style={styles.packageInfoTitle}>📦 Package Details:</Text>
+            <View style={styles.packageInfoRow}>
+              <Text style={styles.packageName}>{item.additionalInfo.packageName}</Text>
+              {item.additionalInfo.packageType && (
+                <View style={styles.packageTypeBadge}>
+                  <Text style={styles.packageTypeText}>{item.additionalInfo.packageType.toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
+            {item.additionalInfo.packageDuration && (
+              <Text style={styles.packageDuration}>⏱️ Duration: {item.additionalInfo.packageDuration}</Text>
+            )}
+            {item.additionalInfo.packageFeatures && item.additionalInfo.packageFeatures.length > 0 && (
+              <View style={styles.packageFeatures}>
+                <Text style={styles.packageFeaturesTitle}>Includes:</Text>
+                {item.additionalInfo.packageFeatures.slice(0, 3).map((feature: string, fIndex: number) => (
+                  <Text key={fIndex} style={styles.packageFeature}>• {feature}</Text>
+                ))}
+                {item.additionalInfo.packageFeatures.length > 3 && (
+                  <Text style={styles.moreFeatures}>+{item.additionalInfo.packageFeatures.length - 3} more</Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       <View style={styles.bookingDetails}>
@@ -413,5 +442,82 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+
+  // 🔧 NEW: Package Information Styles
+  packageInfoContainer: {
+    backgroundColor: "#f8f9ff",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#e0e7ff",
+  },
+
+  packageInfoTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4338ca",
+    marginBottom: 8,
+  },
+
+  packageInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+
+  packageName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1f2937",
+    flex: 1,
+  },
+
+  packageTypeBadge: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+
+  packageTypeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#ffffff",
+    letterSpacing: 0.5,
+  },
+
+  packageDuration: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginBottom: 6,
+  },
+
+  packageFeatures: {
+    marginTop: 6,
+  },
+
+  packageFeaturesTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 4,
+  },
+
+  packageFeature: {
+    fontSize: 11,
+    color: "#6b7280",
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+
+  moreFeatures: {
+    fontSize: 10,
+    color: "#3b82f6",
+    fontWeight: "500",
+    marginTop: 2,
+    fontStyle: "italic",
   },
 });
