@@ -60,21 +60,20 @@ export default function CompanySelectionScreen() {
   };
 
   // Check real-time availability for a specific date and time
-  const checkRealTimeAvailability = async (companyId: string, date: string, time: string, serviceType?: string): Promise<boolean> => {
+  const checkRealTimeAvailability = async (companyId: string, date: string, time: string, serviceIds?: string[]): Promise<boolean> => {
     try {
       console.log(`🔍 DETAILED CHECK - Company ${companyId}:`);
       console.log(`   Date: ${date}, Time: ${time}`);
-      console.log(`   Service Type:`, serviceType);
-      console.log(`   Selected Service IDs:`, selectedIssueIds);
+      console.log(`   Selected Service IDs:`, serviceIds);
       console.log(`   Service Title:`, serviceTitle);
       
-      // Use the specific FirestoreService method that returns detailed availability info
-      // Call the method with exact signature: (companyId, date, time, serviceType?)
+      // 🔥 CRITICAL: Pass service IDs for proper worker filtering
       const result: any = await FirestoreService.checkCompanyWorkerAvailability(
         companyId, 
         date, 
         time, 
-        serviceType || serviceTitle
+        serviceIds || selectedIssueIds, // Pass service IDs array
+        serviceTitle // Pass service title as fallback
       );
       
       // Ensure we have the expected object structure
@@ -88,7 +87,7 @@ export default function CompanySelectionScreen() {
         status: result.status,
         availableWorkers: result.availableWorkers,
         totalWorkers: result.totalWorkers,
-        serviceType: serviceType || serviceTitle
+        serviceIds: serviceIds || selectedIssueIds
       });
       
       return result.available;
@@ -291,6 +290,7 @@ export default function CompanySelectionScreen() {
       issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
       company: {
         id: selectedCompany.id,
+        companyId: selectedCompany.companyId || selectedCompany.id, // Add companyId for website compatibility
         name: selectedCompany.companyName || selectedCompany.serviceName,
         price: selectedCompany.price,
         rating: selectedCompany.rating,

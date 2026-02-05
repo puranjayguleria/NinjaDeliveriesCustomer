@@ -12,6 +12,7 @@ export type ServiceCartItem = {
   issues: string[];
   company: {
     id: string;
+    companyId?: string; // Add companyId field for compatibility
     name: string;
     price?: number;
     time?: string;
@@ -27,6 +28,7 @@ export type ServiceCartItem = {
   totalPrice: number;
   bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash';
   additionalInfo?: any; // For service-specific data
+  addOns?: any[]; // Add-on services selected during checkout
 };
 
 type ServiceCartState = {

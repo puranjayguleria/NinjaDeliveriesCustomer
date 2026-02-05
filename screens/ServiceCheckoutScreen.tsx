@@ -17,6 +17,7 @@ import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import { useLocationContext } from "../context/LocationContext";
 import { FirestoreService } from "../services/firestoreService";
 import { formatDateToDDMMYYYY } from "../utils/dateUtils";
+import { fixExistingBookingsForWebsite } from "../utils/fixExistingBookings";
 
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
@@ -120,8 +121,18 @@ export default function ServiceCheckoutScreen() {
   };
 
   const handleProceedToPayment = async () => {
+    console.log(`🔘 BUTTON PRESSED: handleProceedToPayment called`);
+    console.log(`📊 Current state:`, {
+      selectedAddressId,
+      paymentMethod,
+      servicesCount: services.length,
+      totalAmount,
+      loading
+    });
+    
     // Validate that user has selected an address
     if (!selectedAddressId || !getSelectedAddress()) {
+      console.log(`❌ Address validation failed - no address selected`);
       Alert.alert(
         "Address Required",
         "Please select or add a service address before proceeding with the booking.",
@@ -140,11 +151,14 @@ export default function ServiceCheckoutScreen() {
     }
 
     const selectedAddress = getSelectedAddress();
+    console.log(`✅ Address validation passed:`, selectedAddress);
     
     if (paymentMethod === "online") {
+      console.log(`💳 Processing online payment...`);
       // For online payment, directly open Razorpay payment
       await handleRazorpayPayment();
     } else {
+      console.log(`💰 Processing cash payment...`);
       // For cash payment, create bookings directly
       Alert.alert(
         "Confirm Booking",
@@ -154,6 +168,7 @@ export default function ServiceCheckoutScreen() {
           {
             text: "Confirm Cash Booking",
             onPress: async () => {
+              console.log(`✅ User confirmed cash booking, calling createBookings...`);
               await createBookings();
             },
           },
@@ -163,6 +178,7 @@ export default function ServiceCheckoutScreen() {
   };
 
   const handleRazorpayPayment = async () => {
+    console.log(`💳 Starting Razorpay payment process...`);
     setLoading(true);
     try {
       // Import auth and axios here to avoid issues
@@ -202,15 +218,19 @@ export default function ServiceCheckoutScreen() {
         notes: { uid: user.uid, type: "service_booking" },
       };
 
+      console.log(`📤 Sending Razorpay order request:`, requestData);
       const { data } = await api.post(CREATE_RZP_ORDER_URL, requestData, { headers });
 
       if (!data?.orderId || !data?.keyId) {
         throw new Error(data?.error || "Failed to create Razorpay order");
       }
 
+      console.log(`✅ Razorpay order created:`, { orderId: data.orderId, keyId: data.keyId });
+
       const contact = (user.phoneNumber || "").replace("+91", "");
 
       // Navigate directly to Razorpay WebView
+      console.log(`🧭 Navigating to RazorpayWebView...`);
       navigation.navigate("RazorpayWebView", {
         orderId: String(data.orderId),
         amount: totalAmount,
@@ -225,35 +245,36 @@ export default function ServiceCheckoutScreen() {
         },
         onSuccess: async (response: any) => {
           try {
-            console.log("Payment successful:", response);
+            console.log("💳 Payment successful:", response);
             
             // Verify payment on server
             const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
             const verifyHeaders = await getAuthHeaders();
+            console.log(`🔍 Verifying payment...`);
             const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, response, { headers: verifyHeaders });
 
             if (!verifyData?.verified) {
               throw new Error(verifyData?.error || "Payment verification failed");
             }
             
-            console.log("Payment verified, creating bookings with payment details...");
+            console.log("✅ Payment verified, creating bookings with payment details...");
             
             // Create bookings with paid status and Razorpay response
             await createBookings("paid", response);
             
           } catch (error) {
-            console.error("Payment verification failed:", error);
+            console.error("❌ Payment verification failed:", error);
             Alert.alert("Payment Verification Failed", "Please contact support.");
           }
         },
         onFailure: (error: any) => {
-          console.log("Payment failed:", error);
+          console.log("❌ Payment failed:", error);
           Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
         },
       });
 
     } catch (error: any) {
-      console.error("Razorpay payment error:", error);
+      console.error("❌ Razorpay payment error:", error);
       let message = "Payment failed. Please try again.";
       
       if (error?.description) {
@@ -282,6 +303,30 @@ export default function ServiceCheckoutScreen() {
       console.log(`🔍 Starting booking creation process...`);
       console.log(`📍 Current location data:`, JSON.stringify(location, null, 2));
       console.log(`💳 Payment status: ${paymentStatus}, method: ${paymentMethod}`);
+      console.log(`🛒 Services to book: ${services.length}`);
+      
+      // Validate services array first
+      if (!services || services.length === 0) {
+        throw new Error('No services to book');
+      }
+      
+      // Log each service for debugging
+      services.forEach((service: ServiceCartItem, index: number) => {
+        console.log(`🔧 Service ${index + 1}:`, {
+          id: service.id,
+          title: service.serviceTitle,
+          issues: service.issues,
+          company: {
+            id: service.company?.id,
+            companyId: service.company?.companyId,
+            name: service.company?.name
+          },
+          date: service.selectedDate,
+          time: service.selectedTime,
+          price: service.totalPrice,
+          addOns: service.addOns
+        });
+      });
       
       // Get actual customer information from Firebase
       let customerData = {
@@ -298,27 +343,9 @@ export default function ServiceCheckoutScreen() {
             phone: currentUser.phone || currentUser.phoneNumber || "",
             address: location.address || currentUser.address || currentUser.location || currentUser.fullAddress || ""
           };
-      console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
-      console.log(`📍 Using service address: ${customerData.address}`);
-      console.log(`🛒 Services to book: ${services.length}`);
-      
-      // Validate services array
-      if (!services || services.length === 0) {
-        throw new Error('No services to book');
-      }
-      
-      // Log each service for debugging
-      services.forEach((service, index) => {
-        console.log(`🔧 Service ${index + 1}:`, {
-          title: service.serviceTitle,
-          issues: service.issues,
-          company: service.company?.name || service.company?.id,
-          date: service.selectedDate,
-          time: service.selectedTime,
-          price: service.totalPrice
-        });
-      });
         }
+        console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
+        console.log(`📍 Using service address: ${customerData.address}`);
       } catch (userError) {
         console.error("Error fetching user data:", userError);
         // Continue with location address from context
@@ -326,23 +353,35 @@ export default function ServiceCheckoutScreen() {
       }
 
       // Create bookings in Firebase service_bookings collection
-      const bookingPromises = services.map(async (service: ServiceCartItem) => {
+      const bookingPromises = services.map(async (service: ServiceCartItem, index: number) => {
+        console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
+        
         const selectedAddress = getSelectedAddress();
+        console.log(`📍 Selected address for service ${index + 1}:`, selectedAddress);
         
         // Ensure all required fields have valid values
         const bookingData = {
           serviceName: service.serviceTitle || "Service",
           workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
           customerName: customerData.name || "Customer",
-          customerPhone: customerData.phone || "",
+          customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
           date: service.selectedDate || new Date().toISOString().split('T')[0],
           time: service.selectedTime || "10:00 AM",
           status: 'pending' as const,
           companyId: service.company?.companyId || service.company?.id || "",
+          companyName: service.company?.name || "Service Provider", // Add company name for website
           totalPrice: service.totalPrice || 0,
           addOns: service.addOns || [],
-          // Add detailed address data for website access
+          // Add location data for website access (CRITICAL for website integration)
+          location: {
+            lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
+            lng: (location.lng !== null && location.lng !== undefined) ? location.lng : null,
+            address: selectedAddress?.fullAddress || "",
+            houseNo: selectedAddress?.houseNo || "",
+            placeLabel: selectedAddress?.addressType || "Home",
+          },
+          // Keep serviceAddress for backward compatibility
           serviceAddress: {
             id: selectedAddress?.id || "",
             fullAddress: selectedAddress?.fullAddress || "",
@@ -356,58 +395,85 @@ export default function ServiceCheckoutScreen() {
           paymentMethod: paymentMethod || "cash",
           paymentStatus: paymentStatus || "pending",
           notes: notes || "",
+          // Add additional fields that website might expect
+          bookingType: service.bookingType || 'service',
+          category: service.serviceTitle || "Service",
+          subcategory: (service.issues && service.issues.length > 0) ? service.issues[0] : "",
         };
 
-        console.log(`📋 About to create booking with data:`, JSON.stringify(bookingData, null, 2));
-        console.log(`📍 Using saved address: "${selectedAddress?.fullAddress}"`);
+        console.log(`📋 About to create booking ${index + 1} with data:`, JSON.stringify(bookingData, null, 2));
+        console.log(`🌐 WEBSITE COMPATIBILITY CHECK:`);
+        console.log(`   Has location field: ${!!bookingData.location}`);
+        console.log(`   Location address: "${bookingData.location?.address}"`);
+        console.log(`   Location coordinates: lat=${bookingData.location?.lat}, lng=${bookingData.location?.lng}`);
+        console.log(`   This booking SHOULD appear on website for worker assignment`);
 
-        const bookingId = await FirestoreService.createServiceBooking(bookingData);
-        console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
-        console.log(`📍 Address data saved for website access`);
-        
-        // Create payment record in service_payments collection
-        // Ensure all required fields have valid values
-        if (!bookingId) {
-          throw new Error('Failed to create booking - no booking ID returned');
+        try {
+          const bookingId = await FirestoreService.createServiceBooking(bookingData);
+          console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
+          console.log(`🌐 Booking ${bookingId} should now be visible on website with location data`);
+          
+          // Create payment record in service_payments collection
+          if (!bookingId) {
+            throw new Error('Failed to create booking - no booking ID returned');
+          }
+          
+          const paymentData = {
+            bookingId,
+            amount: service.totalPrice || 0,
+            paymentMethod: paymentMethod as 'cash' | 'online',
+            paymentStatus: paymentStatus as 'pending' | 'paid',
+            serviceName: service.serviceTitle || 'Service',
+            companyName: service.company?.name || 'Service Provider',
+            companyId: service.company?.companyId || service.company?.id || '',
+            paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
+            // Add Razorpay details if payment was successful
+            ...(razorpayResponse && paymentStatus === 'paid' && {
+              transactionId: razorpayResponse.razorpay_payment_id || '',
+              razorpayOrderId: razorpayResponse.razorpay_order_id || '',
+              razorpaySignature: razorpayResponse.razorpay_signature || '',
+            }),
+          };
+
+          console.log(`💳 Creating payment record ${index + 1} with data:`, paymentData);
+          const paymentId = await FirestoreService.createServicePayment(paymentData);
+          console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
+          
+          return {
+            ...service,
+            bookingId,
+            paymentId,
+            notes,
+            paymentMethod,
+          };
+        } catch (serviceError: any) {
+          console.error(`❌ Error creating booking ${index + 1} for service ${service.serviceTitle}:`, serviceError);
+          throw serviceError;
         }
-        
-        const paymentData = {
-          bookingId,
-          amount: service.totalPrice || 0,
-          paymentMethod: paymentMethod as 'cash' | 'online',
-          paymentStatus: paymentStatus as 'pending' | 'paid',
-          serviceName: service.serviceTitle || 'Service',
-          companyName: service.company?.name || 'Service Provider',
-          companyId: service.company?.companyId || service.company?.id || '',
-          paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
-          // Add Razorpay details if payment was successful
-          ...(razorpayResponse && paymentStatus === 'paid' && {
-            transactionId: razorpayResponse.razorpay_payment_id || '',
-            razorpayOrderId: razorpayResponse.razorpay_order_id || '',
-            razorpaySignature: razorpayResponse.razorpay_signature || '',
-          }),
-        };
-
-        console.log('Creating payment record with data:', paymentData);
-        const paymentId = await FirestoreService.createServicePayment(paymentData);
-        console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
-        
-        return {
-          ...service,
-          bookingId,
-          paymentId,
-          notes,
-          paymentMethod,
-        };
       });
 
+      console.log(`\n🔄 Creating ${bookingPromises.length} bookings simultaneously...`);
       const bookings = await Promise.all(bookingPromises);
+      console.log(`✅ All ${bookings.length} bookings created successfully!`);
       
       // Clear cart after successful booking creation
       clearCart();
+      console.log(`🧹 Cart cleared after successful booking creation`);
+
+      // Fix existing bookings for website visibility
+      console.log(`\n🔧 FIXING EXISTING BOOKINGS FOR WEBSITE...`);
+      try {
+        await fixExistingBookingsForWebsite();
+        console.log(`✅ All existing bookings should now be visible on website`);
+      } catch (fixError) {
+        console.error(`⚠️ Error fixing existing bookings:`, fixError);
+        // Don't fail the booking process if this fails
+      }
 
       // Navigate to booking confirmation screen with the first booking details
       const firstBooking = bookings[0];
+      console.log(`🧭 Navigating to BookingConfirmation with booking ID: ${firstBooking.bookingId}`);
+      
       navigation.navigate("BookingConfirmation", {
         bookingId: firstBooking.bookingId,
         paymentMethod,
@@ -417,45 +483,14 @@ export default function ServiceCheckoutScreen() {
 
     } catch (error: any) {
       console.error('❌ Error creating bookings:', error);
+      console.error('❌ Error stack:', error.stack);
       
-      // Check if error is due to busy workers
-      if (error.message && error.message.includes('BOOKING BLOCKED')) {
-        Alert.alert(
-          "Booking Blocked - Workers Busy",
-          "All workers for this company are currently busy with the selected service. This prevents overbooking.\n\nPlease select another company or try again later.",
-          [
-            {
-              text: "Select Another Company",
-              onPress: () => navigation.goBack()
-            },
-            {
-              text: "OK",
-              style: "cancel"
-            }
-          ]
-        );
-      } else if (error.message && error.message.includes('All workers for this company are currently busy')) {
-        Alert.alert(
-          "Workers Busy for Service",
-          "All workers for the selected company are currently busy with this service. Please select another company or try again later.",
-          [
-            {
-              text: "Select Another Company",
-              onPress: () => navigation.goBack()
-            },
-            {
-              text: "OK",
-              style: "cancel"
-            }
-          ]
-        );
-      } else {
-        Alert.alert(
-          "Booking Failed",
-          "Failed to create your bookings. Please try again.",
-          [{ text: "OK" }]
-        );
-      }
+      // Show user-friendly error message
+      Alert.alert(
+        "Booking Failed",
+        `Failed to create your bookings: ${error.message || 'Unknown error'}\n\nPlease try again or contact support if the issue persists.`,
+        [{ text: "OK" }]
+      );
     } finally {
       setLoading(false);
     }
