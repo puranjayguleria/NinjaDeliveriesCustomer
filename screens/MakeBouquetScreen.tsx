@@ -44,7 +44,7 @@ const BOUQUET_SHAPES = {
   round: { 
     id: "round", 
     label: "Round Shape", 
-    sizes: [9, 15, 20],
+    sizes: [7, 11],
     icon: "radio-button-on-outline" // Placeholder icon name
   },
 };
@@ -55,12 +55,16 @@ const MakeBouquetScreen = () => {
   
   // State
   const [bouquetShape, setBouquetShape] = useState<"front" | "round">("front");
-  const [flowerOptions, setFlowerOptions] = useState(ROSE_OPTIONS);
-  const [selectedRose, setSelectedRose] = useState<any>(ROSE_OPTIONS[0]);
+  const [flowerOptions, setFlowerOptions] = useState<any[]>([]);
+  const [selectedRose, setSelectedRose] = useState<any>(EMPTY_FLOWER);
   // Initialize size with the first available size for the default shape
   const [bouquetSize, setBouquetSize] = useState(BOUQUET_SHAPES.front.sizes[0]);
   const [addingToCart, setAddingToCart] = useState(false);
-  const [hasRemoteFlowerDocs, setHasRemoteFlowerDocs] = useState(false);
+  const [loadingFlowerOptions, setLoadingFlowerOptions] = useState(true);
+  const [readyMadeBouquet, setReadyMadeBouquet] = useState<{
+    subcategoryId: string;
+    categoryId: string;
+  } | null>(null);
   
   // Custom Mix State
   const [isCustomMix, setIsCustomMix] = useState(false);
@@ -70,57 +74,166 @@ const MakeBouquetScreen = () => {
 
   useEffect(() => {
     const storeId = location?.storeId;
-    if (!storeId) return;
+    if (!storeId) {
+      setLoadingFlowerOptions(false);
+      setFlowerOptions([]);
+      setSelectedRose(EMPTY_FLOWER);
+      setCustomComposition({});
+      return;
+    }
 
-    const unsub = firestore()
-      .collection("zbouquet_flowers")
+    setLoadingFlowerOptions(true);
+
+    let cancelled = false;
+    let unsubProducts: (() => void) | null = null;
+
+    firestore()
+      .collection("subcategories")
       .where("storeId", "==", storeId)
-      .onSnapshot(
-        (snap) => {
-          setHasRemoteFlowerDocs(!snap.empty);
-          if (snap.empty) {
-            setFlowerOptions(ROSE_OPTIONS);
-            setSelectedRose((prev: any) => prev?.id ? prev : ROSE_OPTIONS[0]);
-            return;
-          }
-
-          const enabledRows = snap.docs
-            .map((d) => {
-              const data: any = d.data() || {};
-              const id = data.flowerId || d.id;
-              const name = String(data.name || "").trim();
-              const price = typeof data.price === "number" ? data.price : Number(data.price);
-              const image = String(data.imageUrl || "").trim();
-              const enabled = data.enabled === true;
-              const priority = typeof data.priority === "number" ? data.priority : Number(data.priority);
-              if (!id || !name || !Number.isFinite(price) || !image) return null;
-              if (!enabled) return null;
-              return { id, name, price, image, priority: Number.isFinite(priority) ? priority : Number.MAX_SAFE_INTEGER };
-            })
-            .filter(Boolean)
-            .sort((a: any, b: any) => (a.priority ?? 0) - (b.priority ?? 0))
-            .map(({ priority: _p, ...rest }: any) => rest) as any[];
-
-          if (!enabledRows.length) {
-            setFlowerOptions([]);
-            setSelectedRose(EMPTY_FLOWER);
-            setCustomComposition({});
-            return;
-          }
-
-          setFlowerOptions(enabledRows);
-          setSelectedRose((prev: any) => enabledRows.find((r) => r.id === prev?.id) || enabledRows[0]);
-        },
-        () => {
-          setHasRemoteFlowerDocs(false);
+      .where("name", "==", "Flower Bouquet")
+      .limit(1)
+      .get()
+      .then((subSnap) => {
+        if (cancelled) return;
+        if (subSnap.empty) {
           setFlowerOptions([]);
           setSelectedRose(EMPTY_FLOWER);
           setCustomComposition({});
+          setLoadingFlowerOptions(false);
+          return;
         }
-      );
 
-    return () => unsub();
+        const subDoc = subSnap.docs[0];
+        const subId = subDoc.id;
+
+        unsubProducts = firestore()
+          .collection("products")
+          .where("storeId", "==", storeId)
+          .where("subcategoryId", "==", subId)
+          .onSnapshot(
+            (prodSnap) => {
+              const rows = prodSnap.docs
+                .map((d) => {
+                  const data: any = d.data() || {};
+                  const name = String(data.name || "").trim();
+                  if (!name) return null;
+
+                  const rawImg =
+                    data.imageUrl || data.image || (Array.isArray(data.images) ? data.images[0] : "");
+                  const image = String(rawImg || "").replace(/`/g, "").trim();
+                  if (!image) return null;
+
+                  const basePrice = Number(data.price ?? 0) - Number(data.discount ?? 0);
+                  const taxed =
+                    (Number.isFinite(basePrice) ? basePrice : 0) +
+                    Number(data.CGST ?? 0) +
+                    Number(data.SGST ?? 0) +
+                    Number(data.cess ?? 0);
+                  const price = Number.isFinite(taxed) ? taxed : Number(data.price ?? 0);
+                  if (!Number.isFinite(price) || price <= 0) return null;
+
+                  const qty = Number(data.quantity ?? 0);
+                  const isActive = data.isActive !== false;
+                  if (!isActive) return null;
+                  if (Number.isFinite(qty) && qty <= 0) return null;
+
+                  return { id: d.id, name, price, image };
+                })
+                .filter(Boolean) as any[];
+
+              if (!rows.length) {
+                setFlowerOptions([]);
+                setSelectedRose(EMPTY_FLOWER);
+                setCustomComposition({});
+                setLoadingFlowerOptions(false);
+                return;
+              }
+
+              setFlowerOptions(rows);
+              setSelectedRose((prev: any) => rows.find((r) => r.id === prev?.id) || rows[0]);
+              setLoadingFlowerOptions(false);
+            },
+            () => {
+              setFlowerOptions([]);
+              setSelectedRose(EMPTY_FLOWER);
+              setCustomComposition({});
+              setLoadingFlowerOptions(false);
+            }
+          );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFlowerOptions([]);
+        setSelectedRose(EMPTY_FLOWER);
+        setCustomComposition({});
+        setLoadingFlowerOptions(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (unsubProducts) unsubProducts();
+    };
   }, [location?.storeId]);
+
+  useEffect(() => {
+    const storeId = location?.storeId;
+    if (!storeId) {
+      setReadyMadeBouquet(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const findSubcategory = async () => {
+      const namesToTry = ["bouquet", "Bouquet"];
+      for (const name of namesToTry) {
+        const snap = await firestore()
+          .collection("subcategories")
+          .where("storeId", "==", storeId)
+          .where("name", "==", name)
+          .limit(1)
+          .get();
+        if (!snap.empty) return snap.docs[0];
+      }
+      return null;
+    };
+
+    findSubcategory()
+      .then((doc) => {
+        if (cancelled) return;
+        if (!doc) {
+          setReadyMadeBouquet(null);
+          return;
+        }
+        const data: any = doc.data() || {};
+        const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
+        setReadyMadeBouquet({ subcategoryId: doc.id, categoryId });
+      })
+      .catch(() => {
+        if (!cancelled) setReadyMadeBouquet(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.storeId]);
+
+  const openReadyMadeBouquets = () => {
+    if (readyMadeBouquet) {
+      navigation.navigate("ProductListingFromHome", {
+        categoryId: readyMadeBouquet.categoryId,
+        categoryName: "bouquet",
+        subcategoryId: readyMadeBouquet.subcategoryId,
+      });
+      return;
+    }
+
+    navigation.navigate("ProductListingFromHome", {
+      categoryId: "Gift Shop",
+      categoryName: "bouquet",
+      searchQuery: "bouquet",
+    });
+  };
 
   useEffect(() => {
     if (flowerOptions.length) {
@@ -128,24 +241,29 @@ const MakeBouquetScreen = () => {
       setSelectedRose(flowerOptions[0]);
       return;
     }
-    if (hasRemoteFlowerDocs) {
-      setSelectedRose(EMPTY_FLOWER);
-      return;
-    }
-    setSelectedRose(ROSE_OPTIONS[0]);
+    setSelectedRose(EMPTY_FLOWER);
   }, [flowerOptions, selectedRose]);
 
   // Derived state for custom mix
   const totalSelectedCount = Object.values(customComposition).reduce((sum, count) => sum + count, 0);
   const remainingSlots = bouquetSize - totalSelectedCount;
   
+  const bouquetDesignCost = (() => {
+    if (bouquetShape !== "round") return 0;
+    if (bouquetSize === 7) return 280;
+    if (bouquetSize === 11) return 440;
+    return 0;
+  })();
+
   // Price Calculation
-  const calculatedPrice = isCustomMix
+  const flowersSubtotal = isCustomMix
     ? Object.entries(customComposition).reduce((total, [id, count]) => {
-        const rose = flowerOptions.find(r => r.id === id);
+        const rose = flowerOptions.find((r) => r.id === id);
         return total + (rose ? rose.price * count : 0);
       }, 0)
     : (selectedRose?.price || 0) * bouquetSize;
+
+  const calculatedPrice = flowersSubtotal + bouquetDesignCost;
 
   // Handlers
   const handleShapeChange = (shape: "front" | "round") => {
@@ -205,10 +323,10 @@ const MakeBouquetScreen = () => {
           const rose = flowerOptions.find(r => r.id === id);
           return `${count} ${rose?.name}`;
         });
-        description = `Custom Mix (${shapeLabel}): ${parts.join(", ")}`;
+        description = `Custom Mix (${shapeLabel}): ${parts.join(", ")}${bouquetDesignCost ? `. Design cost: ₹${bouquetDesignCost}` : ""}`;
       } else {
         name = `${bouquetSize} ${selectedRose.name} Bouquet (${shapeLabel})`;
-        description = `${shapeLabel} bouquet with ${bouquetSize} stems of ${selectedRose.name}`;
+        description = `${shapeLabel} bouquet with ${bouquetSize} stems of ${selectedRose.name}${bouquetDesignCost ? `. Design cost: ₹${bouquetDesignCost}` : ""}`;
         image = selectedRose.image;
       }
 
@@ -223,6 +341,7 @@ const MakeBouquetScreen = () => {
         isActive: true,
         isCustom: true,
         shape: bouquetShape,
+        bouquetDesignCost,
         createdAt: firestore.FieldValue.serverTimestamp(),
       };
 
@@ -250,6 +369,10 @@ const MakeBouquetScreen = () => {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Make Your Bouquet</Text>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity style={styles.readyMadeBtn} onPress={openReadyMadeBouquets}>
+          <Text style={styles.readyMadeTxt}>Ready Made</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -332,7 +455,11 @@ const MakeBouquetScreen = () => {
         {/* Step 3: Select Flowers */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>3. Select Flowers</Text>
-          {isCustomMix ? (
+          {loadingFlowerOptions ? (
+            <View style={{ paddingVertical: 12, alignItems: "center" }}>
+              <ActivityIndicator color="#D81B60" />
+            </View>
+          ) : isCustomMix ? (
              <View>
                 <Text style={styles.sectionSubtitle}>
                    Mix and match! Selected: <Text style={{fontWeight:'bold', color: remainingSlots === 0 ? 'green' : 'red'}}>{totalSelectedCount}/{bouquetSize}</Text>
@@ -435,6 +562,13 @@ const MakeBouquetScreen = () => {
                   <Text style={styles.calcText}>x {bouquetSize}</Text>
               </View>
            )}
+
+           {bouquetDesignCost > 0 && (
+             <View style={styles.priceCalculationRow}>
+               <Text style={styles.calcText}>Bouquet design cost</Text>
+               <Text style={styles.calcText}>₹ {bouquetDesignCost}</Text>
+             </View>
+           )}
            
            <View style={styles.divider} />
            <View style={styles.totalRow}>
@@ -485,6 +619,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     color: "#333",
+  },
+  readyMadeBtn: {
+    backgroundColor: "#D81B60",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  readyMadeTxt: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
   scrollContent: {
     padding: 16,

@@ -29,6 +29,8 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
   // z_banners state
   const [showValentineBanner, setShowValentineBanner] = useState(false);
   const [showRoseBouquetBanner, setShowRoseBouquetBanner] = useState(false);
+  const [valentineBannerUrl, setValentineBannerUrl] = useState<string | null>(null);
+  const [roseBouquetBannerUrl, setRoseBouquetBannerUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = firestore()
@@ -61,16 +63,28 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
       .where("storeId", "==", storeId)
       .onSnapshot(
         (querySnapshot) => {
+          let valEnabled = false;
+          let valUrl: string | null = null;
+          let roseEnabled = false;
+          let roseUrl: string | null = null;
+
           querySnapshot.docs.forEach((doc) => {
             const data = doc.data() as ZBanner;
-            
+
             if (data.name === "Valentine Sale") {
-              setShowValentineBanner(data.enabled === true);
+              valEnabled = data.enabled === true;
+              valUrl = typeof data.imageUrl === "string" ? data.imageUrl.replace(/`/g, "").trim() : null;
             }
             if (data.name === "Rose Bouquet") {
-              setShowRoseBouquetBanner(data.enabled === true);
+              roseEnabled = data.enabled === true;
+              roseUrl = typeof data.imageUrl === "string" ? data.imageUrl.replace(/`/g, "").trim() : null;
             }
           });
+
+          setShowValentineBanner(valEnabled);
+          setValentineBannerUrl(valUrl);
+          setShowRoseBouquetBanner(roseEnabled);
+          setRoseBouquetBannerUrl(roseUrl);
         },
         (err) => {
           console.error("Error fetching z_banners:", err);
@@ -96,8 +110,8 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
 
   return (
     <View style={styles.container}>
-      {showValentineBanner && <ValentineBanner storeId={storeId} />}
-      {showRoseBouquetBanner && <RoseBouquetBanner storeId={storeId} />}
+      {showValentineBanner && <ValentineBanner imageUrl={valentineBannerUrl} />}
+      {showRoseBouquetBanner && <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />}
       {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}
       {bannerConfig?.showSliderBanner && <SliderBanner storeId={storeId} />}
       <ValentineSpecialSection storeId={storeId} />

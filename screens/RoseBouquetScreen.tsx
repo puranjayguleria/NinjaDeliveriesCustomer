@@ -17,6 +17,7 @@ import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useCart } from "../context/CartContext";
 import ProductCard from "../components/ProductCard";
+import { useLocationContext } from "../context/LocationContext";
 
 const { width } = Dimensions.get("window");
 
@@ -32,6 +33,62 @@ const VISUAL_CATEGORIES = [
 const RoseBouquetScreen = () => {
   const navigation = useNavigation<any>();
   // Products list removed as per request
+  const { location } = useLocationContext();
+  const [flowerBouquetSubcategory, setFlowerBouquetSubcategory] = useState<{
+    subcategoryId: string;
+    categoryId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const storeId = location?.storeId;
+    if (!storeId) {
+      setFlowerBouquetSubcategory(null);
+      return;
+    }
+
+    let cancelled = false;
+    firestore()
+      .collection("subcategories")
+      .where("storeId", "==", storeId)
+      .where("name", "==", "Flower Bouquet")
+      .limit(1)
+      .get()
+      .then((snap) => {
+        if (cancelled) return;
+        if (snap.empty) {
+          setFlowerBouquetSubcategory(null);
+          return;
+        }
+        const doc = snap.docs[0];
+        const data: any = doc.data() || {};
+        const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
+        setFlowerBouquetSubcategory({ subcategoryId: doc.id, categoryId });
+      })
+      .catch(() => {
+        if (!cancelled) setFlowerBouquetSubcategory(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.storeId]);
+
+  const openFlowerBouquetProducts = () => {
+    if (flowerBouquetSubcategory) {
+      navigation.navigate("ProductListingFromHome", {
+        categoryId: flowerBouquetSubcategory.categoryId,
+        categoryName: "Flower Bouquet",
+        subcategoryId: flowerBouquetSubcategory.subcategoryId,
+      });
+      return;
+    }
+
+    navigation.navigate("ProductListingFromHome", {
+      categoryId: "Gift Shop",
+      categoryName: "Flower Bouquet",
+      searchQuery: "bouquet",
+    });
+  };
 
 
   const renderHeader = () => (
@@ -124,7 +181,7 @@ const RoseBouquetScreen = () => {
            {/* Make Bouquets Button */}
            <TouchableOpacity 
              style={styles.makeBouquetButton}
-             onPress={() => navigation.navigate("MakeBouquetScreen")}
+             onPress={openFlowerBouquetProducts}
            >
              <MaterialIcons name="local-florist" size={20} color="#fff" style={{marginRight: 8}} />
              <Text style={styles.makeBouquetText}>Make Bouquet</Text>
