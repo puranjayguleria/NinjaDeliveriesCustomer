@@ -196,8 +196,10 @@ export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -233,9 +235,57 @@ export default function ServicesScreen() {
     }
   };
 
+  // Fetch activities function
+  const fetchActivities = async () => {
+    try {
+      setActivitiesLoading(true);
+      // Try to fetch orders/bookings as activities
+      const fetchedActivities = await FirestoreService.getOrders?.() || [];
+      
+      // Transform orders into activity format
+      const transformedActivities = (fetchedActivities as any[])
+        .filter(order => order.status === 'completed' || order.status === 'Completed')
+        .map(order => ({
+          id: order.id,
+          title: `Service completed - ${order.serviceName || order.categoryName || 'Service'}`,
+          timestamp: order.completedAt || order.createdAt,
+        }))
+        .sort((a, b) => {
+          const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+          const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+          return dateB.getTime() - dateA.getTime();
+        })
+        .slice(0, 1);
+      
+      setActivities(transformedActivities || []);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+      // Don't show error for activities, just continue without them
+      setActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  // Helper function to format time ago
+  const getTimeAgo = (timestamp: any) => {
+    if (!timestamp) return 'recently';
+    
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    
+    return date.toLocaleDateString();
+  };
+
   useEffect(() => {
     fetchServiceCategories();
     fetchServiceBanners();
+    fetchActivities();
   }, []);
 
   // Search functionality - simplified without useMemo to avoid React null error
@@ -371,7 +421,7 @@ export default function ServicesScreen() {
       <TouchableOpacity
         key={item.id}
         style={[styles.categoryCard, { backgroundColor: categoryStyle.bgColor }]}
-        activeOpacity={0.8}
+        activeOpacity={0.7}
         onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
       >
         <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
@@ -389,7 +439,7 @@ export default function ServicesScreen() {
           )}
         </View>
         <Text style={styles.categoryTitle}>{item.name}</Text>
-        <Text style={styles.categorySubtitle}>Professional service</Text>
+        <Text style={styles.categorySubtitle}>Book now</Text>
       </TouchableOpacity>
     );
   };
@@ -401,7 +451,7 @@ export default function ServicesScreen() {
     return (
       <TouchableOpacity
         style={styles.listCard}
-        activeOpacity={0.8}
+        activeOpacity={0.7}
         onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
       >
         <View style={[styles.listIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
@@ -424,11 +474,11 @@ export default function ServicesScreen() {
         </View>
         <View style={styles.listContent}>
           <Text style={styles.listTitle}>{item.name}</Text>
-          <Text style={styles.listSubtitle}>Professional {item.name.toLowerCase()} services</Text>
-          <Text style={styles.listAvailability}>Available now</Text>
+          <Text style={styles.listSubtitle}>Expert {item.name.toLowerCase()}</Text>
+          <Text style={styles.listAvailability}>✓ Book available</Text>
         </View>
         <View style={styles.listArrowContainer}>
-          <Ionicons name="chevron-forward" size={20} color="#64748b" />
+          <Ionicons name="arrow-forward" size={18} color="#1e40af" />
         </View>
       </TouchableOpacity>
     );
@@ -440,14 +490,19 @@ export default function ServicesScreen() {
         {/* Status Bar */}
         <StatusBar barStyle="dark-content" backgroundColor="white" />
         
-        {/* Header */}
-        <View style={styles.topHeader}>
+        {/* Header with Gradient */}
+        <LinearGradient
+          colors={["#1aca78", "#1e3a8a"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.topHeader}
+        >
           <View style={styles.headerRow}>
-            {/* Header content only */}
+            {/* Header content */}
             <View style={styles.headerTextContainer}>
-              <Text style={styles.header}>Professional Services</Text>
+              <Text style={styles.header}>Services</Text>
               <Text style={styles.headerSub}>
-                Trusted experts at your doorstep
+                Expert professionals, verified & trusted
               </Text>
             </View>
             
@@ -455,21 +510,21 @@ export default function ServicesScreen() {
             <TouchableOpacity 
               style={styles.historyButton}
               onPress={() => navigation.navigate("BookingHistory")}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <Ionicons name="receipt-outline" size={22} color="#3b82f6" />
+              <Ionicons name="receipt-outline" size={24} color="#1e40af" />
             </TouchableOpacity>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
-            <Ionicons name="search" size={20} color="#64748b" style={styles.searchIcon} />
+            <Ionicons name="search" size={20} color="#ce0c8d" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search for services..."
-              placeholderTextColor="#94a3b8"
+              placeholder="What do you need?"
+              placeholderTextColor="#a0aec0"
               value={searchQuery}
               onChangeText={handleSearch}
               onFocus={() => setIsSearchFocused(true)}
@@ -480,7 +535,7 @@ export default function ServicesScreen() {
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color="#64748b" />
+                <Ionicons name="close-circle-sharp" size={20} color="#cbd5e1" />
               </TouchableOpacity>
             )}
           </View>
@@ -490,11 +545,11 @@ export default function ServicesScreen() {
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found for &quot;{searchQuery}&quot;
+              Found {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
             </Text>
             {(filteredCategories || []).length === 0 && (
               <Text style={styles.noResultsText}>
-                Try searching for &quot;electrician&quot;, &quot;plumber&quot;, &quot;cleaning&quot;, etc.
+                Try "electrician", "plumber", "cleaning", etc.
               </Text>
             )}
           </View>
@@ -513,55 +568,45 @@ export default function ServicesScreen() {
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.bannerScrollContent}
-                  snapToInterval={width - 32} // Snap to each banner
+                  snapToInterval={width - 32}
                   decelerationRate="fast"
                   pagingEnabled={false}
                 />
               </View>
             )}
 
-            {/* Service Categories */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Service Categories</Text>
-                <TouchableOpacity 
-                  onPress={handleViewAllCategories}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.viewAllText}>View All</Text>
-                </TouchableOpacity>
+            {/* Live Activity Section */}
+            <View style={styles.liveActivityContainer}>
+              <View style={styles.activityHeaderRow}>
+                <View style={styles.activityIconBox}>
+                  <Ionicons name="pulse" size={24} color="white" />
+                </View>
+                <Text style={styles.activityHeading}>Live Activity</Text>
               </View>
               
-              {loading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color="#3b82f6" />
-                  <Text style={styles.loadingText}>Loading categories...</Text>
+              {activitiesLoading ? (
+                <View style={styles.activityLoadingContainer}>
+                  <ActivityIndicator size="small" color="#1e40af" />
+                  <Text style={styles.activityLoadingText}>Loading activities...</Text>
                 </View>
-              ) : error ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
-                    <Text style={styles.retryText}>Retry</Text>
-                  </TouchableOpacity>
-                </View>
+              ) : activities && activities.length > 0 ? (
+                activities.map((activity) => (
+                  <View key={activity.id} style={styles.activityCard}>
+                    <View style={styles.activityDot} />
+                    <View style={styles.activityContent}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+                      <Text style={styles.activityTime}>{getTimeAgo(activity.timestamp)}</Text>
+                    </View>
+                  </View>
+                ))
               ) : (
-                <View style={styles.categoryRow}>
-                  {(topCategories || []).filter(Boolean).map((item, index) => renderCategoryCard({ item, index }))}
-                </View>
+                <Text style={styles.noActivityText}>No recent activities</Text>
               )}
             </View>
 
-            {/* All Services Header */}
+            {/* All Services List Header */}
             <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>All Services</Text>
-                <TouchableOpacity 
-                  onPress={handleViewAllCategories}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.viewAllText}>View All</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.sectionTitle}>All Professional Services</Text>
             </View>
           </>
         )}
@@ -634,17 +679,16 @@ export default function ServicesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f5f7fb",
   },
 
   // Header Styles
   topHeader: {
     paddingHorizontal: 24,
     paddingTop: 60,
-    paddingBottom: 24,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
+    paddingBottom: 32,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
 
   headerRow: {
@@ -660,62 +704,67 @@ const styles = StyleSheet.create({
   historyButton: {
     alignItems: "center",
     justifyContent: "center",
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     backgroundColor: "white",
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    elevation: 3,
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: "#46a89b",
+    elevation: 5,
+    shadowColor: '#a4db0c',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 10,
   },
 
   header: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#0f172a",
+    fontSize: 32,
+    fontWeight: "800",
+    color: "white",
     letterSpacing: -0.5,
-    marginBottom: 6,
+    marginBottom: 8,
   },
 
   headerSub: {
-    color: "#64748b",
-    fontSize: 16,
-    fontWeight: "400",
-    lineHeight: 24,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    fontWeight: "500",
+    lineHeight: 20,
   },
 
   // Search Bar Styles
   searchContainer: {
     paddingHorizontal: 24,
-    paddingVertical: 16,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
+    paddingVertical: 20,
+    backgroundColor: "#f5f7fb",
+    marginTop: -20,
+    paddingBottom: 30,
   },
 
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
+    backgroundColor: "white",
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderWidth: 1.5,
+    borderColor: "#e8ecf1",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
 
   searchBarFocused: {
-    borderColor: "#3b82f6",
+    borderColor: "#1e40af",
     backgroundColor: "white",
-    elevation: 2,
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
+    elevation: 5,
+    shadowColor: '#1e40af',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
   },
 
   searchIcon: {
@@ -725,8 +774,8 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: "#0f172a",
-    fontWeight: "400",
+    color: "#1e293b",
+    fontWeight: "500",
   },
 
   clearButton: {
@@ -737,15 +786,15 @@ const styles = StyleSheet.create({
   searchResultsHeader: {
     paddingHorizontal: 24,
     paddingVertical: 16,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f5f7fb",
     borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: "#e8ecf1",
   },
 
   searchResultsText: {
     fontSize: 14,
-    color: "#475569",
-    fontWeight: "500",
+    color: "#1e40af",
+    fontWeight: "600",
     marginBottom: 4,
   },
 
@@ -770,7 +819,7 @@ const styles = StyleSheet.create({
 
   // Banner Styles
   bannerContainer: {
-    paddingVertical: 25,
+    paddingVertical: 20,
   },
 
   bannerScrollContent: {
@@ -783,22 +832,27 @@ const styles = StyleSheet.create({
   },
 
   gradientBanner: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: "hidden",
-    height: 140,
+    height: 180,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
   },
 
   bannerImage: {
     width: "100%",
-    height: 220,
-    borderRadius: 20,
+    height: 180,
+    borderRadius: 24,
     overflow: "hidden",
   },
 
   bannerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 24,
   },
 
   bannerContent: {
@@ -806,6 +860,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     padding: 24,
+    height: "100%",
   },
 
   bannerTextSection: {
@@ -814,32 +869,35 @@ const styles = StyleSheet.create({
 
   bannerTitle: {
     color: "white",
-    fontSize: 24,
-    fontWeight: "700",
+    fontSize: 26,
+    fontWeight: "800",
     letterSpacing: -0.3,
-    marginBottom: 6,
+    marginBottom: 8,
   },
 
   bannerSubTitle: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 16,
-    fontWeight: "400",
-    lineHeight: 22,
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 14,
+    fontWeight: "500",
+    lineHeight: 20,
     marginBottom: 12,
   },
 
   bannerOffer: {
-    backgroundColor: "rgba(236, 227, 227, 0.95)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    backdropFilter: "blur(10px)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
     alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
   },
 
   offerText: {
     color: "white",
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   bannerIcon: {
@@ -849,7 +907,7 @@ const styles = StyleSheet.create({
   // Section Styles
   sectionContainer: {
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 28,
   },
 
   sectionHeader: {
@@ -861,80 +919,191 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: 22,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#0f172a",
     letterSpacing: -0.3,
   },
 
-  viewAllText: {
-    color: "#3b82f6",
+  // Live Activity Container Styles
+  liveActivityContainer: {
+    marginHorizontal: 24,
+    marginBottom: 28,
+    paddingVertical: 50,
+    paddingHorizontal: 40,
+    backgroundColor: "white",
+    borderRadius: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e8ecf1",
+  },
+
+  // Live Activity Section Styles
+  activityHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f4f8",
+  },
+
+  activityIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    elevation: 3,
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  activityHeading: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1e293b",
+    flex: 1,
+  },
+
+  activityCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "transparent",
+    paddingVertical: 16,
+    paddingHorizontal: 0,
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+  },
+
+  activityDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#10b981",
+    marginTop: 4,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+
+  activityContent: {
+    flex: 1,
+  },
+
+  activityTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+
+  activityTime: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  activityLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+
+  activityLoadingText: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+    marginLeft: 8,
+  },
+
+  noActivityText: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+    textAlign: "center",
+    paddingVertical: 20,
   },
 
   // Category Styles
   categoryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
+    marginTop: 16,
+    gap: 12,
   },
 
   categoryCard: {
     width: (width - 72) / 3,
     borderRadius: 20,
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
     alignItems: "center",
-    elevation: 2,
+    elevation: 3,
     shadowColor: '#000',
     shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 10,
   },
 
   iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
-    overflow: "hidden", // Added for image clipping
+    marginBottom: 14,
+    overflow: "hidden",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
   },
 
   categoryImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
 
   categoryIcon: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
   },
 
   categoryTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
     marginBottom: 4,
   },
 
   categorySubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#64748b",
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 15,
+    fontWeight: "400",
   },
 
   // List Styles
   listCard: {
-    marginBottom: 16,
+    marginBottom: 14,
     backgroundColor: "white",
-    paddingVertical: 20,
+    paddingVertical: 18,
     paddingHorizontal: 20,
-    borderRadius: 20,
+    borderRadius: 18,
     marginHorizontal: 24,
     elevation: 2,
     shadowColor: '#000',
@@ -943,23 +1112,30 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     flexDirection: "row",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#f0f4f8",
   },
 
   listIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 50,
+    height: 50,
+    borderRadius: 16,
     backgroundColor: "#f1f5f9",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 16,
-    overflow: "hidden", // Added for image clipping
+    marginRight: 14,
+    overflow: "hidden",
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
   },
 
   listCategoryImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 50,
+    height: 50,
+    borderRadius: 16,
   },
 
   listContent: {
@@ -967,8 +1143,8 @@ const styles = StyleSheet.create({
   },
 
   listTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#0f172a",
     letterSpacing: -0.2,
     marginBottom: 4,
@@ -976,69 +1152,74 @@ const styles = StyleSheet.create({
 
   listSubtitle: {
     color: "#64748b",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "400",
-    marginBottom: 4,
+    marginBottom: 3,
   },
 
   listAvailability: {
-    color: "#10b981",
+    color: "#1e40af",
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
   listArrowContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
+    elevation: 1,
+    shadowColor: '#1e40af',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
   },
 
   // Loading and Empty States
   loadingContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 32,
+    paddingVertical: 36,
   },
 
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: "#64748b",
-    fontWeight: "400",
+    color: "#1e40af",
+    fontWeight: "600",
   },
 
   emptyLoadingContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 64,
+    paddingVertical: 80,
   },
 
   emptyLoadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: "#64748b",
-    fontWeight: "500",
+    color: "#1e40af",
+    fontWeight: "600",
   },
 
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 64,
+    paddingVertical: 80,
     paddingHorizontal: 48,
   },
 
   emptyText: {
     fontSize: 16,
     color: "#64748b",
-    fontWeight: "400",
+    fontWeight: "600",
     textAlign: "center",
   },
 
   emptySubText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#94a3b8",
     fontWeight: "400",
     textAlign: "center",
@@ -1048,33 +1229,40 @@ const styles = StyleSheet.create({
   emptyIcon: {
     marginBottom: 16,
     alignSelf: "center",
+    color: "#cbd5e1",
   },
 
   // Error States
   errorContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 32,
+    paddingVertical: 40,
   },
 
   errorText: {
     fontSize: 14,
-    color: "#ef4444",
-    fontWeight: "400",
+    color: "#64748b",
+    fontWeight: "500",
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 16,
+    marginTop: 12,
   },
 
   retryButton: {
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: "#1e40af",
+    paddingHorizontal: 28,
+    paddingVertical: 12,
     borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#1e40af',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
   },
 
   retryText: {
     color: "white",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 });
