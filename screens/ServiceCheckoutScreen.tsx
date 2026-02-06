@@ -55,18 +55,37 @@ export default function ServiceCheckoutScreen() {
   const loadSavedAddresses = async () => {
     try {
       setLoadingAddresses(true);
-      const addresses = await FirestoreService.getUserSavedAddressesFromBookings();
-      setSavedAddresses(addresses || []);
+      
+      // Load from dedicated user_addresses collection
+      const savedAddrs = await FirestoreService.getUserSavedAddresses();
+      
+      // Also load from bookings for backward compatibility
+      const bookingAddrs = await FirestoreService.getUserSavedAddressesFromBookings();
+      
+      // Merge both sources, prioritizing saved addresses
+      const allAddresses = [...savedAddrs];
+      
+      // Add booking addresses that don't exist in saved addresses
+      bookingAddrs.forEach(bookingAddr => {
+        const exists = allAddresses.some(addr => 
+          addr.fullAddress.toLowerCase().trim() === bookingAddr.fullAddress.toLowerCase().trim()
+        );
+        if (!exists) {
+          allAddresses.push(bookingAddr);
+        }
+      });
+      
+      setSavedAddresses(allAddresses);
       
       // Auto-select default address if available
-      const defaultAddress = addresses?.find(addr => addr.isDefault);
+      const defaultAddress = allAddresses.find(addr => addr.isDefault);
       if (defaultAddress) {
         setSelectedAddressId(defaultAddress.id);
-      } else if (addresses && addresses.length > 0) {
-        setSelectedAddressId(addresses[0].id);
+      } else if (allAddresses.length > 0) {
+        setSelectedAddressId(allAddresses[0].id);
       }
       
-      console.log(`📍 Loaded ${addresses?.length || 0} saved addresses from bookings`);
+      console.log(`📍 Loaded ${allAddresses.length} total addresses (${savedAddrs.length} saved + ${bookingAddrs.length} from bookings)`);
     } catch (error) {
       console.error('❌ Error loading saved addresses:', error);
       setSavedAddresses([]);
@@ -84,20 +103,18 @@ export default function ServiceCheckoutScreen() {
     try {
       setLoading(true);
       
-      const addressData = {
-        id: `addr_${Date.now()}`, // Generate unique ID
+      // Save to Firestore user_addresses collection
+      const addressId = await FirestoreService.saveUserAddress({
         fullAddress: newAddress.fullAddress.trim(),
         houseNo: newAddress.houseNo.trim(),
         landmark: newAddress.landmark.trim(),
         addressType: newAddress.addressType,
         isDefault: newAddress.isDefault || savedAddresses.length === 0, // First address is default
-        createdAt: new Date(),
-      };
+      });
 
-      // Add to local state immediately
-      const updatedAddresses = [...savedAddresses, addressData];
-      setSavedAddresses(updatedAddresses);
-      setSelectedAddressId(addressData.id);
+      // Reload addresses to get the saved one
+      await loadSavedAddresses();
+      setSelectedAddressId(addressId);
       
       // Reset form and close modal
       setNewAddress({
@@ -109,10 +126,10 @@ export default function ServiceCheckoutScreen() {
       });
       setShowAddAddressModal(false);
       
-      Alert.alert("Success", "Address added successfully!");
+      Alert.alert("Success", "Address saved successfully!");
     } catch (error) {
       console.error('❌ Error adding address:', error);
-      Alert.alert("Error", "Failed to add address. Please try again.");
+      Alert.alert("Error", "Failed to save address. Please try again.");
     } finally {
       setLoading(false);
     }

@@ -377,7 +377,7 @@ export default function CompanySelectionScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.headerSection}>
-        <Text style={styles.header}>Select Service Provider</Text>
+        <Text style={styles.header}>Select Service Company </Text>
       </View>
 
       {/* Main Content: Sidebar + Companies */}
@@ -444,11 +444,10 @@ export default function CompanySelectionScreen() {
               >
                 {/* Provider Header */}
                 <View style={styles.providerHeader}>
-                  <View style={styles.providerInfo}>
+                  <View style={styles.providerTitleRow}>
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                     {item.isActive && (
                       <View style={styles.verifiedBadge}>
-                        <Text style={styles.verifiedText}>✓</Text>
                       </View>
                     )}
                   </View>
@@ -621,6 +620,28 @@ export default function CompanySelectionScreen() {
                     )}
                   </View>
                 )}
+
+                {/* Select Button at Bottom */}
+                <TouchableOpacity
+                  style={[
+                    styles.selectButton,
+                    isSelected && styles.selectButtonSelected
+                  ]}
+                  onPress={() => {
+                    if (!isBusy) {
+                      setSelectedCompanyId(item.id);
+                    }
+                  }}
+                  disabled={isBusy}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.selectButtonText,
+                    isSelected && styles.selectButtonTextSelected
+                  ]}>
+                    {isSelected ? '✓ Selected' : 'Select'}
+                  </Text>
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           }}
@@ -741,14 +762,14 @@ const styles = StyleSheet.create({
 
   providerCard: {
     backgroundColor: "white",
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
     borderWidth: 2,
     borderColor: "transparent",
   },
@@ -756,6 +777,8 @@ const styles = StyleSheet.create({
   providerCardSelected: {
     borderColor: "#3b82f6",
     backgroundColor: "#f0f9ff",
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.2,
   },
 
   providerCardBusy: {
@@ -764,10 +787,14 @@ const styles = StyleSheet.create({
   },
 
   providerHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 12,
+  },
+
+  providerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
   },
 
   providerInfo: {
@@ -777,24 +804,69 @@ const styles = StyleSheet.create({
   },
 
   providerName: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
     color: "#1e293b",
-    marginRight: 8,
+    letterSpacing: 0.3,
   },
 
-  verifiedBadge: {
-    backgroundColor: "#dcfce7",
-    width: 20,
-    height: 20,
+
+  verifiedText: {
+    fontSize: 11,
+    color: "#16a34a",
+    fontWeight: "700",
+  },
+
+  selectButton: {
+    backgroundColor: "#3b82f6",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     borderRadius: 10,
+    marginTop: 16,
+    alignItems: "center",
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  selectButtonSelected: {
+    backgroundColor: "#10b981",
+    shadowColor: '#10b981',
+  },
+
+  selectButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#ffffff",
+    letterSpacing: 0.5,
+  },
+
+  selectButtonTextSelected: {
+    color: "#ffffff",
+  },
+
+  selectCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
+  },
+
+  selectedIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#3b82f6",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  verifiedText: {
-    fontSize: 12,
-    color: "#16a34a",
+  selectedIndicatorText: {
+    color: "white",
+    fontSize: 14,
     fontWeight: "700",
   },
 

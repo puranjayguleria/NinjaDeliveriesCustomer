@@ -4899,6 +4899,121 @@ export class FirestoreService {
   }
 
   /**
+   * Save a new address to user_addresses collection
+   */
+  static async saveUserAddress(addressData: {
+    fullAddress: string;
+    houseNo?: string;
+    landmark?: string;
+    addressType?: string;
+    isDefault?: boolean;
+  }): Promise<string> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const currentUser = await this.getCurrentUser();
+      const userPhone = currentUser?.phone || currentUser?.phoneNumber || user.phoneNumber || '';
+
+      const addressId = `addr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const newAddress = {
+        id: addressId,
+        userId: user.uid,
+        userPhone: userPhone,
+        fullAddress: addressData.fullAddress.trim(),
+        houseNo: addressData.houseNo?.trim() || '',
+        landmark: addressData.landmark?.trim() || '',
+        addressType: addressData.addressType || 'Home',
+        isDefault: addressData.isDefault || false,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      };
+
+      // If this is set as default, unset other defaults first
+      if (newAddress.isDefault) {
+        // Query by userId instead of phone (more reliable)
+        const existingAddresses = await firestore()
+          .collection('user_addresses')
+          .where('userId', '==', user.uid)
+          .where('isDefault', '==', true)
+          .get();
+        
+        const batch = firestore().batch();
+        existingAddresses.forEach(doc => {
+          batch.update(doc.ref, { isDefault: false });
+        });
+        await batch.commit();
+      }
+
+      await firestore()
+        .collection('user_addresses')
+        .doc(addressId)
+        .set(newAddress);
+
+      console.log(`✅ Address saved successfully: ${addressId}`);
+      return addressId;
+    } catch (error: any) {
+      console.error('❌ Error saving address:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's saved addresses from user_addresses collection
+   */
+  static async getUserSavedAddresses(): Promise<any[]> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Query by userId (more reliable than phone)
+      const snapshot = await firestore()
+        .collection('user_addresses')
+        .where('userId', '==', user.uid)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const addresses = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      }));
+
+      console.log(`✅ Found ${addresses.length} saved addresses`);
+      return addresses;
+    } catch (error: any) {
+      console.error('❌ Error fetching saved addresses:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete a saved address
+   */
+  static async deleteUserAddress(addressId: string): Promise<void> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      await firestore()
+        .collection('user_addresses')
+        .doc(addressId)
+        .delete();
+
+      console.log(`✅ Address deleted: ${addressId}`);
+    } catch (error: any) {
+      console.error('❌ Error deleting address:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 🏢 FIXED: Fetch detailed package information for companies
    * Only enhances existing packages, doesn't create default packages for direct pricing services
    */
