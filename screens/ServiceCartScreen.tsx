@@ -48,101 +48,99 @@ export default function ServiceCartScreen() {
   };
 
   const renderServiceItem = ({ item }: { item: ServiceCartItem }) => (
-    <View style={styles.mainContent}>
-      {/* Left Sidebar - Company Name */}
-      <View style={styles.sidebar}>
-        <View style={styles.sidebarContent}>
-          <Text style={styles.companyLabel}>COMPANY</Text>
-          <Text style={styles.companyNameSidebar} numberOfLines={4}>
-            {item.company.name}
-          </Text>
-          {item.company.verified && (
-            <View style={styles.verifiedBadgeSidebar}>
-              <Text style={styles.verifiedTextSidebar}>✓ Verified</Text>
+    <View style={styles.serviceCard}>
+      <View style={styles.serviceHeader}>
+        <View style={styles.serviceInfo}>
+          <Text style={styles.serviceTitle}>{item.serviceTitle}</Text>
+          <Text style={styles.companyName}>{item.company.name}</Text>
+          <View style={styles.ratingContainer}>
+            <Text style={styles.rating}>{item.company.rating}</Text>
+            <Text style={styles.experience}>{item.company.experience}</Text>
+            {item.company.verified && (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={() => handleRemoveService(item.id)}
+        >
+          <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.serviceDetails}>
+        <Text style={styles.detailsTitle}>Selected Issues:</Text>
+        <View style={styles.issuesContainer}>
+          {(item.issues || []).map((issue, index) => (
+            <View key={index} style={styles.issueTag}>
+              <Text style={styles.issueText}>{issue}</Text>
             </View>
-          )}
+          ))}
+        </View>
+        
+        {/* 🔧 NEW: Show package information if available */}
+        {item.additionalInfo?.isPackageService && (
+          <View style={styles.packageInfoContainer}>
+            <Text style={styles.packageInfoTitle}>📦 Package Details:</Text>
+            <View style={styles.packageInfoRow}>
+              <Text style={styles.packageName}>{item.additionalInfo.packageName}</Text>
+              {item.additionalInfo.packageType && (
+                <View style={styles.packageTypeBadge}>
+                  <Text style={styles.packageTypeText}>{item.additionalInfo.packageType.toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
+            {item.additionalInfo.packageDuration && (
+              <Text style={styles.packageDuration}>⏱️ Duration: {item.additionalInfo.packageDuration}</Text>
+            )}
+            {item.additionalInfo.packageFeatures && item.additionalInfo.packageFeatures.length > 0 && (
+              <View style={styles.packageFeatures}>
+                <Text style={styles.packageFeaturesTitle}>Includes:</Text>
+                {item.additionalInfo.packageFeatures.slice(0, 3).map((feature: string, fIndex: number) => (
+                  <Text key={fIndex} style={styles.packageFeature}>• {feature}</Text>
+                ))}
+                {item.additionalInfo.packageFeatures.length > 3 && (
+                  <Text style={styles.moreFeatures}>+{item.additionalInfo.packageFeatures.length - 3} more</Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.bookingDetails}>
+        <View style={styles.detailRow}>
+          <Ionicons name="calendar-outline" size={16} color="#666" />
+          <Text style={styles.detailText}>
+            {new Date(item.selectedDate).toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Ionicons name="time-outline" size={16} color="#666" />
+          <Text style={styles.detailText}>{item.selectedTime}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Ionicons name="pricetag-outline" size={16} color="#666" />
+          <Text style={styles.priceText}>₹{item.totalPrice}</Text>
         </View>
       </View>
 
-      {/* Right Side - Service Details */}
-      <View style={styles.serviceDetailsContainer}>
-        <View style={styles.serviceCard}>
-          {/* Remove Button */}
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={() => handleRemoveService(item.id)}
-          >
-            <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-          </TouchableOpacity>
-
-          {/* Service Title */}
-          <Text style={styles.serviceTitle}>{item.serviceTitle}</Text>
-
-          {/* Selected Issues */}
-          <View style={styles.serviceDetails}>
-            <Text style={styles.detailsTitle}>Selected Issues:</Text>
-            <View style={styles.issuesContainer}>
-              {(item.issues || []).map((issue, index) => (
-                <View key={index} style={styles.issueTag}>
-                  <Text style={styles.issueText}>{issue}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Booking Details */}
-          <View style={styles.bookingDetails}>
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar-outline" size={16} color="#666" />
-              <Text style={styles.detailText}>
-                {new Date(item.selectedDate).toLocaleDateString("en-US", {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="time-outline" size={16} color="#666" />
-              <Text style={styles.detailText}>{item.selectedTime}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="pricetag-outline" size={16} color="#666" />
-              <Text style={styles.priceText}>₹{item.totalPrice}</Text>
-            </View>
-          </View>
-
-          {/* Package Info if available */}
-          {item.additionalInfo?.isPackageService && (
-            <View style={styles.packageInfoContainer}>
-              <Text style={styles.packageInfoTitle}>📦 Package Details:</Text>
-              <View style={styles.packageInfoRow}>
-                <Text style={styles.packageName}>{item.additionalInfo.packageName}</Text>
-                {item.additionalInfo.packageType && (
-                  <View style={styles.packageTypeBadge}>
-                    <Text style={styles.packageTypeText}>{item.additionalInfo.packageType.toUpperCase()}</Text>
-                  </View>
-                )}
-              </View>
-              {item.additionalInfo.packageDuration && (
-                <Text style={styles.packageDuration}>⏱️ Duration: {item.additionalInfo.packageDuration}</Text>
-              )}
-            </View>
-          )}
-
-          {/* Specialties */}
-          {item.company?.specialties && item.company.specialties.length > 0 && (
-            <View style={styles.specialtiesContainer}>
-              <Text style={styles.specialtiesTitle}>Specialties:</Text>
-              <View style={styles.specialtiesList}>
-                {item.company.specialties.map((specialty, index) => (
-                  <Text key={index} style={styles.specialtyText}>
-                    {specialty}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
+      <View style={styles.specialtiesContainer}>
+        <Text style={styles.specialtiesTitle}>Specialties:</Text>
+        <View style={styles.specialtiesList}>
+          {(item.company?.specialties || []).map((specialty, index) => (
+            <Text key={index} style={styles.specialtyText}>
+              {specialty}
+            </Text>
+          ))}
         </View>
       </View>
     </View>
@@ -260,90 +258,63 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: 16,
   },
-
-  // Main Content Layout
-  mainContent: {
-    flexDirection: "row",
-    marginBottom: 16,
+  serviceCard: {
     backgroundColor: "#fff",
     borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    overflow: "hidden",
   },
-
-  // Left Sidebar - Company Display
-  sidebar: {
-    width: 100,
-    backgroundColor: "#ffffff",
-    borderRightWidth: 1,
-    borderRightColor: "#e2e8f0",
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-
-  sidebarContent: {
-    alignItems: "center",
-    paddingHorizontal: 8,
-  },
-
-  companyLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  companyNameSidebar: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 18,
+  serviceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 12,
   },
-
-  verifiedBadgeSidebar: {
-    backgroundColor: "#dcfce7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-
-  verifiedTextSidebar: {
-    fontSize: 10,
-    color: "#16a34a",
-    fontWeight: "600",
-  },
-
-  // Right Side - Service Details Container
-  serviceDetailsContainer: {
+  serviceInfo: {
     flex: 1,
   },
-
-  serviceCard: {
-    padding: 16,
-  },
-
-  removeButton: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    padding: 8,
-    zIndex: 1,
-  },
-
   serviceTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#333",
-    marginBottom: 12,
-    paddingRight: 40,
+    marginBottom: 4,
+  },
+  companyName: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 6,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rating: {
+    fontSize: 14,
+    color: "#333",
+    marginLeft: 4,
+  },
+  experience: {
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 4,
+  },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  verifiedText: {
+    fontSize: 12,
+    color: "#4CAF50",
+    marginLeft: 2,
+  },
+  removeButton: {
+    padding: 8,
   },
   serviceDetails: {
     marginBottom: 12,

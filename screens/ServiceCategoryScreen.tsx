@@ -269,6 +269,11 @@ export default function ServiceCategoryScreen() {
             {checked ? "Selected" : "Tap to select"}
           </Text>
         </View>
+        
+        {/* Checkbox on Right */}
+        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+          {checked && <Text style={styles.checkmark}>✓</Text>}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -526,8 +531,8 @@ const styles = StyleSheet.create({
   serviceCard: {
     backgroundColor: "white",
     borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     marginBottom: 8,
     marginHorizontal: 8,
     marginTop: 8,
@@ -548,11 +553,37 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
+  // Checkbox
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
+    marginLeft: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
+    flexShrink: 0,
+  },
+
+  checkboxChecked: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+  },
+
+  checkmark: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
   serviceIcon: {
     width: 50,
     height: 50,
     borderRadius: 12,
     marginRight: 12,
+    flexShrink: 0,
   },
 
   serviceIconPlaceholder: {
@@ -562,6 +593,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
 
   serviceIconText: {
@@ -572,6 +604,22 @@ const styles = StyleSheet.create({
 
   serviceTextContainer: {
     flex: 1,
+    minWidth: 0,
+  },
+
+  serviceTitle: { 
+    fontSize: 15, 
+    fontWeight: "600", 
+    color: "#0f172a",
+    marginBottom: 4,
+    flexWrap: "wrap",
+  },
+
+  serviceSubTitle: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "400",
+    flexWrap: "wrap",
   },
 
   serviceTitle: { 
