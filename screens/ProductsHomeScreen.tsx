@@ -904,6 +904,9 @@ export default function ProductsHomeScreen() {
   // state for category shortcuts from Firebase
   const [categoryShortcuts, setCategoryShortcuts] = useState<any[]>([]);
 
+  // state to toggle Valentine UI features (shortcuts, banners, nearby favorites, etc.)
+  const [enableValentineUI, setEnableValentineUI] = useState(false);
+
   // Build a local message object for when the store is not accepting orders.
   // This object will be passed into HomeMessageBar and is inspired by quick‑commerce
   // messaging. It includes a warning type, a bolt icon and an action to change
@@ -1079,6 +1082,32 @@ export default function ProductsHomeScreen() {
 
     return unsub;
   }, [location.storeId]);
+
+  // Fetch UI configuration to toggle Valentine features (shortcuts, banners, nearby, etc.)
+  useEffect(() => {
+    // Fetch UI configuration to toggle Valentine features globally
+    const unsub = firestore()
+      .collection("ui_config")
+      .doc("valentine_ui")
+      .onSnapshot(
+        (snap) => {
+          if (snap.exists) {
+            const data = snap.data() as any;
+            console.log("UI Config loaded:", data);
+            setEnableValentineUI(data?.enabled === true);
+          } else {
+            console.log("valentine_ui document not found");
+            setEnableValentineUI(false);
+          }
+        },
+        (error) => {
+          console.warn("Error fetching UI config:", error);
+          setEnableValentineUI(false);
+        }
+      );
+
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const currentUser = auth().currentUser;
@@ -1842,62 +1871,64 @@ export default function ProductsHomeScreen() {
   // Build the list header for the SectionList
   const listHeader = (
     <>
-      {/* Category Shortcuts */}
-      <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
-          {(categoryShortcuts && categoryShortcuts.length > 0
-            ? categoryShortcuts
-            : [
-                     ]
-          ).map((item) => {
-            const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={{
-                  alignItems: "center",
-                  marginRight: 4,
-                  width: 68,
-                }}
-                onPress={() => {
-                  void handleCategoryShortcut(item.name);
-                }}
-              >
-                <View
+      {/* Category Shortcuts - Show only when enableValentineUI is true */}
+      {enableValentineUI && (
+        <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            {(categoryShortcuts && categoryShortcuts.length > 0
+              ? categoryShortcuts
+              : [
+                       ]
+            ).map((item) => {
+              const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
+              return (
+                <TouchableOpacity
+                  key={item.id}
                   style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: 20,
-                    backgroundColor: item.bgColor || item.bcColor || item.bg || "#963556ff",
-                    justifyContent: "center",
                     alignItems: "center",
-                    marginBottom: 6,
-                    shadowColor: "#000",
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    shadowOffset: { width: 0, height: 2 },
-                    overflow: "hidden"
+                    marginRight: 4,
+                    width: 68,
+                  }}
+                  onPress={() => {
+                    void handleCategoryShortcut(item.name);
                   }}
                 >
-                  <Image
-                    source={source}
-                    style={{ width: "100%", height: "100%" }}
-                    contentFit="cover"
-                    transition={200}
-                    placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
-                  />
-                </View>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
-                  {item.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  <View
+                    style={{
+                      width: 60,
+                      height: 60,
+                      borderRadius: 20,
+                      backgroundColor: item.bgColor || item.bcColor || item.bg || "#963556ff",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      marginBottom: 6,
+                      shadowColor: "#000",
+                      shadowOpacity: 0.1,
+                      shadowRadius: 4,
+                      shadowOffset: { width: 0, height: 2 },
+                      overflow: "hidden"
+                    }}
+                  >
+                    <Image
+                      source={source}
+                      style={{ width: "100%", height: "100%" }}
+                      contentFit="cover"
+                      transition={200}
+                      placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
-      {/* Promotional banners */}
-      <BannerSwitcher storeId={location.storeId} />
+      {/* Promotional banners - Pass flag to control Valentine sections only */}
+      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
@@ -2052,7 +2083,11 @@ export default function ProductsHomeScreen() {
             ]}
           >
             <Video
-              source={require("../assets/deliveryBackground.mp4")}
+              source={
+                enableValentineUI
+                  ? require("../assets/deliveryBackground11.mp4")
+                  : require("../assets/deliveryBackground.mp4")
+              }
               style={StyleSheet.absoluteFill}
               muted
               repeat

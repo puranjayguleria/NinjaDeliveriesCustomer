@@ -13,6 +13,7 @@ import ValentineSpecialSection from "./ValentineSpecialSection";
 
 interface BannerSwitcherProps {
   storeId: string;
+  enableValentineUI?: boolean;
 }
 
 interface ZBanner {
@@ -21,7 +22,7 @@ interface ZBanner {
   imageUrl: string;
 }
 
-const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
+const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentineUI = true }) => {
   const [bannerConfig, setBannerConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,11 +111,14 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
 
   return (
     <View style={styles.container}>
-      {showValentineBanner && <ValentineBanner imageUrl={valentineBannerUrl} />}
-      {showRoseBouquetBanner && <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />}
+      {/* Valentine sections - controlled by enableValentineUI flag */}
+      {enableValentineUI && showValentineBanner && <ValentineBanner imageUrl={valentineBannerUrl} />}
+      {enableValentineUI && showRoseBouquetBanner && <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />}
+      {enableValentineUI && <ValentineSpecialSection storeId={storeId} />}
+      
+      {/* Other banners - always shown */}
       {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}
       {bannerConfig?.showSliderBanner && <SliderBanner storeId={storeId} />}
-      <ValentineSpecialSection storeId={storeId} />
       {bannerConfig?.showSales && <SalesBanner storeId={storeId} />}
     </View>
   );

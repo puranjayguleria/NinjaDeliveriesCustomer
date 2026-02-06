@@ -90,7 +90,7 @@ const MakeBouquetScreen = () => {
     firestore()
       .collection("subcategories")
       .where("storeId", "==", storeId)
-      .where("name", "==", "Flower Bouquet")
+      .where("name", "==", "Fresh Flowers")
       .limit(1)
       .get()
       .then((subSnap) => {
