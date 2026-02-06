@@ -597,7 +597,7 @@ const MakeBouquetScreen = () => {
            )}
         </View>
 
-       </ScrollView>
+      </ScrollView>
 
       {/* Footer Action */}
       <View style={styles.footer}>

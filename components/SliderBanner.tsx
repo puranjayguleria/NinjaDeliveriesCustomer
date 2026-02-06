@@ -21,7 +21,7 @@ const HORIZONTAL_PADDING = 16;
 const SLIDE_GAP = 8; // space between slides
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SLIDE_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
-const BANNER_HEIGHT = SCREEN_WIDTH * 0.3;
+const BANNER_HEIGHT = SCREEN_WIDTH * 0.5;
 const AUTO_PLAY_INTERVAL = 4000;
 
 const isMp4 = (url?: string) =>
