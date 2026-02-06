@@ -310,21 +310,31 @@ const MakeBouquetScreen = () => {
       let description = "";
       let name = "";
       let image = "";
+      let flowerDetails = "";
 
       const shapeLabel = BOUQUET_SHAPES[bouquetShape].label;
 
       if (isCustomMix) {
-        name = `${bouquetSize} Stem Custom Mix (${shapeLabel})`;
+        // Build detailed flower composition
+        const flowerParts = Object.entries(customComposition).map(([id, count]) => {
+          const rose = flowerOptions.find(r => r.id === id);
+          return `${rose?.name} (${count})`;
+        });
+        flowerDetails = flowerParts.join(" | ");
+        
+        // Create comprehensive name that includes all flowers
+        name = `${bouquetSize} Stem Custom Mix (${shapeLabel}) - ${flowerDetails}`;
+        
         // Use the image of the first selected flower or default
         const firstId = Object.keys(customComposition)[0];
         image = flowerOptions.find(r => r.id === firstId)?.image || flowerOptions[0]?.image || ROSE_OPTIONS[0].image;
         
-        // Build description
-        const parts = Object.entries(customComposition).map(([id, count]) => {
+        // Build description with detailed breakdown
+        const descParts = Object.entries(customComposition).map(([id, count]) => {
           const rose = flowerOptions.find(r => r.id === id);
-          return `${count} ${rose?.name}`;
+          return `${rose?.name} (x${count})`;
         });
-        description = `Custom Mix (${shapeLabel}): ${parts.join(", ")}${bouquetDesignCost ? `. Design cost: ₹${bouquetDesignCost}` : ""}`;
+        description = `Custom Mix (${shapeLabel}): ${descParts.join(", ")}${bouquetDesignCost ? `. Design cost: ₹${bouquetDesignCost}` : ""}`;
       } else {
         name = `${bouquetSize} ${selectedRose.name} Bouquet (${shapeLabel})`;
         description = `${shapeLabel} bouquet with ${bouquetSize} stems of ${selectedRose.name}${bouquetDesignCost ? `. Design cost: ₹${bouquetDesignCost}` : ""}`;
@@ -343,6 +353,7 @@ const MakeBouquetScreen = () => {
         isCustom: true,
         shape: bouquetShape,
         bouquetDesignCost,
+        flowerComposition: isCustomMix ? customComposition : {}, // Store flower composition
         createdAt: firestore.FieldValue.serverTimestamp(),
       };
 
