@@ -224,10 +224,11 @@ export default function ServiceCategoryScreen() {
 
     navigation.navigate("SelectDateTime", {
       serviceTitle,
-      categoryId,
+      categoryId: selectedCategoryId,
       issues: selectedIssueTitles,
       selectedIssueIds: [selectedId], // Pass as array for compatibility
       selectedIssues: selectedIssueObject ? [selectedIssueObject] : [], // pass as array for compatibility
+      allCategories: categories, // 🆕 Pass all categories for sidebar
     });
   };
 
@@ -320,7 +321,6 @@ export default function ServiceCategoryScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Select Services</Text>
       </View>
-      <Text style={styles.subHeader}>Select your issue</Text>
 
       {/* Main Content: Sidebar + Services */}
       <View style={styles.mainContent}>
@@ -384,14 +384,14 @@ export default function ServiceCategoryScreen() {
       </View>
 
       {/* Bottom Continue Button */}
-      {selectedIds.length > 0 && (
+      {selectedId && (
         <View style={styles.bottomBar}>
           <TouchableOpacity 
             style={styles.continueBtn} 
             onPress={onContinue}
           >
             <Text style={styles.continueBtnText}>
-              Continue ({selectedIds.length} selected)
+              Continue (1 selected)
             </Text>
           </TouchableOpacity>
         </View>
@@ -414,12 +414,14 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    alignItems: "center",
   },
 
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#0f172a",
+    textAlign: "center",
   },
 
   // Main Content Layout
