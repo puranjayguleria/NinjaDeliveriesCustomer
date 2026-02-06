@@ -4971,17 +4971,23 @@ export class FirestoreService {
         throw new Error('User not authenticated');
       }
 
-      // Query by userId (more reliable than phone)
+      // Query by userId only (no orderBy to avoid index requirement)
       const snapshot = await firestore()
         .collection('user_addresses')
         .where('userId', '==', user.uid)
-        .orderBy('createdAt', 'desc')
         .get();
 
-      const addresses = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-      }));
+      // Sort in memory by createdAt descending
+      const addresses = snapshot.docs
+        .map(doc => ({
+          ...doc.data(),
+          id: doc.id,
+        }))
+        .sort((a: any, b: any) => {
+          const aTime = a.createdAt?.toMillis?.() || 0;
+          const bTime = b.createdAt?.toMillis?.() || 0;
+          return bTime - aTime; // Descending order (newest first)
+        });
 
       console.log(`✅ Found ${addresses.length} saved addresses`);
       return addresses;
