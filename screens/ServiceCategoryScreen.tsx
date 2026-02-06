@@ -22,8 +22,8 @@ export default function ServiceCategoryScreen() {
 
   const { serviceTitle, categoryId } = route.params;
 
-  // ✅ Multi-select states
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Single-select states
+  const [selectedId, setSelectedId] = useState<string>("");
   const [otherText, setOtherText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
@@ -181,38 +181,36 @@ export default function ServiceCategoryScreen() {
   const hasMoreItems = issues.length > 5;
 
   const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      if (prev.includes(id)) {
-        const updated = prev.filter((x) => x !== id);
-
-        // if Other removed => clear text
-        if (id === "other") setOtherText("");
-
-        return updated;
-      } else {
-        return [...prev, id];
+    // Single selection - if same id clicked, deselect it, otherwise select new one
+    if (selectedId === id) {
+      setSelectedId("");
+      if (id === "other") setOtherText("");
+    } else {
+      setSelectedId(id);
+      // Clear other text if switching away from "other"
+      if (selectedId === "other" && id !== "other") {
+        setOtherText("");
       }
-    });
+    }
   };
 
-  const isOtherSelected = selectedIds.includes("other");
+  const isOtherSelected = selectedId === "other";
 
   const selectedIssueTitles = useMemo(() => {
-    if (!issues || !Array.isArray(issues)) return [];
+    if (!issues || !Array.isArray(issues) || !selectedId) return [];
     
-    const list = issues
-      .filter((x) => selectedIds.includes(x.id))
-      .map((x) => x.name);
+    const selectedIssue = issues.find((x) => x.id === selectedId);
+    if (!selectedIssue) return [];
 
     if (isOtherSelected && otherText.trim().length > 0) {
-      return list.map((t) => (t === "Other Issue" ? `Other: ${otherText}` : t));
+      return [`Other: ${otherText}`];
     }
-    return list;
-  }, [issues, selectedIds, otherText, isOtherSelected]);
+    return [selectedIssue.name];
+  }, [issues, selectedId, otherText, isOtherSelected]);
 
   const onContinue = () => {
-    if (selectedIds.length === 0) {
-      Alert.alert("Select Issue", "Please select at least 1 issue.");
+    if (!selectedId) {
+      Alert.alert("Select Issue", "Please select an issue.");
       return;
     }
 
@@ -222,14 +220,14 @@ export default function ServiceCategoryScreen() {
     }
 
     // Go to slot selection first (new flow)
-    const selectedIssuesObjects = issues.filter(i => selectedIds.includes(i.id));
+    const selectedIssueObject = issues.find(i => i.id === selectedId);
 
     navigation.navigate("SelectDateTime", {
       serviceTitle,
       categoryId,
       issues: selectedIssueTitles,
-      selectedIssueIds: selectedIds, // Pass the actual issue IDs
-      selectedIssues: selectedIssuesObjects, // pass actual issue objects
+      selectedIssueIds: [selectedId], // Pass as array for compatibility
+      selectedIssues: selectedIssueObject ? [selectedIssueObject] : [], // pass as array for compatibility
     });
   };
 
@@ -256,7 +254,7 @@ export default function ServiceCategoryScreen() {
   };
 
   const renderItem = ({ item }: any) => {
-    const checked = selectedIds.includes(item.id);
+    const checked = selectedId === item.id;
 
     return (
       <TouchableOpacity
@@ -322,6 +320,7 @@ export default function ServiceCategoryScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Select Services</Text>
       </View>
+      <Text style={styles.subHeader}>Select your issue</Text>
 
       {/* Main Content: Sidebar + Services */}
       <View style={styles.mainContent}>

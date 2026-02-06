@@ -481,34 +481,35 @@ export default function ServicesScreen() {
     return (
       <View>
         {/* Status Bar */}
-        <StatusBar barStyle="dark-content" backgroundColor="white" />
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
         
-        {/* Header with Gradient */}
-        <LinearGradient
-          colors={["#1aca78", "#1e3a8a"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        {/* Header with Image Background */}
+        <ImageBackground
+          source={require('../assets/8.png')}
           style={styles.topHeader}
+          resizeMode="cover"
         >
-          <View style={styles.headerRow}>
-            {/* Header content */}
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.header}>Services</Text>
-              <Text style={styles.headerSub}>
-                Expert professionals, verified & trusted
-              </Text>
+          <View style={styles.headerOverlay}>
+            <View style={styles.headerRow}>
+              {/* Booking History Button */}
+              <TouchableOpacity 
+                style={styles.historyButton}
+                onPress={() => navigation.navigate("BookingHistory")}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={["#ef4444", "#dc2626"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.historyButtonGradient}
+                >
+                  <Ionicons name="receipt-outline" size={22} color="white" />
+                  <Text style={styles.historyButtonText}>History</Text>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-            
-            {/* Booking History Button */}
-            <TouchableOpacity 
-              style={styles.historyButton}
-              onPress={() => navigation.navigate("BookingHistory")}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="receipt-outline" size={24} color="#1e40af" />
-            </TouchableOpacity>
           </View>
-        </LinearGradient>
+        </ImageBackground>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -680,17 +681,25 @@ const styles = StyleSheet.create({
 
   // Header Styles
   topHeader: {
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 32,
+    height: 215,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    overflow: "hidden",
+  },
+
+  headerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 2,
+    paddingTop: 40,
+    paddingBottom: 32,
+    justifyContent: "flex-start",
   },
 
   headerRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
 
   headerTextContainer: {
@@ -698,19 +707,29 @@ const styles = StyleSheet.create({
   },
 
   historyButton: {
+    borderRadius: 25,
+    elevation: 8,
+    shadowColor: '#ef4444',
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+  },
+
+  historyButtonGradient: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    width: 48,
-    height: 48,
-    backgroundColor: "white",
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: "#46a89b",
-    elevation: 5,
-    shadowColor: '#a4db0c',
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    gap: 8,
+  },
+
+  historyButtonText: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   header: {

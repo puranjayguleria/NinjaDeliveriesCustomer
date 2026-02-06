@@ -375,6 +375,24 @@ export default function ServiceCheckoutScreen() {
           companyName: service.company?.name || "Service Provider", // Add company name for website
           totalPrice: service.totalPrice || 0,
           addOns: service.addOns || [],
+          // Package information (if this is a package booking)
+          ...(service.additionalInfo?.package && {
+            isPackage: true,
+            packageId: service.additionalInfo.package.id || "",
+            packageName: service.additionalInfo.package.name || "",
+            packageType: (
+              // First check explicit unit/frequency fields
+              service.additionalInfo.package.unit === 'month' || service.additionalInfo.package.frequency === 'monthly' ? 'monthly' :
+              service.additionalInfo.package.unit === 'week' || service.additionalInfo.package.frequency === 'weekly' ? 'weekly' :
+              // Fallback to name-based detection
+              service.additionalInfo.package.name?.toLowerCase().includes('monthly') || service.additionalInfo.package.name?.toLowerCase().includes('month') ? 'monthly' : 
+              service.additionalInfo.package.name?.toLowerCase().includes('weekly') || service.additionalInfo.package.name?.toLowerCase().includes('week') ? 'weekly' : 
+              'custom'
+            ) as 'monthly' | 'weekly' | 'custom',
+            packagePrice: service.additionalInfo.package.price || service.totalPrice || 0,
+            packageDuration: service.additionalInfo.package.duration || "",
+            packageDescription: service.additionalInfo.package.description || "",
+          }),
           // Add location data for website access (CRITICAL for website integration)
           location: {
             lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
@@ -409,7 +427,13 @@ export default function ServiceCheckoutScreen() {
         console.log(`   Location address: "${bookingData.location?.address}"`);
         console.log(`   Location coordinates: lat=${bookingData.location?.lat}, lng=${bookingData.location?.lng}`);
         console.log(`   This booking SHOULD appear on website for worker assignment`);
-
+        console.log(`📦 PACKAGE INFORMATION CHECK:`);
+        console.log(`   Is package booking: ${!!(bookingData as any).isPackage}`);
+        if ((bookingData as any).isPackage) {
+          console.log(`   Package name: ${(bookingData as any).packageName}`);
+          console.log(`   Package type: ${(bookingData as any).packageType}`);
+          console.log(`   Package price: ${(bookingData as any).packagePrice}`);
+        }
         try {
           const bookingId = await FirestoreService.createServiceBooking(bookingData);
           console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
