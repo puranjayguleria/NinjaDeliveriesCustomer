@@ -1217,6 +1217,7 @@ export default function ProductsHomeScreen() {
           nav.navigate("ProductListingFromHome", {
             categoryId: cat.id,
             categoryName: cat.name,
+            ...(cat.subcategoryId ? { subcategoryId: cat.subcategoryId } : {}),
           }),
         !!isPan
       );
@@ -1751,6 +1752,37 @@ export default function ProductsHomeScreen() {
       return;
     }
 
+    if (name === "Blossoms") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("categoryId", "==", "Gift Shop")
+            .where("name", "==", "Fresh Flowers")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            nav.navigate("ProductListingFromHome", {
+              categoryId: "Gift Shop",
+              categoryName: "Fresh Flowers",
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Fresh Flowers",
+        searchQuery: "fresh flowers rose bouquet",
+      });
+      return;
+    }
+
     // Valentine should navigate to Gift Shop category
     if (name === "Valentine") {
       const giftShop = cats.find(c => 
@@ -2179,14 +2211,27 @@ export default function ProductsHomeScreen() {
 
                     <ChipsRow
                       subs={subMap[item.id] || []}
-                      onPress={(s) =>
-                        maybeNavigateCat({
-                          ...item,
-                          id: item.id,
-                          name: item.name,
-                          subcategoryId: s.id,
-                        })
-                      }
+                      onPress={(s) => {
+                        const doNav = async () => {
+                          const catId = String(item.id || "").trim();
+                          const subName = String(s?.name || "").trim().toLowerCase();
+                          if (catId === "Gift Shop" && subName === "perfume") {
+                            maybeNavigateCat({
+                              id: "Perfume",
+                              name: "Perfume",
+                            });
+                            return;
+                          }
+
+                          maybeNavigateCat({
+                            ...item,
+                            id: item.id,
+                            name: item.name,
+                            subcategoryId: s.id,
+                          });
+                        };
+                        void doNav();
+                      }}
                     />
 
                   <MultiRowProductGrid

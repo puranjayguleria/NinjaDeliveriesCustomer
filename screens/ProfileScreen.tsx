@@ -596,7 +596,17 @@ const ProfileScreen: React.FC = () => {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         <View style={styles.headerBlock}>
-          <Text style={styles.mainTitle}>My Profile</Text>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              onPress={() => (navigation as any).goBack?.()}
+              style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color={primaryTextColor} />
+            </TouchableOpacity>
+            <Text style={styles.mainTitle}>My Profile</Text>
+          </View>
 
           {/* <TouchableOpacity
             style={styles.iconContainer}
@@ -1084,6 +1094,14 @@ const styles = StyleSheet.create({
     flexDirection: "row", // 👈 Arrange in a row
     justifyContent: "space-between", // 👈 Push items to edges
     alignItems: "center", // 👈 Align vertically
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backBtn: {
+    padding: 6,
+    marginRight: 8,
   },
   mainTitle: {
     fontSize: 20,

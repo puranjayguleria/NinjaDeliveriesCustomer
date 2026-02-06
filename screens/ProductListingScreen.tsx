@@ -178,6 +178,22 @@ const ProductListingScreen: React.FC<Props> = () => {
   const selectSubcategory = (id: string) =>
     setSelectedSubcategory((prev) => (prev === id ? null : id));
 
+  const handleSubcategoryPress = async (sub: Subcategory) => {
+    const catId = String(categoryId || "").trim();
+    const subName = String(sub?.name || "").trim().toLowerCase();
+    const storeId = location.storeId;
+
+    if (catId === "Gift Shop" && subName === "perfume" && storeId) {
+      (navigation as any).navigate((route as any).name, {
+        categoryId: "Perfume",
+        categoryName: "Perfume",
+      });
+      return;
+    }
+
+    selectSubcategory(sub.id);
+  };
+
   /*******************************
    * Renderers
    *******************************/
@@ -203,7 +219,9 @@ const ProductListingScreen: React.FC<Props> = () => {
         styles.subcategoryItem,
         item.id === selectedSubcategory && styles.selectedSubcategory,
       ]}
-      onPress={() => selectSubcategory(item.id)}
+      onPress={() => {
+        void handleSubcategoryPress(item);
+      }}
     >
       <Image source={{ uri: item.image }} style={styles.subcategoryImage} />
       <Text

@@ -30,7 +30,7 @@ const ValentineSpecialsScreen = () => {
     },
     {
       id: 2,
-      name: "Rose Bouquet",
+      name: "olu",
       price: "29.99",
       image: "https://images.unsplash.com/photo-1587578851410-66236b280140?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
       bgColor: "#FFF0F5"

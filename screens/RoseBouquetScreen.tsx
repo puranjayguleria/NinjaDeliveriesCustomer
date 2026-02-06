@@ -21,14 +21,6 @@ import { useLocationContext } from "../context/LocationContext";
 
 const { width } = Dimensions.get("window");
 
-// Exact categories from the image
-const VISUAL_CATEGORIES = [
-  { id: "60min", name: "All Flowers", image: "https://plus.unsplash.com/premium_photo-1676475964992-6404b8db0b53?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" }, // Using placeholders or generic links if assets missing
-  { id: "red", name: "Red Roses", image: "https://images.unsplash.com/photo-1678540184907-a5fe66786589?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "yellow", name: "Yellow Roses", image: "https://images.unsplash.com/photo-1673277848241-86e145cd7112?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "pink", name: "Pink Roses", image: "https://images.unsplash.com/photo-1694620131938-0f88d08610a4?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-  { id: "mixed", name: "Mixed Roses", image: "https://images.unsplash.com/photo-1713094010686-7e071fb887da?q=80&w=702&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
-];
 
 const RoseBouquetScreen = () => {
   const navigation = useNavigation<any>();

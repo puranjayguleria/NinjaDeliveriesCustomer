@@ -249,6 +249,7 @@ const MakeBouquetScreen = () => {
   const remainingSlots = bouquetSize - totalSelectedCount;
   
   const bouquetDesignCost = (() => {
+    if (bouquetShape === "front") return 200;
     if (bouquetShape !== "round") return 0;
     if (bouquetSize === 7) return 280;
     if (bouquetSize === 11) return 440;
@@ -565,7 +566,7 @@ const MakeBouquetScreen = () => {
 
            {bouquetDesignCost > 0 && (
              <View style={styles.priceCalculationRow}>
-               <Text style={styles.calcText}>Bouquet design cost</Text>
+               <Text style={styles.calcText}>Bouquet Making & Premium Wrapping</Text>
                <Text style={styles.calcText}>₹ {bouquetDesignCost}</Text>
              </View>
            )}

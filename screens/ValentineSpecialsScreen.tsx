@@ -109,8 +109,9 @@ const ValentineSpecialsScreen = () => {
         "Snacks & Ready-to-Eat",
         "Snacks & Ready-to-Eat"
       );
-    } else if (item.id === "v2" || item.id === "v6") {
-      // Rose Bouquet or Mixed Flower Arrangement -> Make Bouquet
+    } else if (item.id === "v2") {
+      await openSubcategoryListing("Bouquet", "Gift Shop", "Gift Shop");
+    } else if (item.id === "v6") {
       navigation.navigate("MakeBouquetScreen");
     } else if (item.id === "v3") {
       await openSubcategoryListing("Teddy Bear", "Gift Shop", "Gift Shop");
