@@ -245,6 +245,36 @@ export default function CompanySelectionScreen() {
         }))
       );
       
+      // Sort packages within each company: monthly first, then weekly, then others
+      fetchedCompanies = fetchedCompanies.map(company => {
+        if (company.packages && Array.isArray(company.packages) && company.packages.length > 0) {
+          const sortedPackages = [...company.packages].sort((a, b) => {
+            const aName = (typeof a === 'string' ? a : a.name || '').toLowerCase();
+            const bName = (typeof b === 'string' ? b : b.name || '').toLowerCase();
+            
+            // Priority order: monthly (1), weekly (2), others (3)
+            const getPriority = (name: string) => {
+              if (name.includes('monthly') || name.includes('month')) return 1;
+              if (name.includes('weekly') || name.includes('week')) return 2;
+              return 3;
+            };
+            
+            const aPriority = getPriority(aName);
+            const bPriority = getPriority(bName);
+            
+            return aPriority - bPriority;
+          });
+          
+          return {
+            ...company,
+            packages: sortedPackages
+          };
+        }
+        return company;
+      });
+      
+      console.log(`📦 Packages sorted by frequency (monthly, weekly first)`);
+      
       // Filter companies to only show those with active workers and check slot availability
       const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
@@ -311,7 +341,18 @@ export default function CompanySelectionScreen() {
       bookingType,
       unitPrice: computedPrice,
       totalPrice: computedPrice,
-      additionalInfo: packageInfo ? { package: { id: packageInfo.id, name: packageInfo.name, price: packageInfo.price, description: packageInfo.description } } : undefined,
+      additionalInfo: packageInfo ? { 
+        package: { 
+          id: packageInfo.id, 
+          name: packageInfo.name, 
+          price: packageInfo.price, 
+          description: packageInfo.description,
+          duration: packageInfo.duration,
+          unit: packageInfo.unit,
+          frequency: packageInfo.frequency,
+          type: packageInfo.type,
+        } 
+      } : undefined,
     });
 
     Alert.alert(
@@ -459,7 +500,7 @@ export default function CompanySelectionScreen() {
                 {hasPackages ? (
                   <View style={styles.packageSection}>
                     <Text style={styles.packageLabel}>
-                      📦 {item.packages?.length || 0} Package{(item.packages?.length || 0) > 1 ? 's' : ''} Available
+                       {item.packages?.length || 0} Package{(item.packages?.length || 0) > 1 ? 's' : ''} Available
                     </Text>
                     
                     {isSelected && (
@@ -469,6 +510,85 @@ export default function CompanySelectionScreen() {
                             ? { id: `${item.id}_pkg_${idx}`, name: pkg, price: item.price || 0 } 
                             : pkg;
                           const isPkgSelected = selectedPackage && selectedPackage.id === pkgObj.id;
+                          
+                          // 🔍 DEBUG: Log package data to verify unit field
+                          console.log(`📦 Package ${idx} data:`, {
+                            name: pkgObj.name,
+                            price: pkgObj.price,
+                            unit: pkgObj.unit,
+                            frequency: pkgObj.frequency,
+                            type: pkgObj.type,
+                            fullObject: pkgObj
+                          });
+                          
+                          // Determine frequency type from package data
+                          // Priority: 1. unit field, 2. frequency field, 3. type field, 4. name parsing
+                          let frequencyBadge = null;
+                          let frequencyColor = '#64748b';
+                          
+                          // Check if package has explicit unit, frequency or type field
+                          const explicitFrequency = pkgObj.unit || pkgObj.frequency || pkgObj.type || pkgObj.subscriptionType;
+                          const duration = pkgObj.duration; // Get duration (e.g., 2, 3, 6, 12)
+                          
+                          console.log(`🔍 Frequency detection for "${pkgObj.name}":`, {
+                            explicitFrequency,
+                            duration,
+                            unit: pkgObj.unit,
+                            frequency: pkgObj.frequency,
+                            type: pkgObj.type
+                          });
+                          
+                          if (explicitFrequency) {
+                            const freqLower = explicitFrequency.toLowerCase();
+                            if (freqLower.includes('month')) {
+                              // Show duration if available (e.g., "3 Months")
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Month' : `${duration} Months`;
+                              } else {
+                                frequencyBadge = 'Monthly';
+                              }
+                              frequencyColor = '#8b5cf6';
+                            } else if (freqLower.includes('week')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Week' : `${duration} Weeks`;
+                              } else {
+                                frequencyBadge = 'Weekly';
+                              }
+                              frequencyColor = '#3b82f6';
+                            } else if (freqLower.includes('day')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Day' : `${duration} Days`;
+                              } else {
+                                frequencyBadge = 'Daily';
+                              }
+                              frequencyColor = '#10b981';
+                            } else if (freqLower.includes('year') || freqLower.includes('annual')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Year' : `${duration} Years`;
+                              } else {
+                                frequencyBadge = 'Yearly';
+                              }
+                              frequencyColor = '#f59e0b';
+                            }
+                          } else {
+                            // Fallback: parse from package name
+                            const pkgName = (pkgObj.name || '').toLowerCase();
+                            if (pkgName.includes('monthly') || pkgName.includes('month')) {
+                              frequencyBadge = 'Monthly';
+                              frequencyColor = '#8b5cf6';
+                            } else if (pkgName.includes('weekly') || pkgName.includes('week')) {
+                              frequencyBadge = 'Weekly';
+                              frequencyColor = '#3b82f6';
+                            } else if (pkgName.includes('daily') || pkgName.includes('day')) {
+                              frequencyBadge = 'Daily';
+                              frequencyColor = '#10b981';
+                            } else if (pkgName.includes('yearly') || pkgName.includes('year') || pkgName.includes('annual')) {
+                              frequencyBadge = 'Yearly';
+                              frequencyColor = '#f59e0b';
+                            }
+                          }
+                          
+                          console.log(`✅ Final badge for "${pkgObj.name}": ${frequencyBadge || 'None'}`);
                           
                           return (
                             <TouchableOpacity
@@ -480,7 +600,14 @@ export default function CompanySelectionScreen() {
                               onPress={() => setSelectedPackage(pkgObj)}
                             >
                               <View style={styles.packageOptionHeader}>
-                                <Text style={styles.packageOptionName}>{pkgObj.name}</Text>
+                                <View style={styles.packageNameRow}>
+                                  <Text style={styles.packageOptionName}>{pkgObj.name}</Text>
+                                  {frequencyBadge && (
+                                    <View style={[styles.frequencyBadge, { backgroundColor: frequencyColor }]}>
+                                      <Text style={styles.frequencyBadgeText}>{frequencyBadge}</Text>
+                                    </View>
+                                  )}
+                                </View>
                                 {isPkgSelected && (
                                   <View style={styles.packageCheckmark}>
                                     <Text style={styles.packageCheckmarkText}>✓</Text>
@@ -834,11 +961,32 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
+  packageNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
   packageOptionName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#1e293b",
-    flex: 1,
+  },
+
+  frequencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+
+  frequencyBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "white",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
   packageCheckmark: {

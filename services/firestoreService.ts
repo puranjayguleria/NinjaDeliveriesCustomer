@@ -119,6 +119,14 @@ export interface ServiceBooking {
     name: string;
     price: number;
   }>;
+  // Package information (for monthly/weekly service packages)
+  isPackage?: boolean; // Whether this booking is for a package
+  packageId?: string; // Package ID from service_services
+  packageName?: string; // Package name (e.g., "Monthly Package", "Weekly Package")
+  packageType?: 'monthly' | 'weekly' | 'custom'; // Package frequency type
+  packagePrice?: number; // Package price
+  packageDuration?: string; // Package duration description
+  packageDescription?: string; // Package description
   // Location data for website access
   location?: {
     lat: number | null;
@@ -4931,6 +4939,11 @@ export class FirestoreService {
                     originalPrice: pkg.originalPrice,
                     discount: pkg.discount,
                     isPopular: pkg.isPopular || false,
+                    // 🔥 PRESERVE FREQUENCY FIELDS
+                    unit: pkg.unit, // Preserve unit field (month, week, year, day)
+                    frequency: pkg.frequency, // Preserve frequency field
+                    type: pkg.type, // Preserve type field
+                    subscriptionType: pkg.subscriptionType, // Preserve subscriptionType field
                   };
                 }
                 return pkg;
