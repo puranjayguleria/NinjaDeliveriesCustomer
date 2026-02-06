@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory, ServiceBanner } from '../services/firestoreService';
+import { firestore, auth } from '../firebase.native';
 
 const { width } = Dimensions.get('window');
 
@@ -204,69 +205,7 @@ export default function ServicesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
-
-  // Fetch function
-  const fetchServiceCategories = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const categories = await FirestoreService.getServiceCategories();
-      setServiceCategories(categories || []);
-    } catch (error) {
-      console.error('Error fetching service categories:', error);
-      setError('Failed to load services. Please check your internet connection and try again.');
-      setServiceCategories([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch banners function
-  const fetchServiceBanners = async () => {
-    try {
-      setBannersLoading(true);
-      const banners = await FirestoreService.getServiceBanners();
-      setServiceBanners(banners || []);
-    } catch (error) {
-      console.error('Error fetching service banners:', error);
-      // Don't show error for banners, just continue without them
-      setServiceBanners([]);
-    } finally {
-      setBannersLoading(false);
-    }
-  };
-
-  // Fetch activities function
-  const fetchActivities = async () => {
-    try {
-      setActivitiesLoading(true);
-      // Try to fetch orders/bookings as activities
-      const fetchedActivities = await FirestoreService.getOrders?.() || [];
-      
-      // Transform orders into activity format
-      const transformedActivities = (fetchedActivities as any[])
-        .filter(order => order.status === 'completed' || order.status === 'Completed')
-        .map(order => ({
-          id: order.id,
-          title: `Service completed - ${order.serviceName || order.categoryName || 'Service'}`,
-          timestamp: order.completedAt || order.createdAt,
-        }))
-        .sort((a, b) => {
-          const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
-          const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
-          return dateB.getTime() - dateA.getTime();
-        })
-        .slice(0, 1);
-      
-      setActivities(transformedActivities || []);
-    } catch (error) {
-      console.error('Error fetching activities:', error);
-      // Don't show error for activities, just continue without them
-      setActivities([]);
-    } finally {
-      setActivitiesLoading(false);
-    }
-  };
+  const activityScrollRef = React.useRef<ScrollView>(null);
 
   // Helper function to format time ago
   const getTimeAgo = React.useCallback((timestamp: any) => {
@@ -283,11 +222,216 @@ export default function ServicesScreen() {
     return date.toLocaleDateString();
   }, []);
 
+  // Real-time listener for service categories
   useEffect(() => {
-    fetchServiceCategories();
-    fetchServiceBanners();
-    fetchActivities();
+    console.log('🔥 Setting up real-time listener for service categories...');
+    setLoading(true);
+    setError(null);
+
+    const unsubscribe = firestore()
+      .collection('app_categories')
+      .where('isActive', '==', true)
+      .onSnapshot(
+        async (snapshot) => {
+          try {
+            console.log(`📊 Real-time update: Found ${snapshot.size} active categories`);
+            
+            const categories: ServiceCategory[] = [];
+            
+            snapshot.forEach(doc => {
+              const data = doc.data();
+              categories.push({
+                id: doc.id,
+                name: data.name || '',
+                isActive: data.isActive || false,
+                masterCategoryId: data.masterCategoryId,
+                imageUrl: null,
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
+              });
+            });
+
+            // Sort by name
+            categories.sort((a, b) => a.name.localeCompare(b.name));
+
+            // Populate images from service_categories_master
+            await FirestoreService.populateCategoryImages(categories);
+
+            setServiceCategories(categories);
+            setLoading(false);
+            console.log('✅ Real-time categories updated:', categories.length);
+          } catch (error) {
+            console.error('❌ Error processing real-time category update:', error);
+            setError('Failed to load services. Please check your internet connection.');
+            setServiceCategories([]);
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error('❌ Real-time listener error for categories:', error);
+          setError('Failed to load services. Please check your internet connection and try again.');
+          setServiceCategories([]);
+          setLoading(false);
+        }
+      );
+
+    // Cleanup listener on unmount
+    return () => {
+      console.log('🔥 Cleaning up service categories listener');
+      unsubscribe();
+    };
   }, []);
+
+  // Real-time listener for service banners
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listener for service banners...');
+    setBannersLoading(true);
+
+    const unsubscribe = firestore()
+      .collection('service_banners')
+      .where('isActive', '==', true)
+      .onSnapshot(
+        (snapshot) => {
+          console.log(`📊 Real-time update: Found ${snapshot.size} active banners`);
+          
+          const banners: ServiceBanner[] = [];
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            banners.push({
+              id: doc.id,
+              title: data.title || '',
+              subtitle: data.subtitle,
+              description: data.description,
+              imageUrl: data.imageUrl,
+              backgroundColor: data.backgroundColor,
+              textColor: data.textColor,
+              isActive: data.isActive || false,
+              clickable: data.clickable,
+              redirectType: data.redirectType,
+              redirectUrl: data.redirectUrl,
+              categoryId: data.categoryId,
+              offerText: data.offerText,
+              iconName: data.iconName,
+              priority: data.priority || 0,
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt,
+            });
+          });
+
+          // Sort by priority on client side (descending - highest priority first)
+          banners.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+          setServiceBanners(banners);
+          setBannersLoading(false);
+          console.log('✅ Real-time banners updated:', banners.length);
+        },
+        (error) => {
+          console.error('❌ Real-time listener error for banners:', error);
+          setServiceBanners([]);
+          setBannersLoading(false);
+        }
+      );
+
+    // Cleanup listener on unmount
+    return () => {
+      console.log('🔥 Cleaning up service banners listener');
+      unsubscribe();
+    };
+  }, []);
+
+  // Real-time listener for live activities - shows all bookings from all users
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listener for live activities (all bookings)...');
+    
+    setActivitiesLoading(true);
+
+    const unsubscribe = firestore()
+      .collection('service_bookings')
+      .onSnapshot(
+        (snapshot) => {
+          console.log(`📊 Real-time update: Found ${snapshot.size} bookings`);
+          
+          if (snapshot.size === 0) {
+            setActivities([]);
+            setActivitiesLoading(false);
+            return;
+          }
+
+          // Transform bookings into activity format
+          const transformedActivities: any[] = [];
+          
+          snapshot.forEach(doc => {
+            const booking = doc.data();
+            
+            // Get service name only (no customer name)
+            const serviceName = booking.serviceName || booking.category || 'Service';
+            
+            // Show simple booking message
+            const activityMessage = `${serviceName} has been booked`;
+            const activityTimestamp = booking.createdAt || booking.updatedAt;
+            
+            transformedActivities.push({
+              id: doc.id,
+              title: activityMessage,
+              status: booking.status || 'pending',
+              timestamp: activityTimestamp,
+              serviceName: serviceName,
+            });
+          });
+
+          // Sort by timestamp on client side (most recent first)
+          transformedActivities.sort((a, b) => {
+            const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
+            const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp || 0);
+            return dateB.getTime() - dateA.getTime();
+          });
+          
+          setActivities(transformedActivities);
+          setActivitiesLoading(false);
+          console.log('✅ Real-time live activities updated (all bookings):', transformedActivities.length);
+        },
+        (error) => {
+          console.error('❌ Real-time listener error for live activities:', error);
+          setActivities([]);
+          setActivitiesLoading(false);
+        }
+      );
+
+    // Cleanup listener on unmount
+    return () => {
+      console.log('🔥 Cleaning up live activities listener');
+      unsubscribe();
+    };
+  }, []);
+
+  // Smooth continuous auto-scroll effect for all activities
+  useEffect(() => {
+    if (activities.length <= 1) return;
+
+    let scrollPosition = 0;
+    const activityHeight = 70; // Updated height of each activity card
+    const totalActivities = activities.length;
+
+    const interval = setInterval(() => {
+      scrollPosition += activityHeight;
+      
+      // Reset to beginning when reaching the end
+      if (scrollPosition >= totalActivities * activityHeight) {
+        scrollPosition = 0;
+      }
+      
+      // Smooth scroll to next position
+      if (activityScrollRef.current) {
+        activityScrollRef.current.scrollTo({
+          y: scrollPosition,
+          animated: true,
+        });
+      }
+    }, 3000); // Scroll every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [activities.length]);
 
   // Search functionality - simplified without useMemo to avoid React null error
   const getFilteredCategories = () => {
@@ -614,15 +758,27 @@ export default function ServicesScreen() {
                   <Text style={styles.activityLoadingText}>Loading activities...</Text>
                 </View>
               ) : activities && activities.length > 0 ? (
-                activities.map((activity) => (
-                  <View key={activity.id} style={styles.activityCard}>
-                    <View style={styles.activityDot} />
-                    <View style={styles.activityContent}>
-                      <Text style={styles.activityTitle}>{activity.title}</Text>
-                      <Text style={styles.activityTime}>{getTimeAgo(activity.timestamp)}</Text>
+                <ScrollView
+                  ref={activityScrollRef}
+                  style={styles.activityScrollContainer}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled={true}
+                  scrollEnabled={false}
+                >
+                  {activities.map((activity) => (
+                    <View key={activity.id} style={styles.activityCard}>
+                      <View style={styles.activityDot} />
+                      <View style={styles.activityContent}>
+                        <View style={styles.activityRow}>
+                          <Text style={styles.activityTitle} numberOfLines={1}>
+                            {activity.title}
+                          </Text>
+                        </View>
+                        <Text style={styles.activityTime}>{getTimeAgo(activity.timestamp)}</Text>
+                      </View>
                     </View>
-                  </View>
-                ))
+                  ))}
+                </ScrollView>
               ) : (
                 <Text style={styles.noActivityText}>No recent activities</Text>
               )}
@@ -664,9 +820,7 @@ export default function ServicesScreen() {
             ) : error ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>{error}</Text>
-                <TouchableOpacity onPress={fetchServiceCategories} style={styles.retryButton}>
-                  <Text style={styles.retryText}>Retry</Text>
-                </TouchableOpacity>
+                <Text style={styles.emptySubText}>Real-time updates will resume automatically</Text>
               </View>
             ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -682,10 +836,10 @@ export default function ServicesScreen() {
           }
           contentContainerStyle={{ paddingBottom: 30 }}
           showsVerticalScrollIndicator={false}
-          refreshing={loading}
+          refreshing={false}
           onRefresh={() => {
-            fetchServiceCategories();
-            fetchServiceBanners();
+            // All data uses real-time listeners now
+            // No manual refresh needed
           }}
           removeClippedSubviews={false}
           maxToRenderPerBatch={10}
@@ -989,10 +1143,10 @@ const styles = StyleSheet.create({
 
   // Live Activity Container Styles
   liveActivityContainer: {
-    marginHorizontal: 24,
+    marginHorizontal: 16,
     marginBottom: 28,
-    paddingVertical: 50,
-    paddingHorizontal: 40,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     backgroundColor: "white",
     borderRadius: 20,
     elevation: 5,
@@ -1002,6 +1156,11 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     borderWidth: 1,
     borderColor: "#e8ecf1",
+  },
+
+  activityScrollContainer: {
+    height: 140,
+    overflow: 'hidden',
   },
 
   // Live Activity Section Styles
@@ -1040,11 +1199,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     backgroundColor: "transparent",
-    paddingVertical: 16,
+    paddingVertical: 10,
     paddingHorizontal: 0,
     marginBottom: 0,
     borderRadius: 0,
     borderWidth: 0,
+    height: 70,
   },
 
   activityDot: {
@@ -1061,12 +1221,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+
   activityTitle: {
     fontSize: 14,
     fontWeight: "700",
     color: "#0f172a",
-    marginBottom: 6,
     lineHeight: 20,
+    flex: 1,
   },
 
   activityTime: {
