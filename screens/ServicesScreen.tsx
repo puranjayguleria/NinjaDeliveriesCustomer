@@ -203,6 +203,7 @@ export default function ServicesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchInputRef = React.useRef<TextInput>(null);
 
   // Fetch function
   const fetchServiceCategories = async () => {
@@ -268,7 +269,7 @@ export default function ServicesScreen() {
   };
 
   // Helper function to format time ago
-  const getTimeAgo = (timestamp: any) => {
+  const getTimeAgo = React.useCallback((timestamp: any) => {
     if (!timestamp) return 'recently';
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -280,7 +281,7 @@ export default function ServicesScreen() {
     if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
     
     return date.toLocaleDateString();
-  };
+  }, []);
 
   useEffect(() => {
     fetchServiceCategories();
@@ -334,6 +335,7 @@ export default function ServicesScreen() {
 
   const clearSearch = () => {
     setSearchQuery('');
+    searchInputRef.current?.focus();
   };
 
   // Data slices with null checks
@@ -346,15 +348,30 @@ export default function ServicesScreen() {
     : (serviceCategories || []).slice(0, 6);
 
   // Render functions
-  const renderBanner = ({ item: banner, index }: { item: ServiceBanner; index: number }) => {
+  const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
     const backgroundColor = banner.backgroundColor || '#667eea';
     const textColor = banner.textColor || 'white';
+
+    const onBannerPress = () => {
+      if (!banner.clickable) return;
+
+      if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
+        navigation.navigate("ServiceCategory", { 
+          serviceTitle: banner.title,
+          categoryId: banner.categoryId
+        });
+      } else if (banner.redirectType === "AllServices") {
+        navigation.navigate("AllServices");
+      } else if (banner.redirectUrl) {
+        console.log('Banner redirect URL:', banner.redirectUrl);
+      }
+    };
 
     return (
       <TouchableOpacity 
         key={banner.id}
         activeOpacity={0.9}
-        onPress={() => handleBannerPress(banner)}
+        onPress={onBannerPress}
         style={styles.bannerItem}
       >
         {banner.imageUrl ? (
@@ -366,6 +383,12 @@ export default function ServicesScreen() {
             <View style={styles.bannerOverlay}>
               <View style={styles.bannerContent}>
                 <View style={styles.bannerTextSection}>
+                  {/* Tag at the top */}
+                  {(banner as any).tag && (
+                    <View style={styles.bannerTag}>
+                      <Text style={styles.bannerTagText}>{(banner as any).tag}</Text>
+                    </View>
+                  )}
                   <Text style={[styles.bannerTitle, { color: textColor }]}>
                     {banner.title}
                   </Text>
@@ -392,6 +415,12 @@ export default function ServicesScreen() {
           >
             <View style={styles.bannerContent}>
               <View style={styles.bannerTextSection}>
+                {/* Tag at the top */}
+                {(banner as any).tag && (
+                  <View style={styles.bannerTag}>
+                    <Text style={styles.bannerTagText}>{(banner as any).tag}</Text>
+                  </View>
+                )}
                 <Text style={[styles.bannerTitle, { color: textColor }]}>
                   {banner.title}
                 </Text>
@@ -411,7 +440,7 @@ export default function ServicesScreen() {
         )}
       </TouchableOpacity>
     );
-  };
+  }, [navigation]);
 
   const renderCategoryCard = ({ item, index }: { item: ServiceCategory; index: number }) => {
     if (!item || !item.name) return null; // Safety check
@@ -477,7 +506,7 @@ export default function ServicesScreen() {
     );
   };
 
-  const HeaderUI = () => {
+  const HeaderUI = React.useMemo(() => {
     return (
       <View>
         {/* Status Bar */}
@@ -516,6 +545,7 @@ export default function ServicesScreen() {
           <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
             <Ionicons name="search" size={20} color="#ce0c8d" style={styles.searchIcon} />
             <TextInput
+              ref={searchInputRef}
               style={styles.searchInput}
               placeholder="What do you need?"
               placeholderTextColor="#a0aec0"
@@ -606,7 +636,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  };
+  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, activitiesLoading, activities, navigation, renderBanner, getTimeAgo]);
 
   return (
     <View style={styles.container}>
@@ -619,7 +649,7 @@ export default function ServicesScreen() {
       ) : (
         <FlatList
           data={loading ? [] : (listCategories || [])}
-          keyExtractor={(item) => item?.id || Math.random().toString()}
+          keyExtractor={(item, index) => item?.id || `item-${index}`}
           ListHeaderComponent={HeaderUI}
           renderItem={renderListItem}
           numColumns={2}
@@ -657,16 +687,12 @@ export default function ServicesScreen() {
             fetchServiceCategories();
             fetchServiceBanners();
           }}
-          removeClippedSubviews={true}
+          removeClippedSubviews={false}
           maxToRenderPerBatch={10}
           windowSize={10}
           initialNumToRender={searchQuery ? 20 : 6}
-          getItemLayout={(data, index) => ({
-            length: 100, // Approximate item height
-            offset: 100 * index,
-            index,
-          })}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         />
       )}
     </View>
@@ -749,7 +775,7 @@ const styles = StyleSheet.create({
 
   // Search Bar Styles
   searchContainer: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingVertical: 20,
     backgroundColor: "#f5f7fb",
     marginTop: -20,
@@ -913,6 +939,28 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 13,
     fontWeight: "700",
+  },
+
+  bannerTag: {
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+
+  bannerTagText: {
+    color: "#1e40af",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
   bannerIcon: {
