@@ -284,7 +284,7 @@ const ProductListingScreen: React.FC<Props> = () => {
           )}
         </View>
 
-        {/* List */}
+        {/* List --- */}
         {loading ? (
           <View style={styles.loaderContainer}>
             <Loader />
