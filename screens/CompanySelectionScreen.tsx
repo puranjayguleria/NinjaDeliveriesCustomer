@@ -375,78 +375,57 @@ export default function CompanySelectionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Modern Header */}
+      {/* Header */}
       <View style={styles.headerSection}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        
         <Text style={styles.header}>Select Service Provider</Text>
-        <Text style={styles.subHeader}>
-          Showing providers for your selected services ({companies.length} available)
-        </Text>
       </View>
 
-      {/* Compact Service Summary Card */}
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryHeader}>
-          <Text style={styles.summaryTitle}>{serviceTitle}</Text>
-          {selectedDate && selectedTime && (
-            <View style={styles.slotBadge}>
-              <Text style={styles.slotBadgeText}>
-                {selectedDateFull || selectedDate} at {selectedTime}
-              </Text>
-            </View>
-          )}
-        </View>
-        
-        <View style={styles.issuesRow}>
-          <Text style={styles.issuesLabel}>Selected Issues:</Text>
-          <View style={styles.issuesChips}>
-            {Array.isArray(issues) && issues.length > 0 ? (
-              issues.map((issue: string, index: number) => (
-                <View key={index} style={styles.issueChip}>
-                  <Text style={styles.issueChipText}>{issue}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.noIssuesText}>No issues selected</Text>
+      {/* Main Content: Sidebar + Companies */}
+      <View style={styles.mainContent}>
+        {/* Left Sidebar - Service Name Only */}
+        <View style={styles.sidebar}>
+          <View style={styles.sidebarContent}>
+            {serviceTitle && (
+              <View style={styles.serviceDisplayContainer}>
+                <Text style={styles.serviceLabel}>SERVICE</Text>
+                <Text style={styles.serviceTitle} numberOfLines={4}>
+                  {serviceTitle}
+                </Text>
+              </View>
             )}
           </View>
         </View>
-      </View>
 
-      {/* Companies List */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading service providers...</Text>
-        </View>
-      ) : companies.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Companies Available</Text>
-          <Text style={styles.emptyText}>
-            Please try choosing different slots or check back later.
-             {'\n'}
-          </Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.retryText}>Choose Different Slot</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={companies}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => {
-            const isSelected = item.id === selectedCompanyId;
-            const isBusy = (item as any).isBusy === true;
-            const hasPackages = item.packages && Array.isArray(item.packages) && item.packages.length > 0;
+        {/* Right Side - Companies List */}
+        <View style={styles.companiesContainer}>
+          {/* Companies List */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text style={styles.loadingText}>Loading service providers...</Text>
+            </View>
+          ) : companies.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyTitle}>No Companies Available</Text>
+              <Text style={styles.emptyText}>
+                Please try choosing different slots or check back later.
+                 {'\n'}
+              </Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => navigation.goBack()}
+              >
+                <Text style={styles.retryText}>Choose Different Slot</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={companies}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const isSelected = item.id === selectedCompanyId;
+                const isBusy = (item as any).isBusy === true;
+                const hasPackages = item.packages && Array.isArray(item.packages) && item.packages.length > 0;
             
             return (
               <TouchableOpacity
@@ -473,14 +452,6 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
                   </View>
-                  
-                  {isSelected ? (
-                    <View style={styles.selectedIndicator}>
-                      <Text style={styles.selectedIndicatorText}>✓</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.selectCircle} />
-                  )}
                 </View>
 
                 {/* Availability Status */}
@@ -653,12 +624,14 @@ export default function CompanySelectionScreen() {
               </TouchableOpacity>
             );
           }}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshing={loading}
-          onRefresh={fetchServiceCompanies}
-        />
-      )}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              refreshing={loading}
+              onRefresh={fetchServiceCompanies}
+            />
+          )}
+        </View>
+      </View>
 
       {/* Modern Bottom Action Bar */}
       {selectedCompany && (
@@ -692,129 +665,82 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc" 
   },
 
-  // Modern Header
+  // Header
   headerSection: {
     backgroundColor: "white",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
-  },
-
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-
-  backButtonText: {
-    color: "#3b82f6",
-    fontSize: 16,
-    fontWeight: "600",
+    alignItems: "center",
   },
 
   header: { 
-    fontSize: 24, 
+    fontSize: 20, 
     fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 6,
+    color: "#0f172a",
+    textAlign: "center",
   },
 
-  subHeader: { 
-    color: "#64748b", 
-    fontSize: 14, 
-    fontWeight: "500",
+  // Main Content Layout
+  mainContent: {
+    flex: 1,
+    flexDirection: "row",
   },
 
-  // Compact Summary Card
-  summaryCard: {
-    backgroundColor: "white",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
+  // Left Sidebar - Service Display
+  sidebar: {
+    width: 100,
+    backgroundColor: "#ffffff",
+    borderRightWidth: 1,
+    borderRightColor: "#e2e8f0",
+    paddingVertical: 20,
+    alignItems: "center",
   },
 
-  summaryHeader: {
+  sidebarContent: {
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+
+  serviceDisplayContainer: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  serviceLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
     marginBottom: 12,
-  },
-
-  summaryTitle: { 
-    fontSize: 16, 
-    fontWeight: "600", 
-    color: "#1e293b",
-    marginBottom: 8,
-  },
-
-  slotBadge: {
-    backgroundColor: "#eff6ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-
-  slotBadgeText: {
-    fontSize: 12,
-    color: "#1e40af",
-    fontWeight: "600",
-  },
-
-  issuesRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    paddingTop: 12,
-  },
-
-  issuesLabel: { 
-    fontSize: 12, 
-    color: "#64748b", 
-    fontWeight: "600",
-    marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
 
-  issuesChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-
-  issueChip: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-
-  issueChipText: {
-    fontSize: 12,
-    color: "#475569",
-    fontWeight: "500",
-  },
-
-  noIssuesText: {
+  serviceTitle: {
     fontSize: 13,
-    color: "#94a3b8",
-    fontStyle: "italic",
+    fontWeight: "700",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
+  // Right Side - Companies Container
+  companiesContainer: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    paddingTop: 16,
   },
 
   // Provider Cards
   listContent: {
-    paddingBottom: 120,
+    paddingBottom: 100,
+    paddingHorizontal: 16,
   },
 
   providerCard: {
     backgroundColor: "white",
-    marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 12,
     padding: 16,
@@ -869,29 +795,6 @@ const styles = StyleSheet.create({
   verifiedText: {
     fontSize: 12,
     color: "#16a34a",
-    fontWeight: "700",
-  },
-
-  selectCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#cbd5e1",
-  },
-
-  selectedIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#3b82f6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  selectedIndicatorText: {
-    color: "white",
-    fontSize: 14,
     fontWeight: "700",
   },
 

@@ -9,25 +9,27 @@ import {
   Alert,
   Dimensions,
   Platform,
+  Image,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useServiceCart } from "../context/ServiceCartContext";
+import { Ionicons } from '@expo/vector-icons';
 
-const { height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
 
 export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, allCategories } = route.params;
 
   // Calculate price from selected issue objects (they include optional `price`)
   const issueTotalPrice = Array.isArray(selectedIssues)
     ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
     : 0;
 
-  const [time, setTime] = useState("1:00 PM - 3:00 PM");
+  const [time, setTime] = useState("9:00 AM - 11:00 AM");
   const [selectedDate, setSelectedDate] = useState(() => {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
@@ -77,47 +79,38 @@ const dates = getNext7Days();
 
   return (
     <View style={styles.container}>
-      {/* Header Section */}
-      <View style={styles.headerSection}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        
-        <Text style={styles.header}>Select Time Slot</Text>
-        <Text style={styles.subHeader}>Choose your preferred time</Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Select Date & Time</Text>
       </View>
 
-      <ScrollView 
-        style={styles.scrollContainer}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Service Info Card */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>{serviceTitle} Service</Text>
-
-          {Array.isArray(issues) && issues.length > 0 && (
-            <View style={styles.issuesSection}>
-              <Text style={styles.issuesTitle}>Selected Issues:</Text>
-              <ScrollView 
-                style={styles.issuesScroll} 
-                showsVerticalScrollIndicator={false}
-              >
-                {issues.map((issue: string, index: number) => (
-                  <View key={index} style={styles.issueTag}>
-                    <Text style={styles.issueText}>{issue}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          )}
+      {/* Main Content: Sidebar + Slots */}
+      <View style={styles.mainContent}>
+        {/* Left Sidebar - Selected Service Only */}
+        <View style={styles.sidebar}>
+          <View style={styles.sidebarContent}>
+            {serviceTitle && (
+              <View style={styles.serviceDisplayContainer}>
+                <Text style={styles.serviceLabel}>SERVICE</Text>
+                <Text style={styles.serviceTitle} numberOfLines={4}>
+                  {serviceTitle}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* Slots Section */}
-        <View style={styles.slotsSection}>
+        {/* Right Side - Date & Time Selection */}
+        <ScrollView 
+          style={styles.slotsContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Selected Service Display */}
+          <View style={styles.selectedServiceCard}>
+            <Text style={styles.selectedServiceLabel}>Selected Service</Text>
+            <Text style={styles.selectedServiceTitle}>{serviceTitle}</Text>
+          </View>
+
           {/* Date Selection */}
           <Text style={styles.sectionTitle}>Select Date</Text>
           <ScrollView 
@@ -143,7 +136,6 @@ const dates = getNext7Days();
                 >
                   {d.label.day}
                 </Text>
-
                 <Text
                   style={[
                     styles.dateText,
@@ -156,61 +148,39 @@ const dates = getNext7Days();
             ))}
           </ScrollView>
 
-          {/* Time Slots */}
-          <Text style={[styles.sectionTitle, styles.timeSlotsTitle]}>Available Time Slots</Text>
+          {/* Available Slots Section - Vertical Scroller */}
+          <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Available Slots</Text>
 
-          <FlatList
-            data={slots}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => {
-              const isSelected = time === item;
+          {/* All Slots - Vertical Layout */}
+          <View style={styles.slotsVerticalContainer}>
+            {slots.map((slot) => {
+              const isSelected = time === slot;
               return (
                 <TouchableOpacity
-                  style={[styles.slotCard, isSelected && styles.slotCardSelected]}
-                  onPress={() => setTime(item)}
+                  key={slot}
+                  style={[styles.slotCardVertical, isSelected && styles.slotCardVerticalSelected]}
+                  onPress={() => setTime(slot)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.slotContent}>
-                    <Text
-                      style={[
-                        styles.slotText,
-                        isSelected && styles.slotTextSelected,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.slotSubText,
-                        isSelected && styles.slotSubTextSelected,
-                      ]}
-                    >
-                      Available
-                    </Text>
-                  </View>
-
-                  {isSelected && (
-                    <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedText}>✓</Text>
-                    </View>
-                  )}
+                  <Text
+                    style={[
+                      styles.slotTextVertical,
+                      isSelected && styles.slotTextVerticalSelected,
+                    ]}
+                  >
+                    {slot}
+                  </Text>
                 </TouchableOpacity>
               );
-            }}
-            scrollEnabled={false}
-            contentContainerStyle={styles.listContent}
-          />
-        </View>
-      </ScrollView>
+            })}
+          </View>
+        </ScrollView>
+      </View>
 
-      {/* Bottom Action Bar */}
+      {/* Bottom Continue Button */}
       <View style={styles.bottomBar}>
-        <View style={styles.selectedInfo}>
-          <Text style={styles.selectedSlotTime}>{time}</Text>
-        </View>
-        
         <TouchableOpacity
-          style={styles.confirmBtn}
+          style={styles.continueBtn}
           activeOpacity={0.7}
           onPress={() => {
             const selected = dates.find(d => d.key === selectedDate);
@@ -226,7 +196,6 @@ const dates = getNext7Days();
               selectedDateFull: selected?.full
             });
 
-            // Navigate to company selection with slot data
             navigation.navigate("CompanySelection", {
               serviceTitle,
               categoryId,
@@ -239,7 +208,7 @@ const dates = getNext7Days();
             });
           }}
         >
-          <Text style={styles.confirmText}>Continue</Text>
+          <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -252,303 +221,386 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
 
-  // Scroll container styles
-  scrollContainer: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    paddingBottom: 100, // Space for bottom bar
-  },
-
-  // Date card styles
-  dateCard: {
-    width: 64,
-    height: 64,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    marginRight: 10,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  dateCardActive: {
-    borderColor: "#2563eb",
-    backgroundColor: "#f8faff",
-  },
-
-  dateDay: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-
-  dateDayActive: {
-    color: "#2563eb",
-  },
-
-  dateText: {
-    fontSize: 10,
-    color: "#64748b",
-    marginTop: 1,
-  },
-
-  dateTextActive: {
-    color: "#2563eb",
-  },
-
-  dateScrollContainer: {
-    marginBottom: 32,
-  },
-
-  dateScrollContent: {
-    paddingHorizontal: 4,
-  },
-
-  // Header Section
-  headerSection: {
+  // Header
+  header: {
     backgroundColor: "white",
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 24,
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    alignItems: "center",
   },
 
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-  },
-
-  backButtonText: {
-    color: "#2563eb",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-
-  header: { 
-    fontSize: 28, 
-    fontWeight: "600",
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: "#0f172a",
-    letterSpacing: -0.6,
+    textAlign: "center",
+  },
+
+  // Main Content Layout
+  mainContent: {
+    flex: 1,
+    flexDirection: "row",
+  },
+
+  // Left Sidebar - Service Display Only
+  sidebar: {
+    width: 100,
+    backgroundColor: "#ffffff",
+    borderRightWidth: 1,
+    borderRightColor: "#e2e8f0",
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
+
+  sidebarContent: {
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+
+  serviceDisplayContainer: {
+    alignItems: "center",
+  },
+
+  serviceLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  serviceTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
+  categoryItem: {
+    alignItems: "center",
+  },
+
+  categoryItemSelected: {
+    backgroundColor: "#f0f9ff",
+  },
+
+  categoryIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: "#3b82f6",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 8,
   },
 
-  subHeader: { 
-    color: "#64748b", 
-    fontSize: 16, 
-    fontWeight: "400",
-    lineHeight: 24,
+  categoryIconContainerSelected: {
+    backgroundColor: "#3b82f6",
   },
 
-  // Service Info Card
-  infoCard: {
-    backgroundColor: "white",
-    marginHorizontal: 24,
+  categoryIconText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  categoryIconTextSelected: {
+    color: "#ffffff",
+  },
+
+  categoryName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 14,
+    paddingHorizontal: 8,
+  },
+
+  categoryNameSelected: {
+    color: "#3b82f6",
+    fontWeight: "700",
+  },
+
+  // Service Name in Sidebar
+  serviceNameContainer: {
     marginTop: 20,
-    marginBottom: 32,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+
+  serviceNameLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  serviceNameText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+
+  serviceIconContainer: {
+    width: 60,
+    height: 60,
     borderRadius: 16,
-    padding: 24,
-    elevation: 0,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+
+  serviceIconText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  serviceName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 14,
+    paddingHorizontal: 8,
+  },
+
+  // Right Side - Slots Container
+  slotsContainer: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+
+  // Selected Service Card
+  selectedServiceCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
-  
-  infoTitle: { 
-    fontSize: 18, 
-    fontWeight: "500", 
+
+  selectedServiceLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  selectedServiceTitle: {
+    fontSize: 16,
+    fontWeight: "700",
     color: "#0f172a",
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
-
-  companyText: {
-    fontSize: 14,
-    color: "#2563eb",
-    fontWeight: "500",
-    marginBottom: 16,
-  },
-
-  issuesSection: {
-    marginTop: 8,
-  },
-
-  issuesTitle: { 
-    fontSize: 14, 
-    color: "#64748b", 
-    fontWeight: "500",
-    marginBottom: 12,
-  },
-
-  issuesScroll: {
-    maxHeight: 120,
-  },
-
-  issueTag: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 8,
-    alignSelf: "flex-start",
-  },
-
-  issueText: {
-    fontSize: 13,
-    color: "#374151",
-    fontWeight: "500",
-  },
-
-  // Slots Section
-  slotsSection: {
-    paddingHorizontal: 24,
-    paddingBottom: 20,
   },
 
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "500",
+    fontSize: 16,
+    fontWeight: "700",
     color: "#0f172a",
-    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
+
+  // Date Selection
+  dateScrollContainer: {
+    marginBottom: 8,
+  },
+
+  dateScrollContent: {
+    paddingRight: 16,
+  },
+
+  dateCard: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+    minWidth: 80,
+  },
+
+  dateCardActive: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+  },
+
+  dateDay: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 4,
+  },
+
+  dateDayActive: {
+    color: "#ffffff",
+  },
+
+  dateText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  dateTextActive: {
+    color: "#ffffff",
+  },
+
+  // Slots - Vertical Layout
+  slotsVerticalContainer: {
+    marginTop: 12,
     marginBottom: 20,
   },
 
-  timeSlotsTitle: {
-    marginTop: 8,
+  slotCardVertical: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
   },
 
-  listContent: {
-    paddingBottom: 20,
+  slotCardVerticalSelected: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+    elevation: 2,
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  slotTextVertical: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+
+  slotTextVerticalSelected: {
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+
+  // Recommended Slot (Center, Green)
+  recommendedSlot: {
+    backgroundColor: "#10b981",
+    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 16,
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  recommendedSlotSelected: {
+    backgroundColor: "#059669",
+  },
+
+  recommendedLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#ffffff",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  recommendedTime: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  // Other Slots - Horizontal Scroller
+  slotsScrollContainer: {
+    marginBottom: 20,
+  },
+
+  slotsScrollContent: {
+    paddingRight: 16,
   },
 
   slotCard: {
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    elevation: 0,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginRight: 12,
     borderWidth: 1,
-    borderColor: "white",
-  },
-  
-  slotCardSelected: { 
-    backgroundColor: "white", 
-    borderWidth: 2, 
-    borderColor: "#2563eb",
-    elevation: 1,
-    shadowOpacity: 0.08,
-  },
-
-  slotContent: {
-    flex: 1,
-  },
-
-  slotText: { 
-    fontSize: 16, 
-    fontWeight: "500", 
-    color: "#0f172a",
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-  
-  slotTextSelected: { 
-    color: "#2563eb" 
-  },
-
-  slotSubText: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "400",
-  },
-
-  slotSubTextSelected: {
-    color: "#2563eb",
-  },
-
-  selectedBadge: {
-    backgroundColor: "#2563eb",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    borderColor: "#e2e8f0",
+    minWidth: 150,
     alignItems: "center",
-    justifyContent: "center",
   },
 
-  selectedText: {
-    color: "white",
+  slotCardSelected: {
+    backgroundColor: "#f0f9ff",
+    borderColor: "#3b82f6",
+    borderWidth: 2,
+  },
+
+  slotText: {
     fontSize: 14,
     fontWeight: "600",
+    color: "#0f172a",
   },
 
-  // Bottom Action Bar
+  slotTextSelected: {
+    color: "#3b82f6",
+  },
+
+  // Bottom Bar
   bottomBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#cce1e7ff",
-    paddingHorizontal: 24,
+    backgroundColor: "white",
+    paddingHorizontal: 16,
     paddingVertical: 16,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 16,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  selectedInfo: {
-    flex: 1,
-    marginRight: 16,
-  },
-
-  selectedSlotTitle: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "500",
-    marginBottom: 2,
-  },
-
-  selectedSlotTime: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#0f172a",
-    letterSpacing: -0.2,
-  },
-
-  confirmBtn: {
-    backgroundColor: "#2563eb",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    elevation: 0,
-    shadowColor: '#2563eb',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: -2 },
     shadowRadius: 8,
+    elevation: 8,
   },
-  
-  confirmText: {
+
+  continueBtn: {
+    backgroundColor: "#3b82f6",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  continueBtnText: {
     color: "white",
-    fontWeight: "500",
-    fontSize: 14,
-    letterSpacing: -0.2,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
