@@ -1997,7 +1997,7 @@ export default function ProductsHomeScreen() {
   if (hasPerm === null) {
     return (
       <View style={[styles.center, { flex: 1 }]}>        
-        <Loader isValentine={enableValentineUI} />
+        <Loader />
       </View>
     );
   }
@@ -2281,7 +2281,7 @@ export default function ProductsHomeScreen() {
             onEndReachedThreshold={0.3}
             ListFooterComponent={() =>
               loadingMore ? (
-                <Loader isValentine={enableValentineUI} />
+                <Loader />
               ) : noMore ? (
                 <Text style={{ textAlign: "center", margin: 12 }}>
                   No more products
@@ -2291,7 +2291,7 @@ export default function ProductsHomeScreen() {
           />
         ) : hasPerm ? (
           <View style={[styles.center, { flex: 1 }]}>            
-            <Loader isValentine={enableValentineUI} />
+            <Loader />
           </View>
         ) : (
           <View style={{ flex: 1 }} />

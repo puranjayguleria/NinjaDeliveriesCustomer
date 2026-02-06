@@ -266,6 +266,10 @@ const MakeBouquetScreen = () => {
 
   const calculatedPrice = flowersSubtotal + bouquetDesignCost;
 
+  // UI visibility / permissions
+  const anyFlowersSelected = totalSelectedCount > 0;
+  const showTotalEstimate = !(isCustomMix && !anyFlowersSelected);
+
   // Handlers
   const handleShapeChange = (shape: "front" | "round") => {
     setBouquetShape(shape);
@@ -582,26 +586,35 @@ const MakeBouquetScreen = () => {
              </View>
            )}
            
-           <View style={styles.divider} />
-           <View style={styles.totalRow}>
-             <Text style={styles.totalLabel}>Total Estimate:</Text>
-             <Text style={styles.totalPrice}>₹ {calculatedPrice}</Text>
-           </View>
+           {showTotalEstimate && (
+             <>
+               <View style={styles.divider} />
+               <View style={styles.totalRow}>
+                 <Text style={styles.totalLabel}>Total Estimate:</Text>
+                 <Text style={styles.totalPrice}>₹ {calculatedPrice}</Text>
+               </View>
+             </>
+           )}
         </View>
 
-      </ScrollView>
+       </ScrollView>
 
       {/* Footer Action */}
       <View style={styles.footer}>
-        <TouchableOpacity 
-          style={[styles.actionButton, addingToCart && { backgroundColor: "#ccc" }]} 
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            (addingToCart || (isCustomMix && !anyFlowersSelected)) && { backgroundColor: "#ccc" },
+          ]}
           onPress={handleAddToCart}
-          disabled={addingToCart}
+          disabled={addingToCart || (isCustomMix && !anyFlowersSelected)}
         >
           {addingToCart ? (
-             <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#fff" />
+          ) : isCustomMix && !anyFlowersSelected ? (
+            <Text style={styles.actionButtonText}>Select flowers</Text>
           ) : (
-             <Text style={styles.actionButtonText}>Add to Cart - ₹ {calculatedPrice}</Text>
+            <Text style={styles.actionButtonText}>Add to Cart - ₹ {calculatedPrice}</Text>
           )}
         </TouchableOpacity>
       </View>
