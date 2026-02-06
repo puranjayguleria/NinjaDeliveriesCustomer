@@ -9,9 +9,12 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { FirestoreService, ServiceIssue } from "../services/firestoreService";
+import { FirestoreService, ServiceIssue, ServiceCategory } from "../services/firestoreService";
+
+const { width } = Dimensions.get('window');
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
@@ -25,20 +28,44 @@ export default function ServiceCategoryScreen() {
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🆕 New states for category sidebar
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categoryId || "");
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
-  // Fetch issues from Firestore
+  // Fetch categories for sidebar
   useEffect(() => {
-    fetchServiceIssues();
-  }, [categoryId]);
+    fetchCategories();
+  }, []);
+
+  // Fetch issues when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      fetchServiceIssues();
+    }
+  }, [selectedCategoryId]);
+
+  const fetchCategories = async () => {
+    try {
+      setCategoriesLoading(true);
+      const fetchedCategories = await FirestoreService.getServiceCategories();
+      setCategories(fetchedCategories || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      setCategories([]);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
 
   const fetchServiceIssues = async () => {
     try {
       setLoading(true);
       
-      console.log('Fetching services for category:', categoryId);
-      console.log('Category details:', { serviceTitle, categoryId });
+      console.log('Fetching services for category:', selectedCategoryId);
 
-      if (!categoryId) {
+      if (!selectedCategoryId) {
         console.error('No categoryId provided');
         setIssues([
           { 
@@ -52,9 +79,9 @@ export default function ServiceCategoryScreen() {
       }
 
       // Use the new method that fetches services with company info
-      const fetchedIssues = await FirestoreService.getServicesWithCompanies(categoryId);
+      const fetchedIssues = await FirestoreService.getServicesWithCompanies(selectedCategoryId);
       
-      console.log(`Found ${fetchedIssues.length} services for category ${categoryId}`);
+      console.log(`Found ${fetchedIssues.length} services for category ${selectedCategoryId}`);
       console.log('Fetched services:', fetchedIssues.map(s => ({ id: s.id, name: s.name, masterCategoryId: s.masterCategoryId, isActive: s.isActive })));
       
       // 🚨 EMERGENCY DEBUG: Log every single service before filtering
@@ -120,7 +147,7 @@ export default function ServiceCategoryScreen() {
         { 
           id: 'other', 
           name: 'Other Issue', 
-          masterCategoryId: categoryId, 
+          masterCategoryId: selectedCategoryId, 
           isActive: true 
         }
       ];
@@ -135,7 +162,7 @@ export default function ServiceCategoryScreen() {
         { 
           id: 'other', 
           name: 'Other Issue', 
-          masterCategoryId: categoryId || '', 
+          masterCategoryId: selectedCategoryId || '', 
           isActive: true 
         }
       ]);
@@ -211,28 +238,37 @@ export default function ServiceCategoryScreen() {
       ? require("../assets/images/icon_cleaning.png")
       : require("../assets/images/icon_home_repair.png");
 
+  // Get selected category details
+  const selectedCategory = categories.find(cat => cat.id === selectedCategoryId);
+
+  // Function to get icon based on category name (same as ServicesScreen)
+  const getCategoryIcon = (categoryName: string) => {
+    const name = categoryName?.toLowerCase() || '';
+    
+    if (name.includes("electric")) return "flash-outline";
+    if (name.includes("plumb")) return "water-outline";
+    if (name.includes("car") || name.includes("wash")) return "car-outline";
+    if (name.includes("clean")) return "sparkles-outline";
+    if (name.includes("health")) return "fitness-outline";
+    if (name.includes("daily") || name.includes("wage")) return "people-outline";
+    
+    return "construct-outline";
+  };
+
   const renderItem = ({ item }: any) => {
     const checked = selectedIds.includes(item.id);
 
     return (
       <TouchableOpacity
-        style={[styles.card, checked && styles.cardSelected]}
+        style={[styles.serviceCard, checked && styles.serviceCardSelected]}
         activeOpacity={0.7}
         onPress={() => toggleSelect(item.id)}
       >
-        <View style={styles.cardContent}>
-          <Image source={issueIcon} style={styles.icon} />
-
-          <View style={styles.textContainer}>
-            <Text style={styles.title}>{item.name}</Text>
-            <Text style={styles.subTitle}>
-              {checked ? "Selected for service" : "Tap to select this issue"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.checkbox, checked ? styles.checkboxActive : null]}>
-          {checked ? <Text style={styles.checkText}>✓</Text> : null}
+        <View style={styles.serviceTextContainer}>
+          <Text style={styles.serviceTitle}>{item.name}</Text>
+          <Text style={styles.serviceSubTitle}>
+            {checked ? "Selected" : "Tap to select"}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -282,50 +318,85 @@ export default function ServiceCategoryScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.header}>{serviceTitle} Services</Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Select Services</Text>
       </View>
-      <Text style={styles.subHeader}>Select your issues (multiple allowed)</Text>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading services...</Text>
+      {/* Main Content: Sidebar + Services */}
+      <View style={styles.mainContent}>
+        {/* Left Sidebar - Selected Category Only */}
+        <View style={styles.sidebar}>
+          {categoriesLoading ? (
+            <ActivityIndicator size="small" color="#2563eb" style={{ marginTop: 20 }} />
+          ) : selectedCategory ? (
+            <TouchableOpacity 
+              style={styles.selectedCategoryContainer}
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+            >
+              {selectedCategory.imageUrl ? (
+                <Image 
+                  source={{ uri: selectedCategory.imageUrl }} 
+                  style={styles.categoryImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.categoryIconContainer}>
+                  <Text style={styles.categoryIconText}>
+                    {selectedCategory.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.selectedCategoryName} numberOfLines={2}>
+                {selectedCategory.name}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      ) : issues.length <= 1 ? ( // Only "Other Issue" means no real services found
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Services Available</Text>
-          <Text style={styles.emptyText}>
-            No services found for {serviceTitle}. 
-          </Text>
+
+        {/* Right Side - Services */}
+        <View style={styles.servicesContainer}>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text style={styles.loadingText}>Loading services...</Text>
+            </View>
+          ) : issues.length <= 1 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyTitle}>No Services</Text>
+              <Text style={styles.emptyText}>
+                No services available
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={displayedIssues}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              ListFooterComponent={ListFooter}
+              contentContainerStyle={{ paddingBottom: 100 }}
+              showsVerticalScrollIndicator={false}
+              refreshing={loading}
+              onRefresh={fetchServiceIssues}
+            />
+          )}
+        </View>
+      </View>
+
+      {/* Bottom Continue Button */}
+      {selectedIds.length > 0 && (
+        <View style={styles.bottomBar}>
           <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={fetchServiceIssues}
+            style={styles.continueBtn} 
+            onPress={onContinue}
           >
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={styles.continueBtnText}>
+              Continue ({selectedIds.length} selected)
+            </Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          style={{ marginTop: 14 }}
-          data={displayedIssues}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          ListFooterComponent={ListFooter}
-          contentContainerStyle={{ paddingBottom: 10 }}
-          showsVerticalScrollIndicator={false}
-          refreshing={loading}
-          onRefresh={fetchServiceIssues}
-        />
       )}
-
-      <TouchableOpacity 
-        style={[styles.btn, loading && styles.btnDisabled]} 
-        onPress={onContinue}
-        disabled={loading}
-      >
-        <Text style={styles.btnText}>Continue</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -333,9 +404,349 @@ export default function ServiceCategoryScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#fafbfc",
+    backgroundColor: "#f8fafc",
   },
 
+  // Header
+  header: {
+    backgroundColor: "white",
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  // Main Content Layout
+  mainContent: {
+    flex: 1,
+    flexDirection: "row",
+  },
+
+  // Left Sidebar
+  sidebar: {
+    width: 90,
+    backgroundColor: "#ffffff",
+    borderRightWidth: 1,
+    borderRightColor: "#e2e8f0",
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+
+  sidebarContent: {
+    paddingVertical: 8,
+  },
+
+  // Selected Category Display
+  selectedCategoryContainer: {
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+
+  categoryImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+
+  categoryIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+
+  categoryIconText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  selectedCategoryName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 14,
+  },
+
+  categoryItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    marginVertical: 4,
+    marginHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  categoryItemSelected: {
+    backgroundColor: "white",
+    borderLeftWidth: 3,
+    borderLeftColor: "#2563eb",
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  categoryText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+
+  categoryTextSelected: {
+    color: "#2563eb",
+    fontWeight: "700",
+  },
+
+  // Right Side - Services Container
+  servicesContainer: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+
+  // Service Cards
+  serviceCard: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    marginHorizontal: 8,
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  serviceCardSelected: {
+    borderColor: "#2563eb",
+    backgroundColor: "#f0f9ff",
+    elevation: 2,
+  },
+
+  serviceIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+
+  serviceIconPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  serviceIconText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  serviceTextContainer: {
+    flex: 1,
+  },
+
+  serviceTitle: { 
+    fontSize: 15, 
+    fontWeight: "600", 
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+
+  serviceSubTitle: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  // Bottom Bar
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: -2 },
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  continueBtn: {
+    backgroundColor: "#2563eb",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  continueBtnText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  otherBox: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  
+  otherTitle: { 
+    fontWeight: "600", 
+    fontSize: 14, 
+    color: "#0f172a",
+    marginBottom: 12,
+  },
+  
+  input: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    padding: 12,
+    minHeight: 80,
+    fontWeight: "400",
+    color: "#0f172a",
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    textAlignVertical: "top",
+  },
+
+  viewMoreBtn: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+
+  viewMoreText: {
+    color: "#2563eb",
+    textAlign: "center",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  viewLessBtn: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  viewLessText: {
+    color: "#64748b",
+    textAlign: "center",
+    fontWeight: "500",
+    fontSize: 13,
+  },
+
+  // Loading states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 64,
+  },
+
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+
+  emptyText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  retryButton: {
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 16,
+  },
+
+  retryButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  btnDisabled: {
+    opacity: 0.6,
+  },
+
+  // Old styles kept for compatibility
   headerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -343,14 +754,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 50,
     paddingBottom: 8,
-  },
-
-  header: { 
-    fontSize: 28, 
-    fontWeight: "600",
-    color: "#0f172a",
-    letterSpacing: -0.6,
-    flex: 1,
   },
   
   subHeader: { 
@@ -436,48 +839,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#2563eb",
     borderColor: "#2563eb",
   },
-  
-  checkText: { 
-    color: "#fff", 
-    fontWeight: "600", 
-    fontSize: 12,
-  },
-
-  otherBox: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 24,
-    marginHorizontal: 24,
-    marginTop: 16,
-    elevation: 0,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  
-  otherTitle: { 
-    fontWeight: "500", 
-    fontSize: 16, 
-    color: "#0f172a",
-    letterSpacing: -0.2,
-    marginBottom: 16,
-  },
-  
-  input: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 100,
-    fontWeight: "400",
-    color: "#0f172a",
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    textAlignVertical: "top",
-  },
 
   btn: {
     backgroundColor: "#2563eb",
@@ -499,100 +860,5 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 16,
     letterSpacing: -0.2,
-  },
-
-  viewMoreBtn: {
-    backgroundColor: "#f8faff",
-    borderWidth: 1,
-    borderColor: "#2563eb",
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginHorizontal: 24,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-
-  viewMoreText: {
-    color: "#2563eb",
-    textAlign: "center",
-    fontWeight: "500",
-    fontSize: 15,
-    letterSpacing: -0.2,
-  },
-
-  viewLessBtn: {
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginHorizontal: 24,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-
-  viewLessText: {
-    color: "#64748b",
-    textAlign: "center",
-    fontWeight: "400",
-    fontSize: 14,
-    letterSpacing: -0.1,
-  },
-
-  // Loading states
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 64,
-  },
-
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#64748b",
-    fontWeight: "500",
-  },
-
-  // Empty state
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 48,
-    paddingVertical: 64,
-  },
-
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-
-  emptyText: {
-    fontSize: 16,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-
-  retryButton: {
-    backgroundColor: "#2563eb",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-
-  retryButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-
-  btnDisabled: {
-    opacity: 0.6,
   },
 });

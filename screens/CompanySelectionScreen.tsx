@@ -315,8 +315,8 @@ export default function CompanySelectionScreen() {
     });
 
     Alert.alert(
-      "Added to Cart",
-      `${serviceTitle} service has been added to your cart for ${selectedDateFull || selectedDate} at ${selectedTime}.`,
+      "Service Added",
+      `${serviceTitle} service has been added to your cart for ${selectedDateFull || selectedDate} at ${selectedTime}.\n\nNote: Only one service can be booked at a time. Previous service (if any) has been replaced.`,
       [
         {
           text: "Continue Services",

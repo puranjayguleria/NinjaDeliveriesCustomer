@@ -86,11 +86,11 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
       totalPrice,
     } as ServiceCartItem;
 
+    // 🔥 SINGLE SERVICE RESTRICTION: Clear existing services before adding new one
     setState((prev) => ({
       ...prev,
       items: {
-        ...prev.items,
-        [serviceId]: newService,
+        [serviceId]: newService, // Only keep the new service, remove all previous ones
       },
     }));
   };

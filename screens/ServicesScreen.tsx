@@ -450,15 +450,15 @@ export default function ServicesScreen() {
     const categoryStyle = getCategoryStyle(item.name, index);
     return (
       <TouchableOpacity
-        style={styles.listCard}
+        style={styles.gridCard}
         activeOpacity={0.7}
         onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
       >
-        <View style={[styles.listIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
+        <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
           {item.imageUrl ? (
             <Image 
               source={{ uri: item.imageUrl }} 
-              style={styles.listCategoryImage}
+              style={styles.gridCategoryImage}
               resizeMode="cover"
               onError={() => {
                 console.log(`⚠️ Failed to load image for ${item.name} in list, falling back to icon`);
@@ -467,19 +467,12 @@ export default function ServicesScreen() {
           ) : (
             <Ionicons 
               name={categoryStyle.icon as any} 
-              size={24} 
+              size={32} 
               color={categoryStyle.color} 
             />
           )}
         </View>
-        <View style={styles.listContent}>
-          <Text style={styles.listTitle}>{item.name}</Text>
-          <Text style={styles.listSubtitle}>Expert {item.name.toLowerCase()}</Text>
-          <Text style={styles.listAvailability}>✓ Book available</Text>
-        </View>
-        <View style={styles.listArrowContainer}>
-          <Ionicons name="arrow-forward" size={18} color="#1e40af" />
-        </View>
+        <Text style={styles.gridTitle}>{item.name}</Text>
       </TouchableOpacity>
     );
   };
@@ -628,6 +621,9 @@ export default function ServicesScreen() {
           keyExtractor={(item) => item?.id || Math.random().toString()}
           ListHeaderComponent={HeaderUI}
           renderItem={renderListItem}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
+          key="two-columns"
           ListEmptyComponent={
             loading ? (
               <View style={styles.emptyLoadingContainer}>
@@ -1125,7 +1121,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
     overflow: "hidden",
-    elevation: 1,
+    elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 1 },
@@ -1170,11 +1166,62 @@ const styles = StyleSheet.create({
     backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
-    elevation: 1,
+    elevation: 2,
     shadowColor: '#1e40af',
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 2,
+  },
+
+  // Grid Styles (2 columns)
+  gridRow: {
+    paddingHorizontal: 16,
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+
+  gridCard: {
+    width: (width - 48) / 2,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: "#f0f4f8",
+  },
+
+  gridIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    overflow: "hidden",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+  },
+
+  gridCategoryImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+  },
+
+  gridTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+    textAlign: "center",
+    letterSpacing: -0.2,
   },
 
   // Loading and Empty States
