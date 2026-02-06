@@ -29,7 +29,16 @@ export default function SelectDateTimeScreen() {
     ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
     : 0;
 
-  const [time, setTime] = useState("9:00 AM - 11:00 AM");
+  const slots = [
+    "9:00 AM - 11:00 AM",
+    "11:00 AM - 1:00 PM", 
+    "1:00 PM - 3:00 PM",
+    "3:00 PM - 5:00 PM",
+    "5:00 PM - 7:00 PM",
+    "7:00 PM - 9:00 PM",
+  ];
+
+  const [time, setTime] = useState(slots[2]);
   const [selectedDate, setSelectedDate] = useState(() => {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
@@ -64,18 +73,7 @@ export default function SelectDateTimeScreen() {
     return days;
   };
 
-
-const dates = getNext7Days();
-
-
-  const slots = [
-    "9:00 AM - 11:00 AM",
-    "11:00 AM - 1:00 PM", 
-    "1:00 PM - 3:00 PM",
-    "3:00 PM - 5:00 PM",
-    "5:00 PM - 7:00 PM",
-    "7:00 PM - 9:00 PM",
-  ];
+  const dates = getNext7Days();
 
   return (
     <View style={styles.container}>
@@ -89,14 +87,13 @@ const dates = getNext7Days();
         {/* Left Sidebar - Selected Service Only */}
         <View style={styles.sidebar}>
           <View style={styles.sidebarContent}>
-            {serviceTitle && (
-              <View style={styles.serviceDisplayContainer}>
-                <Text style={styles.serviceLabel}>SERVICE</Text>
-                <Text style={styles.serviceTitle} numberOfLines={4}>
-                  {serviceTitle}
-                </Text>
-              </View>
-            )}
+            <TouchableOpacity 
+              style={styles.serviceLabelCard}
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.serviceLabelText}>SERVICE</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -105,12 +102,6 @@ const dates = getNext7Days();
           style={styles.slotsContainer}
           showsVerticalScrollIndicator={false}
         >
-          {/* Selected Service Display */}
-          <View style={styles.selectedServiceCard}>
-            <Text style={styles.selectedServiceLabel}>Selected Service</Text>
-            <Text style={styles.selectedServiceTitle}>{serviceTitle}</Text>
-          </View>
-
           {/* Date Selection */}
           <Text style={styles.sectionTitle}>Select Date</Text>
           <ScrollView 
@@ -254,11 +245,45 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     alignItems: "center",
     justifyContent: "flex-start",
+    marginRight: 8,
   },
 
   sidebarContent: {
     alignItems: "center",
     paddingHorizontal: 8,
+  },
+
+  // Service Label Card
+  serviceLabelCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+    minHeight: 80,
+  },
+
+  serviceLabelText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#0a0000ff",
+    textAlign: "center",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+
+  serviceNameText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#ffffff",
+    textAlign: "center",
+    lineHeight: 16,
   },
 
   serviceDisplayContainer: {
@@ -386,31 +411,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     paddingHorizontal: 16,
     paddingTop: 20,
-  },
-
-  // Selected Service Card
-  selectedServiceCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-
-  selectedServiceLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  selectedServiceTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0f172a",
+    paddingLeft: 8,
   },
 
   sectionTitle: {
@@ -442,8 +443,8 @@ const styles = StyleSheet.create({
   },
 
   dateCardActive: {
-    backgroundColor: "#3b82f6",
-    borderColor: "#3b82f6",
+    backgroundColor: "#0f8e35ff",
+    borderColor: "#0f8e35ff",
   },
 
   dateDay: {
@@ -485,10 +486,10 @@ const styles = StyleSheet.create({
   },
 
   slotCardVerticalSelected: {
-    backgroundColor: "#3b82f6",
-    borderColor: "#3b82f6",
+    backgroundColor: "#4CAF50",
+    borderColor: "#4CAF50",
     elevation: 2,
-    shadowColor: '#3b82f6',
+    shadowColor: '#10b981',
     shadowOpacity: 0.3,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
@@ -507,7 +508,7 @@ const styles = StyleSheet.create({
 
   // Recommended Slot (Center, Green)
   recommendedSlot: {
-    backgroundColor: "#10b981",
+    backgroundColor: "#4CAF50",
     borderRadius: 12,
     paddingVertical: 20,
     paddingHorizontal: 20,
@@ -522,7 +523,7 @@ const styles = StyleSheet.create({
   },
 
   recommendedSlotSelected: {
-    backgroundColor: "#059669",
+    backgroundColor: "#4CAF50",
   },
 
   recommendedLabel: {
@@ -562,8 +563,8 @@ const styles = StyleSheet.create({
   },
 
   slotCardSelected: {
-    backgroundColor: "#f0f9ff",
-    borderColor: "#3b82f6",
+    backgroundColor: "#4CAF50",
+    borderColor: "#4CAF50",
     borderWidth: 2,
   },
 
@@ -592,7 +593,7 @@ const styles = StyleSheet.create({
   },
 
   continueBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: "#4CAF50",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",

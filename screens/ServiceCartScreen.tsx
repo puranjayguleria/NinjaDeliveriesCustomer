@@ -56,12 +56,6 @@ export default function ServiceCartScreen() {
           <View style={styles.ratingContainer}>
             <Text style={styles.rating}>{item.company.rating}</Text>
             <Text style={styles.experience}>{item.company.experience}</Text>
-            {item.company.verified && (
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
-                <Text style={styles.verifiedText}>Verified</Text>
-              </View>
-            )}
           </View>
         </View>
         <TouchableOpacity

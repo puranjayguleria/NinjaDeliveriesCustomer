@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
   },
 
   serviceCardSelected: {
-    borderColor: "#2563eb",
+    borderColor: "#0fcf0fff",
     backgroundColor: "#f0f9ff",
     elevation: 2,
   },
@@ -568,8 +568,8 @@ const styles = StyleSheet.create({
   },
 
   checkboxChecked: {
-    backgroundColor: "#3b82f6",
-    borderColor: "#3b82f6",
+    backgroundColor: "#1ec30fff",
+    borderColor: "#22e118ff",
   },
 
   checkmark: {
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   },
 
   continueBtn: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4CAF50",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -834,7 +834,7 @@ const styles = StyleSheet.create({
   },
 
   cardSelected: {
-    borderColor: "#2563eb",
+    borderColor: "#4CAF50",
     backgroundColor: "#f8faff",
     elevation: 1,
     shadowOpacity: 0.08,
@@ -885,8 +885,8 @@ const styles = StyleSheet.create({
   },
   
   checkboxActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
+    backgroundColor: "#4CAF50",
+    borderColor: "#4CAF50",
   },
 
   btn: {

@@ -553,8 +553,7 @@ export default function ServiceCheckoutScreen() {
           <Text style={styles.experience}>{item.company.experience}</Text>
           {item.company.verified && (
             <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
-              <Text style={styles.verifiedText}>Verified</Text>
+              <Text style={styles.verifiedText}></Text>
             </View>
           )}
         </View>

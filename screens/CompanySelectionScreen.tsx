@@ -382,17 +382,16 @@ export default function CompanySelectionScreen() {
 
       {/* Main Content: Sidebar + Companies */}
       <View style={styles.mainContent}>
-        {/* Left Sidebar - Service Name Only */}
+        {/* Left Sidebar - Company Label */}
         <View style={styles.sidebar}>
           <View style={styles.sidebarContent}>
-            {serviceTitle && (
-              <View style={styles.serviceDisplayContainer}>
-                <Text style={styles.serviceLabel}>SERVICE</Text>
-                <Text style={styles.serviceTitle} numberOfLines={4}>
-                  {serviceTitle}
-                </Text>
-              </View>
-            )}
+            <TouchableOpacity 
+              style={styles.companyLabelCard}
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.companyLabelText}>COMPANY</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -723,6 +722,31 @@ const styles = StyleSheet.create({
   sidebarContent: {
     alignItems: "center",
     paddingHorizontal: 8,
+  },
+
+  // Company Label Card
+  companyLabelCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+    minHeight: 80,
+  },
+
+  companyLabelText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#0b0000",
+    textAlign: "center",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
   },
 
   serviceDisplayContainer: {
@@ -1137,7 +1161,7 @@ const styles = StyleSheet.create({
   },
 
   addToCartButton: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: "#4CAF50",
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 10,
