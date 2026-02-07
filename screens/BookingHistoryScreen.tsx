@@ -148,6 +148,30 @@ export default function BookingHistoryScreen() {
     return { all: 0, active: 0, pending: 0, completed: 0, reject: 0, cancelled: 0 };
   };
 
+  // Filters array for sidebar
+  const filters: { key: FilterStatus; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'active', label: 'Active' },
+    { key: 'pending', label: 'Pending' },
+    { key: 'completed', label: 'Done' },
+    { key: 'rejected', label: 'Reject' },
+    { key: 'cancelled', label: 'Cancel' },
+  ];
+
+  // Get count for a specific filter
+  const getFilterCount = (filterKey: FilterStatus): number => {
+    const counts = getFilterCounts();
+    switch (filterKey) {
+      case 'all': return counts.all;
+      case 'active': return counts.active;
+      case 'pending': return counts.pending;
+      case 'completed': return counts.completed;
+      case 'rejected': return counts.reject;
+      case 'cancelled': return counts.cancelled;
+      default: return 0;
+    }
+  };
+
   const renderFilterTabs = () => {
     const counts = getFilterCounts();
     const filters: { key: FilterStatus; label: string; count: number; icon: string; color: string; gradient: string[] }[] = [
@@ -306,12 +330,12 @@ export default function BookingHistoryScreen() {
           </View>
           
           <View style={styles.details}>
-            {/* Header with service name and status */}
-            <View style={styles.cardHeader}>
-              <Text style={styles.service} numberOfLines={1}>{item.serviceName}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                <Text style={styles.statusText}>{statusText}</Text>
-              </View>
+            {/* Service name - Full width */}
+            <Text style={styles.service} numberOfLines={2}>{item.serviceName}</Text>
+            
+            {/* Status badge below service name */}
+            <View style={[styles.statusBadge, { backgroundColor: statusColor, alignSelf: 'flex-start', marginBottom: 8 }]}>
+              <Text style={styles.statusText}>{statusText}</Text>
             </View>
             
             {/* Work description */}
@@ -366,7 +390,7 @@ export default function BookingHistoryScreen() {
 
             {/* Bottom row with booking ID and price */}
             <View style={styles.bottomRow}>
-              <Text style={styles.bookingId}>#{item.id?.substring(0, 8)}</Text>
+              <Text style={styles.bookingId} numberOfLines={1}>#{item.id?.substring(0, 8) || 'N/A'}</Text>
               {item.totalPrice && (
                 <Text style={styles.price}>₹{item.totalPrice}</Text>
               )}
@@ -383,78 +407,134 @@ export default function BookingHistoryScreen() {
   };
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Booking History</Text>
-        <View style={{ width: 24 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
-      {renderFilterTabs()}
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6D28D9" />
-          <Text style={styles.loadingText}>Loading booking history...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Ionicons 
-            name={error.includes('log in') ? "person-outline" : "alert-circle"} 
-            size={48} 
-            color="#EF4444" 
-          />
-          <Text style={styles.errorText}>{error}</Text>
-          
-          {error.includes('log in') ? (
-            <TouchableOpacity 
-              style={styles.loginButton} 
-              onPress={() => navigation.navigate("Login")}
-            >
-              <Text style={styles.loginText}>Go to Login</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.retryButton} onPress={() => fetchBookings(false, activeFilter)}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : bookings.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="calendar-outline" size={64} color="#9CA3AF" />
-          <Text style={styles.emptyTitle}>No Bookings Found</Text>
-          <Text style={styles.emptyText}>
-            {activeFilter === 'all' 
-              ? "You haven't made any service bookings yet."
-              : `No ${activeFilter} bookings found.`
-            }
-          </Text>
-          
-          <TouchableOpacity
-            style={styles.browseButton}
-            onPress={() => navigation.navigate("ServicesHome")}
+      {/* Main Content: Sidebar + Bookings */}
+      <View style={styles.mainContent}>
+        {/* Left Sidebar - Filter Tabs */}
+        <View style={styles.sidebar}>
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.sidebarContent}
           >
-            <Text style={styles.browseText}>Browse Services</Text>
-          </TouchableOpacity>
+            {filters.map((filter) => {
+              const isActive = activeFilter === filter.key;
+              const count = getFilterCount(filter.key);
+              
+              return (
+                <TouchableOpacity
+                  key={filter.key}
+                  style={[
+                    styles.filterTab,
+                    isActive && styles.filterTabActive
+                  ]}
+                  onPress={() => {
+                    setActiveFilter(filter.key);
+                    fetchBookings(false, filter.key);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.filterTabText,
+                    isActive && styles.filterTabTextActive
+                  ]}>
+                    {filter.label}
+                  </Text>
+                  {count > 0 && (
+                    <View style={[
+                      styles.filterBadge,
+                      isActive && styles.filterBadgeActive
+                    ]}>
+                      <Text style={[
+                        styles.filterBadgeText,
+                        isActive && styles.filterBadgeTextActive
+                      ]}>
+                        {count}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
-      ) : (
-        <FlatList
-          style={{ flex: 1 }}
-          data={bookings}
-          keyExtractor={(item) => item.id || ''}
-          renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
+
+        {/* Right Side - Bookings List */}
+        <View style={styles.bookingsContainer}>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#3b82f6" />
+              <Text style={styles.loadingText}>Loading bookings...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.errorContainer}>
+              <Ionicons 
+                name={error.includes('log in') ? "person-outline" : "alert-circle"} 
+                size={48} 
+                color="#EF4444" 
+              />
+              <Text style={styles.errorText}>{error}</Text>
+              
+              {error.includes('log in') ? (
+                <TouchableOpacity 
+                  style={styles.loginButton} 
+                  onPress={() => navigation.navigate("Login")}
+                >
+                  <Text style={styles.loginText}>Go to Login</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.retryButton} onPress={() => fetchBookings(false, activeFilter)}>
+                  <Text style={styles.retryText}>Retry</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : bookings.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={64} color="#9CA3AF" />
+              <Text style={styles.emptyTitle}>No Bookings Found</Text>
+              <Text style={styles.emptyText}>
+                {activeFilter === 'all' 
+                  ? "You haven't made any service bookings yet."
+                  : `No ${activeFilter} bookings found.`
+                }
+              </Text>
+              
+              <TouchableOpacity
+                style={styles.browseButton}
+                onPress={() => navigation.navigate("ServicesHome")}
+              >
+                <Text style={styles.browseText}>Browse Services</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              style={{ flex: 1 }}
+              data={bookings}
+              keyExtractor={(item) => item.id || ''}
+              renderItem={renderItem}
+              contentContainerStyle={{ paddingBottom: 5, paddingTop: 18, paddingHorizontal: 8 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={['#6D28D9']}
+              colors={['#3b82f6']}
             />
           }
           showsVerticalScrollIndicator={false}
         />
       )}
+        </View>
+      </View>
 
       {/* Service Cancellation Modal */}
       <ServiceCancellationModal
@@ -467,14 +547,6 @@ export default function BookingHistoryScreen() {
         totalAmount={bookingToCancel?.totalPrice || 0}
         deductionPercentage={25}
       />
-
-      <TouchableOpacity
-        style={styles.backBtn}
-        activeOpacity={0.9}
-        onPress={() => navigation.navigate("ServicesHome")}
-      >
-        <Text style={styles.backText}>Back to Services</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -482,33 +554,123 @@ export default function BookingHistoryScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#f8fafc",
   },
 
+  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
     backgroundColor: "white",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  backButton: {
+    padding: 4,
   },
 
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1F2937",
+    color: "#0f172a",
+    textAlign: "center",
+    flex: 1,
+  },
+
+  headerSpacer: {
+    width: 20,
+  },
+
+  // Main Content Layout
+  mainContent: {
+    flex: 1,
+    flexDirection: "row",
+  },
+
+  // Left Sidebar - Filter Tabs
+  sidebar: {
+    width: 120,
+    backgroundColor: "#ffffff",
+    borderRightWidth: 1,
+    borderRightColor: "#e2e8f0",
+  },
+
+  sidebarContent: {
+    paddingVertical: 30,
+    paddingHorizontal: 14,
+  },
+
+  filterTab: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+  },
+
+  filterTabActive: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  filterTabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+
+  filterTabTextActive: {
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+
+  filterBadge: {
+    backgroundColor: "#e2e8f0",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 24,
+    alignItems: "center",
+  },
+
+  filterBadgeActive: {
+    backgroundColor: "#ffffff",
+  },
+
+  filterBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  filterBadgeTextActive: {
+    color: "#3b82f6",
+  },
+
+  // Right Side - Bookings Container
+  bookingsContainer: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
   },
 
   filterContainer: {
     backgroundColor: "#FFFFFF",
-    paddingVertical: 20,
+    paddingVertical: 10,
     paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
@@ -523,21 +685,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
     alignItems: "center",
-  },
-
-  filterTab: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    minWidth: 100,
-    borderWidth: 2,
-    borderColor: "#F3F4F6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
   },
 
   activeFilterTab: {
@@ -630,8 +777,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
     borderRadius: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -644,7 +790,7 @@ const styles = StyleSheet.create({
   cardContent: {
     flexDirection: "row",
     alignItems: "flex-start",
-    padding: 16,
+    padding: 8,
   },
 
   iconContainer: {
@@ -660,25 +806,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-
   service: {
     fontSize: 16,
     fontWeight: "700",
     color: "#1F2937",
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 8,
+    lineHeight: 22,
   },
 
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
+    flexShrink: 0,
   },
 
   statusText: {
@@ -690,28 +830,35 @@ const styles = StyleSheet.create({
   },
 
   issue: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 8,
-    lineHeight: 20,
+    fontSize: 15,
+    color: "#4B5563",
+    marginBottom: 10,
+    lineHeight: 22,
+    flexWrap: "wrap",
+    fontWeight: "500",
   },
 
   customerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
+    flexWrap: "wrap",
   },
 
   customer: {
-    fontSize: 13,
-    color: "#6B7280",
+    fontSize: 14,
+    color: "#4B5563",
     marginLeft: 6,
+    flex: 1,
+    flexWrap: "wrap",
+    fontWeight: "500",
   },
 
   timeInfo: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
+    flexWrap: "wrap",
   },
 
   dateTimeItem: {
@@ -721,9 +868,9 @@ const styles = StyleSheet.create({
   },
 
   dateTime: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#4B5563",
+    fontWeight: "600",
     marginLeft: 4,
   },
 
@@ -749,19 +896,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
   },
 
   bookingId: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#9CA3AF",
     fontWeight: "600",
     fontFamily: "monospace",
+    flex: 1,
   },
 
   price: {
-    fontSize: 16,
+    fontSize: 20,
     color: "#059669",
-    fontWeight: "700",
+    fontWeight: "800",
+    flexShrink: 0,
+    letterSpacing: 0.3,
   },
 
   arrowContainer: {
