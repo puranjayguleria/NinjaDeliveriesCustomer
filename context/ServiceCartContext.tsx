@@ -3,8 +3,10 @@ import React, {
   useContext,
   useMemo,
   useState,
+  useEffect,
   ReactNode,
 } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type ServiceCartItem = {
   id: string;
@@ -61,10 +63,45 @@ export const useServiceCart = (): ServiceCartContextType => {
   return ctx;
 };
 
+const CART_STORAGE_KEY = "@service_cart_data";
+
 export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<ServiceCartState>({
     items: {},
   });
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load cart from AsyncStorage on mount
+  useEffect(() => {
+    const loadCart = async () => {
+      try {
+        const savedCart = await AsyncStorage.getItem(CART_STORAGE_KEY);
+        if (savedCart) {
+          const parsedCart = JSON.parse(savedCart);
+          setState(parsedCart);
+        }
+      } catch (error) {
+        console.error("Failed to load cart from storage:", error);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    loadCart();
+  }, []);
+
+  // Save cart to AsyncStorage whenever it changes
+  useEffect(() => {
+    if (isLoaded) {
+      const saveCart = async () => {
+        try {
+          await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(state));
+        } catch (error) {
+          console.error("Failed to save cart to storage:", error);
+        }
+      };
+      saveCart();
+    }
+  }, [state, isLoaded]);
 
   const addService = (service: Omit<ServiceCartItem, "quantity" | "id"> & { unitPrice?: number; totalPrice?: number }) => {
     // Generate unique ID for this service booking

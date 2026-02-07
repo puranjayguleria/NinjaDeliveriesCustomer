@@ -5,13 +5,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  ScrollView,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
+import ServiceAddedModal from "../components/ServiceAddedModal";
 
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
@@ -21,6 +20,7 @@ export default function CompanySelectionScreen() {
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime, selectedDateFull } = route.params;
 
@@ -355,20 +355,8 @@ export default function CompanySelectionScreen() {
       } : undefined,
     });
 
-    Alert.alert(
-      "Service Added",
-      `${serviceTitle} service has been added to your cart for ${selectedDateFull || selectedDate} at ${selectedTime}.\n\nNote: Only one service can be booked at a time. Previous service (if any) has been replaced.`,
-      [
-        {
-          text: "Continue Services",
-          onPress: () => navigation.navigate("ServicesHome"),
-        },
-        {
-          text: "View Cart",
-          onPress: () => navigation.navigate("ServiceCart"),
-        },
-      ]
-    );
+    // Show success modal instead of Alert
+    setShowSuccessModal(true);
     // Reset package selection after adding
     setSelectedPackage(null);
   }; 
@@ -445,10 +433,6 @@ export default function CompanySelectionScreen() {
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
-                    {item.isActive && (
-                      <View style={styles.verifiedBadge}>
-                      </View>
-                    )}
                   </View>
                 </View>
 
@@ -675,6 +659,23 @@ export default function CompanySelectionScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Success Modal */}
+      <ServiceAddedModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        serviceTitle={serviceTitle}
+        selectedDate={selectedDateFull || selectedDate}
+        selectedTime={selectedTime}
+        onContinueServices={() => {
+          setShowSuccessModal(false);
+          navigation.navigate("ServicesHome");
+        }}
+        onViewCart={() => {
+          setShowSuccessModal(false);
+          navigation.navigate("ServiceCart");
+        }}
+      />
     </View>
   );
 }
@@ -832,13 +833,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1e293b",
     letterSpacing: 0.3,
-  },
-
-
-  verifiedText: {
-    fontSize: 11,
-    color: "#16a34a",
-    fontWeight: "700",
   },
 
   selectButton: {

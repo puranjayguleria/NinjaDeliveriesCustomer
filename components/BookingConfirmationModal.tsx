@@ -224,7 +224,7 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   modalContainer: {
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     overflow: 'hidden',
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#1a1a1a',
     textAlign: 'center',

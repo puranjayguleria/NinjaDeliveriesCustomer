@@ -18,6 +18,7 @@ import { useLocationContext } from "../context/LocationContext";
 import { FirestoreService } from "../services/firestoreService";
 import { formatDateToDDMMYYYY } from "../utils/dateUtils";
 import { fixExistingBookingsForWebsite } from "../utils/fixExistingBookings";
+import BookingConfirmationModal from "../components/BookingConfirmationModal";
 
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
@@ -31,6 +32,7 @@ export default function ServiceCheckoutScreen() {
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   
   // Address management states
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
@@ -178,21 +180,8 @@ export default function ServiceCheckoutScreen() {
       await handleRazorpayPayment();
     } else {
       console.log(`💰 Processing cash payment...`);
-      // For cash payment, create bookings directly
-      Alert.alert(
-        "Confirm Booking",
-        `You are about to book ${services.length} service${services.length > 1 ? 's' : ''} for ₹${computedTotalAmount}.\n\nService will be provided at:\n${selectedAddress.fullAddress}\n\nContinue?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Confirm Cash Booking",
-            onPress: async () => {
-              console.log(`✅ User confirmed cash booking, calling createBookings...`);
-              await createBookings();
-            },
-          },
-        ]
-      );
+      // For cash payment, show custom confirmation modal
+      setShowConfirmModal(true);
     }
   };
 
@@ -959,6 +948,23 @@ export default function ServiceCheckoutScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Booking Confirmation Modal */}
+      <BookingConfirmationModal
+        visible={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={async () => {
+          setShowConfirmModal(false);
+          console.log(`✅ User confirmed cash booking, calling createBookings...`);
+          await createBookings();
+        }}
+        serviceName={services.length > 0 ? services[0].serviceTitle : "Service"}
+        amount={computedTotalAmount}
+        location={getSelectedAddress()?.fullAddress || "Not selected"}
+        date={services.length > 0 && services[0].selectedDate ? formatDateToDDMMYYYY(services[0].selectedDate) : "Not selected"}
+        time={services.length > 0 ? services[0].selectedTime : "Not selected"}
+        issues={services.length > 0 ? services[0].issues : []}
+      />
     </View>
   );
 }

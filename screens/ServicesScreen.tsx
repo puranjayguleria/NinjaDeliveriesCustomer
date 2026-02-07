@@ -12,6 +12,7 @@ import {
   Image,
   ImageBackground,
   ScrollView,
+  Animated,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from "@react-navigation/native";
@@ -206,6 +207,7 @@ export default function ServicesScreen() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
   const activityScrollRef = React.useRef<ScrollView>(null);
+  const blinkAnim = React.useRef(new Animated.Value(1)).current;
 
   // Helper function to format time ago
   const getTimeAgo = React.useCallback((timestamp: any) => {
@@ -368,7 +370,7 @@ export default function ServicesScreen() {
             const serviceName = booking.serviceName || booking.category || 'Service';
             
             // Show simple booking message
-            const activityMessage = `${serviceName} has been booked`;
+            const activityMessage = `${serviceName} service has been booked`;
             const activityTimestamp = booking.createdAt || booking.updatedAt;
             
             transformedActivities.push({
@@ -432,6 +434,27 @@ export default function ServicesScreen() {
 
     return () => clearInterval(interval);
   }, [activities.length]);
+
+  // Blinking animation for Live Activity dot
+  useEffect(() => {
+    const blinkAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, {
+          toValue: 0.2,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blinkAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    blinkAnimation.start();
+
+    return () => blinkAnimation.stop();
+  }, [blinkAnim]);
 
   // Search functionality - simplified without useMemo to avoid React null error
   const getFilteredCategories = () => {
@@ -746,10 +769,10 @@ export default function ServicesScreen() {
             {/* Live Activity Section */}
             <View style={styles.liveActivityContainer}>
               <View style={styles.activityHeaderRow}>
-                <View style={styles.activityIconBox}>
+                <Animated.View style={[styles.activityIconBox, { opacity: blinkAnim }]}>
                   <Ionicons name="pulse" size={24} color="white" />
-                </View>
-                <Text style={styles.activityHeading}>Live Activity</Text>
+                </Animated.View>
+                <Animated.Text style={[styles.activityHeading, { opacity: blinkAnim }]}>Live Activity</Animated.Text>
               </View>
               
               {activitiesLoading ? (
@@ -767,14 +790,14 @@ export default function ServicesScreen() {
                 >
                   {activities.map((activity) => (
                     <View key={activity.id} style={styles.activityCard}>
-                      <View style={styles.activityDot} />
+                      <Animated.View style={[styles.activityDot, { opacity: blinkAnim }]} />
                       <View style={styles.activityContent}>
                         <View style={styles.activityRow}>
-                          <Text style={styles.activityTitle} numberOfLines={1}>
+                          <Animated.Text style={[styles.activityTitle, { opacity: blinkAnim }]} numberOfLines={2}>
                             {activity.title}
-                          </Text>
+                          </Animated.Text>
                         </View>
-                        <Text style={styles.activityTime}>{getTimeAgo(activity.timestamp)}</Text>
+                        <Animated.Text style={[styles.activityTime, { opacity: blinkAnim }]}>{getTimeAgo(activity.timestamp)}</Animated.Text>
                       </View>
                     </View>
                   ))}
