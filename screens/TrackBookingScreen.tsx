@@ -1089,13 +1089,22 @@ export default function TrackBookingScreen() {
 
         {/* Add-On Services Button - Only show when technician is assigned and booking is active */}
         {categoryId && isTechnicianAssigned() && isActive && (
-          <View style={styles.actionButtons}>
+          <View style={styles.addOnSection}>
             <TouchableOpacity 
               style={styles.addOnButton}
               onPress={handleAddOnServices}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add-circle" size={20} color="#fff" />
-              <Text style={styles.addOnButtonText}>Add More Services</Text>
+              <View style={styles.addOnButtonContent}>
+                <View style={styles.addOnIconWrapper}>
+                  <Ionicons name="add-circle" size={24} color="#fff" />
+                </View>
+                <View style={styles.addOnTextWrapper}>
+                  <Text style={styles.addOnButtonText}>Add More Services</Text>
+                  <Text style={styles.addOnButtonSubtext}>Enhance your booking</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color="#fff" />
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -1798,18 +1807,48 @@ const styles = StyleSheet.create({
     color: "#374151",
     fontWeight: "500",
   },
+  addOnSection: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
   addOnButton: {
+    backgroundColor: "#F59E0B",
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  addOnButtonContent: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  addOnIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F59E0B",
-    paddingVertical: 14,
-    borderRadius: 8,
+  },
+  addOnTextWrapper: {
+    flex: 1,
+    marginLeft: 14,
   },
   addOnButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  addOnButtonSubtext: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 13,
+    fontWeight: "500",
   },
 });
