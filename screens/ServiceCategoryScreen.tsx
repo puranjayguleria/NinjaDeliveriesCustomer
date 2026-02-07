@@ -152,6 +152,17 @@ export default function ServiceCategoryScreen() {
         }
       ];
       
+      // 🖼️ DEBUG: Log which services have images
+      console.log('🖼️ Services with images:');
+      issuesWithOther.forEach(service => {
+        if (service.id !== 'other') {
+          console.log(`  - "${service.name}": ${service.imageUrl ? '✅ Has image' : '❌ No image'}`);
+          if (service.imageUrl) {
+            console.log(`    Image URL: ${service.imageUrl.substring(0, 60)}...`);
+          }
+        }
+      });
+      
       setIssues(issuesWithOther);
       
     } catch (error) {
@@ -263,6 +274,21 @@ export default function ServiceCategoryScreen() {
         activeOpacity={0.7}
         onPress={() => toggleSelect(item.id)}
       >
+        {/* Service Image */}
+        {item.imageUrl ? (
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={styles.serviceImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.serviceImagePlaceholder}>
+            <Text style={styles.placeholderText}>
+              {item.name.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        
         <View style={styles.serviceTextContainer}>
           <Text style={styles.serviceTitle}>{item.name}</Text>
           <Text style={styles.serviceSubTitle}>
@@ -586,6 +612,31 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 
+  serviceImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+
+  serviceImagePlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e0e7ff",
+    flexShrink: 0,
+  },
+
+  placeholderText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#4f46e5",
+  },
+
   serviceIconPlaceholder: {
     width: 50,
     height: 50,
@@ -620,19 +671,6 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "400",
     flexWrap: "wrap",
-  },
-
-  serviceTitle: { 
-    fontSize: 15, 
-    fontWeight: "600", 
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-
-  serviceSubTitle: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "400",
   },
 
   // Bottom Bar
@@ -871,22 +909,6 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "400",
     lineHeight: 20,
-  },
-
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#cbd5e1",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "white",
-  },
-  
-  checkboxActive: {
-    backgroundColor: "#4CAF50",
-    borderColor: "#4CAF50",
   },
 
   btn: {

@@ -16,6 +16,7 @@ export interface ServiceIssue {
   masterCategoryId: string; // Links to app_categories
   companyId?: string;
   isActive: boolean;
+  imageUrl?: string | null; // Service image from service_services collection
   serviceKey?: string;
   serviceType?: string;
   price?: number;
@@ -295,6 +296,187 @@ export class FirestoreService {
   }
 
   /**
+   * Populate service images and packages from service_services and service_services_master collections
+   * Images can come from either service_services OR service_services_master (packages)
+   */
+  static async populateServiceImages(services: ServiceIssue[]): Promise<void> {
+    try {
+      console.log('🖼️ Fetching service images and packages from service_services and service_services_master...');
+      
+      if (services.length === 0) {
+        console.log('⚠️ No services to populate images for');
+        return;
+      }
+
+      let imagesFound = 0;
+      let packagesFound = 0;
+      
+      // Get category ID from first service
+      const categoryId = services[0]?.masterCategoryId;
+      
+      // Pre-fetch all service_services for this category
+      let categoryServicesMap = new Map<string, any>();
+      if (categoryId) {
+        console.log(`📂 Pre-fetching all service_services for category: ${categoryId}`);
+        try {
+          const categoryServicesSnapshot = await firestore()
+            .collection('service_services')
+            .where('categoryMasterId', '==', categoryId)
+            .where('isActive', '==', true)
+            .get();
+          
+          console.log(`   Found ${categoryServicesSnapshot.size} services in service_services for this category`);
+          
+          categoryServicesSnapshot.forEach(doc => {
+            const data = doc.data();
+            const serviceName = (data.name || '').toLowerCase().trim();
+            categoryServicesMap.set(serviceName, { id: doc.id, data });
+            console.log(`   - Cached: "${data.name}" (imageUrl: ${!!data.imageUrl}, adminServiceId: ${!!data.adminServiceId})`);
+          });
+        } catch (err) {
+          console.log(`   ⚠️ Error pre-fetching category services:`, err);
+        }
+      }
+      
+      // Process each service
+      for (const service of services) {
+        try {
+          console.log(`\n🔍 Processing service "${service.name}" (ID: ${service.id})...`);
+          let imageSource = 'none';
+          let adminServiceId = null;
+          
+          // STEP 1: Find matching service in service_services
+          const serviceName = service.name.toLowerCase().trim();
+          const cachedService = categoryServicesMap.get(serviceName);
+          
+          if (cachedService) {
+            const serviceData = cachedService.data;
+            console.log(`   ✅ Found in service_services (doc: ${cachedService.id})`);
+            console.log(`      - Has imageUrl: ${!!serviceData.imageUrl}`);
+            console.log(`      - Has adminServiceId: ${!!serviceData.adminServiceId}`);
+            
+            // Get image from service_services if available
+            if (serviceData.imageUrl) {
+              service.imageUrl = serviceData.imageUrl;
+              imagesFound++;
+              imageSource = 'service_services';
+              console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
+            }
+            
+            // Store adminServiceId for package/image lookup
+            if (serviceData.adminServiceId) {
+              adminServiceId = serviceData.adminServiceId;
+            }
+          } else {
+            console.log(`   ⚠️ Not found in service_services cache, trying direct query...`);
+            
+            // Try direct query as fallback
+            try {
+              const directSnapshot = await firestore()
+                .collection('service_services')
+                .where('name', '==', service.name)
+                .where('isActive', '==', true)
+                .limit(1)
+                .get();
+              
+              if (!directSnapshot.empty) {
+                const serviceData = directSnapshot.docs[0].data();
+                console.log(`   ✅ Found via direct query`);
+                
+                if (serviceData.imageUrl) {
+                  service.imageUrl = serviceData.imageUrl;
+                  imagesFound++;
+                  imageSource = 'service_services_direct';
+                  console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
+                }
+                
+                if (serviceData.adminServiceId) {
+                  adminServiceId = serviceData.adminServiceId;
+                }
+              }
+            } catch (directError) {
+              console.log(`   ❌ Error in direct query:`, directError);
+            }
+          }
+          
+          // STEP 2: Fetch packages and image from service_services_master (if adminServiceId exists)
+          if (adminServiceId) {
+            try {
+              console.log(`   📦 Fetching from service_services_master using adminServiceId: ${adminServiceId}`);
+              
+              const masterDoc = await firestore()
+                .collection('service_services_master')
+                .doc(adminServiceId)
+                .get();
+              
+              if (masterDoc.exists) {
+                const masterData = masterDoc.data();
+                console.log(`   ✅ Found in service_services_master`);
+                console.log(`      - Has imageUrl: ${!!masterData?.imageUrl}`);
+                console.log(`      - Has packages: ${!!(masterData?.packages && Array.isArray(masterData.packages))}`);
+                
+                // Get image from service_services_master if not already found
+                if (!service.imageUrl && masterData?.imageUrl) {
+                  service.imageUrl = masterData.imageUrl;
+                  imagesFound++;
+                  imageSource = 'service_services_master';
+                  console.log(`   📸 Got image from service_services_master: ${masterData.imageUrl.substring(0, 50)}...`);
+                }
+                
+                // Get packages from service_services_master
+                if (masterData?.packages && Array.isArray(masterData.packages)) {
+                  service.packages = masterData.packages;
+                  packagesFound++;
+                  console.log(`   📦 Got ${masterData.packages.length} packages from service_services_master`);
+                  
+                  // Log package details
+                  masterData.packages.forEach((pkg: any, idx: number) => {
+                    console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
+                  });
+                } else {
+                  console.log(`   ⚠️ No packages array found in service_services_master`);
+                }
+              } else {
+                console.log(`   ⚠️ service_services_master document not found for adminServiceId: ${adminServiceId}`);
+              }
+            } catch (masterError) {
+              console.log(`   ❌ Error fetching from service_services_master:`, masterError);
+            }
+          } else {
+            console.log(`   ℹ️ No adminServiceId found, skipping service_services_master lookup`);
+          }
+          
+          // FINAL STATUS
+          console.log(`   ✅ FINAL STATUS for "${service.name}":`);
+          console.log(`      - Image: ${service.imageUrl ? `✅ (from ${imageSource})` : '❌ Not found'}`);
+          console.log(`      - Packages: ${service.packages ? `✅ (${service.packages.length} packages)` : '❌ Not found'}`);
+          
+        } catch (serviceError) {
+          console.log(`   ❌ Error processing service "${service.name}":`, serviceError);
+        }
+      }
+
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`🖼️ IMAGES SUMMARY: Found ${imagesFound}/${services.length} service images`);
+      console.log(`📦 PACKAGES SUMMARY: Found packages for ${packagesFound}/${services.length} services`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      
+      // Detailed UI debug info
+      console.log(`\n📋 FINAL LIST - Services with images and packages:`);
+      services.forEach(s => {
+        const imageStatus = s.imageUrl ? '✅ Image' : '❌ No Image';
+        const packageStatus = s.packages ? `✅ ${s.packages.length} Packages` : '❌ No Packages';
+        console.log(`   ${imageStatus} | ${packageStatus} | ${s.name}`);
+      });
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+      
+    } catch (error) {
+      console.error('❌ Error fetching service images and packages:', error);
+      console.log('⚠️ Continuing without service images and packages...');
+    }
+  }
+
+  /**
    * Fetch services from app_services collection for a specific category
    */
   static async getServicesWithCompanies(categoryId: string): Promise<ServiceIssue[]> {
@@ -478,8 +660,11 @@ export class FirestoreService {
       // Sort by name on the client side
       services.sort((a, b) => a.name.localeCompare(b.name));
 
+      // Populate service images from service_services and packages from service_services_master
+      await this.populateServiceImages(services);
+
       console.log(`✅ Fetched ${services.length} unique active services for "${categoryName}"`);
-      console.log(`Unique services found for "${categoryName}":`, services.map(s => ({ id: s.id, name: s.name, isActive: s.isActive })));
+      console.log(`Unique services found for "${categoryName}":`, services.map(s => ({ id: s.id, name: s.name, isActive: s.isActive, hasImage: !!s.imageUrl, hasPackages: !!s.packages })));
       
       return services;
     } catch (error: any) {
