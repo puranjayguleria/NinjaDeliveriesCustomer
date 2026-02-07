@@ -10,6 +10,7 @@ import {
   FlatList,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -267,12 +268,28 @@ const BookingRejectionModal: React.FC<BookingRejectionModalProps> = ({
       >
         <View style={styles.companyHeader}>
           <View style={styles.companyLeft}>
-            <Text style={styles.companyName}>{item.companyName || item.serviceName}</Text>
-            {item.isActive && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>✓ Verified</Text>
+            {/* Company Logo */}
+            {item.imageUrl ? (
+              <Image 
+                source={{ uri: item.imageUrl }} 
+                style={styles.companyLogo}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.companyLogoPlaceholder}>
+                <Text style={styles.companyLogoText}>
+                  {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
+                </Text>
               </View>
             )}
+            <View style={styles.companyInfo}>
+              <Text style={styles.companyName}>{item.companyName || item.serviceName}</Text>
+              {item.isActive && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>✓ Verified</Text>
+                </View>
+              )}
+            </View>
           </View>
           
           <View style={styles.companyRight}>
@@ -562,6 +579,36 @@ const styles = StyleSheet.create({
   companyLeft: {
     flex: 1,
     marginRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  companyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+  },
+
+  companyLogoPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  companyLogoText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  companyInfo: {
+    flex: 1,
   },
   companyName: {
     fontSize: 16,

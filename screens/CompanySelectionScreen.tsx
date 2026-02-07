@@ -6,6 +6,7 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
@@ -432,6 +433,20 @@ export default function CompanySelectionScreen() {
                 {/* Provider Header */}
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
+                    {/* Company Logo */}
+                    {item.imageUrl ? (
+                      <Image 
+                        source={{ uri: item.imageUrl }} 
+                        style={styles.companyLogo}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.companyLogoPlaceholder}>
+                        <Text style={styles.companyLogoText}>
+                          {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                   </View>
                 </View>
@@ -820,6 +835,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexWrap: "wrap",
     gap: 8,
+  },
+
+  companyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    overflow: 'hidden',
+  },
+
+  companyLogoPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#3b82f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  companyLogoText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#ffffff",
   },
 
   providerInfo: {

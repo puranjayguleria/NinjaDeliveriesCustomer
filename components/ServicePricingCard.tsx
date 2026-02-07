@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -64,6 +65,20 @@ export default function ServicePricingCard({
     return (
       <View style={styles.container}>
         <View style={styles.header}>
+          {/* Company Logo */}
+          {company.imageUrl ? (
+            <Image 
+              source={{ uri: company.imageUrl }} 
+              style={styles.companyLogo}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.companyLogoPlaceholder}>
+              <Text style={styles.companyLogoText}>
+                {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
           <Text style={styles.companyName}>{company.companyName || company.serviceName}</Text>
           {company.isActive && (
             <View style={styles.verifiedBadge}>
@@ -115,6 +130,20 @@ export default function ServicePricingCard({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+          {/* Company Logo */}
+          {company.imageUrl ? (
+            <Image 
+              source={{ uri: company.imageUrl }} 
+              style={styles.companyLogo}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.companyLogoPlaceholder}>
+              <Text style={styles.companyLogoText}>
+                {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
         <Text style={styles.companyName}>{company.companyName || company.serviceName}</Text>
         {company.isActive && (
           <View style={styles.verifiedBadge}>
@@ -212,6 +241,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    gap: 12,
+  },
+  companyLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+    overflow: 'hidden',
+  },
+  companyLogoPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  companyLogoText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   companyName: {
     fontSize: 18,

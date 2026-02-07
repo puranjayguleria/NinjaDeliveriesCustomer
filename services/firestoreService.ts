@@ -855,18 +855,26 @@ export class FirestoreService {
         index === self.findIndex(c => c.id === company.id)
       );
 
-      // Fetch actual company names for all companies
+      // Fetch actual company names and logos for all companies
       const companyIds = [...new Set(uniqueCompanies.map(c => c.companyId).filter((id): id is string => Boolean(id)))];
       if (companyIds.length > 0) {
-        console.log(`🏢 Fetching actual company names for ${companyIds.length} companies...`);
-        const companyNames = await this.getMultipleCompanyNames(companyIds);
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails(companyIds);
         
-        // Update company names with actual names from service_company collection
+        // Update company names and logos with actual data from service_company collection
         uniqueCompanies.forEach(company => {
           if (company.companyId) {
-            const actualName = companyNames.get(company.companyId);
-            company.companyName = actualName || `Company ${company.companyId}`;
-            console.log(`Updated company ${company.companyId} → ${company.companyName}`);
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
           } else {
             company.companyName = 'Unknown Company';
           }
@@ -993,6 +1001,61 @@ export class FirestoreService {
       });
       
       return companyNames;
+    }
+  }
+
+  /**
+   * Fetch multiple company details (name and logo) at once for better performance
+   */
+  static async getMultipleCompanyDetails(companyIds: string[]): Promise<Map<string, { name: string; logo: string | null }>> {
+    const companyDetails = new Map<string, { name: string; logo: string | null }>();
+    
+    try {
+      console.log(`🏢 Batch lookup for ${companyIds.length} company details (name + logo):`, companyIds);
+      
+      // Process in smaller batches to avoid Firestore limits
+      const batchSize = 10;
+      for (let i = 0; i < companyIds.length; i += batchSize) {
+        const batch = companyIds.slice(i, i + batchSize);
+        
+        // Use 'in' query for batch fetching
+        if (batch.length > 0) {
+          const snapshot = await firestore()
+            .collection('service_company')
+            .where('__name__', 'in', batch)
+            .get();
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const companyName = data?.companyName || data?.name || `Company ${doc.id}`;
+            // Check multiple possible logo field names: logoUrl, logo, imageUrl
+            const companyLogo = data?.logoUrl || data?.logo || data?.imageUrl || null;
+            companyDetails.set(doc.id, { name: companyName, logo: companyLogo });
+            console.log(`✅ Mapped ${doc.id} → ${companyName} (logo: ${companyLogo ? 'Yes' : 'No'})`);
+          });
+          
+          // Add fallback details for companies not found
+          batch.forEach(companyId => {
+            if (!companyDetails.has(companyId)) {
+              companyDetails.set(companyId, { name: `Company ${companyId}`, logo: null });
+              console.log(`⚠️ Fallback details for ${companyId}`);
+            }
+          });
+        }
+      }
+      
+      console.log(`✅ Batch lookup complete. Found ${companyDetails.size} company details.`);
+      return companyDetails;
+      
+    } catch (error) {
+      console.error('❌ Error in batch company details lookup:', error);
+      
+      // Fallback: create map with company IDs as names and no logo
+      companyIds.forEach(id => {
+        companyDetails.set(id, { name: `Company ${id}`, logo: null });
+      });
+      
+      return companyDetails;
     }
   }
   static async getCompaniesByCategory(categoryId: string): Promise<ServiceCompany[]> {
@@ -1127,17 +1190,25 @@ export class FirestoreService {
         });
       });
 
-      // Second pass: fetch actual company names from service_company collection
+      // Second pass: fetch actual company names and logos from service_company collection
       if (companyIds.length > 0) {
-        console.log(`🏢 Fetching actual company names for ${companyIds.length} companies...`);
-        const companyNames = await this.getMultipleCompanyNames([...new Set(companyIds)]);
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
         
-        // Update company names with actual names from service_company collection
+        // Update company names and logos with actual data from service_company collection
         companies.forEach(company => {
           if (company.companyId) {
-            const actualName = companyNames.get(company.companyId);
-            company.companyName = actualName || `Company ${company.companyId}`;
-            console.log(`Updated company ${company.companyId} → ${company.companyName}`);
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
           } else {
             company.companyName = 'Unknown Company';
           }
@@ -1207,17 +1278,25 @@ export class FirestoreService {
         });
       });
 
-      // Fetch actual company names from service_company collection
+      // Fetch actual company names and logos from service_company collection
       if (companyIds.length > 0) {
-        console.log(`🏢 Fetching actual company names for ${companyIds.length} companies...`);
-        const companyNames = await this.getMultipleCompanyNames([...new Set(companyIds)]);
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
         
-        // Update company names with actual names from service_company collection
+        // Update company names and logos with actual data from service_company collection
         companies.forEach(company => {
           if (company.companyId) {
-            const actualName = companyNames.get(company.companyId);
-            company.companyName = actualName || `Company ${company.companyId}`;
-            console.log(`Updated company ${company.companyId} → ${company.companyName}`);
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
           } else {
             company.companyName = 'Unknown Company';
           }
