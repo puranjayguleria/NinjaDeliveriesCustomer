@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
+import ServiceAddedSuccessModal from "./ServiceAddedSuccessModal";
 
 interface AddOnService extends ServiceIssue {
   selected: boolean;
@@ -40,6 +41,12 @@ export default function AddOnServicesModal({
   const [loading, setLoading] = useState(false);
   const [selectedServices, setSelectedServices] = useState<AddOnService[]>([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<{
+    serviceCount: number;
+    amount: number;
+    paymentMethod: "cash" | "online";
+  } | null>(null);
 
   useEffect(() => {
     if (visible && categoryId) {
@@ -229,11 +236,13 @@ export default function AddOnServicesModal({
       onAddServices(selectedAddOns);
       onClose();
       
-      Alert.alert(
-        "Services Added! 💰", 
-        `${selectedAddOns.length} add-on service${selectedAddOns.length > 1 ? 's' : ''} added to your booking.\n\nAmount: ₹${totalAmount} (Cash Payment)\n\nPlease pay the technician when the service is completed.`,
-        [{ text: "OK" }]
-      );
+      // Show custom success modal
+      setSuccessModalData({
+        serviceCount: selectedAddOns.length,
+        amount: totalAmount,
+        paymentMethod: "cash",
+      });
+      setShowSuccessModal(true);
       
     } catch (error: any) {
       console.error("Cash payment processing error:", error);
@@ -331,11 +340,13 @@ export default function AddOnServicesModal({
             onAddServices(selectedAddOns);
             onClose();
             
-            Alert.alert(
-              "Payment Successful! 🎉", 
-              `${selectedAddOns.length} add-on service${selectedAddOns.length > 1 ? 's' : ''} added to your booking.\n\nAmount Paid: ₹${totalAmount}`,
-              [{ text: "OK" }]
-            );
+            // Show custom success modal
+            setSuccessModalData({
+              serviceCount: selectedAddOns.length,
+              amount: totalAmount,
+              paymentMethod: "online",
+            });
+            setShowSuccessModal(true);
             
           } catch (error) {
             console.error("Add-on payment verification failed:", error);
@@ -458,12 +469,13 @@ export default function AddOnServicesModal({
   );
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
+    <>
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={onClose}
+      >
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -537,6 +549,18 @@ export default function AddOnServicesModal({
         )}
       </View>
     </Modal>
+
+    {/* Success Modal */}
+    {successModalData && (
+      <ServiceAddedSuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        serviceCount={successModalData.serviceCount}
+        amount={successModalData.amount}
+        paymentMethod={successModalData.paymentMethod}
+      />
+    )}
+    </>
   );
 }
 

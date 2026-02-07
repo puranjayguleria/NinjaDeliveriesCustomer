@@ -324,9 +324,15 @@ export default function BookingConfirmationScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header with gradient effect */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Booking Confirmed 🎉</Text>
+        <View style={styles.headerContent}>
+          <View style={styles.successIconContainer}>
+            <Ionicons name="checkmark-circle" size={48} color="#10B981" />
+          </View>
+          <Text style={styles.headerTitle}>Booking Confirmed!</Text>
+          <Text style={styles.headerSubtitle}>Your service has been scheduled</Text>
+        </View>
       </View>
 
       <ScrollView 
@@ -334,6 +340,18 @@ export default function BookingConfirmationScreen() {
         showsVerticalScrollIndicator={false}
       >
         
+        {/* Status Banner */}
+        <View style={[styles.statusBanner, { backgroundColor: getStatusInfo(displayData.status).color }]}>
+          <Ionicons 
+            name={getStatusInfo(displayData.status).icon as any} 
+            size={24} 
+            color="#fff" 
+          />
+          <Text style={styles.statusBannerText}>
+            Status: {getStatusInfo(displayData.status).text}
+          </Text>
+        </View>
+
         {/* Booking Details Card */}
         <View style={styles.bookingCard}>
           
@@ -438,83 +456,93 @@ export default function BookingConfirmationScreen() {
             </View>
           )}
 
-          {/* Status with enhanced display */}
-          <View style={styles.detailRow}>
-            <View style={[styles.iconContainer, { backgroundColor: getStatusInfo(displayData.status).color + '20' }]}>
-              <Ionicons 
-                name={getStatusInfo(displayData.status).icon as any} 
-                size={20} 
-                color={getStatusInfo(displayData.status).color} 
-              />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Booking Status:</Text>
-              <View style={styles.statusContainer}>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusInfo(displayData.status).color }]}>
-                  <Text style={styles.statusBadgeText}>{getStatusInfo(displayData.status).text}</Text>
+          {/* Timeline - Show timestamps based on status */}
+          {(displayData.assignedAt || displayData.startedAt || displayData.completedAt) && (
+            <View style={styles.timelineSection}>
+              <Text style={styles.sectionTitle}>Booking Timeline</Text>
+              
+              {displayData.createdAt && (
+                <View style={styles.timelineItem}>
+                  <View style={styles.timelineDot} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineLabel}>Booking Created</Text>
+                    <Text style={styles.timelineTime}>
+                      {new Date(displayData.createdAt.toDate()).toLocaleString()}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              {/* Show timestamps based on status */}
+              )}
+              
               {displayData.assignedAt && (
-                <Text style={styles.timestampText}>
-                  Assigned: {new Date(displayData.assignedAt.toDate()).toLocaleString()}
-                </Text>
+                <View style={styles.timelineItem}>
+                  <View style={[styles.timelineDot, { backgroundColor: '#3B82F6' }]} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineLabel}>Technician Assigned</Text>
+                    <Text style={styles.timelineTime}>
+                      {new Date(displayData.assignedAt.toDate()).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
               )}
+              
               {displayData.startedAt && (
-                <Text style={styles.timestampText}>
-                  Started: {new Date(displayData.startedAt.toDate()).toLocaleString()}
-                </Text>
+                <View style={styles.timelineItem}>
+                  <View style={[styles.timelineDot, { backgroundColor: '#8B5CF6' }]} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineLabel}>Service Started</Text>
+                    <Text style={styles.timelineTime}>
+                      {new Date(displayData.startedAt.toDate()).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
               )}
+              
               {displayData.completedAt && (
-                <Text style={styles.timestampText}>
-                  Completed: {new Date(displayData.completedAt.toDate()).toLocaleString()}
-                </Text>
+                <View style={styles.timelineItem}>
+                  <View style={[styles.timelineDot, { backgroundColor: '#10B981' }]} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineLabel}>Service Completed</Text>
+                    <Text style={styles.timelineTime}>
+                      {new Date(displayData.completedAt.toDate()).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
               )}
             </View>
-          </View>
+          )}
 
-          {/* Total Amount */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="cash" size={20} color="#6B7280" />
+          {/* Total Amount - Highlighted */}
+          <View style={styles.priceCard}>
+            <View style={styles.priceHeader}>
+              <Ionicons name="cash-outline" size={24} color="#10B981" />
+              <Text style={styles.priceLabel}>Total Amount</Text>
             </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Total Amount:</Text>
-              <Text style={styles.priceValue}>₹{displayData.totalPrice || 0}</Text>
-            </View>
+            <Text style={styles.priceValue}>₹{displayData.totalPrice || 0}</Text>
+            {displayData.addOns && displayData.addOns.length > 0 && (
+              <Text style={styles.priceNote}>Includes {displayData.addOns.length} add-on service(s)</Text>
+            )}
           </View>
 
           {/* Add-On Services */}
           {displayData.addOns && displayData.addOns.length > 0 && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="add-circle" size={20} color="#6B7280" />
+            <View style={styles.addOnSection}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="add-circle" size={20} color="#F59E0B" />
+                <Text style={styles.sectionTitle}>Add-On Services</Text>
               </View>
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Add-On Services:</Text>
-                <View style={styles.addOnContainer}>
-                  {displayData.addOns.map((service: any, index: number) => (
-                    <View key={index} style={styles.addOnItem}>
-                      <Text style={styles.addOnName}>• {service.name}</Text>
+              <View style={styles.addOnList}>
+                {displayData.addOns.map((service: any, index: number) => (
+                  <View key={index} style={styles.addOnCard}>
+                    <View style={styles.addOnIconWrapper}>
+                      <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                    </View>
+                    <View style={styles.addOnDetails}>
+                      <Text style={styles.addOnName}>{service.name}</Text>
                       <Text style={styles.addOnPrice}>₹{service.price}</Text>
                     </View>
-                  ))}
-                </View>
+                  </View>
+                ))}
               </View>
-            </View>
-          )}
-
-          {/* Created/Updated timestamps */}
-          {displayData.createdAt && (
-            <View style={styles.timestampRow}>
-              <Text style={styles.timestampLabel}>
-                Created: {new Date(displayData.createdAt.toDate()).toLocaleString()}
-              </Text>
-              {displayData.updatedAt && displayData.updatedAt !== displayData.createdAt && (
-                <Text style={styles.timestampLabel}>
-                  Updated: {new Date(displayData.updatedAt.toDate()).toLocaleString()}
-                </Text>
-              )}
             </View>
           )}
 
@@ -529,37 +557,50 @@ export default function BookingConfirmationScreen() {
               style={styles.addOnButton}
               onPress={handleAddOnServices}
             >
-              <Ionicons name="add-circle" size={18} color="#fff" />
-              <Text style={styles.addOnButtonText}>Add More Services</Text>
+              <View style={styles.buttonIconWrapper}>
+                <Ionicons name="add-circle" size={22} color="#fff" />
+              </View>
+              <View style={styles.buttonTextWrapper}>
+                <Text style={styles.addOnButtonText}>Add More Services</Text>
+                <Text style={styles.buttonSubtext}>Enhance your booking</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#fff" />
             </TouchableOpacity>
           )}
 
-          {/* Call Agency & Track Booking Row */}
-          <View style={styles.buttonRow}>
+          {/* Primary Actions Grid */}
+          <View style={styles.primaryActionsGrid}>
             <TouchableOpacity 
-              style={styles.callButton}
-              onPress={handleCallAgency}
+              style={styles.gridButton}
+              onPress={handleTrackBooking}
             >
-              <Ionicons name="call" size={18} color="#fff" />
-              <Text style={styles.callButtonText}>Call Agency</Text>
+              <View style={[styles.gridIconContainer, { backgroundColor: '#8B5CF6' }]}>
+                <Ionicons name="location" size={28} color="#fff" />
+              </View>
+              <Text style={styles.gridButtonText}>Track</Text>
+              <Text style={styles.gridButtonSubtext}>Live Location</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.trackButton}
-              onPress={handleTrackBooking}
+              style={styles.gridButton}
+              onPress={handleCallAgency}
             >
-              <Ionicons name="location" size={18} color="#fff" />
-              <Text style={styles.trackButtonText}>Track Booking</Text>
+              <View style={[styles.gridIconContainer, { backgroundColor: '#3B82F6' }]}>
+                <Ionicons name="call" size={28} color="#fff" />
+              </View>
+              <Text style={styles.gridButtonText}>Call</Text>
+              <Text style={styles.gridButtonSubtext}>Contact Agency</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Go to Booking History */}
+          {/* Secondary Action */}
           <TouchableOpacity 
-            style={styles.historyButton}
+            style={styles.secondaryButton}
             onPress={handleGoToBookingHistory}
           >
-            <Ionicons name="time" size={18} color="#fff" />
-            <Text style={styles.historyButtonText}>Go to Booking History</Text>
+            <Ionicons name="time-outline" size={20} color="#6B7280" />
+            <Text style={styles.secondaryButtonText}>View Booking History</Text>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </TouchableOpacity>
 
         </View>
@@ -589,137 +630,246 @@ export default function BookingConfirmationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#F3F4F6",
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 50,
+    paddingBottom: 30,
     paddingHorizontal: 20,
     backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  headerContent: {
+    alignItems: "center",
+  },
+  successIconContainer: {
+    marginBottom: 12,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
     color: "#111827",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 15,
+    color: "#6B7280",
     textAlign: "center",
   },
   content: {
     flex: 1,
-    padding: 20,
+    padding: 16,
   },
-  bookingCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 30,
+  statusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statusBannerText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  bookingCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
     elevation: 4,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 20,
+    marginBottom: 18,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F3F4F6",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#F9FAFB",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 15,
+    marginRight: 14,
   },
   detailContent: {
     flex: 1,
   },
   detailLabel: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 4,
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#9CA3AF",
+    marginBottom: 5,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   detailValue: {
     fontSize: 16,
     color: "#111827",
-    fontWeight: "600",
+    fontWeight: "700",
+    lineHeight: 22,
   },
   phoneText: {
     fontSize: 14,
     color: "#10B981",
-    marginTop: 4,
-    fontWeight: "500",
+    marginTop: 6,
+    fontWeight: "600",
+  },
+  priceCard: {
+    backgroundColor: "#F0FDF4",
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 8,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: "#10B981",
+  },
+  priceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: "#059669",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   priceValue: {
-    fontSize: 18,
+    fontSize: 32,
     color: "#10B981",
-    fontWeight: "700",
+    fontWeight: "900",
+    marginBottom: 4,
   },
-  statusBadge: {
-    backgroundColor: "#10B981",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  statusBadgeText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
+  priceNote: {
+    fontSize: 12,
+    color: "#059669",
+    fontWeight: "500",
   },
   actionButtons: {
-    gap: 15,
+    gap: 12,
+    marginBottom: 20,
   },
-  buttonRow: {
+  addOnButton: {
     flexDirection: "row",
-    gap: 15,
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F59E0B",
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  callButton: {
+  buttonIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonTextWrapper: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#1F2937",
-    paddingVertical: 16,
-    borderRadius: 12,
+    marginLeft: 12,
   },
-  callButtonText: {
+  addOnButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 2,
   },
-  trackButton: {
+  buttonSubtext: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  primaryActionsGrid: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  gridButton: {
     flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  gridIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  gridButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  gridButtonSubtext: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  secondaryButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#fff",
     paddingVertical: 16,
+    paddingHorizontal: 20,
     borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
   },
-  trackButtonText: {
-    color: "#fff",
-    fontSize: 16,
+  secondaryButtonText: {
+    color: "#374151",
+    fontSize: 15,
     fontWeight: "600",
-  },
-  historyButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#10B981",
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  historyButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    flex: 1,
+    textAlign: "center",
   },
   loadingContainer: {
     flex: 1,
@@ -754,10 +904,90 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: "italic",
   },
-  statusContainer: {
+  sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  addOnSection: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  addOnList: {
+    gap: 10,
+  },
+  addOnCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    padding: 14,
+    borderRadius: 12,
+    gap: 12,
+  },
+  addOnIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#D1FAE5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addOnDetails: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  addOnName: {
+    fontSize: 15,
+    color: "#374151",
+    fontWeight: "600",
+    flex: 1,
+  },
+  addOnPrice: {
+    fontSize: 16,
+    color: "#10B981",
+    fontWeight: "700",
+  },
+  timelineSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  timelineItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 12,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#10B981",
     marginTop: 4,
+    marginRight: 12,
+  },
+  timelineContent: {
+    flex: 1,
+  },
+  timelineLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 2,
+  },
+  timelineTime: {
+    fontSize: 12,
+    color: "#6B7280",
   },
   timestampRow: {
     borderTopWidth: 1,
@@ -774,39 +1004,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#6B7280",
     marginTop: 2,
-  },
-  addOnContainer: {
-    marginTop: 4,
-  },
-  addOnItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  addOnName: {
-    fontSize: 14,
-    color: "#374151",
-    flex: 1,
-  },
-  addOnPrice: {
-    fontSize: 14,
-    color: "#10B981",
-    fontWeight: "600",
-  },
-  addOnButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F59E0B",
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginBottom: 15,
-  },
-  addOnButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
   },
 });

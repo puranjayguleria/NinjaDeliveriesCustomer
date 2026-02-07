@@ -371,13 +371,13 @@ export default function ServicesScreen() {
             
             // Show simple booking message
             const activityMessage = `${serviceName} service has been booked`;
-            const activityTimestamp = booking.createdAt || booking.updatedAt;
+            // const activityTimestamp = booking.createdAt || booking.updatedAt;
             
             transformedActivities.push({
               id: doc.id,
               title: activityMessage,
               status: booking.status || 'pending',
-              timestamp: activityTimestamp,
+              // timestamp: activityTimestamp,
               serviceName: serviceName,
             });
           });
