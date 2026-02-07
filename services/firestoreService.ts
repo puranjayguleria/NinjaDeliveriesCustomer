@@ -682,10 +682,15 @@ export class FirestoreService {
 
   /**
    * Fetch service companies/providers from service_services collection based on selected services
+   * @param issueIds - Array of service IDs from app_services
+   * @param specificCompanyId - Optional: Filter by specific company ID
    */
-  static async getCompaniesByServiceIssues(issueIds: string[]): Promise<ServiceCompany[]> {
+  static async getCompaniesByServiceIssues(issueIds: string[], specificCompanyId?: string): Promise<ServiceCompany[]> {
     try {
       console.log(`🏢 Fetching companies from service_services for selected services: ${issueIds.join(', ')}`);
+      if (specificCompanyId) {
+        console.log(`🏢 Filtering by specific company: ${specificCompanyId}`);
+      }
       
       if (issueIds.length === 0) {
         console.log(`⚠️ No service IDs provided, returning all companies`);
@@ -761,17 +766,30 @@ export class FirestoreService {
         companiesSnapshot.forEach(doc => {
           const data = doc.data();
           
+          // Log ALL fields to understand the data structure
+          console.log(`🏢 Company ${doc.id} - ALL FIELDS:`, Object.keys(data));
           console.log(`🏢 Company ${doc.id}:`, {
             serviceName: data.name,
             companyName: data.companyName,
+            companyId: data.companyId,
             categoryMasterId: data.categoryMasterId,
             isActive: data.isActive,
-            matchesService: data.name && serviceNames.has(data.name.toLowerCase().trim())
+            matchesService: data.name && serviceNames.has(data.name.toLowerCase().trim()),
+            matchesCompanyFilter: !specificCompanyId || data.companyId === specificCompanyId,
+            specificCompanyIdProvided: specificCompanyId,
+            dataCompanyId: data.companyId,
+            areTheyEqual: data.companyId === specificCompanyId
           });
           
           // Only include active companies
           if (!data.isActive) {
             console.log(`   🚫 Skipping inactive company: ${data.name || data.companyName || 'Unknown'}`);
+            return;
+          }
+          
+          // Filter by specific company if provided
+          if (specificCompanyId && data.companyId !== specificCompanyId) {
+            console.log(`   🚫 Skipping company: ${data.companyId} (not matching filter: ${specificCompanyId})`);
             return;
           }
           

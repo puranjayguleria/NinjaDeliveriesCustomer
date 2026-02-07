@@ -26,6 +26,7 @@ interface AddOnServicesModalProps {
   categoryId: string;
   existingServices: string[]; // Services already booked
   bookingId?: string; // Add booking ID for payment integration
+  companyId?: string; // Filter services by specific company
 }
 
 export default function AddOnServicesModal({
@@ -35,6 +36,7 @@ export default function AddOnServicesModal({
   categoryId,
   existingServices,
   bookingId,
+  companyId, // Add companyId parameter
 }: AddOnServicesModalProps) {
   const navigation = useNavigation<any>();
   const [services, setServices] = useState<AddOnService[]>([]);
@@ -50,6 +52,12 @@ export default function AddOnServicesModal({
 
   useEffect(() => {
     if (visible && categoryId) {
+      console.log(`🔧 AddOnServicesModal opened with:`, {
+        categoryId,
+        companyId,
+        existingServices,
+        bookingId
+      });
       fetchAddOnServices();
     }
   }, [visible, categoryId]);
@@ -58,14 +66,71 @@ export default function AddOnServicesModal({
     try {
       setLoading(true);
       console.log(`🔧 Fetching add-on services for category: ${categoryId}`);
+      if (companyId) {
+        console.log(`🏢 Filtering by specific company: ${companyId}`);
+      }
       
       // Fetch all services for the category with complete details
       const allServices = await FirestoreService.getServicesWithCompanies(categoryId);
+      console.log(`📊 Total services in category: ${allServices.length}`);
+      
+      // Get service IDs to fetch companies
+      const serviceIds = allServices.map(service => service.id);
+      let companiesData: any[] = [];
+      
+      if (serviceIds.length > 0) {
+        try {
+          // Pass companyId to filter services by specific company
+          companiesData = await FirestoreService.getCompaniesByServiceIssues(serviceIds, companyId);
+          console.log(`📊 Found ${companiesData.length} companies for services${companyId ? ` (filtered by company: ${companyId})` : ''}`);
+          
+          // Log detailed company data for debugging
+          if (companiesData.length > 0) {
+            console.log(`📊 Company data details:`, companiesData.map(c => ({
+              id: c.id,
+              companyId: c.companyId,
+              serviceName: c.serviceName,
+              price: c.price
+            })));
+          }
+        } catch (error) {
+          console.warn("Could not fetch companies for pricing, using default prices", error);
+        }
+      }
+      
+      // If companyId is provided, filter services to only those offered by this company
+      let filteredServices = allServices;
+      if (companyId && companiesData.length > 0) {
+        console.log(`🏢 Filtering services by company ID: ${companyId}`);
+        const companyServiceNames = new Set(
+          companiesData.map(company => company.serviceName?.toLowerCase().trim()).filter(Boolean)
+        );
+        console.log(`🏢 Company offers these services:`, Array.from(companyServiceNames));
+        
+        filteredServices = allServices.filter(service => {
+          const serviceName = service.name.toLowerCase().trim();
+          const isOffered = companyServiceNames.has(serviceName);
+          if (!isOffered) {
+            console.log(`🚫 Service "${service.name}" not offered by selected company`);
+          } else {
+            console.log(`✅ Service "${service.name}" IS offered by selected company`);
+          }
+          return isOffered;
+        });
+        
+        console.log(`📊 After company filter: ${filteredServices.length} services available`);
+      } else {
+        if (!companyId) {
+          console.log(`⚠️ No companyId provided - showing all services`);
+        } else if (companiesData.length === 0) {
+          console.log(`⚠️ No companies data found - showing all services`);
+        }
+      }
       
       // Filter out services that are already booked (main service + add-ons)
       console.log(`🔍 Existing services to exclude:`, existingServices);
       
-      const availableServices = allServices.filter(service => {
+      const availableServices = filteredServices.filter(service => {
         const serviceName = service.name.toLowerCase().trim();
         
         // Check if this service is already booked
@@ -99,7 +164,7 @@ export default function AddOnServicesModal({
           const existingKeywords = existingName.split(/\s+/);
           
           // Check if any significant keywords overlap (ignore common words)
-          const commonWords = ['service', 'services', 'work', 'repair', 'maintenance', 'professional'];
+          const commonWords = ['service', 'services', 'work', 'repair', 'maintenance', 'professional', 'and', 'the', 'a', 'an', 'or', '&'];
           const significantServiceWords = serviceKeywords.filter(word => 
             word.length > 3 && !commonWords.includes(word)
           );
@@ -107,15 +172,24 @@ export default function AddOnServicesModal({
             word.length > 3 && !commonWords.includes(word)
           );
           
-          const hasKeywordOverlap = significantServiceWords.some(serviceWord =>
-            significantExistingWords.some(existingWord =>
-              serviceWord.includes(existingWord) || existingWord.includes(serviceWord)
-            )
-          );
-          
-          if (hasKeywordOverlap && significantServiceWords.length > 0 && significantExistingWords.length > 0) {
-            console.log(`🚫 Excluding keyword match: "${service.name}" ~ "${existing}" (keywords: ${significantServiceWords.join(', ')} ~ ${significantExistingWords.join(', ')})`);
-            return true;
+          // Only exclude if MAJORITY of keywords match (at least 60% overlap)
+          // This prevents false positives like "Project Reports" vs "Academic & project Assistance"
+          if (significantServiceWords.length > 0 && significantExistingWords.length > 0) {
+            const matchingKeywords = significantServiceWords.filter(serviceWord =>
+              significantExistingWords.some(existingWord =>
+                serviceWord.includes(existingWord) || existingWord.includes(serviceWord)
+              )
+            );
+            
+            const overlapPercentage = matchingKeywords.length / Math.min(significantServiceWords.length, significantExistingWords.length);
+            
+            // Only exclude if more than 60% keywords match
+            if (overlapPercentage > 0.6) {
+              console.log(`🚫 Excluding keyword match: "${service.name}" ~ "${existing}" (${matchingKeywords.length}/${Math.min(significantServiceWords.length, significantExistingWords.length)} keywords match: ${matchingKeywords.join(', ')})`);
+              return true;
+            } else if (matchingKeywords.length > 0) {
+              console.log(`✅ Allowing "${service.name}" despite keyword overlap with "${existing}" (only ${Math.round(overlapPercentage * 100)}% match: ${matchingKeywords.join(', ')})`);
+            }
           }
           
           return false;
@@ -128,18 +202,7 @@ export default function AddOnServicesModal({
         return !isAlreadyBooked;
       });
 
-      // Get companies for these services to get proper pricing
-      const serviceIds = availableServices.map(service => service.id);
-      let companiesData: any[] = [];
-      
-      if (serviceIds.length > 0) {
-        try {
-          companiesData = await FirestoreService.getCompaniesByServiceIssues(serviceIds);
-          console.log(`📊 Found ${companiesData.length} companies for add-on services`);
-        } catch (error) {
-          console.warn("Could not fetch companies for pricing, using default prices");
-        }
-      }
+      console.log(`📊 Final available services after all filters: ${availableServices.length}`);
 
       // Convert to AddOnService format with proper pricing from companies
       const addOnServices: AddOnService[] = availableServices.map(service => {

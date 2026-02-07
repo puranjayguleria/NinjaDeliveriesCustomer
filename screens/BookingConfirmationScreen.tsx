@@ -180,6 +180,7 @@ export default function BookingConfirmationScreen() {
         technicianName: bookingData.technicianName,
         technicianId: bookingData.technicianId,
         estimatedDuration: bookingData.estimatedDuration,
+        companyId: bookingData.companyId, // Add company ID
         createdAt: bookingData.createdAt,
         updatedAt: bookingData.updatedAt,
         assignedAt: bookingData.assignedAt,
@@ -201,6 +202,7 @@ export default function BookingConfirmationScreen() {
       status: fallbackData.status || "pending",
       totalPrice: fallbackData.totalAmount || fallbackData.totalPrice || 0,
       addOns: [],
+      companyId: fallbackData.companyId, // Add company ID from fallback
     };
   };
 
@@ -622,6 +624,7 @@ export default function BookingConfirmationScreen() {
           ...(displayData.addOns?.map(addon => addon.name) || [])
         ]}
         bookingId={bookingId}
+        companyId={displayData.companyId}
       />
     </View>
   );

@@ -1189,6 +1189,7 @@ export default function TrackBookingScreen() {
           ...(booking?.addOns?.map(addon => addon.name) || [])
         ]}
         bookingId={bookingId}
+        companyId={booking?.companyId} // Pass company ID to filter services
       />
     </View>
   );
