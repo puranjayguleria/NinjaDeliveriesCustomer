@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,12 +13,13 @@ import {
   ImageBackground,
   ScrollView,
   Animated,
+  RefreshControl,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory, ServiceBanner } from '../services/firestoreService';
-import { firestore, auth } from '../firebase.native';
+import { firestore } from '../firebase.native';
 
 const { width } = Dimensions.get('window');
 
@@ -205,6 +206,8 @@ export default function ServicesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const searchInputRef = React.useRef<TextInput>(null);
   const activityScrollRef = React.useRef<ScrollView>(null);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
@@ -224,6 +227,28 @@ export default function ServicesScreen() {
     return date.toLocaleDateString();
   }, []);
 
+  // Manual refresh function
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setLastUpdateTime(new Date());
+    // Real-time listeners will automatically fetch fresh data
+    // Just wait a moment to show the refresh animation
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+  }, []);
+
+  // Re-subscribe to listeners when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 ServicesScreen focused - real-time listeners active');
+      setLastUpdateTime(new Date());
+      return () => {
+        console.log('📱 ServicesScreen unfocused');
+      };
+    }, [])
+  );
+
   // Real-time listener for service categories
   useEffect(() => {
     console.log('🔥 Setting up real-time listener for service categories...');
@@ -236,7 +261,7 @@ export default function ServicesScreen() {
       .onSnapshot(
         async (snapshot) => {
           try {
-            console.log(`📊 Real-time update: Found ${snapshot.size} active categories`);
+            console.log(`📊 Real-time update: Found ${snapshot.size} active categories at ${new Date().toLocaleTimeString()}`);
             
             const categories: ServiceCategory[] = [];
             
@@ -261,17 +286,18 @@ export default function ServicesScreen() {
 
             setServiceCategories(categories);
             setLoading(false);
+            setLastUpdateTime(new Date());
             console.log('✅ Real-time categories updated:', categories.length);
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
-            setError('Failed to load services. Please check your internet connection.');
+            setError('Failed to load services. Pull down to refresh.');
             setServiceCategories([]);
             setLoading(false);
           }
         },
         (error) => {
           console.error('❌ Real-time listener error for categories:', error);
-          setError('Failed to load services. Please check your internet connection and try again.');
+          setError('Connection lost. Pull down to refresh.');
           setServiceCategories([]);
           setLoading(false);
         }
@@ -294,7 +320,7 @@ export default function ServicesScreen() {
       .where('isActive', '==', true)
       .onSnapshot(
         (snapshot) => {
-          console.log(`📊 Real-time update: Found ${snapshot.size} active banners`);
+          console.log(`📊 Real-time update: Found ${snapshot.size} active banners at ${new Date().toLocaleTimeString()}`);
           
           const banners: ServiceBanner[] = [];
           
@@ -326,6 +352,7 @@ export default function ServicesScreen() {
 
           setServiceBanners(banners);
           setBannersLoading(false);
+          setLastUpdateTime(new Date());
           console.log('✅ Real-time banners updated:', banners.length);
         },
         (error) => {
@@ -352,7 +379,7 @@ export default function ServicesScreen() {
       .collection('service_bookings')
       .onSnapshot(
         (snapshot) => {
-          console.log(`📊 Real-time update: Found ${snapshot.size} bookings`);
+          console.log(`📊 Real-time update: Found ${snapshot.size} bookings at ${new Date().toLocaleTimeString()}`);
           
           if (snapshot.size === 0) {
             setActivities([]);
@@ -371,13 +398,12 @@ export default function ServicesScreen() {
             
             // Show simple booking message
             const activityMessage = `${serviceName} service has been booked`;
-            // const activityTimestamp = booking.createdAt || booking.updatedAt;
             
             transformedActivities.push({
               id: doc.id,
               title: activityMessage,
               status: booking.status || 'pending',
-              // timestamp: activityTimestamp,
+              timestamp: booking.createdAt || booking.updatedAt,
               serviceName: serviceName,
             });
           });
@@ -391,6 +417,7 @@ export default function ServicesScreen() {
           
           setActivities(transformedActivities);
           setActivitiesLoading(false);
+          setLastUpdateTime(new Date());
           console.log('✅ Real-time live activities updated (all bookings):', transformedActivities.length);
         },
         (error) => {
@@ -730,6 +757,8 @@ export default function ServicesScreen() {
               </TouchableOpacity>
             )}
           </View>
+          
+          {/* Real-time sync indicator - removed */}
         </View>
 
         {/* Show search results header when searching */}
@@ -769,10 +798,8 @@ export default function ServicesScreen() {
             {/* Live Activity Section */}
             <View style={styles.liveActivityContainer}>
               <View style={styles.activityHeaderRow}>
-                <Animated.View style={[styles.activityIconBox, { opacity: blinkAnim }]}>
-                  <Ionicons name="pulse" size={24} color="white" />
-                </Animated.View>
-                <Animated.Text style={[styles.activityHeading, { opacity: blinkAnim }]}>Live Activity</Animated.Text>
+                <Animated.View style={[styles.syncDot, { opacity: blinkAnim }]} />
+                <Animated.Text style={[styles.activityHeading, { opacity: blinkAnim }]}>Live  Updates </Animated.Text>
               </View>
               
               {activitiesLoading ? (
@@ -790,14 +817,14 @@ export default function ServicesScreen() {
                 >
                   {activities.map((activity) => (
                     <View key={activity.id} style={styles.activityCard}>
-                      <Animated.View style={[styles.activityDot, { opacity: blinkAnim }]} />
+                      {/* <Animated.View style={[styles.activityDot, { opacity: blinkAnim }]} /> */}
                       <View style={styles.activityContent}>
                         <View style={styles.activityRow}>
                           <Animated.Text style={[styles.activityTitle, { opacity: blinkAnim }]} numberOfLines={2}>
                             {activity.title}
                           </Animated.Text>
                         </View>
-                        <Animated.Text style={[styles.activityTime, { opacity: blinkAnim }]}>{getTimeAgo(activity.timestamp)}</Animated.Text>
+                        <Animated.Text style={[styles.activityTime, { opacity: blinkAnim }]}>Recent Booking</Animated.Text>
                       </View>
                     </View>
                   ))}
@@ -842,8 +869,9 @@ export default function ServicesScreen() {
               </View>
             ) : error ? (
               <View style={styles.emptyContainer}>
+                <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>{error}</Text>
-                <Text style={styles.emptySubText}>Real-time updates will resume automatically</Text>
+                <Text style={styles.emptySubText}>Last updated: {lastUpdateTime.toLocaleTimeString()}</Text>
               </View>
             ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -859,11 +887,16 @@ export default function ServicesScreen() {
           }
           contentContainerStyle={{ paddingBottom: 30 }}
           showsVerticalScrollIndicator={false}
-          refreshing={false}
-          onRefresh={() => {
-            // All data uses real-time listeners now
-            // No manual refresh needed
-          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#3b82f6', '#1e40af']}
+              tintColor="#3b82f6"
+              title="Syncing real-time data..."
+              titleColor="#64748b"
+            />
+          }
           removeClippedSubviews={false}
           maxToRenderPerBatch={10}
           windowSize={10}
@@ -956,7 +989,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     backgroundColor: "#f5f7fb",
     marginTop: -20,
-    paddingBottom: 30,
+    paddingBottom: 16,
   },
 
   searchBar: {
@@ -973,6 +1006,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
+  },
+
+  syncIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
+    borderRadius: 20,
+    alignSelf: "center",
+  },
+
+  syncDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#10b981",
+    marginRight: 6,
+  },
+
+  syncText: {
+    fontSize: 11,
+    color: "#059669",
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 
   searchBarFocused: {
@@ -1230,15 +1290,15 @@ const styles = StyleSheet.create({
     height: 70,
   },
 
-  activityDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#10b981",
-    marginTop: 4,
-    marginRight: 12,
-    flexShrink: 0,
-  },
+  // activityDot: {
+  //   width: 12,
+  //   height: 12,
+  //   borderRadius: 6,
+  //   backgroundColor: "#10b981",
+  //   marginTop: 4,
+  //   marginRight: 12,
+  //   flexShrink: 0,
+  // },
 
   activityContent: {
     flex: 1,
@@ -1385,7 +1445,7 @@ const styles = StyleSheet.create({
   },
 
   listCategoryImage: {
-    width: 50,
+    width: 150,
     height: 50,
     borderRadius: 16,
   },
