@@ -869,6 +869,9 @@ export default function ProductsHomeScreen() {
   const [homeMsg, setHomeMsg] = useState<any | null>(null);
   const [homeMsgLoading, setHomeMsgLoading] = useState(false);
 
+  // state to toggle Valentine UI features (shortcuts, banners, etc.)
+  const [enableValentineUI, setEnableValentineUI] = useState(false);
+
   // Tracks whether the user has dismissed a message in this session. Once a
   // message is dismissed, no further messages (including paused messages) will
   // appear until a new homeMsg is received. This prevents fallback messages
@@ -1137,6 +1140,30 @@ export default function ProductsHomeScreen() {
 
     return unsub;
   }, [location.storeId]);
+
+  // Fetch UI configuration to toggle Valentine features globally
+  useEffect(() => {
+    const unsub = firestore()
+      .collection("ui_config")
+      .doc("valentine_ui")
+      .onSnapshot(
+        (snap) => {
+          if (snap.exists) {
+            const data = snap.data() as any;
+            setEnableValentineUI(data?.enabled === true);
+          } else {
+            console.log("valentine_ui document not found");
+            setEnableValentineUI(false);
+          }
+        },
+        (err) => {
+          console.warn("Error fetching valentine_ui config:", err);
+          setEnableValentineUI(false);
+        }
+      );
+
+    return () => unsub && unsub();
+  }, []);
 
   useEffect(() => {
     firestore()
@@ -1675,7 +1702,10 @@ export default function ProductsHomeScreen() {
   const listHeader = (
     <>
       {/* Promotional banners */}
-  <BannerSwitcher storeId={location.storeId || ""} />
+      <BannerSwitcher
+        storeId={location.storeId || ""}
+        enableValentineUI={enableValentineUI}
+      />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
