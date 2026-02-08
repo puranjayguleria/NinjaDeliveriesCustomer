@@ -19,6 +19,7 @@ import { FirestoreService } from "../services/firestoreService";
 import { formatDateToDDMMYYYY } from "../utils/dateUtils";
 import { fixExistingBookingsForWebsite } from "../utils/fixExistingBookings";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
+import AddOnServicesModal from "../components/AddOnServicesModal";
 
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
@@ -33,6 +34,10 @@ export default function ServiceCheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  
+  // Add-on services modal states
+  const [showAddOnModal, setShowAddOnModal] = useState(false);
+  const [selectedServiceForAddOn, setSelectedServiceForAddOn] = useState<ServiceCartItem | null>(null);
   
   // Address management states
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
@@ -522,6 +527,26 @@ export default function ServiceCheckoutScreen() {
     }
   };
 
+  const handleAddOnServices = (service: ServiceCartItem) => {
+    console.log(`🔧 Opening add-on services for company: ${service.company.name} (${service.company.companyId || service.company.id})`);
+    console.log(`🔧 Category: ${(service as any).categoryId}`);
+    console.log(`🔧 Service details:`, {
+      serviceTitle: service.serviceTitle,
+      categoryId: (service as any).categoryId,
+      companyId: service.company.companyId || service.company.id,
+      issues: service.issues
+    });
+    setSelectedServiceForAddOn(service);
+    setShowAddOnModal(true);
+  };
+
+  const handleAddOnServicesAdded = (addedServices: any[]) => {
+    console.log(`✅ Added ${addedServices.length} add-on services`);
+    // Services are already added to the booking, just close the modal
+    setShowAddOnModal(false);
+    setSelectedServiceForAddOn(null);
+  };
+
   const renderServiceItem = ({ item }: { item: ServiceCartItem }) => (
     <View style={styles.serviceCard}>
       <View style={styles.serviceHeader}>
@@ -563,6 +588,15 @@ export default function ServiceCheckoutScreen() {
           ))}
         </View>
       </View>
+
+      {/* Add-on Services Button */}
+      <TouchableOpacity 
+        style={styles.addOnButton}
+        onPress={() => handleAddOnServices(item)}
+      >
+        <Ionicons name="add-circle-outline" size={18} color="#4CAF50" />
+        <Text style={styles.addOnButtonText}>Add more services from {item.company.name}</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -884,6 +918,24 @@ export default function ServiceCheckoutScreen() {
       </Modal>
 
 
+      {/* Add-On Services Modal */}
+      {selectedServiceForAddOn && (
+        <AddOnServicesModal
+          visible={showAddOnModal}
+          onClose={() => {
+            setShowAddOnModal(false);
+            setSelectedServiceForAddOn(null);
+          }}
+          onAddServices={handleAddOnServicesAdded}
+          categoryId={(selectedServiceForAddOn as any).categoryId || ""}
+          companyId={selectedServiceForAddOn.company?.companyId || selectedServiceForAddOn.company?.id || ""} // Filter by same company
+          existingServices={[
+            selectedServiceForAddOn.serviceTitle,
+            ...(selectedServiceForAddOn.issues || [])
+          ]}
+          bookingId={undefined} // No booking ID yet during checkout
+        />
+      )}
     </View>
   );
 }
@@ -1026,6 +1078,25 @@ const styles = StyleSheet.create({
   issueText: {
     fontSize: 12,
     color: "#666",
+  },
+  addOnButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#4CAF50",
+    borderStyle: "dashed",
+  },
+  addOnButtonText: {
+    fontSize: 13,
+    color: "#4CAF50",
+    fontWeight: "500",
+    marginLeft: 6,
   },
   // Address Section Styles
   addressSection: {

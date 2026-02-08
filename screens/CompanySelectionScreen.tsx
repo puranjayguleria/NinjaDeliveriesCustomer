@@ -328,6 +328,7 @@ export default function CompanySelectionScreen() {
     // Add service to cart (include package info when available)
     addService({
       serviceTitle,
+      categoryId, // Add categoryId for add-on services filtering
       issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
       company: {
         id: selectedCompany.id,

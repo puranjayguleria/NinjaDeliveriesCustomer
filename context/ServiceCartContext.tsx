@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export type ServiceCartItem = {
   id: string;
   serviceTitle: string;
+  categoryId?: string; // Add categoryId for add-on services filtering
   issues: string[];
   company: {
     id: string;
