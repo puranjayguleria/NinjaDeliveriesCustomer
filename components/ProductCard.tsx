@@ -12,9 +12,22 @@ import {
 import { Image } from "expo-image";
 
 import { MaterialIcons } from "@expo/vector-icons";
-import { Product } from "../types/Product";
 import { useUiTheme } from "@/hooks/useUiTheme";
 import { useLocationContext } from "@/context/LocationContext"; // you already use this elsewhere
+
+type Product = {
+  id: string;
+  name: string;
+  image: string;
+  price: number;
+  discount?: number;
+  quantity?: number;
+  CGST?: number;
+  SGST?: number;
+  cess?: number;
+  outOfStock?: boolean;
+  [key: string]: any;
+};
 
 type ProductCardProps = {
   item: Product;

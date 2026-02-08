@@ -16,9 +16,6 @@ import {
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { StackNavigationProp } from "@react-navigation/stack";
-import { RouteProp } from "@react-navigation/native";
-import { RootStackParamList } from "../types/navigation";
 import ErrorModal from "../components/ErrorModal";
 import ProductCard from "../components/ProductCard";
 import Toast from "react-native-toast-message";
@@ -26,20 +23,7 @@ import { useCart } from "../context/CartContext";
 import { useLocationContext } from "../context/LocationContext"; // ⬅️ NEW
 import Loader from "@/components/VideoLoader";
 
-/********** NAV TYPES **********/
-type ProductListingScreenNavigationProp = StackNavigationProp<
-  RootStackParamList,
-  "ProductListing"
->;
-type ProductListingScreenRouteProp = RouteProp<
-  RootStackParamList,
-  "ProductListing"
->;
-
-type Props = {
-  navigation: ProductListingScreenNavigationProp;
-  route: ProductListingScreenRouteProp;
-};
+type Props = {};
 
 type Subcategory = {
   id: string;
@@ -55,6 +39,8 @@ const IMAGE_SIZE = 50;
 
 /********** COMPONENT **********/
 const ProductListingScreen: React.FC<Props> = () => {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   /***** STATE *****/
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
@@ -68,8 +54,6 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [errorMessage, setErrorMessage] = useState("");
 
   /***** NAV / ROUTE / CONTEXT *****/
-  const navigation = useNavigation<ProductListingScreenNavigationProp>();
-  const route = useRoute<ProductListingScreenRouteProp>();
   const { categoryId } = route.params || {};
   const { location } = useLocationContext(); // ⬅️ NEW (storeId)
 

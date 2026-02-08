@@ -90,6 +90,8 @@
       },
       "iosReversedClientId": "com.googleusercontent.apps.1047234268136-87md54v87djhg5hrfiu33oamhb2c3nmi"
     },
-    "runtimeVersion": "1.0.3"
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }

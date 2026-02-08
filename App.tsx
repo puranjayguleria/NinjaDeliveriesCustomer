@@ -93,6 +93,15 @@ import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
 import { RestaurantCartProvider } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
+import OrdersScreen from "./screens/OrdersScreen";
+import OrderSummaryScreen from "./screens/OrderSummaryScreen";
+
+// NinjaEats screens (fallback mappings)
+// Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
+// Map them to existing screens to avoid launch-time crashes / compile failures.
+const NinjaEatsHomeScreen = ProductsHomeScreen;
+const NinjaEatsOrdersScreen = OrdersScreen;
+const NinjaEatsOrderDetailScreen = OrderSummaryScreen;
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
@@ -309,9 +318,9 @@ function HomeStack() {
       />
       <Stack.Screen
         name="ProductListingFromHome"
-        component={ProductListingScreen}
+        component={ProductListingScreen as any}
         options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
+          title: (route.params as any)?.categoryName || "Products",
           headerShown: true,
         })}
       />
@@ -378,9 +387,9 @@ function CategoriesStack() {
       <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
       <Stack.Screen
         name="ProductListingFromCats"
-        component={ProductListingScreen}
+        component={ProductListingScreen as any}
         options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
+          title: (route.params as any)?.categoryName || "Products",
           headerShown: true,
         })}
       />
@@ -399,9 +408,9 @@ function FeaturedStack() {
       <Stack.Screen name="FeaturedHome" component={FeaturedScreen} />
       <Stack.Screen
         name="ProductListingFromFeatured"
-        component={ProductListingScreen}
+        component={ProductListingScreen as any}
         options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
+          title: (route.params as any)?.categoryName || "Products",
           headerShown: true,
         })}
       />
@@ -510,7 +519,8 @@ function AppTabs() {
           options={{ title: "Home" }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              if (route.state && route.state.index > 0) {
+              const st: any = (route as any).state;
+              if (st && st.index > 0) {
                 e.preventDefault();
                 navigation.dispatch(
                   CommonActions.reset({
@@ -553,7 +563,9 @@ function AppTabs() {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
                 // ...login prompt...
-              } else if (route.state && route.state.index > 0) {
+              } else {
+                const st: any = (route as any).state;
+                if (!(st && st.index > 0)) return;
                 e.preventDefault();
                 navigation.dispatch(
                   CommonActions.reset({
@@ -710,10 +722,11 @@ const App: React.FC = () => {
   /* listen for token rotation → store in Firestore */
   useEffect(() => {
     const sub = Notifications.addPushTokenListener(({ type, data }) => {
-      if (type === "expo" && auth().currentUser) {
+      const u = auth().currentUser;
+      if (type === "expo" && u) {
         firestore()
           .collection("users")
-          .doc(auth().currentUser.uid)
+          .doc(u.uid)
           .set({ expoPushToken: data }, { merge: true });
       }
     });

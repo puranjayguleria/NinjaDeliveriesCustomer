@@ -24,7 +24,7 @@ import * as Location from 'expo-location';
 import { useNavigation, useRoute, useFocusEffect, RouteProp, useIsFocused } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
 import { useCustomer } from '../context/CustomerContext';
-import { debounce } from 'lodash';
+import lodash from 'lodash';
 import { Ionicons } from '@expo/vector-icons'; // Import Ionicons
 import { GOOGLE_PLACES_API_KEY } from '@env'; // Imported from environment variables
 import { DHARAMSHALA_CENTER, isWithin10KmOfDharamshala } from '../utils/locationUtils';
@@ -77,9 +77,12 @@ const DropoffLocationScreen: React.FC = () => {
   const [hasSelectedPlace, setHasSelectedPlace] = useState<boolean>(false); // To manage "No places found" message
   const [fetchingLocation, setFetchingLocation] = useState<boolean>(false); // New state variable
 
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<Record<string, RouteParams>, string>>();
   const { customerId } = useCustomer();
- ws  const { pickupCoords, pickupDetails } = route.params;
+  const { pickupCoords, pickupDetails } = (route.params || ({} as any)) as RouteParams;
+
+  const debounce = lodash.debounce;
 
   // Helper Function to Calculate Distance using Haversine Formula
   /**

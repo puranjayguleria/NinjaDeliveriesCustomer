@@ -15,6 +15,7 @@ import {
   StyleSheet,
   Image,
   Alert,
+  Platform,
   ScrollView,
   Dimensions,
   Modal,
@@ -29,7 +30,7 @@ import {
 } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
-import firestore, { firebase } from "@react-native-firebase/firestore";
+import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
@@ -47,7 +48,52 @@ import { useWeather } from "../context/WeatherContext";
 
 
 // ✅ Razorpay SDK
-import RazorpayCheckout from "react-native-razorpay";
+// NOTE: Lazy-load Razorpay to avoid app-launch crash loops if the native module
+// isn't available/initialized (e.g., OTA applied to an app binary built without Razorpay).
+type RazorpayCheckoutType = {
+  open: (options: any) => Promise<any>;
+};
+
+const getRazorpayCheckout = (): RazorpayCheckoutType | null => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("react-native-razorpay");
+    // Some builds export as default, some via { RazorpayCheckout }, and some directly.
+    const candidate = (mod?.default || mod?.RazorpayCheckout || mod) as any;
+
+    if (!candidate || typeof candidate.open !== "function") {
+      console.warn("[Razorpay] Unexpected module shape", {
+        keys: mod ? Object.keys(mod) : null,
+        defaultType: typeof mod?.default,
+        hasNamed: Boolean(mod?.RazorpayCheckout),
+      });
+      return null;
+    }
+
+    return candidate as RazorpayCheckoutType;
+  } catch (e) {
+    console.warn("[Razorpay] Module not available", e);
+    return null;
+  }
+};
+
+const debugRazorpayAvailability = () => {
+  // Keep this minimal and safe: no secrets, just module presence/shape.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("react-native-razorpay");
+    const candidate = (mod?.default || mod?.RazorpayCheckout || mod) as any;
+    console.log("[Razorpay] availability", {
+      hasModule: Boolean(mod),
+      keys: mod ? Object.keys(mod) : null,
+      hasDefault: Boolean(mod?.default),
+      hasNamed: Boolean(mod?.RazorpayCheckout),
+      hasOpen: typeof candidate?.open === "function",
+    });
+  } catch (e) {
+    console.log("[Razorpay] availability: require failed", String((e as any)?.message || e));
+  }
+};
 const api = axios.create({
   timeout: 20000,
   headers: { "Content-Type": "application/json" },
@@ -113,8 +159,8 @@ type Product = {
   discount?: number;
   image: string;
   quantity: number;
-  CGST?: number;
-  SGST?: number;
+  CGST: number;
+  SGST: number;
   cess?: number;
 
   // ✅ you already use matchingProducts in fetchRecommended
@@ -125,7 +171,7 @@ type Product = {
 type Hotspot = {
   id: string;
   name: string;
-  center: firebase.firestore.GeoPoint;
+  center: any;
   radiusKm: number;
   convenienceCharge: number;
   reasons: string[];
@@ -377,7 +423,7 @@ const CartScreen: React.FC = () => {
       .where("storeId", "==", storeId)
       .get();
 
-    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Hotspot) }));
+    const list = snap.docs.map((d) => ({ ...(d.data() as Hotspot), id: d.id }));
     setHotspots(list);
   };
 
@@ -509,7 +555,7 @@ const CartScreen: React.FC = () => {
         return;
       }
 
-      const batchPromises: Promise<firebase.firestore.QuerySnapshot>[] = [];
+  const batchPromises: Promise<any>[] = [];
       const tempIds = [...productIds];
 
       while (tempIds.length > 0) {
@@ -533,18 +579,18 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(batchPromises);
 
       const productsData: Product[] = [];
-      snapshots.forEach((snap) => {
-        snap.forEach((doc) => {
+      snapshots.forEach((snap: any) => {
+        snap.forEach((doc: any) => {
           const data = doc.data() as Product;
           if ((data.quantity ?? 0) > 0) {
             const existing = productsData.find((p) => p.id === doc.id);
             if (!existing) {
-              productsData.push({ id: doc.id, ...data });
+              productsData.push({ ...data, id: doc.id });
             } else {
               if (doc.ref.parent.path.includes("saleProducts") && data.discount) {
                 productsData[productsData.indexOf(existing)] = {
-                  id: doc.id,
                   ...data,
+                  id: doc.id,
                 };
               }
             }
@@ -592,7 +638,7 @@ const CartScreen: React.FC = () => {
         return;
       }
 
-      const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
+      const reads: Promise<any>[] = [];
       for (let i = 0; i < idList.length; i += 10) {
         const chunk = idList.slice(i, i + 10);
         reads.push(
@@ -607,10 +653,10 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(reads);
 
       const recs: Product[] = [];
-      snapshots.forEach((snap) =>
-        snap.forEach((doc) => {
+      snapshots.forEach((snap: any) =>
+        snap.forEach((doc: any) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) > 0) recs.push({ id: doc.id, ...data });
+          if ((data.quantity ?? 0) > 0) recs.push({ ...data, id: doc.id });
         })
       );
 
@@ -742,8 +788,9 @@ const CartScreen: React.FC = () => {
           winner = { spot, distKm: km };
       });
 
-      return winner
-        ? { hotspot: winner.spot, fee: n(winner.spot.convenienceCharge) }
+      const w = winner as any;
+      return w
+        ? { hotspot: w.spot, fee: n(w.spot.convenienceCharge) }
         : { hotspot: null, fee: 0 };
     } catch (e) {
       console.error("[checkHotspot]", e);
@@ -978,6 +1025,7 @@ const CartScreen: React.FC = () => {
   amountPaise: number,
   currency: string
 ) => {
+  debugRazorpayAvailability();
   const user = auth().currentUser;
   if (!user) throw new Error("Not logged in");
 
@@ -1001,11 +1049,29 @@ const CartScreen: React.FC = () => {
     theme: { color: "#00C853" },
   };
 
-  return RazorpayCheckout.open(options) as Promise<{
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }>;
+  const RazorpayCheckout = getRazorpayCheckout();
+  if (!RazorpayCheckout?.open) {
+    throw new Error(
+      "Online payment isn't available (Razorpay not initialized). Please update the app or use Cash on Delivery."
+    );
+  }
+
+  try {
+    return (await RazorpayCheckout.open(options)) as {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    };
+  } catch (e: any) {
+    // Surface a clearer message for the common native init failure case.
+    const msg = String(e?.description || e?.message || "");
+    if (/open/i.test(msg) && /null|undefined/i.test(msg)) {
+      throw new Error(
+        "Payment failed because Razorpay isn't initialized in this build. Please update the app."
+      );
+    }
+    throw e;
+  }
 };
 
 
@@ -1021,7 +1087,7 @@ const CartScreen: React.FC = () => {
   const handlePaymentOption = async (option: "cod" | "online") => {
     setShowPaymentSheet(false);
 
-    // ✅ COD unchanged
+  // ✅ COD unchanged
     if (option === "cod") {
       try {
         setNavigating(true);
@@ -1055,6 +1121,26 @@ const CartScreen: React.FC = () => {
         setNavigating(false);
       }
       return;
+    }
+
+    // If Razorpay isn't available in this binary, don't proceed.
+    if (option === "online") {
+      if (Platform.OS === "ios") {
+        Alert.alert(
+          "Online payment unavailable",
+          "Online payments (Razorpay) aren’t available on iOS in this build. Please use Cash on Delivery or update the app when a new iOS version is released."
+        );
+        return;
+      }
+
+      const RazorpayCheckout = getRazorpayCheckout();
+      if (!RazorpayCheckout?.open) {
+        Alert.alert(
+          "Update required",
+          "Online payments require the latest app version. Please update Ninja Deliveries from the Play Store and try again.\n\nYou can still place this order using Cash on Delivery."
+        );
+        return;
+      }
     }
 
     // ✅ ONLINE Razorpay TEST
@@ -1948,6 +2034,7 @@ const meta = await openRazorpayCheckout(
         <NotificationModal
           visible={notificationModalVisible}
           message={notificationModalMessage}
+          onConfirm={() => setNotificationModalVisible(false)}
           onClose={() => setNotificationModalVisible(false)}
         />
 

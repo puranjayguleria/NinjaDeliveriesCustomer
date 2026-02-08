@@ -298,7 +298,7 @@ type IntroProps = { url: string | null; title: string | null };
 const MemoIntroCard = React.memo(
   ({ url, title }: IntroProps) => {
     const nav = useNavigation<any>();
-    const ref = useRef<Video>(null);
+    const ref = useRef<any>(null);
     const [dur, setDur] = useState(0);
     const [spin, setSpin] = useState(true);
     const isMp4 = !!url && /\.mp4(\?|$)/i.test(url);
@@ -1274,7 +1274,7 @@ export default function ProductsHomeScreen() {
         // ignore
       }
 
-      updateLocation({ storeId: picked.storeId, address: addr });
+      updateLocation({ storeId: (picked as any).storeId, address: addr });
     },
     [zones, location.storeId, updateLocation, nav, setErrorMessage, setConfirmText]
   );
@@ -1430,7 +1430,7 @@ export default function ProductsHomeScreen() {
         .where("quantity", ">", 0)
         .get();
 
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as any[];
       const up: typeof prodMap = {};
       slice.forEach((c) => {
         const arr = all.filter((p) => p.categoryId === c.id);
@@ -1638,7 +1638,7 @@ export default function ProductsHomeScreen() {
         .where("quantity", ">", 0)
         .get();
 
-      const all = snap.docs.map((d) => {
+      const all: any[] = snap.docs.map((d) => {
         const data = d.data();
         return {
           id: d.id,
@@ -1675,7 +1675,7 @@ export default function ProductsHomeScreen() {
   const listHeader = (
     <>
       {/* Promotional banners */}
-      <BannerSwitcher storeId={location.storeId} />
+  <BannerSwitcher storeId={location.storeId || ""} />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
@@ -1801,7 +1801,7 @@ export default function ProductsHomeScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={pageBg.overlayGradient}
+                  colors={pageBg.overlayGradient as any}
                   style={StyleSheet.absoluteFill}
                 />
               </View>
@@ -1839,7 +1839,7 @@ export default function ProductsHomeScreen() {
             style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
           >
             <LinearGradient
-              colors={headerGradientColors}
+              colors={headerGradientColors as any}
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
@@ -1931,9 +1931,9 @@ export default function ProductsHomeScreen() {
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item: any) => item.id}
             extraData={listExtraData}
-            renderItem={({ item }) => {
+            renderItem={({ item }: { item: any }) => {
               if (!item?.id || !item?.name) return null;
 
               const data = prodMap[item.id]?.rows || [];
@@ -2452,7 +2452,7 @@ labelActive: { color: '#fff' },
   reorderTitle: { fontSize: 16, fontWeight: "700", color: "#2f2f2f" },
   reorderDate: { fontSize: 12, color: "#777", fontWeight: "600" },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  pill: {
+  metaPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
