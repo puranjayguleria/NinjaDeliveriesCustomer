@@ -210,6 +210,7 @@ export default function ServicesScreen() {
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const searchInputRef = React.useRef<TextInput>(null);
   const activityScrollRef = React.useRef<ScrollView>(null);
+  const bannerScrollRef = React.useRef<FlatList>(null);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
 
   // Helper function to format time ago
@@ -461,6 +462,27 @@ export default function ServicesScreen() {
 
     return () => clearInterval(interval);
   }, [activities.length]);
+
+  // Auto-scroll banners with pause
+  useEffect(() => {
+    if (serviceBanners.length <= 1) return;
+
+    let currentIndex = 0;
+    const bannerWidth = width - 32; // Match the snapToInterval value
+
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % serviceBanners.length;
+      
+      if (bannerScrollRef.current) {
+        bannerScrollRef.current.scrollToOffset({
+          offset: currentIndex * bannerWidth,
+          animated: true,
+        });
+      }
+    }, 4000); // Pause for 4 seconds on each banner
+
+    return () => clearInterval(interval);
+  }, [serviceBanners.length]);
 
   // Blinking animation for Live Activity dot
   useEffect(() => {
@@ -782,6 +804,7 @@ export default function ServicesScreen() {
             {!bannersLoading && serviceBanners.length > 0 && (
               <View style={styles.bannerContainer}>
                 <FlatList
+                  ref={bannerScrollRef}
                   data={serviceBanners}
                   renderItem={renderBanner}
                   keyExtractor={(item) => item.id}
