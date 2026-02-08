@@ -269,50 +269,8 @@ export default function AddOnServicesModal({
 
     const totalAmount = getTotalPrice();
     
-    // Show confirmation with payment options
-    Alert.alert(
-      "Confirm Add-On Services",
-      `You are about to add ${selected.length} service${selected.length > 1 ? 's' : ''} for ₹${totalAmount}.\n\nChoose your payment method:`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Pay as Cash", 
-          onPress: () => handleCashPayment(selected, totalAmount)
-        },
-        { 
-          text: "Pay Now", 
-          onPress: () => handleRazorpayPayment(selected, totalAmount)
-        },
-      ]
-    );
-  };
-
-  const handleCashPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
-    setPaymentLoading(true);
-    try {
-      console.log(`💰 Processing cash payment for ${selectedAddOns.length} add-on services - Amount: ₹${totalAmount}`);
-      
-      // Update booking with add-on services and cash payment info
-      await updateBookingWithAddOns(selectedAddOns, totalAmount, null, 'cash');
-      
-      // Close modal and notify parent
-      onAddServices(selectedAddOns);
-      onClose();
-      
-      // Show custom success modal
-      setSuccessModalData({
-        serviceCount: selectedAddOns.length,
-        amount: totalAmount,
-        paymentMethod: "cash",
-      });
-      setShowSuccessModal(true);
-      
-    } catch (error: any) {
-      console.error("Cash payment processing error:", error);
-      Alert.alert("Error", "Failed to add services with cash payment. Please try again.");
-    } finally {
-      setPaymentLoading(false);
-    }
+    // Proceed directly to online payment
+    handleRazorpayPayment(selected, totalAmount);
   };
 
   const handleRazorpayPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
@@ -510,6 +468,7 @@ export default function AddOnServicesModal({
     <TouchableOpacity
       style={[styles.serviceItem, item.selected && styles.serviceItemSelected]}
       onPress={() => toggleServiceSelection(item.id)}
+      activeOpacity={0.7}
     >
       <View style={styles.serviceContent}>
         <View style={styles.serviceInfo}>
@@ -519,12 +478,12 @@ export default function AddOnServicesModal({
           </Text>
           <View style={styles.priceContainer}>
             <Text style={styles.servicePrice}>₹{item.price}</Text>
-            <Text style={styles.priceLabel}>per service</Text>
+            <Text style={styles.priceLabel}>/ service</Text>
           </View>
         </View>
         <View style={[styles.checkbox, item.selected && styles.checkboxSelected]}>
           {item.selected && (
-            <Ionicons name="checkmark" size={16} color="#fff" />
+            <Ionicons name="checkmark" size={18} color="#fff" />
           )}
         </View>
       </View>
@@ -549,9 +508,12 @@ export default function AddOnServicesModal({
           <View style={styles.placeholder} />
         </View>
 
-        <Text style={styles.subtitle}>
-          Select additional services from the same category
-        </Text>
+        <View style={styles.subtitleContainer}>
+          <Ionicons name="add-circle" size={20} color="#10B981" />
+          <Text style={styles.subtitle}>
+            Select additional services from the same category
+          </Text>
+        </View>
 
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -596,16 +558,20 @@ export default function AddOnServicesModal({
               ]}
               onPress={handleAddServices}
               disabled={getSelectedCount() === 0 || paymentLoading}
+              activeOpacity={0.8}
             >
               {paymentLoading ? (
                 <View style={styles.loadingButtonContent}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.addButtonText}>Processing...</Text>
+                  <Text style={styles.addButtonText}>Processing Payment...</Text>
                 </View>
               ) : (
-                <Text style={styles.addButtonText}>
-                  Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''} - ₹{getTotalPrice()}
-                </Text>
+                <View style={styles.loadingButtonContent}>
+                  <Ionicons name="card" size={20} color="#fff" />
+                  <Text style={styles.addButtonText}>
+                    Pay ₹{getTotalPrice()} & Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''}
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
           </>
@@ -630,7 +596,7 @@ export default function AddOnServicesModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#F3F4F6",
   },
   header: {
     flexDirection: "row",
@@ -642,24 +608,38 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
   },
   closeButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
   },
   placeholder: {
-    width: 32,
+    width: 40,
+  },
+  subtitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    gap: 8,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#6B7280",
-    textAlign: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    fontWeight: "500",
   },
   loadingContainer: {
     flex: 1,
@@ -693,18 +673,28 @@ const styles = StyleSheet.create({
   servicesList: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 8,
   },
   serviceItem: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 2,
     borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   serviceItemSelected: {
-    borderColor: "#007AFF",
-    backgroundColor: "#F0F9FF",
+    borderColor: "#10B981",
+    backgroundColor: "#F0FDF4",
+    shadowColor: "#10B981",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   serviceContent: {
     flexDirection: "row",
@@ -713,87 +703,114 @@ const styles = StyleSheet.create({
   },
   serviceInfo: {
     flex: 1,
+    paddingRight: 12,
   },
   serviceName: {
-    fontSize: 16,
-    fontWeight: "500",
+    fontSize: 17,
+    fontWeight: "600",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 6,
+    lineHeight: 22,
   },
   serviceDescription: {
     fontSize: 14,
     color: "#6B7280",
-    marginBottom: 8,
+    marginBottom: 10,
+    lineHeight: 20,
   },
   priceContainer: {
     flexDirection: "row",
-    alignItems: "baseline",
-    gap: 4,
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
   },
   servicePrice: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#10B981",
-    fontWeight: "700",
+    fontWeight: "800",
+    marginRight: 4,
   },
   priceLabel: {
     fontSize: 12,
-    color: "#9CA3AF",
-    fontWeight: "400",
+    color: "#059669",
+    fontWeight: "600",
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: "#D1D5DB",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#fff",
   },
   checkboxSelected: {
-    backgroundColor: "#007AFF",
-    borderColor: "#007AFF",
+    backgroundColor: "#10B981",
+    borderColor: "#10B981",
   },
   summaryContainer: {
     backgroundColor: "#fff",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 20,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 4,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   summaryText: {
     fontSize: 16,
-    color: "#111827",
-    fontWeight: "500",
+    color: "#374151",
+    fontWeight: "600",
   },
   summaryPrice: {
-    fontSize: 18,
+    fontSize: 22,
     color: "#10B981",
-    fontWeight: "700",
+    fontWeight: "800",
   },
   addButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#10B981",
     marginHorizontal: 20,
     marginVertical: 20,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 18,
+    borderRadius: 14,
     alignItems: "center",
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   addButtonDisabled: {
     backgroundColor: "#D1D5DB",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   addButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   loadingButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
 });

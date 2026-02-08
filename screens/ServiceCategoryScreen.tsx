@@ -24,7 +24,6 @@ export default function ServiceCategoryScreen() {
 
   // Single-select states
   const [selectedId, setSelectedId] = useState<string>("");
-  const [otherText, setOtherText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,14 +66,7 @@ export default function ServiceCategoryScreen() {
 
       if (!selectedCategoryId) {
         console.error('No categoryId provided');
-        setIssues([
-          { 
-            id: 'other', 
-            name: 'Other Issue', 
-            masterCategoryId: '', 
-            isActive: true 
-          }
-        ]);
+        setIssues([]);
         return;
       }
 
@@ -141,42 +133,22 @@ export default function ServiceCategoryScreen() {
         console.log(`📱 WILL DISPLAY: "${service.name}" (isActive: ${service.isActive})`);
       });
       
-      // Add "Other Issue" option at the end
-      const issuesWithOther = [
-        ...activeIssues,
-        { 
-          id: 'other', 
-          name: 'Other Issue', 
-          masterCategoryId: selectedCategoryId, 
-          isActive: true 
-        }
-      ];
-      
       // 🖼️ DEBUG: Log which services have images
       console.log('🖼️ Services with images:');
-      issuesWithOther.forEach(service => {
-        if (service.id !== 'other') {
-          console.log(`  - "${service.name}": ${service.imageUrl ? '✅ Has image' : '❌ No image'}`);
-          if (service.imageUrl) {
-            console.log(`    Image URL: ${service.imageUrl.substring(0, 60)}...`);
-          }
+      activeIssues.forEach(service => {
+        console.log(`  - "${service.name}": ${service.imageUrl ? '✅ Has image' : '❌ No image'}`);
+        if (service.imageUrl) {
+          console.log(`    Image URL: ${service.imageUrl.substring(0, 60)}...`);
         }
       });
       
-      setIssues(issuesWithOther);
+      setIssues(activeIssues);
       
     } catch (error) {
       console.error('Error fetching services:', error);
       
-      // Set only "Other Issue" on error
-      setIssues([
-        { 
-          id: 'other', 
-          name: 'Other Issue', 
-          masterCategoryId: selectedCategoryId || '', 
-          isActive: true 
-        }
-      ]);
+      // Set empty array on error
+      setIssues([]);
     } finally {
       setLoading(false);
     }
@@ -195,17 +167,10 @@ export default function ServiceCategoryScreen() {
     // Single selection - if same id clicked, deselect it, otherwise select new one
     if (selectedId === id) {
       setSelectedId("");
-      if (id === "other") setOtherText("");
     } else {
       setSelectedId(id);
-      // Clear other text if switching away from "other"
-      if (selectedId === "other" && id !== "other") {
-        setOtherText("");
-      }
     }
   };
-
-  const isOtherSelected = selectedId === "other";
 
   const selectedIssueTitles = useMemo(() => {
     if (!issues || !Array.isArray(issues) || !selectedId) return [];
@@ -213,20 +178,12 @@ export default function ServiceCategoryScreen() {
     const selectedIssue = issues.find((x) => x.id === selectedId);
     if (!selectedIssue) return [];
 
-    if (isOtherSelected && otherText.trim().length > 0) {
-      return [`Other: ${otherText}`];
-    }
     return [selectedIssue.name];
-  }, [issues, selectedId, otherText, isOtherSelected]);
+  }, [issues, selectedId]);
 
   const onContinue = () => {
     if (!selectedId) {
       Alert.alert("Select Issue", "Please select an issue.");
-      return;
-    }
-
-    if (isOtherSelected && otherText.trim().length < 3) {
-      Alert.alert("Other Issue", "Please describe your issue in Other field.");
       return;
     }
 
@@ -325,20 +282,6 @@ export default function ServiceCategoryScreen() {
           >
             <Text style={styles.viewLessText}>Show Less</Text>
           </TouchableOpacity>
-        )}
-
-        {/* Other Issue Input */}
-        {isOtherSelected && (
-          <View style={styles.otherBox}>
-            <Text style={styles.otherTitle}>Describe Other Issue</Text>
-            <TextInput
-              value={otherText}
-              onChangeText={setOtherText}
-              placeholder="Write your issue..."
-              style={styles.input}
-              multiline
-            />
-          </View>
         )}
         
         <View style={{ height: 80 }} />
