@@ -270,7 +270,7 @@ export default function ServicesScreen() {
             
             snapshot.forEach(doc => {
               const data = doc.data();
-              categories.push({
+              const category = {
                 id: doc.id,
                 name: data.name || '',
                 isActive: data.isActive || false,
@@ -278,7 +278,11 @@ export default function ServicesScreen() {
                 imageUrl: null,
                 createdAt: data.createdAt,
                 updatedAt: data.updatedAt,
-              });
+              };
+              categories.push(category);
+              
+              // 🚨 DEBUG: Log each category with its ID
+              console.log(`📋 Category: "${category.name}" -> ID: ${doc.id}`);
             });
 
             // Sort by name
@@ -575,8 +579,31 @@ export default function ServicesScreen() {
     const textColor = banner.textColor || 'white';
 
     const onBannerPress = () => {
-      if (!banner.clickable) return;
+      console.log('🎯 Banner clicked:', {
+        title: banner.title,
+        clickable: banner.clickable,
+        redirectType: banner.redirectType,
+        categoryId: banner.categoryId,
+      });
 
+      // If clickable is false, don't navigate
+      if (banner.clickable === false) {
+        console.log('⚠️ Banner is not clickable');
+        return;
+      }
+
+      // If categoryId exists, navigate to that category (regardless of redirectType)
+      if (banner.categoryId) {
+        const navigationParams = {
+          serviceTitle: banner.title,
+          categoryId: banner.categoryId
+        };
+        console.log('✅ Navigating to ServiceCategory with params:', navigationParams);
+        navigation.navigate("ServiceCategory", navigationParams);
+        return;
+      }
+
+      // Fallback to redirectType-based navigation
       if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
         navigation.navigate("ServiceCategory", { 
           serviceTitle: banner.title,
@@ -586,15 +613,18 @@ export default function ServicesScreen() {
         navigation.navigate("AllServices");
       } else if (banner.redirectUrl) {
         console.log('Banner redirect URL:', banner.redirectUrl);
+      } else {
+        console.log('⚠️ No valid navigation target found for banner');
       }
     };
 
     return (
       <TouchableOpacity 
         key={banner.id}
-        activeOpacity={0.9}
+        activeOpacity={banner.clickable === false ? 1 : 0.7}
         onPress={onBannerPress}
         style={styles.bannerItem}
+        disabled={banner.clickable === false}
       >
         {banner.imageUrl ? (
           <ImageBackground 
