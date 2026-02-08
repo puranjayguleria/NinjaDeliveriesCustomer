@@ -30,7 +30,7 @@ export default function ServiceCheckoutScreen() {
   // Ensure displayed total comes from the actual services (preserve package/company prices)
   const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentMethod, setPaymentMethod] = useState("online");
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   
@@ -174,15 +174,9 @@ export default function ServiceCheckoutScreen() {
     const selectedAddress = getSelectedAddress();
     console.log(`✅ Address validation passed:`, selectedAddress);
     
-    if (paymentMethod === "online") {
-      console.log(`💳 Processing online payment...`);
-      // For online payment, directly open Razorpay payment
-      await handleRazorpayPayment();
-    } else {
-      console.log(`💰 Processing cash payment...`);
-      // For cash payment, show custom confirmation modal
-      setShowConfirmModal(true);
-    }
+    console.log(`💳 Processing online payment...`);
+    // Directly open Razorpay payment
+    await handleRazorpayPayment();
   };
 
   const handleRazorpayPayment = async () => {
@@ -689,34 +683,7 @@ export default function ServiceCheckoutScreen() {
         <View style={styles.paymentSection}>
           <Text style={styles.sectionTitle}>Payment Method</Text>
           
-          <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === "cash" && styles.paymentOptionSelected,
-            ]}
-            onPress={() => setPaymentMethod("cash")}
-          >
-            <View style={styles.paymentOptionContent}>
-              <View style={styles.cashIconContainer}>
-                <Ionicons name="cash-outline" size={24} color="#FF9800" />
-              </View>
-              <View style={styles.paymentOptionTextContainer}>
-                <Text style={styles.paymentOptionText}>Cash on Service</Text>
-                <Text style={styles.paymentOptionSubtext}>Pay when service is completed</Text>
-              </View>
-            </View>
-            {paymentMethod === "cash" && (
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === "online" && styles.paymentOptionSelected,
-            ]}
-            onPress={() => setPaymentMethod("online")}
-          >
+          <View style={[styles.paymentOption, styles.paymentOptionSelected]}>
             <View style={styles.paymentOptionContent}>
               <View style={styles.onlineIconContainer}>
                 <Ionicons name="card-outline" size={24} color="#4CAF50" />
@@ -726,28 +693,15 @@ export default function ServiceCheckoutScreen() {
                 <Text style={styles.paymentOptionSubtext}>UPI, Cards, Net Banking via Razorpay</Text>
               </View>
             </View>
-            {paymentMethod === "online" && (
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-            )}
-          </TouchableOpacity>
+            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+          </View>
 
-          {paymentMethod === "online" && (
-            <View style={styles.paymentNote}>
-              <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
-              <Text style={styles.paymentNoteText}>
-                Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
-              </Text>
-            </View>
-          )}
-
-          {paymentMethod === "cash" && (
-            <View style={styles.cashPaymentNote}>
-              <Ionicons name="cash-outline" size={16} color="#FF9800" />
-              <Text style={styles.cashPaymentNoteText}>
-                Pay directly to the technician when the service is completed. No advance payment required.
-              </Text>
-            </View>
-          )}
+          <View style={styles.paymentNote}>
+            <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
+            <Text style={styles.paymentNoteText}>
+              Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
+            </Text>
+          </View>
         </View>
 
         <View style={styles.summarySection}>
@@ -790,43 +744,23 @@ export default function ServiceCheckoutScreen() {
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>
         </View>
         
-        {paymentMethod === "cash" ? (
-          <TouchableOpacity
-            style={[styles.cashPayButton, loading && styles.proceedButtonDisabled]}
-            onPress={handleProceedToPayment}
-            disabled={loading}
-          >
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.proceedButtonText}>Creating Bookings...</Text>
-              </View>
-            ) : (
-              <View style={styles.cashPayButtonContent}>
-                <Ionicons name="cash-outline" size={20} color="#fff" />
-                <Text style={styles.proceedButtonText}>Pay as Cash</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.proceedButton, loading && styles.proceedButtonDisabled]}
-            onPress={handleProceedToPayment}
-            disabled={loading}
-          >
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.proceedButtonText}>Processing Payment...</Text>
-              </View>
-            ) : (
-              <View style={styles.onlinePayButtonContent}>
-                <Ionicons name="card-outline" size={20} color="#fff" />
-                <Text style={styles.proceedButtonText}>Pay ₹{computedTotalAmount} Online</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.proceedButton, loading && styles.proceedButtonDisabled]}
+          onPress={handleProceedToPayment}
+          disabled={loading}
+        >
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.proceedButtonText}>Processing Payment...</Text>
+            </View>
+          ) : (
+            <View style={styles.onlinePayButtonContent}>
+              <Ionicons name="card-outline" size={20} color="#fff" />
+              <Text style={styles.proceedButtonText}>Pay ₹{computedTotalAmount} Online</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Add Address Modal */}
@@ -949,22 +883,7 @@ export default function ServiceCheckoutScreen() {
         </View>
       </Modal>
 
-      {/* Booking Confirmation Modal */}
-      <BookingConfirmationModal
-        visible={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onConfirm={async () => {
-          setShowConfirmModal(false);
-          console.log(`✅ User confirmed cash booking, calling createBookings...`);
-          await createBookings();
-        }}
-        serviceName={services.length > 0 ? services[0].serviceTitle : "Service"}
-        amount={computedTotalAmount}
-        location={getSelectedAddress()?.fullAddress || "Not selected"}
-        date={services.length > 0 && services[0].selectedDate ? formatDateToDDMMYYYY(services[0].selectedDate) : "Not selected"}
-        time={services.length > 0 ? services[0].selectedTime : "Not selected"}
-        issues={services.length > 0 ? services[0].issues : []}
-      />
+
     </View>
   );
 }
