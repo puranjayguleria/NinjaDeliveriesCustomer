@@ -26,7 +26,7 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentin
   const [bannerConfig, setBannerConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
   // z_banners state
   const [showValentineBanner, setShowValentineBanner] = useState(false);
   const [showRoseBouquetBanner, setShowRoseBouquetBanner] = useState(false);
@@ -74,17 +74,11 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentin
 
             if (data.name === "Valentine Sale") {
               valEnabled = data.enabled === true;
-              valUrl =
-                typeof data.imageUrl === "string"
-                  ? data.imageUrl.replace(/`/g, "").trim()
-                  : null;
+              valUrl = typeof data.imageUrl === "string" ? data.imageUrl.replace(/`/g, "").trim() : null;
             }
             if (data.name === "Rose Bouquet") {
               roseEnabled = data.enabled === true;
-              roseUrl =
-                typeof data.imageUrl === "string"
-                  ? data.imageUrl.replace(/`/g, "").trim()
-                  : null;
+              roseUrl = typeof data.imageUrl === "string" ? data.imageUrl.replace(/`/g, "").trim() : null;
             }
           });
 
@@ -113,19 +107,17 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentin
     );
   }
 
+  const showOthers = bannerConfig && (bannerConfig.showQuiz || bannerConfig.showSliderBanner || bannerConfig.showSales);
+
   return (
     <View style={styles.container}>
       {/* Valentine sections - controlled by enableValentineUI flag */}
-      {enableValentineUI && showValentineBanner && (
-        <ValentineBanner imageUrl={valentineBannerUrl} />
-      )}
-      {enableValentineUI && showRoseBouquetBanner && (
-        <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />
-      )}
+      {enableValentineUI && showValentineBanner && <ValentineBanner imageUrl={valentineBannerUrl} />}
+      {enableValentineUI && showRoseBouquetBanner && <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />}
       {enableValentineUI && <ValentineSpecialSection storeId={storeId} />}
-
-      {/* Other banners */}
-      {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />}
+      
+      {/* Other banners - always shown */}
+      {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}
       {bannerConfig?.showSliderBanner && <SliderBanner storeId={storeId} />}
       {bannerConfig?.showSales && <SalesBanner storeId={storeId} />}
     </View>

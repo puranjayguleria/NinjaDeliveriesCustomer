@@ -17,6 +17,7 @@ import {
   Platform,
   Modal,
   TextInput as RNTextInput, // rename to avoid confusion
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -27,6 +28,7 @@ import { Button, TextInput } from "react-native-paper";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
 import Loader from "@/components/VideoLoader";
+import { LinearGradient } from 'expo-linear-gradient';
 
 const pastelGreen = "#e7f8f6";
 const primaryTextColor = "#333";
@@ -453,34 +455,46 @@ const ProfileScreen: React.FC = () => {
 
       // Direct which screen to go to
       if (status === "pending") {
-        navigation.navigate("HomeTab", {
-          screen: "OrderAllocating",
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
           params: {
-            orderId: id,
-            pickupCoords,
-            dropoffCoords,
-            totalCost: finalTotal,
+            screen: "OrderAllocating",
+            params: {
+              orderId: id,
+              pickupCoords,
+              dropoffCoords,
+              totalCost: finalTotal,
+            },
           },
         });
       } else if (status === "cancelled") {
-        navigation.navigate("HomeTab", {
-          screen: "OrderCancelled",
-          params: { orderId: id, refundAmount: refundAmount || finalTotal },
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
+          params: {
+            screen: "OrderCancelled",
+            params: { orderId: id, refundAmount: refundAmount || finalTotal },
+          },
         });
       } else if (status === "tripEnded") {
-        navigation.navigate("HomeTab", {
-          screen: "RatingScreen",
-          params: { orderId: id },
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
+          params: {
+            screen: "RatingScreen",
+            params: { orderId: id },
+          },
         });
       } else {
         /* active / reachedPickup / etc. */
-        navigation.navigate("HomeTab", {
-          screen: "OrderTracking",
+        navigation.navigate("AppTabs", {
+          screen: "HomeTab",
           params: {
-            orderId: id,
-            pickupCoords,
-            dropoffCoords,
-            totalCost: finalTotal,
+            screen: "OrderTracking",
+            params: {
+              orderId: id,
+              pickupCoords,
+              dropoffCoords,
+              totalCost: finalTotal,
+            },
           },
         });
       }
@@ -582,7 +596,17 @@ const ProfileScreen: React.FC = () => {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         <View style={styles.headerBlock}>
-          <Text style={styles.mainTitle}>My Profile</Text>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              onPress={() => (navigation as any).goBack?.()}
+              style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color={primaryTextColor} />
+            </TouchableOpacity>
+            <Text style={styles.mainTitle}>My Profile</Text>
+          </View>
 
           {/* <TouchableOpacity
             style={styles.iconContainer}
@@ -733,6 +757,53 @@ const ProfileScreen: React.FC = () => {
           </Animated.View>
           <Text style={styles.rewardText}>Rewards</Text>
         </View>
+
+        {/* Contact Us Section */}
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.contactSection}
+        >
+          <View style={styles.contactOverlay}>
+            <Text style={styles.contactSectionTitle}>Need Help?</Text>
+            <Text style={styles.contactSectionSubtitle}>
+              Our dedicated support team is available to assist you with any inquiries or concerns you may have.
+            </Text>
+            
+            <View style={styles.contactButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.contactButton}
+                onPress={() => Linking.openURL('tel:8219105753')}
+              >
+                <LinearGradient
+                  colors={['#00C853', '#00A843']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.contactButtonGradient}
+                >
+                  <Ionicons name="call" size={20} color="#fff" />
+                  <Text style={styles.contactButtonText}>Call Us</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.contactButton}
+                onPress={() => Linking.openURL('mailto:admin@ninjadeliveries.com')}
+              >
+                <LinearGradient
+                  colors={['#FF6B6B', '#FF5252']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.contactButtonGradient}
+                >
+                  <Ionicons name="mail" size={20} color="#fff" />
+                  <Text style={styles.contactButtonText}>Email Us</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </LinearGradient>
         {/* My Orders Header */}
         <View style={styles.myOrdersHeader}>
           <Text style={styles.myOrdersTitle}>My Orders</Text>
@@ -1023,6 +1094,14 @@ const styles = StyleSheet.create({
     flexDirection: "row", // 👈 Arrange in a row
     justifyContent: "space-between", // 👈 Push items to edges
     alignItems: "center", // 👈 Align vertically
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backBtn: {
+    padding: 6,
+    marginRight: 8,
   },
   mainTitle: {
     fontSize: 20,
@@ -1417,5 +1496,72 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(255, 215, 0, 0.3)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  
+  // Contact Section Styles
+  contactSection: {
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginVertical: 16,
+    elevation: 8,
+    shadowColor: "#667eea",
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  contactOverlay: {
+    padding: 24,
+    borderRadius: 16,
+  },
+  contactSectionTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 8,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  contactSectionSubtitle: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 22,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  contactButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  contactButton: {
+    flex: 1,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  contactButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  contactButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
 });

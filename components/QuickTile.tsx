@@ -41,9 +41,10 @@ export type QuickTileProps = {
   };
   guard?: (cb: () => void, isPan: boolean) => void;
   isPan?: boolean;
+  ribbonColor?: string;
 };
 
-function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
+function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
   const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
   const qty = useCartQty(p.id); // ⬅️ subscribe per item — no parent cart prop
   const { location } = useLocationContext();
@@ -134,7 +135,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
         {/* Content */}
         <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
 
-        <View style={[styles.ribbon, { backgroundColor: theme.priceOverlayBg }]}>
+        <View style={[styles.ribbon, { backgroundColor: ribbonColor || theme.priceOverlayBg }]}>
           <Text style={styles.priceNow}>₹{price}</Text>
           {discountPercent > 0 && <Text style={styles.priceMRP}>₹{mrp}</Text>}
         </View>
@@ -145,8 +146,8 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
             style={[
               styles.cartBar,
               {
-                backgroundColor: stock > 0 ? theme.addToCartBg : "#bdbdbd",
-                borderColor: stock > 0 ? theme.addToCartBg : "#bdbdbd",
+                backgroundColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
+                borderColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
               },
@@ -162,7 +163,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
               styles.cartBar,
               {
                 backgroundColor: theme.qtyBarBg,
-                borderColor: theme.qtyBtnBorder,
+                borderColor: (ribbonColor || theme.qtyBtnBorder),
                 flexDirection: "row",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
@@ -170,16 +171,16 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
             ]}
           >
             <Pressable onPress={handleDec} hitSlop={12}>
-              <MaterialIcons name="remove" size={18} color={theme.qtyBtnBg} />
+              <MaterialIcons name="remove" size={18} color={ribbonColor || theme.qtyBtnBg} />
             </Pressable>
 
-            <Text style={[styles.qtyNum, { color: theme.qtyBtnBg }]}>{qty}</Text>
+            <Text style={[styles.qtyNum, { color: ribbonColor || theme.qtyBtnBg }]}>{qty}</Text>
 
             <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock}>
               <MaterialIcons
                 name="add"
                 size={18}
-                color={qty >= stock ? "#bdbdbd" : theme.qtyBtnBg}
+                color={qty >= stock ? "#bdbdbd" : (ribbonColor || theme.qtyBtnBg)}
               />
             </Pressable>
           </View>
@@ -193,6 +194,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
 export const QuickTile = memo(QuickTileBase, (prev, next) => {
   if (prev.isPan !== next.isPan) return false;
   if (prev.guard !== next.guard) return false;
+  if (prev.ribbonColor !== next.ribbonColor) return false;
 
   const a = prev.p;
   const b = next.p;

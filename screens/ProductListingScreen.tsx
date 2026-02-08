@@ -13,9 +13,13 @@ import {
   Image,
   StatusBar,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";  // <-- ADD THIS
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RouteProp } from "@react-navigation/native";
+import { RootStackParamList } from "../types/navigation";
 import ErrorModal from "../components/ErrorModal";
 import ProductCard from "../components/ProductCard";
 import Toast from "react-native-toast-message";
@@ -23,7 +27,20 @@ import { useCart } from "../context/CartContext";
 import { useLocationContext } from "../context/LocationContext"; // ⬅️ NEW
 import Loader from "@/components/VideoLoader";
 
-type Props = {};
+/********** NAV TYPES **********/
+type ProductListingScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "ProductListing"
+>;
+type ProductListingScreenRouteProp = RouteProp<
+  RootStackParamList,
+  "ProductListing"
+>;
+
+type Props = {
+  navigation: ProductListingScreenNavigationProp;
+  route: ProductListingScreenRouteProp;
+};
 
 type Subcategory = {
   id: string;
@@ -39,22 +56,22 @@ const IMAGE_SIZE = 50;
 
 /********** COMPONENT **********/
 const ProductListingScreen: React.FC<Props> = () => {
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
   /***** STATE *****/
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const route = useRoute<ProductListingScreenRouteProp>();
+  const { categoryId, subcategoryId } = route.params || {};
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
-    null
+    subcategoryId ?? null
   );
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   /***** NAV / ROUTE / CONTEXT *****/
-  const { categoryId } = route.params || {};
+  const navigation = useNavigation<ProductListingScreenNavigationProp>();
   const { location } = useLocationContext(); // ⬅️ NEW (storeId)
 
   /***** CART HOOKS *****/
@@ -161,6 +178,22 @@ const ProductListingScreen: React.FC<Props> = () => {
   const selectSubcategory = (id: string) =>
     setSelectedSubcategory((prev) => (prev === id ? null : id));
 
+  const handleSubcategoryPress = async (sub: Subcategory) => {
+    const catId = String(categoryId || "").trim();
+    const subName = String(sub?.name || "").trim().toLowerCase();
+    const storeId = location.storeId;
+
+    if (catId === "Gift Shop" && subName === "perfume" && storeId) {
+      (navigation as any).navigate((route as any).name, {
+        categoryId: "Perfume",
+        categoryName: "Perfume",
+      });
+      return;
+    }
+
+    selectSubcategory(sub.id);
+  };
+
   /*******************************
    * Renderers
    *******************************/
@@ -186,7 +219,9 @@ const ProductListingScreen: React.FC<Props> = () => {
         styles.subcategoryItem,
         item.id === selectedSubcategory && styles.selectedSubcategory,
       ]}
-      onPress={() => selectSubcategory(item.id)}
+      onPress={() => {
+        void handleSubcategoryPress(item);
+      }}
     >
       <Image source={{ uri: item.image }} style={styles.subcategoryImage} />
       <Text
@@ -204,7 +239,7 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* ---------- Side nav ---------- */}
@@ -249,7 +284,7 @@ const ProductListingScreen: React.FC<Props> = () => {
           )}
         </View>
 
-        {/* List */}
+        {/* List --- */}
         {loading ? (
           <View style={styles.loaderContainer}>
             <Loader />
@@ -279,7 +314,7 @@ const ProductListingScreen: React.FC<Props> = () => {
         onClose={closeErrorModal}
       />
       <Toast />
-    </View>
+    </SafeAreaView>
   );
 };
 

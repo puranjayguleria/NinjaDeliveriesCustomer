@@ -16,11 +16,12 @@ import {
   Linking,
   Pressable,
   Vibration,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 
 import { RootStackParamList } from "../types/navigation";
@@ -44,6 +45,7 @@ type Product = {
   quantity: number;
   discount?: number;
   categoryId?: string;
+  description?: string; // added to match search usage
 };
 
 type CategoryAlert = {
@@ -66,6 +68,7 @@ const isPanCorner = (p: { categoryId?: string; name: string }, catId: string) =>
 /* ────────── component ────────── */
 const CategoriesScreen: React.FC = () => {
   const navigation = useNavigation<CategoriesNav>();
+  const route = useRoute<any>();
   const { location } = useLocationContext();
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
 
@@ -75,6 +78,7 @@ const CategoriesScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [didAutoOpen, setDidAutoOpen] = useState(false);
 
   /* Pan Corner gate state */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
@@ -145,6 +149,17 @@ const CategoriesScreen: React.FC = () => {
     })();
   }, [location.storeId]);
 
+  useEffect(() => {
+    if (didAutoOpen) return;
+    if (!route?.params?.autoOpenFirstCategory) return;
+    if (!categories.length) return;
+    setDidAutoOpen(true);
+    navigation.navigate("ProductListingFromCats", {
+      categoryId: categories[0].id,
+      categoryName: categories[0].name,
+    });
+  }, [route?.params?.autoOpenFirstCategory, categories, didAutoOpen, navigation]);
+
   /* ────────── gate helper ────────── */
   const askGate = useCallback(
     (onAccept: () => void) => {
@@ -197,7 +212,7 @@ const CategoriesScreen: React.FC = () => {
   };
 
   /* ────────── renderers ────────── */
-  const renderCategory = ({ item }: { item: Category }) => (
+  const renderCategory = useCallback(({ item }: { item: Category }) => (
     <TouchableOpacity
       style={styles.catCard}
       onPress={() => handleCategoryPress(item)}
@@ -213,9 +228,9 @@ const CategoriesScreen: React.FC = () => {
       />
       <Text style={styles.catTxt}>{item.name}</Text>
     </TouchableOpacity>
-  );
+  ), []);
 
-  const renderProduct = ({ item }: { item: Product }) => (
+  const renderProduct = useCallback(({ item }: { item: Product }) => (
     <ProductCard
       style={styles.prodCardOverride}
       item={item}
@@ -225,30 +240,31 @@ const CategoriesScreen: React.FC = () => {
       onIncrease={() => attemptAdd(item, "inc")}
       onDecrease={() => decreaseQuantity(item.id)}
     />
-  );
+  ), [cart, attemptAdd, decreaseQuantity]);
 
-  const openSearch = () =>
-    navigation.getParent()?.navigate("HomeTab", { screen: "Search" });
+  const keyExtractor = useCallback((item: { id: string }) => item.id, []);
 
   /* ────────── UI ────────── */
   return (
     <SafeAreaView style={styles.safe}>
       {/* search bar */}
-      <TouchableOpacity
-        style={styles.searchRow}
-        activeOpacity={0.7}
-        onPress={openSearch}
-      >
+      <View style={styles.searchRow}>
         <MaterialIcons
           name="search"
           size={22}
           color="#555"
           style={styles.icn}
         />
-        <Text style={styles.searchPlaceholder}>
-          Search categories or products
-        </Text>
-      </TouchableOpacity>
+        <TextInput
+          style={styles.searchPlaceholder}
+          placeholder="Search categories or products"
+          placeholderTextColor="#777"
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+      </View>
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -261,20 +277,28 @@ const CategoriesScreen: React.FC = () => {
       ) : search.trim() === "" ? (
         <FlatList
           data={visibleCategories}
-          keyExtractor={(c) => c.id}
+          keyExtractor={keyExtractor}
           renderItem={renderCategory}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           contentContainerStyle={{ padding: 16 }}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       ) : (
         <FlatList
           data={visibleProducts}
-          keyExtractor={(p) => p.id}
+          keyExtractor={keyExtractor}
           renderItem={renderProduct}
           numColumns={3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           contentContainerStyle={{ padding: 16 }}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       )}
 
@@ -414,7 +438,6 @@ const styles = StyleSheet.create({
   linkTxt: {
     fontSize: 13,
     color: "#007aff",
-    textDecorationLine: "underline",
     fontWeight: "600",
   },
   rowButtons: { flexDirection: "row", justifyContent: "flex-end" },

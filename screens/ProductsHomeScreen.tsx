@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
-  Easing,
   Dimensions,
   FlatList,
+  Image as RNImage,
   Platform,
   Pressable,
   ScrollView,
@@ -24,23 +24,27 @@ import {
   Modal,
   Linking,
   Vibration,
+  Easing,
 } from "react-native";
+import { Ionicons, MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Video from "react-native-video";
-import { MaterialIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Image } from "expo-image";
+import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
+
 import { useLocationContext } from "@/context/LocationContext";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
-import { useWeather } from "../context/WeatherContext"; // adjust path if needed
+import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
+import { Colors } from "@/constants/colors";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
 // migrate to the modular API, you can remove this. See:
@@ -54,8 +58,8 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 165;
-const COLLAPSED_VIDEO_HEIGHT = 100;
+const INITIAL_VIDEO_HEIGHT = 160;
+const COLLAPSED_VIDEO_HEIGHT = 80;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
@@ -206,7 +210,7 @@ const LocationPromptCard: React.FC<LocationPromptProps> = ({
     <View style={styles.locSheet}>
       <View style={styles.locHandle} />
       <View style={styles.locHeader}>
-        <MaterialIcons name="location-on" size={26} color="#009688" />
+        <MaterialIcons name="location-on" size={26} color={Colors.primary} />
         <Text style={styles.locTitle}>Set your delivery location</Text>
       </View>
       <Text style={styles.locSub}>
@@ -248,13 +252,13 @@ const Header = memo(() => {
       style={styles.locationRow}
       onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
     >
-      <MaterialIcons
-        name="place"
-        size={20}
-        color="#fff"
-        style={{ marginRight: 4 }}
-      />
-      <View style={styles.textRow}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
+        <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
+        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+      </View>
+      <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
+      <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
+
         <Text style={styles.locationTxt} numberOfLines={1}>
           {location.address
             ? `Delivering to ${location.address}`
@@ -267,7 +271,7 @@ const Header = memo(() => {
           </View>
         )}
       </View>
-      <MaterialIcons name="keyboard-arrow-down" size={18} color="#fff" />
+      <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
     </Pressable>
   );
 });
@@ -283,7 +287,7 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
       <MaterialIcons
         name="search"
         size={20}
-        color="#555"
+        color={Colors.text.secondary}
         style={{ marginRight: 6 }}
       />
       <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
@@ -298,7 +302,7 @@ type IntroProps = { url: string | null; title: string | null };
 const MemoIntroCard = React.memo(
   ({ url, title }: IntroProps) => {
     const nav = useNavigation<any>();
-    const ref = useRef<any>(null);
+    const ref = useRef<Video>(null);
     const [dur, setDur] = useState(0);
     const [spin, setSpin] = useState(true);
     const isMp4 = !!url && /\.mp4(\?|$)/i.test(url);
@@ -306,7 +310,7 @@ const MemoIntroCard = React.memo(
     if (!url) {
       return (
         <View style={[styles.mediaBox, styles.center]}>
-          <ActivityIndicator color="#ffffff" size="large" />
+          <ActivityIndicator color={Colors.white} size="large" />
         </View>
       );
     }
@@ -332,7 +336,7 @@ const MemoIntroCard = React.memo(
             />
             {spin && (
               <View style={[styles.mediaBox, styles.loaderOverlay]}>
-                <ActivityIndicator color="#ffffff" size="large" />
+                <ActivityIndicator color={Colors.white} size="large" />
               </View>
             )}
           </>
@@ -539,7 +543,7 @@ const SeeAllButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
       <View style={styles.seeAllRow}>
         <Text style={styles.seeAllTxt}>See all</Text>
         <Animated.View style={{ transform: [{ rotate: rotateDeg }] }}>
-          <MaterialIcons name="arrow-forward-ios" size={14} color="#009688" />
+          <MaterialIcons name="arrow-forward-ios" size={14} color={Colors.primary} />
         </Animated.View>
       </View>
     </AnimatedPressable>
@@ -695,7 +699,7 @@ const HomeMessageBar = ({
   onClose?: () => void;
 }) => {
   if (!msg?.text) return null;
-  
+
   // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
   const iconMap: Record<string, string> = {
     bolt: "offline-bolt",
@@ -736,7 +740,7 @@ const HomeMessageBar = ({
   }
 
   // Calculate dynamic media height based on message text length AND active/inactive state
- // Smooth, responsive sizing based on message content
+  // Smooth, responsive sizing based on message content
 const messageText = String(msg.text || "").trim();
 const messageLength = messageText.length;
 
@@ -788,11 +792,7 @@ if (isMessageActive) {
       {/* Media section (image or video) - displayed above message */}
       {(hasImage || hasVideo) && (
         <View
-          style={[
-            styles.homeMsgMediaContainer,
-            { height: mediaHeight },
-          ]}
-        >
+          style={[styles.homeMsgMediaContainer, { height: mediaHeight }]}>
           {hasVideo ? (
             <Video
               source={{ uri: hasVideo }}
@@ -869,19 +869,14 @@ export default function ProductsHomeScreen() {
   const [homeMsg, setHomeMsg] = useState<any | null>(null);
   const [homeMsgLoading, setHomeMsgLoading] = useState(false);
 
-  // state to toggle Valentine UI features (shortcuts, banners, etc.)
-  const [enableValentineUI, setEnableValentineUI] = useState(false);
-
   // Tracks whether the user has dismissed a message in this session. Once a
   // message is dismissed, no further messages (including paused messages) will
   // appear until a new homeMsg is received. This prevents fallback messages
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
-  const [headerGradientColors, setHeaderGradientColors] = useState<string[]>([
-    "#00b4a0",
-    "#00d2c7",
-    "#ffffff",
-  ]); // fallback defaults
+  const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
+    ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+  ); // fallback defaults
 
   const [activeVerticalMode, setActiveVerticalMode] =
     useState<"grocery" | "restaurants">("grocery");
@@ -905,6 +900,12 @@ export default function ProductsHomeScreen() {
 
   // new state to track order acceptance status (store activity)
   const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(false);
+
+  // state for category shortcuts from Firebase
+  const [categoryShortcuts, setCategoryShortcuts] = useState<any[]>([]);
+
+  // state to toggle Valentine UI features (shortcuts, banners, nearby favorites, etc.)
+  const [enableValentineUI, setEnableValentineUI] = useState(false);
 
   // Build a local message object for when the store is not accepting orders.
   // This object will be passed into HomeMessageBar and is inspired by quick‑commerce
@@ -1017,7 +1018,7 @@ export default function ProductsHomeScreen() {
   // pull gradient colors for the collapsing header from Firestore
   useEffect(() => {
     if (!location.storeId) {
-      setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"]);
+      setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"]);
       return;
     }
 
@@ -1038,14 +1039,75 @@ export default function ProductsHomeScreen() {
             : null;
 
           setHeaderGradientColors(
-            arr && arr.length ? arr : ["#00b4a0", "#00d2c7", "#ffffff"]
+            arr && arr.length ? arr : ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
           );
         },
-        () => setHeaderGradientColors(["#00b4a0", "#00d2c7", "#ffffff"])
+        () => setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"])
       );
 
     return unsub;
   }, [location.storeId]);
+
+  // Fetch category shortcuts from Firebase
+  useEffect(() => {
+    if (!location.storeId) {
+      setCategoryShortcuts([]);
+      return;
+    }
+
+    const unsub = firestore()
+      .collection("category_shortcuts")
+      .where("storeId", "==", location.storeId)
+      .where("enabled", "==", true)
+      .onSnapshot(
+        (snap) => {
+          const shortcuts = snap.docs
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }))
+            // Sort on the client to avoid composite index requirements.
+            .sort(
+              (a: any, b: any) =>
+                Number(a?.priority ?? Number.MAX_SAFE_INTEGER) -
+                Number(b?.priority ?? Number.MAX_SAFE_INTEGER)
+            );
+          setCategoryShortcuts(shortcuts);
+        },
+        (error) => {
+          console.warn("Error fetching category shortcuts:", error);
+          setCategoryShortcuts([]);
+        }
+      );
+
+    return unsub;
+  }, [location.storeId]);
+
+  // Fetch UI configuration to toggle Valentine features (shortcuts, banners, nearby, etc.)
+  useEffect(() => {
+    // Fetch UI configuration to toggle Valentine features globally
+    const unsub = firestore()
+      .collection("ui_config")
+      .doc("valentine_ui")
+      .onSnapshot(
+        (snap) => {
+          if (snap.exists) {
+            const data = snap.data() as any;
+            console.log("UI Config loaded:", data);
+            setEnableValentineUI(data?.enabled === true);
+          } else {
+            console.log("valentine_ui document not found");
+            setEnableValentineUI(false);
+          }
+        },
+        (error) => {
+          console.warn("Error fetching UI config:", error);
+          setEnableValentineUI(false);
+        }
+      );
+
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const currentUser = auth().currentUser;
@@ -1141,30 +1203,6 @@ export default function ProductsHomeScreen() {
     return unsub;
   }, [location.storeId]);
 
-  // Fetch UI configuration to toggle Valentine features globally
-  useEffect(() => {
-    const unsub = firestore()
-      .collection("ui_config")
-      .doc("valentine_ui")
-      .onSnapshot(
-        (snap) => {
-          if (snap.exists) {
-            const data = snap.data() as any;
-            setEnableValentineUI(data?.enabled === true);
-          } else {
-            console.log("valentine_ui document not found");
-            setEnableValentineUI(false);
-          }
-        },
-        (err) => {
-          console.warn("Error fetching valentine_ui config:", err);
-          setEnableValentineUI(false);
-        }
-      );
-
-    return () => unsub && unsub();
-  }, []);
-
   useEffect(() => {
     firestore()
       .collection("category_alerts")
@@ -1208,6 +1246,7 @@ export default function ProductsHomeScreen() {
           nav.navigate("ProductListingFromHome", {
             categoryId: cat.id,
             categoryName: cat.name,
+            ...(cat.subcategoryId ? { subcategoryId: cat.subcategoryId } : {}),
           }),
         !!isPan
       );
@@ -1301,7 +1340,7 @@ export default function ProductsHomeScreen() {
         // ignore
       }
 
-      updateLocation({ storeId: (picked as any).storeId, address: addr });
+      updateLocation({ storeId: picked.storeId, address: addr });
     },
     [zones, location.storeId, updateLocation, nav, setErrorMessage, setConfirmText]
   );
@@ -1449,20 +1488,25 @@ export default function ProductsHomeScreen() {
     setLoadingMore(true);
 
     try {
-      const ids = slice.map((c) => c.id);
-      const snap = await firestore()
-        .collection("products")
-        .where("storeId", "==", location.storeId)
-        .where("categoryId", "in", ids as any)
-        .where("quantity", ">", 0)
-        .get();
-
-  const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as any[];
       const up: typeof prodMap = {};
+
+      const perCat = await Promise.all(
+        slice.map(async (c) => {
+          const snap = await firestore()
+            .collection("products")
+            .where("storeId", "==", location.storeId)
+            .where("categoryId", "==", c.id)
+            .get();
+          const all = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+          return { catId: c.id, rows: all };
+        })
+      );
+
       slice.forEach((c) => {
-        const arr = all.filter((p) => p.categoryId === c.id);
+        const arr = perCat.find((p) => p.catId === c.id)?.rows || [];
         up[c.id] = {
           rows: arr
+            .filter((p: any) => (p.quantity ?? 0) > 0)
             .sort((a, b) => (b.quantity ?? 0) - (a.quantity ?? 0))
             .slice(0, ROW_LIMIT),
         };
@@ -1470,7 +1514,7 @@ export default function ProductsHomeScreen() {
       setProdMap((prev) => ({ ...prev, ...up }));
       setPage((p) => p + 1);
     } catch {
-      // ignore
+      setError("Could not load more categories.");
     } finally {
       pending.current = false;
       setLoadingMore(false);
@@ -1665,7 +1709,7 @@ export default function ProductsHomeScreen() {
         .where("quantity", ">", 0)
         .get();
 
-      const all: any[] = snap.docs.map((d) => {
+      const all = snap.docs.map((d) => {
         const data = d.data();
         return {
           id: d.id,
@@ -1698,14 +1742,193 @@ export default function ProductsHomeScreen() {
     loadHighlights();
   }, [loadHighlights]);
 
+  // Handle category shortcut press
+  const handleCategoryShortcut = useCallback(async (name: string) => {
+    if (name === "Offers") {
+      nav.navigate("AllDiscountedProducts");
+      return;
+    }
+
+    if (name === "Chocolates") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("name", "==", "Chocolate Gift Box")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            const data: any = doc.data() || {};
+            const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
+            nav.navigate("ProductListingFromHome", {
+              categoryId,
+              categoryName: categoryId,
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+
+      nav.navigate("ProductListingFromHome", {
+        categoryName: name,
+        searchQuery: "chocolate",
+      });
+      return;
+    }
+
+    if (name === "Blossoms") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("categoryId", "==", "Gift Shop")
+            .where("name", "==", "Fresh Flowers")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            nav.navigate("ProductListingFromHome", {
+              categoryId: "Gift Shop",
+              categoryName: "Fresh Flowers",
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Fresh Flowers",
+        searchQuery: "fresh flowers rose bouquet",
+      });
+      return;
+    }
+
+    // Valentine should navigate to Gift Shop category
+    if (name === "Valentine") {
+      const giftShop = cats.find(c => 
+        c.name.toLowerCase().includes("gift") || 
+        c.name.toLowerCase() === "gift shop"
+      );
+      if (giftShop) {
+        maybeNavigateCat(giftShop);
+        return;
+      }
+      // Fallback: search for gift items
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Valentine",
+        searchQuery: "gift teddy rose flower chocolate perfume greeting card",
+      });
+      return;
+    }
+    
+    // Define keyword mappings for shortcuts that may not match category names exactly
+    const keywordMappings: Record<string, string[]> = {
+      "Chocolates": ["chocolate", "chocolates", "choco"],
+      "Snacks": ["snack", "snacks", "chips", "namkeen"],
+      "Dairy": ["dairy", "milk", "curd", "paneer", "cheese"],
+    };
+    
+    // Find category
+    let cat = cats.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!cat) {
+      cat = cats.find(c => c.name.toLowerCase().includes(name.toLowerCase()));
+    }
+    
+    if (!cat && keywordMappings[name]) {
+      cat = cats.find(c => 
+        keywordMappings[name].some(kw => c.name.toLowerCase().includes(kw))
+      );
+    }
+    
+    if (cat) {
+      maybeNavigateCat(cat);
+    } else {
+       if (name === "Milk") {
+          const dairy = cats.find(c => c.name.toLowerCase().includes("dairy"));
+          if (dairy) {
+            maybeNavigateCat(dairy);
+            return;
+          }
+       }
+       
+       const searchTerm = keywordMappings[name]?.[0] || name.toLowerCase();
+       nav.navigate("ProductListingFromHome", {
+         categoryName: name,
+         searchQuery: searchTerm,
+       });
+    }
+  }, [cats, nav, maybeNavigateCat, location.storeId]);
+
   // Build the list header for the SectionList
   const listHeader = (
     <>
-      {/* Promotional banners */}
-      <BannerSwitcher
-        storeId={location.storeId || ""}
-        enableValentineUI={enableValentineUI}
-      />
+      {/* Category Shortcuts - Show only when enableValentineUI is true */}
+      {enableValentineUI && (
+        <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            {(categoryShortcuts && categoryShortcuts.length > 0
+              ? categoryShortcuts
+              : [
+                       ]
+            ).map((item) => {
+              const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={{
+                    alignItems: "center",
+                    marginRight: 4,
+                    width: 68,
+                  }}
+                  onPress={() => {
+                    void handleCategoryShortcut(item.name);
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 60,
+                      height: 60,
+                      borderRadius: 20,
+                      backgroundColor: item.bgColor || item.bcColor || item.bg || "#963556ff",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      marginBottom: 6,
+                      shadowColor: "#000",
+                      shadowOpacity: 0.1,
+                      shadowRadius: 4,
+                      shadowOffset: { width: 0, height: 2 },
+                      overflow: "hidden"
+                    }}
+                  >
+                    <Image
+                      source={source}
+                      style={{ width: "100%", height: "100%" }}
+                      contentFit="cover"
+                      transition={200}
+                      placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Promotional banners - Pass flag to control Valentine sections only */}
+      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
@@ -1741,7 +1964,7 @@ export default function ProductsHomeScreen() {
       <>
         {bestHeader.length > 0 && (
           <>
-            <Text style={styles.laneTitle}>Best sellers</Text>
+            <Text style={styles.laneTitle}>Best sellers❤️</Text>
             <FlatList
               horizontal
               data={bestHeader}
@@ -1754,7 +1977,7 @@ export default function ProductsHomeScreen() {
         )}
         {freshHeader.length > 0 && (
           <>
-            <Text style={styles.laneTitle}>Fresh arrivals</Text>
+            <Text style={styles.laneTitle}>Fresh arrivals✨</Text>
             <FlatList
               horizontal
               data={freshHeader}
@@ -1831,7 +2054,7 @@ export default function ProductsHomeScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={pageBg.overlayGradient as any}
+                  colors={pageBg.overlayGradient}
                   style={StyleSheet.absoluteFill}
                 />
               </View>
@@ -1839,21 +2062,32 @@ export default function ProductsHomeScreen() {
           </View>
         ) : null}
 
+        {/* Valentine Background - Starts below search bar */}
+        
+
         {/* Collapsing header + background video */}
         <Animated.View
           pointerEvents="box-none"
-          style={[styles.headerWrapper, { paddingTop: topPadding }]}
-        >
+          style={[styles.headerWrapper, { paddingTop: topPadding }]}>
           {/* Background video */}
           <Animated.View
             pointerEvents="none"
             style={[
-              StyleSheet.absoluteFill,
+              {
+                position: "absolute",
+                top: -35,
+                width: "100%",
+                left: "0%",
+              },
               { height: videoHeight, opacity: videoOpacity },
             ]}
           >
             <Video
-              source={require("../assets/deliveryBackground.mp4")}
+              source={
+                enableValentineUI
+                  ? require("../assets/deliveryBackground11.mp4")
+                  : require("../assets/deliveryBackground.mp4")
+              }
               style={StyleSheet.absoluteFill}
               muted
               repeat
@@ -1869,7 +2103,7 @@ export default function ProductsHomeScreen() {
             style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
           >
             <LinearGradient
-              colors={headerGradientColors as any}
+              colors={headerGradientColors}
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
@@ -1878,15 +2112,51 @@ export default function ProductsHomeScreen() {
             <Header />
 
             {/* Search bar */}
-            <View style={styles.searchFlex}>
-              <StableSearchBar />
-            </View>
+            <View style={styles.searchRow}>
+  <View style={styles.searchFlex}>
+    <StableSearchBar />
+  </View>
+
+  <Pressable
+    style={styles.profileBtn}
+    onPress={() => nav.navigate("Profile")}
+  >
+    <Svg height="48" width="48" viewBox="0 0 24 24">
+      <Defs>
+        <ClipPath id="heart_clip">
+          <Path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </ClipPath>
+      </Defs>
+      <SvgImage
+        href={require("../assets/profile.png")}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid slice"
+        clipPath="url(#heart_clip)"
+      />
+    </Svg>
+  </Pressable>
+</View>
 
             {/* Informational messages displayed below the search bar.
                Show the highest priority message first (homeMsg from Firestore
                takes precedence over the local pausedMessage). Only one message
                is rendered at a time. */}
             {(() => {
+              let effectiveHomeMsg = homeMsg;
+              // User request: Remove "High demand. Riders Occupied" banner
+              if (effectiveHomeMsg) {
+                const text = String(effectiveHomeMsg.text || "").toLowerCase();
+                if (
+                  text.includes("riders occupied") ||
+                  text.includes("high demand") ||
+                  (text.includes("riders") && text.includes("occupied")) ||
+                  text.includes("demand")
+                ) {
+                  effectiveHomeMsg = null;
+                }
+              }
+
               // Determine which message should be displayed. Only one message
               // (either from Firestore or the pausedMessage) is shown at a time.
               // If the user has dismissed a message, no other messages will be
@@ -1915,9 +2185,9 @@ export default function ProductsHomeScreen() {
               // a lingering "orders paused" message from showing after the
               // store becomes active again.
               let activeHomeMsg: any | null = null;
-              if (homeMsg) {
-                if (!isOrdersPausedMsg(homeMsg) || isOrderAcceptancePaused) {
-                  activeHomeMsg = homeMsg;
+              if (effectiveHomeMsg) {
+                if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
+                  activeHomeMsg = effectiveHomeMsg;
                 }
               }
               const displayMsg = activeHomeMsg || pausedMessage;
@@ -1961,14 +2231,14 @@ export default function ProductsHomeScreen() {
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
-            keyExtractor={(item: any) => item.id}
+            keyExtractor={(item) => item.id}
             extraData={listExtraData}
-            renderItem={({ item }: { item: any }) => {
+            renderItem={({ item }) => {
               if (!item?.id || !item?.name) return null;
 
               const data = prodMap[item.id]?.rows || [];
               return (
-                <View style={{ marginTop: 32 }}>
+                <View style={{ marginTop: 36}}>
                   <View style={styles.rowHeader}>
                     <Text style={styles.rowTitle}>{item.name}</Text>
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
@@ -1976,14 +2246,27 @@ export default function ProductsHomeScreen() {
 
                     <ChipsRow
                       subs={subMap[item.id] || []}
-                      onPress={(s) =>
-                        maybeNavigateCat({
-                          ...item,
-                          id: item.id,
-                          name: item.name,
-                          subcategoryId: s.id,
-                        })
-                      }
+                      onPress={(s) => {
+                        const doNav = async () => {
+                          const catId = String(item.id || "").trim();
+                          const subName = String(s?.name || "").trim().toLowerCase();
+                          if (catId === "Gift Shop" && subName === "perfume") {
+                            maybeNavigateCat({
+                              id: "Perfume",
+                              name: "Perfume",
+                            });
+                            return;
+                          }
+
+                          maybeNavigateCat({
+                            ...item,
+                            id: item.id,
+                            name: item.name,
+                            subcategoryId: s.id,
+                          });
+                        };
+                        void doNav();
+                      }}
                     />
 
                   <MultiRowProductGrid
@@ -2113,7 +2396,7 @@ labelActive: { color: '#fff' },
   },
   topBg: {
     paddingHorizontal: H,
-    paddingBottom: 16,
+    paddingBottom: 4,
     position: "relative",
     zIndex: 1,
     backgroundColor: "transparent",
@@ -2144,25 +2427,25 @@ labelActive: { color: '#fff' },
 },
 
   locationTxt: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
-  },
+  flex: 1,
+  fontSize: 15,          // ⬅ slightly larger
+  fontWeight: "700",
+  color: "#fff",
+},
   searchWrapper: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#fafafa",
-  borderRadius: 22,
-  paddingVertical: 8,
-  paddingHorizontal: 12,
+  backgroundColor: "#ffffff",
+  borderRadius: 26,              // ⬅ rounder pill
+  paddingVertical: 10,
+  paddingHorizontal: 16,
   shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 4,
-  shadowOffset: { width: 0, height: 2 },
-  // remove marginHorizontal – topBg already handles left/right padding
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
 },
-  searchTxt: { color: "#555", fontSize: 14 },
+searchTxt: { color: "#555", fontSize: 14 },
   quizCard: {
     margin: H,
     borderRadius: 12,
@@ -2202,41 +2485,47 @@ labelActive: { color: '#fff' },
     marginTop: 10,
     marginBottom: 8,
   },
-  rowTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: "#333" },
-  seeAllTxt: { fontSize: 12, color: "#009688", fontWeight: "600" },
+  rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
+  seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
   chip: {
-    backgroundColor: "#e0f2f1",
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 6,
-  },
-  chipTxt: { fontSize: 11, color: "#00695c", fontWeight: "600" },
+  backgroundColor: "#FFE6F0",   // soft pink
+  borderRadius: 18,
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  marginRight: 8,
+},
+chipTxt: {
+  fontSize: 12,
+  color: "#C2185B",
+  fontWeight: "700",
+},
   tile: {
-    marginRight: 8,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+   marginRight: 8,
+   backgroundColor: "#fff",
+   borderRadius: 14,             // ⬅ softer
+   padding: 8,
+   borderWidth: 0,
+   shadowColor: "#000",
+   shadowOpacity: 0.07,
+   shadowRadius: 8,
+   shadowOffset: { width: 0, height: 3 },
+   elevation: 3,
   },
   mosaicCard: {
-    width: MOSAIC_W,
-    height: MOSAIC_W,
-    borderRadius: 12,
-    backgroundColor: "#f5f5f5",
-    overflow: "hidden",
-    marginRight: G,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    borderWidth: 1,
-    borderColor: BORDER_CLR,
-  },
+  width: MOSAIC_W,
+  height: MOSAIC_W,
+  borderRadius: 20,              // ⬅ more rounded
+  backgroundColor: "#ffffff",
+  overflow: "hidden",
+  marginRight: G,
+  flexDirection: "row",
+  flexWrap: "wrap",
+  borderWidth: 0,                // ⬅ remove harsh border
+  shadowColor: "#000",           // ⬅ soft shadow
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  elevation: 4,
+},
   mosaicImg: {
     width: "88%",
     height: "88%",
@@ -2308,15 +2597,16 @@ labelActive: { color: '#fff' },
   },
   mosaicDealTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
   cardLabel: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 4,
-  },
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 6,
+},
+
   badge: {
     marginRight: 4,
     borderRadius: 4,
@@ -2324,7 +2614,7 @@ labelActive: { color: '#fff' },
     paddingVertical: 1,
   },
   badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 12, fontWeight: "700", flex: 1 },
+  cardTitle: { color: "#fff", fontSize: 13, fontWeight: "800", flex: 1 },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -2432,13 +2722,13 @@ labelActive: { color: '#fff' },
   },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
   laneTitle: {
-    marginTop: 25,
-    marginBottom: 10,
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#333",
-    marginHorizontal: H,
-  },
+  marginTop: 28,
+  marginBottom: 12,
+  fontSize: 18,
+  fontWeight: "800",
+  color: "#222",
+  marginHorizontal: H,
+},
   seeAllRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2482,15 +2772,7 @@ labelActive: { color: '#fff' },
   reorderTitle: { fontSize: 16, fontWeight: "700", color: "#2f2f2f" },
   reorderDate: { fontSize: 12, color: "#777", fontWeight: "600" },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  metaPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#e0f2f1",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
+
   pillStatus: { backgroundColor: "#26a69a" },
   pillText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   pillTextDark: { color: "#00695c", fontSize: 11, fontWeight: "700" },
@@ -2643,5 +2925,18 @@ searchFlex: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.05)",
+  },
+    searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+    profileBtn: {
+    marginLeft: 10,
+    padding: 4,
+  },
+   profileImg: {
+   width: 38,
+   height: 38,
+   borderRadius: 19,
   },
 });
