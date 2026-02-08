@@ -208,9 +208,11 @@ export default function ServicesScreen() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const activityScrollRef = React.useRef<ScrollView>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
+  const currentBannerIndex = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
 
   // Helper function to format time ago
@@ -467,19 +469,23 @@ export default function ServicesScreen() {
   useEffect(() => {
     if (serviceBanners.length <= 1) return;
 
-    let currentIndex = 0;
-    const bannerWidth = width - 32; // Match the snapToInterval value
+    const bannerWidth = width - 32;
 
     const interval = setInterval(() => {
-      currentIndex = (currentIndex + 1) % serviceBanners.length;
+      currentBannerIndex.current = (currentBannerIndex.current + 1) % serviceBanners.length;
+      
+      console.log('🔄 Banner auto-scroll - changing to index:', currentBannerIndex.current);
+      
+      // Update state immediately before scrolling
+      setActiveBannerIndex(currentBannerIndex.current);
       
       if (bannerScrollRef.current) {
         bannerScrollRef.current.scrollToOffset({
-          offset: currentIndex * bannerWidth,
+          offset: currentBannerIndex.current * bannerWidth,
           animated: true,
         });
       }
-    }, 4000); // Pause for 4 seconds on each banner
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [serviceBanners.length]);
@@ -814,7 +820,34 @@ export default function ServicesScreen() {
                   snapToInterval={width - 32}
                   decelerationRate="fast"
                   pagingEnabled={false}
+                  onMomentumScrollEnd={(event) => {
+                    const index = Math.round(event.nativeEvent.contentOffset.x / (width - 32));
+                    setActiveBannerIndex(index);
+                  }}
                 />
+                
+                {/* Pagination Dots */}
+                {serviceBanners.length > 1 && (
+                  <View style={styles.paginationContainer}>
+                    {serviceBanners.map((_, index) => {
+                      const isActive = index === activeBannerIndex;
+                      
+                      if (isActive) {
+                        console.log('✅ Active dot index:', index, 'activeBannerIndex:', activeBannerIndex);
+                      }
+                      
+                      return (
+                        <View
+                          key={index}
+                          style={[
+                            styles.paginationDot,
+                            isActive && styles.paginationDotActive
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             )}
 
@@ -865,7 +898,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, activitiesLoading, activities, navigation, renderBanner, getTimeAgo]);
+  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, activitiesLoading, activities, navigation, renderBanner, getTimeAgo, activeBannerIndex]);
 
   return (
     <View style={styles.container}>
@@ -1125,6 +1158,32 @@ const styles = StyleSheet.create({
 
   bannerScrollContent: {
     paddingHorizontal: 16,
+  },
+
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 8,
+  },
+
+  paginationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#cbd5e1",
+  },
+
+  paginationDotActive: {
+    width: 10,
+    height: 10,
+    backgroundColor: "#10b981",
+    elevation: 2,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
   },
 
   bannerItem: {
