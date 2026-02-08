@@ -22,6 +22,8 @@ export default function ServiceCategoryScreen() {
 
   const { serviceTitle, categoryId } = route.params;
 
+  console.log('ServiceCategoryScreen params:', { serviceTitle, categoryId });
+
   // Single-select states
   const [selectedId, setSelectedId] = useState<string>("");
   const [showAll, setShowAll] = useState(false);
@@ -74,73 +76,11 @@ export default function ServiceCategoryScreen() {
       const fetchedIssues = await FirestoreService.getServicesWithCompanies(selectedCategoryId);
       
       console.log(`Found ${fetchedIssues.length} services for category ${selectedCategoryId}`);
-      console.log('Fetched services:', fetchedIssues.map(s => ({ id: s.id, name: s.name, masterCategoryId: s.masterCategoryId, isActive: s.isActive })));
       
-      // 🚨 EMERGENCY DEBUG: Log every single service before filtering
-      console.log('🔍 EMERGENCY DEBUG: Services received from server:');
-      fetchedIssues.forEach((service, index) => {
-        console.log(`${index + 1}. "${service.name}":`, {
-          isActive: service.isActive,
-          type: typeof service.isActive,
-          value: JSON.stringify(service.isActive),
-          shouldBeBlocked: service.isActive !== true
-        });
-        
-        // Special check for yoga service
-        if (service.name && service.name.toLowerCase().includes('yoga')) {
-          console.log(`🚨 YOGA SERVICE FOUND: "${service.name}"`);
-          console.log(`   - isActive: ${service.isActive}`);
-          console.log(`   - Type: ${typeof service.isActive}`);
-          console.log(`   - Should be blocked: ${service.isActive !== true}`);
-          console.log(`   - Raw value: ${JSON.stringify(service.isActive)}`);
-        }
-      });
+      // Filter only active services (isActive === true)
+      const activeIssues = fetchedIssues.filter(issue => issue.isActive === true);
       
-      // ULTRA-AGGRESSIVE SAFETY CHECK: Multiple layers of filtering
-      console.log(`🔍 Before UI filtering: ${fetchedIssues.length} services received from server`);
-      
-      const activeIssues = fetchedIssues.filter(issue => {
-        console.log(`🔍 Checking service "${issue.name}":`, {
-          isActive: issue.isActive,
-          isActiveType: typeof issue.isActive,
-          isActiveValue: JSON.stringify(issue.isActive)
-        });
-        
-        // Multiple active checks
-        let isActive = false;
-        
-        // 🚨 EMERGENCY YOGA BLOCK - Hardcoded to prevent yoga service from showing
-        if (issue.name && issue.name.toLowerCase().includes('yoga')) {
-          console.log(`🚨 YOGA SERVICE DETECTED IN UI: "${issue.name}"`);
-          console.log(`🚫 HARDCODED YOGA BLOCK: This service will be blocked regardless of isActive value`);
-          return false; // ALWAYS BLOCK YOGA SERVICE
-        }
-        
-        // 🚫 BULLETPROOF RULE: Only isActive === true is allowed
-        if (issue.isActive !== true) {
-          console.log(`🔍 UI BLOCK: "${issue.name}" - isActive is NOT true (value: ${JSON.stringify(issue.isActive)})`);
-          return false; // BLOCK
-        }
-
-        console.log(`✅ UI APPROVED: "${issue.name}" will be displayed`);
-        return true;
-      });
-      
-      console.log(`✅ After UI filtering: ${activeIssues.length} active services will be displayed`);
-      
-      // Log which services are being displayed
-      activeIssues.forEach(service => {
-        console.log(`📱 WILL DISPLAY: "${service.name}" (isActive: ${service.isActive})`);
-      });
-      
-      // 🖼️ DEBUG: Log which services have images
-      console.log('🖼️ Services with images:');
-      activeIssues.forEach(service => {
-        console.log(`  - "${service.name}": ${service.imageUrl ? '✅ Has image' : '❌ No image'}`);
-        if (service.imageUrl) {
-          console.log(`    Image URL: ${service.imageUrl.substring(0, 60)}...`);
-        }
-      });
+      console.log(`After filtering: ${activeIssues.length} active services`);
       
       setIssues(activeIssues);
       
@@ -335,11 +275,11 @@ export default function ServiceCategoryScreen() {
               <ActivityIndicator size="large" color="#2563eb" />
               <Text style={styles.loadingText}>Loading services...</Text>
             </View>
-          ) : issues.length <= 1 ? (
+          ) : issues.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>No Services</Text>
               <Text style={styles.emptyText}>
-                No services available
+                No services available for this category
               </Text>
             </View>
           ) : (
