@@ -275,6 +275,45 @@ export default function PackageSelectionScreen() {
       }
     }
     
+    // Determine proper duration text
+    let durationText = '';
+    if (packageDuration) {
+      const durationLower = packageDuration.toString().toLowerCase();
+      
+      // Check for month/monthly
+      if (durationLower.includes('month')) {
+        durationText = 'month';
+      } 
+      // Check for year/yearly
+      else if (durationLower.includes('year')) {
+        durationText = 'year';
+      }
+      // Check for week/weekly
+      else if (durationLower.includes('week')) {
+        durationText = 'week';
+      }
+      // Check for day/daily
+      else if (durationLower.includes('day')) {
+        durationText = 'day';
+      }
+      // If it's just a number, try to infer from package name or default to month
+      else if (!isNaN(Number(packageDuration))) {
+        // Check package name for hints
+        const nameLower = packageName.toLowerCase();
+        if (nameLower.includes('month')) {
+          durationText = 'month';
+        } else if (nameLower.includes('year')) {
+          durationText = 'year';
+        } else if (nameLower.includes('week')) {
+          durationText = 'week';
+        } else {
+          durationText = 'month'; // Default to month
+        }
+      } else {
+        durationText = packageDuration; // Use as-is if it's already text
+      }
+    }
+    
     // Create consistent package ID for selection
     const packageId = pkg.id || pkg.name || JSON.stringify(pkg);
     const isSelected = selectedService?.id === service.id && selectedPackage === packageId;
@@ -284,6 +323,7 @@ export default function PackageSelectionScreen() {
       packageName,
       price: packagePrice,
       duration: packageDuration,
+      durationText,
       isSelected,
       packageId,
       selectedPackage,
@@ -315,8 +355,8 @@ export default function PackageSelectionScreen() {
         <View style={styles.priceContainer}>
           <Text style={styles.priceSymbol}>₹</Text>
           <Text style={styles.priceAmount}>{packagePrice}</Text>
-          {packageDuration && (
-            <Text style={styles.priceDuration}>/{packageDuration}</Text>
+          {durationText && (
+            <Text style={styles.priceDuration}>/{durationText}</Text>
           )}
         </View>
 
