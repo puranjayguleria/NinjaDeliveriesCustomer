@@ -207,11 +207,21 @@ export default function CompanySelectionScreen() {
   const fetchServiceCompanies = async () => {
     try {
       setLoading(true);
-      console.log('🏢 Fetching companies for:', { serviceTitle, categoryId, selectedIssueIds });
+      console.log('🏢 Fetching companies for:', { serviceTitle, categoryId, selectedIssueIds, issues });
       
       let fetchedCompanies: ServiceCompany[];
       
-      if (selectedIssueIds && selectedIssueIds.length > 0) {
+      // Check if this is from direct-price services (service_services without packages)
+      const fromServiceServices = route.params?.fromServiceServices === true;
+      
+      if (fromServiceServices && issues && issues.length > 0) {
+        console.log('🏢 Fetching companies for DIRECT-PRICE services (no packages):', issues);
+        console.log('🏢 Category ID:', categoryId);
+        // For direct-price services, fetch companies by service NAMES
+        // Only pass categoryId if it's a valid non-empty string
+        const validCategoryId = categoryId && categoryId.trim() !== '' ? categoryId : undefined;
+        fetchedCompanies = await FirestoreService.getCompaniesByServiceNames(issues, validCategoryId);
+      } else if (selectedIssueIds && selectedIssueIds.length > 0) {
         console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
         // 🏢 NEW: Use enhanced method to get companies with detailed packages
         fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue, ServiceCategory } from "../services/firestoreService";
+import { firestore } from "../firebase.native";
 
 const { width } = Dimensions.get('window');
 
@@ -64,7 +65,7 @@ export default function ServiceCategoryScreen() {
     try {
       setLoading(true);
       
-      console.log('Fetching services for category:', selectedCategoryId);
+      console.log('🔧 Fetching ONLY direct-price services (non-package) for category:', selectedCategoryId);
 
       if (!selectedCategoryId) {
         console.error('No categoryId provided');
@@ -72,17 +73,66 @@ export default function ServiceCategoryScreen() {
         return;
       }
 
-      // Use the new method that fetches services with company info
-      const fetchedIssues = await FirestoreService.getServicesWithCompanies(selectedCategoryId);
+      // Get the category to check if it has a masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(selectedCategoryId.trim())
+        .get();
       
-      console.log(`Found ${fetchedIssues.length} services for category ${selectedCategoryId}`);
+      let searchCategoryId = selectedCategoryId.trim();
       
-      // Filter only active services (isActive === true)
-      const activeIssues = fetchedIssues.filter(issue => issue.isActive === true);
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🔧 Using masterCategoryId: ${searchCategoryId}`);
+        }
+      }
+
+      // Fetch DIRECTLY from service_services collection
+      console.log(`� Querying service_services where categoryMasterId == "${searchCategoryId}"`);
       
-      console.log(`After filtering: ${activeIssues.length} active services`);
+      const servicesSnapshot = await firestore()
+        .collection('service_services')
+        .where('categoryMasterId', '==', searchCategoryId)
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`� Found ${servicesSnapshot.size} total services in service_services`);
+
+      const directPriceServices: ServiceIssue[] = [];
+
+      servicesSnapshot.forEach(doc => {
+        const data = doc.data();
+        const hasPackages = data.packages && Array.isArray(data.packages) && data.packages.length > 0;
+        
+        console.log(`📋 Service: "${data.name}"`);
+        console.log(`   - Has packages: ${hasPackages}`);
+        
+        // Only include services WITHOUT packages (direct-price services)
+        if (!hasPackages) {
+          console.log(`   ✅ Direct-price service: "${data.name}"`);
+          
+          directPriceServices.push({
+            id: doc.id,
+            name: data.name || '',
+            masterCategoryId: searchCategoryId,
+            isActive: data.isActive || false,
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            serviceType: data.serviceType,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          });
+        } else {
+          console.log(`   🚫 Skipping package-based service: "${data.name}" (has ${data.packages.length} packages)`);
+        }
+      });
       
-      setIssues(activeIssues);
+      console.log(`After filtering: ${directPriceServices.length} direct-price services (without packages)`);
+      console.log(`🔧 These services have direct prices, NOT packages`);
+      
+      setIssues(directPriceServices);
       
     } catch (error) {
       console.error('Error fetching services:', error);
@@ -130,13 +180,18 @@ export default function ServiceCategoryScreen() {
     // Go to slot selection first (new flow)
     const selectedIssueObject = issues.find(i => i.id === selectedId);
 
+    // Pass service NAMES instead of IDs for service_services compatibility
+    const serviceNames = selectedIssueObject ? [selectedIssueObject.name] : selectedIssueTitles;
+
     navigation.navigate("SelectDateTime", {
       serviceTitle,
       categoryId: selectedCategoryId,
-      issues: selectedIssueTitles,
-      selectedIssueIds: [selectedId], // Pass as array for compatibility
+      issues: serviceNames, // Service names
+      selectedIssueIds: serviceNames, // Pass names as IDs for compatibility
       selectedIssues: selectedIssueObject ? [selectedIssueObject] : [], // pass as array for compatibility
       allCategories: categories, // 🆕 Pass all categories for sidebar
+      // Add flag to indicate this is from service_services
+      fromServiceServices: true,
     });
   };
 
@@ -277,9 +332,9 @@ export default function ServiceCategoryScreen() {
             </View>
           ) : issues.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No Services</Text>
+              <Text style={styles.emptyTitle}>No Direct-Price Services</Text>
               <Text style={styles.emptyText}>
-                No services available for this category
+                No direct-price services available for this category. Check package plans instead.
               </Text>
             </View>
           ) : (

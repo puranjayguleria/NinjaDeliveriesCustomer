@@ -176,6 +176,84 @@ export interface ServiceBooking {
 
 export class FirestoreService {
   /**
+   * Check if a category has any package-based services
+   * Returns true if category has at least one service with packages
+   */
+  static async categoryHasPackages(categoryId: string): Promise<boolean> {
+    try {
+      console.log(`🔍 Checking if category ${categoryId} has package-based services...`);
+      
+      if (!categoryId) {
+        console.log('❌ No categoryId provided');
+        return false;
+      }
+
+      // Get the category to check if it has a masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId.trim())
+        .get();
+      
+      let searchCategoryId = categoryId.trim();
+      
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        // Use masterCategoryId if available
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+        }
+      }
+
+      // Fetch services for this category
+      const servicesSnapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .where('isActive', '==', true)
+        .limit(50) // Limit for performance
+        .get();
+
+      console.log(`📊 Found ${servicesSnapshot.size} active services in category`);
+
+      // Check if any service has packages
+      let hasPackages = false;
+      
+      for (const doc of servicesSnapshot.docs) {
+        const serviceData = doc.data();
+        const serviceName = serviceData.name;
+        
+        // Check in service_services for packages
+        try {
+          const serviceServicesSnapshot = await firestore()
+            .collection('service_services')
+            .where('name', '==', serviceName)
+            .where('categoryMasterId', '==', searchCategoryId)
+            .where('isActive', '==', true)
+            .limit(1)
+            .get();
+          
+          if (!serviceServicesSnapshot.empty) {
+            const serviceServiceData = serviceServicesSnapshot.docs[0].data();
+            if (serviceServiceData.packages && Array.isArray(serviceServiceData.packages) && serviceServiceData.packages.length > 0) {
+              console.log(`✅ Found package-based service: "${serviceName}" with ${serviceServiceData.packages.length} packages`);
+              hasPackages = true;
+              break; // Found at least one, no need to check more
+            }
+          }
+        } catch (err) {
+          console.log(`⚠️ Error checking packages for service "${serviceName}":`, err);
+        }
+      }
+
+      console.log(`🔍 Category ${categoryId} has packages: ${hasPackages}`);
+      return hasPackages;
+      
+    } catch (error) {
+      console.error('❌ Error checking if category has packages:', error);
+      return false; // On error, assume no packages (will go to ServiceCategory)
+    }
+  }
+
+  /**
    * Fetch all service categories from app_categories collection
    */
   static async getServiceCategories(): Promise<ServiceCategory[]> {
@@ -296,12 +374,13 @@ export class FirestoreService {
   }
 
   /**
-   * Populate service images and packages from service_services and service_services_master collections
-   * Images can come from either service_services OR service_services_master (packages)
+   * Populate service images and packages from service_services collection
+   * Packages are now fetched from service_services (not service_services_master)
+   * Images come from service_services, with service_services_master as fallback
    */
   static async populateServiceImages(services: ServiceIssue[]): Promise<void> {
     try {
-      console.log('🖼️ Fetching service images and packages from service_services and service_services_master...');
+      console.log('🖼️ Fetching service images and packages from service_services...');
       
       if (services.length === 0) {
         console.log('⚠️ No services to populate images for');
@@ -331,7 +410,7 @@ export class FirestoreService {
             const data = doc.data();
             const serviceName = (data.name || '').toLowerCase().trim();
             categoryServicesMap.set(serviceName, { id: doc.id, data });
-            console.log(`   - Cached: "${data.name}" (imageUrl: ${!!data.imageUrl}, adminServiceId: ${!!data.adminServiceId})`);
+            console.log(`   - Cached: "${data.name}" (imageUrl: ${!!data.imageUrl}, packages: ${!!(data.packages && Array.isArray(data.packages))}, adminServiceId: ${!!data.adminServiceId})`);
           });
         } catch (err) {
           console.log(`   ⚠️ Error pre-fetching category services:`, err);
@@ -353,6 +432,7 @@ export class FirestoreService {
             const serviceData = cachedService.data;
             console.log(`   ✅ Found in service_services (doc: ${cachedService.id})`);
             console.log(`      - Has imageUrl: ${!!serviceData.imageUrl}`);
+            console.log(`      - Has packages: ${!!(serviceData.packages && Array.isArray(serviceData.packages))}`);
             console.log(`      - Has adminServiceId: ${!!serviceData.adminServiceId}`);
             
             // Get image from service_services if available
@@ -363,7 +443,19 @@ export class FirestoreService {
               console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
             }
             
-            // Store adminServiceId for package/image lookup
+            // Get packages from service_services if available
+            if (serviceData.packages && Array.isArray(serviceData.packages)) {
+              service.packages = serviceData.packages;
+              packagesFound++;
+              console.log(`   📦 Got ${serviceData.packages.length} packages from service_services`);
+              
+              // Log package details
+              serviceData.packages.forEach((pkg: any, idx: number) => {
+                console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
+              });
+            }
+            
+            // Store adminServiceId for fallback image lookup only
             if (serviceData.adminServiceId) {
               adminServiceId = serviceData.adminServiceId;
             }
@@ -390,6 +482,18 @@ export class FirestoreService {
                   console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
                 }
                 
+                // Get packages from service_services if available
+                if (serviceData.packages && Array.isArray(serviceData.packages)) {
+                  service.packages = serviceData.packages;
+                  packagesFound++;
+                  console.log(`   📦 Got ${serviceData.packages.length} packages from service_services (direct query)`);
+                  
+                  // Log package details
+                  serviceData.packages.forEach((pkg: any, idx: number) => {
+                    console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
+                  });
+                }
+                
                 if (serviceData.adminServiceId) {
                   adminServiceId = serviceData.adminServiceId;
                 }
@@ -399,10 +503,10 @@ export class FirestoreService {
             }
           }
           
-          // STEP 2: Fetch packages and image from service_services_master (if adminServiceId exists)
-          if (adminServiceId) {
+          // STEP 2: Fetch image from service_services_master only if image not found (fallback for image only)
+          if (adminServiceId && !service.imageUrl) {
             try {
-              console.log(`   📦 Fetching from service_services_master using adminServiceId: ${adminServiceId}`);
+              console.log(`   📦 Fetching fallback image from service_services_master using adminServiceId: ${adminServiceId}`);
               
               const masterDoc = await firestore()
                 .collection('service_services_master')
@@ -413,28 +517,13 @@ export class FirestoreService {
                 const masterData = masterDoc.data();
                 console.log(`   ✅ Found in service_services_master`);
                 console.log(`      - Has imageUrl: ${!!masterData?.imageUrl}`);
-                console.log(`      - Has packages: ${!!(masterData?.packages && Array.isArray(masterData.packages))}`);
                 
-                // Get image from service_services_master if not already found
-                if (!service.imageUrl && masterData?.imageUrl) {
+                // Get image from service_services_master as fallback only
+                if (masterData?.imageUrl) {
                   service.imageUrl = masterData.imageUrl;
                   imagesFound++;
                   imageSource = 'service_services_master';
-                  console.log(`   📸 Got image from service_services_master: ${masterData.imageUrl.substring(0, 50)}...`);
-                }
-                
-                // Get packages from service_services_master
-                if (masterData?.packages && Array.isArray(masterData.packages)) {
-                  service.packages = masterData.packages;
-                  packagesFound++;
-                  console.log(`   📦 Got ${masterData.packages.length} packages from service_services_master`);
-                  
-                  // Log package details
-                  masterData.packages.forEach((pkg: any, idx: number) => {
-                    console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
-                  });
-                } else {
-                  console.log(`   ⚠️ No packages array found in service_services_master`);
+                  console.log(`   📸 Got fallback image from service_services_master: ${masterData.imageUrl.substring(0, 50)}...`);
                 }
               } else {
                 console.log(`   ⚠️ service_services_master document not found for adminServiceId: ${adminServiceId}`);
@@ -442,6 +531,8 @@ export class FirestoreService {
             } catch (masterError) {
               console.log(`   ❌ Error fetching from service_services_master:`, masterError);
             }
+          } else if (adminServiceId && service.imageUrl) {
+            console.log(`   ℹ️ Image already found in service_services, skipping service_services_master lookup`);
           } else {
             console.log(`   ℹ️ No adminServiceId found, skipping service_services_master lookup`);
           }
@@ -660,7 +751,7 @@ export class FirestoreService {
       // Sort by name on the client side
       services.sort((a, b) => a.name.localeCompare(b.name));
 
-      // Populate service images from service_services and packages from service_services_master
+      // Populate service images and packages from service_services collection
       await this.populateServiceImages(services);
 
       console.log(`✅ Fetched ${services.length} unique active services for "${categoryName}"`);
@@ -682,7 +773,7 @@ export class FirestoreService {
 
   /**
    * Fetch service companies/providers from service_services collection based on selected services
-   * @param issueIds - Array of service IDs from app_services
+   * @param issueIds - Array of service IDs from app_services OR service names from service_services
    * @param specificCompanyId - Optional: Filter by specific company ID
    */
   static async getCompaniesByServiceIssues(issueIds: string[], specificCompanyId?: string): Promise<ServiceCompany[]> {
@@ -697,8 +788,8 @@ export class FirestoreService {
         return await this.getServiceCompanies();
       }
 
-      // 🔍 STEP 1: Get service details from app_services
-      console.log(`🔍 Step 1: Getting service details from app_services for IDs:`, issueIds);
+      // 🔍 STEP 1: Try to get service details from app_services first
+      console.log(`🔍 Step 1: Trying to get service details from app_services for IDs:`, issueIds);
       const servicesSnapshot = await firestore()
         .collection('app_services')
         .where('__name__', 'in', issueIds.slice(0, 10)) // Firestore limit
@@ -706,86 +797,70 @@ export class FirestoreService {
 
       console.log(`📊 Found ${servicesSnapshot.size} services in app_services collection`);
 
-      if (servicesSnapshot.size === 0) {
-        console.log(`❌ NO SERVICES FOUND in app_services for IDs:`, issueIds);
-        console.log(`💡 This means service IDs don't exist in app_services collection`);
-        return [];
-      }
-
       const categoryIds = new Set<string>();
       const serviceNames = new Set<string>();
       
-      servicesSnapshot.forEach(doc => {
-        const data = doc.data();
-        console.log(`📋 Service ${doc.id}:`, {
-          name: data.name,
-          masterCategoryId: data.masterCategoryId,
-          isActive: data.isActive
+      if (servicesSnapshot.size > 0) {
+        // Found in app_services - use traditional flow
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          console.log(`📋 Service ${doc.id}:`, {
+            name: data.name,
+            masterCategoryId: data.masterCategoryId,
+            isActive: data.isActive
+          });
+          
+          if (data.masterCategoryId) {
+            categoryIds.add(data.masterCategoryId);
+          }
+          if (data.name) {
+            serviceNames.add(data.name.toLowerCase().trim());
+          }
         });
-        
-        if (data.masterCategoryId) {
-          categoryIds.add(data.masterCategoryId);
-        }
-        if (data.name) {
-          serviceNames.add(data.name.toLowerCase().trim());
-        }
-      });
+      } else {
+        // NOT found in app_services - assume these are service NAMES from service_services
+        console.log(`💡 No services found in app_services - treating input as service NAMES from service_services`);
+        issueIds.forEach(name => {
+          serviceNames.add(name.toLowerCase().trim());
+        });
+      }
 
       console.log(`📊 Extracted data:`);
       console.log(`   Category IDs: ${Array.from(categoryIds).join(', ')}`);
       console.log(`   Service names: ${Array.from(serviceNames).join(', ')}`);
 
-      if (categoryIds.size === 0) {
-        console.log(`❌ NO CATEGORY IDs found from services`);
+      if (serviceNames.size === 0) {
+        console.log(`❌ NO SERVICE NAMES found`);
         return [];
       }
 
-      // 🔍 STEP 2: Find companies in service_services
-      console.log(`🔍 Step 2: Finding companies in service_services collection...`);
+      // 🔍 STEP 2: Find companies in service_services by service names
+      console.log(`🔍 Step 2: Finding companies in service_services by service names...`);
       const companies: ServiceCompany[] = [];
       
-      for (const categoryId of categoryIds) {
-        console.log(`🏢 Checking companies for category ${categoryId}...`);
+      // Query service_services by service names
+      for (const serviceName of serviceNames) {
+        console.log(`🏢 Checking companies for service: "${serviceName}"...`);
         
-        // Get ALL companies for this category (we'll filter by service name and active status)
         const companiesSnapshot = await firestore()
           .collection('service_services')
-          .where('categoryMasterId', '==', categoryId)
+          .where('name', '==', serviceName)
+          .where('isActive', '==', true)
           .get();
 
-        console.log(`📊 Found ${companiesSnapshot.size} total companies for category ${categoryId}`);
-
-        if (companiesSnapshot.size === 0) {
-          console.log(`❌ NO COMPANIES found in service_services for category ${categoryId}`);
-          continue;
-        }
-
-        let activeCompanies = 0;
-        let matchingCompanies = 0;
+        console.log(`📊 Found ${companiesSnapshot.size} companies for service "${serviceName}"`);
 
         companiesSnapshot.forEach(doc => {
           const data = doc.data();
           
-          // Log ALL fields to understand the data structure
-          console.log(`🏢 Company ${doc.id} - ALL FIELDS:`, Object.keys(data));
           console.log(`🏢 Company ${doc.id}:`, {
             serviceName: data.name,
             companyName: data.companyName,
             companyId: data.companyId,
             categoryMasterId: data.categoryMasterId,
             isActive: data.isActive,
-            matchesService: data.name && serviceNames.has(data.name.toLowerCase().trim()),
             matchesCompanyFilter: !specificCompanyId || data.companyId === specificCompanyId,
-            specificCompanyIdProvided: specificCompanyId,
-            dataCompanyId: data.companyId,
-            areTheyEqual: data.companyId === specificCompanyId
           });
-          
-          // Only include active companies
-          if (!data.isActive) {
-            console.log(`   🚫 Skipping inactive company: ${data.name || data.companyName || 'Unknown'}`);
-            return;
-          }
           
           // Filter by specific company if provided
           if (specificCompanyId && data.companyId !== specificCompanyId) {
@@ -793,46 +868,35 @@ export class FirestoreService {
             return;
           }
           
-          activeCompanies++;
-
-          // Only include companies that provide the selected service names
-          if (data.name && serviceNames.has(data.name.toLowerCase().trim())) {
-            matchingCompanies++;
-            console.log(`   ✅ Company matches selected service: ${data.name}`);
-            
-            companies.push({
-              id: doc.id,
-              companyId: data.companyId,
-              categoryMasterId: data.categoryMasterId,
-              serviceName: data.name || '', // This is the service name
-              companyName: '', // Will be populated below with actual company name
-              price: data.price,
-              isActive: data.isActive || false,
-              imageUrl: data.imageUrl,
-              packages: data.packages,
-              serviceType: data.serviceType,
-              adminServiceId: data.adminServiceId,
-              description: data.description,
-              rating: data.rating,
-              reviewCount: data.reviewCount,
-              availability: data.availability,
-              contactInfo: {
-                phone: data.phone || data.contactPhone,
-                email: data.email || data.contactEmail,
-                address: data.address || data.contactAddress,
-              },
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt,
-            });
-          } else {
-            console.log(`   ❌ Company doesn't match - service name "${data.name}" not in selected services`);
-          }
+          console.log(`   ✅ Company matches selected service: ${data.name}`);
+          
+          companies.push({
+            id: doc.id,
+            companyId: data.companyId,
+            categoryMasterId: data.categoryMasterId,
+            serviceName: data.name || '', // This is the service name
+            companyName: '', // Will be populated below with actual company name
+            price: data.price,
+            isActive: data.isActive || false,
+            imageUrl: data.imageUrl,
+            packages: data.packages,
+            serviceType: data.serviceType,
+            adminServiceId: data.adminServiceId,
+            description: data.description,
+            rating: data.rating,
+            reviewCount: data.reviewCount,
+            availability: data.availability,
+            contactInfo: {
+              phone: data.phone || data.contactPhone,
+              email: data.email || data.contactEmail,
+              address: data.address || data.contactAddress,
+            },
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          });
         });
         
-        console.log(`📊 Category ${categoryId} summary:`);
-        console.log(`   Total companies: ${companiesSnapshot.size}`);
-        console.log(`   Active companies: ${activeCompanies}`);
-        console.log(`   Matching companies: ${matchingCompanies}`);
+        // Summary logging removed - variables not in scope
       }
 
       console.log(`📊 FINAL SUMMARY:`);
@@ -5419,6 +5483,131 @@ export class FirestoreService {
     } catch (error) {
       console.error('❌ Error fetching companies with detailed packages:', error);
       throw new Error('Failed to fetch companies with package details. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies by service NAMES (for direct-price services from service_services)
+   * This is used when services are selected from ServiceCategoryScreen (direct-price, no packages)
+   */
+  static async getCompaniesByServiceNames(serviceNames: string[], categoryId?: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies for direct-price services:`, serviceNames);
+      console.log(`   Category ID:`, categoryId);
+      
+      const companies: ServiceCompany[] = [];
+      const companyMap = new Map<string, ServiceCompany>();
+      
+      // For each service name, find companies in service_services
+      for (const serviceName of serviceNames) {
+        console.log(`🔍 Searching for companies offering service: "${serviceName}"`);
+        
+        // Query service_services collection by service name
+        let query = firestore()
+          .collection('service_services')
+          .where('name', '==', serviceName)
+          .where('isActive', '==', true);
+        
+        // Add category filter if provided and not empty
+        if (categoryId && categoryId.trim() !== '') {
+          console.log(`   Adding category filter: ${categoryId}`);
+          query = query.where('categoryMasterId', '==', categoryId);
+        } else {
+          console.log(`   No category filter applied (searching all categories)`);
+        }
+        
+        const servicesSnapshot = await query.get();
+        
+        console.log(`   Found ${servicesSnapshot.size} service_services entries for "${serviceName}"`);
+        
+        for (const serviceDoc of servicesSnapshot.docs) {
+          const serviceData = serviceDoc.data();
+          const companyId = serviceData.companyId;
+          
+          if (!companyId) {
+            console.log(`   ⚠️ Service "${serviceName}" has no companyId, skipping`);
+            continue;
+          }
+          
+          // Skip if we already have this company
+          if (companyMap.has(companyId)) {
+            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
+            continue;
+          }
+          
+          // Fetch company details
+          try {
+            const companyDoc = await firestore()
+              .collection('service_companies')
+              .doc(companyId)
+              .get();
+            
+            if (!companyDoc.exists) {
+              console.log(`   ⚠️ Company ${companyId} not found in service_companies`);
+              continue;
+            }
+            
+            const companyData = companyDoc.data();
+            
+            if (!companyData) {
+              console.log(`   ⚠️ Company ${companyId} has no data`);
+              continue;
+            }
+            
+            // Check if company is active
+            if (companyData.isActive === false) {
+              console.log(`   ⚠️ Company ${companyId} is not active, skipping`);
+              continue;
+            }
+            
+            console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
+            
+            // Create company object
+            const company: ServiceCompany = {
+              id: serviceDoc.id, // Use service_services doc ID
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceName,
+              companyName: companyData.companyName || companyData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: companyData.description,
+              rating: companyData.rating,
+              reviewCount: companyData.reviewCount,
+              contactInfo: companyData.contactInfo,
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              // No packages for direct-price services
+              packages: undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            
+          } catch (error) {
+            console.error(`   ❌ Error fetching company ${companyId}:`, error);
+          }
+        }
+      }
+      
+      // Convert map to array
+      const companiesArray = Array.from(companyMap.values());
+      
+      console.log(`✅ Found ${companiesArray.length} unique companies for direct-price services`);
+      console.log(`   Companies:`, companiesArray.map(c => ({
+        companyName: c.companyName,
+        serviceName: c.serviceName,
+        price: c.price,
+        companyId: c.companyId
+      })));
+      
+      return companiesArray;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies by service names:', error);
+      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
     }
   }
 

@@ -127,13 +127,25 @@ export default function AllServicesScreen() {
     setFilteredCategories(filtered);
   };
 
-  const handleServicePress = (category: ServiceCategory) => {
-    // Navigate to the appropriate service category screen
-    // You can customize this based on your navigation structure
-    navigation.navigate('ServiceCategory', {
+  const handleServicePress = async (category: ServiceCategory) => {
+    console.log('🎯 Category clicked:', category.name, category.id);
+    
+    // Check if category has packages before navigating
+    const hasPackages = await FirestoreService.categoryHasPackages(category.id);
+    
+    const navigationParams = {
       serviceTitle: category.name,
       categoryId: category.id,
-    });
+      allCategories: categories,
+    };
+    
+    if (hasPackages) {
+      console.log('✅ Category has packages, navigating to PackageSelection');
+      navigation.navigate('PackageSelection', navigationParams);
+    } else {
+      console.log('✅ Category has no packages, navigating directly to ServiceCategory');
+      navigation.navigate('ServiceCategory', navigationParams);
+    }
   };
 
   const renderServiceItem = ({ item }: { item: ServiceCategory }) => (

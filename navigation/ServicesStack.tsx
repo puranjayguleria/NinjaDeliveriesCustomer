@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ServicesScreen from "../screens/ServicesScreen";
 import AllServicesScreen from "../screens/AllServicesScreen";
 import ServiceCategoryScreen from "../screens/ServiceCategoryScreen";
+import PackageSelectionScreen from "../screens/PackageSelectionScreen";
 import CompanySelectionScreen from "../screens/CompanySelectionScreen";
 import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
 import PaymentScreen from "../screens/PaymentScreen";
@@ -46,6 +47,7 @@ export default function ServicesStack() {
       <Stack.Screen name="ServiceCheckout" component={ServiceCheckoutScreen} />
 
       {/* Electrician / Plumber Flow */}
+      <Stack.Screen name="PackageSelection" component={PackageSelectionScreen} />
       <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />
       <Stack.Screen name="CompanySelection" component={CompanySelectionScreen} />
       <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />

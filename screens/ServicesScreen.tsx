@@ -535,14 +535,49 @@ export default function ServicesScreen() {
     navigation.navigate(screen, params);
   };
 
-  const handleBannerPress = (banner: ServiceBanner) => {
+  const handleCategoryPress = async (category: ServiceCategory) => {
+    console.log('🎯 Category clicked:', category.name, category.id);
+    
+    // Check if category has packages
+    const hasPackages = await FirestoreService.categoryHasPackages(category.id);
+    
+    const navigationParams = {
+      serviceTitle: category.name,
+      categoryId: category.id,
+      allCategories: serviceCategories,
+    };
+    
+    if (hasPackages) {
+      console.log('✅ Category has packages, navigating to PackageSelection');
+      navigation.navigate("PackageSelection", navigationParams);
+    } else {
+      console.log('✅ Category has no packages, navigating directly to ServiceCategory');
+      navigation.navigate("ServiceCategory", navigationParams);
+    }
+  };
+
+  const handleBannerPress = async (banner: ServiceBanner) => {
     if (!banner.clickable) return;
 
     if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
-      navigation.navigate("ServiceCategory", { 
-        serviceTitle: banner.title,
-        categoryId: banner.categoryId
-      });
+      // Check if category has packages before navigating
+      const hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
+      
+      if (hasPackages) {
+        console.log('✅ Category has packages, navigating to PackageSelection');
+        navigation.navigate("PackageSelection", { 
+          serviceTitle: banner.title,
+          categoryId: banner.categoryId,
+          allCategories: serviceCategories,
+        });
+      } else {
+        console.log('✅ Category has no packages, navigating directly to ServiceCategory');
+        navigation.navigate("ServiceCategory", { 
+          serviceTitle: banner.title,
+          categoryId: banner.categoryId,
+          allCategories: serviceCategories,
+        });
+      }
     } else if (banner.redirectType === "AllServices") {
       navigation.navigate("AllServices");
     } else if (banner.redirectUrl) {
@@ -578,7 +613,7 @@ export default function ServicesScreen() {
     const backgroundColor = banner.backgroundColor || '#667eea';
     const textColor = banner.textColor || 'white';
 
-    const onBannerPress = () => {
+    const onBannerPress = async () => {
       console.log('🎯 Banner clicked:', {
         title: banner.title,
         clickable: banner.clickable,
@@ -592,23 +627,43 @@ export default function ServicesScreen() {
         return;
       }
 
-      // If categoryId exists, navigate to that category (regardless of redirectType)
+      // If categoryId exists, check for packages before navigating
       if (banner.categoryId) {
+        const hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
+        
         const navigationParams = {
           serviceTitle: banner.title,
-          categoryId: banner.categoryId
+          categoryId: banner.categoryId,
+          allCategories: serviceCategories,
         };
-        console.log('✅ Navigating to ServiceCategory with params:', navigationParams);
-        navigation.navigate("ServiceCategory", navigationParams);
+        
+        if (hasPackages) {
+          console.log('✅ Category has packages, navigating to PackageSelection');
+          navigation.navigate("PackageSelection", navigationParams);
+        } else {
+          console.log('✅ Category has no packages, navigating to ServiceCategory');
+          navigation.navigate("ServiceCategory", navigationParams);
+        }
         return;
       }
 
       // Fallback to redirectType-based navigation
       if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
-        navigation.navigate("ServiceCategory", { 
-          serviceTitle: banner.title,
-          categoryId: banner.categoryId
-        });
+        const hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
+        
+        if (hasPackages) {
+          navigation.navigate("PackageSelection", { 
+            serviceTitle: banner.title,
+            categoryId: banner.categoryId,
+            allCategories: serviceCategories,
+          });
+        } else {
+          navigation.navigate("ServiceCategory", { 
+            serviceTitle: banner.title,
+            categoryId: banner.categoryId,
+            allCategories: serviceCategories,
+          });
+        }
       } else if (banner.redirectType === "AllServices") {
         navigation.navigate("AllServices");
       } else if (banner.redirectUrl) {
@@ -703,7 +758,7 @@ export default function ServicesScreen() {
         key={item.id}
         style={[styles.categoryCard, { backgroundColor: categoryStyle.bgColor }]}
         activeOpacity={0.7}
-        onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
+        onPress={() => handleCategoryPress(item)}
       >
         <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
           {item.imageUrl ? (
@@ -733,7 +788,7 @@ export default function ServicesScreen() {
       <TouchableOpacity
         style={styles.gridCard}
         activeOpacity={0.7}
-        onPress={() => goTo("ServiceCategory", { serviceTitle: item.name, categoryId: item.id })}
+        onPress={() => handleCategoryPress(item)}
       >
         <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
           {item.imageUrl ? (
