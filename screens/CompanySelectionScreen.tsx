@@ -18,7 +18,6 @@ export default function CompanySelectionScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -81,8 +80,6 @@ export default function CompanySelectionScreen() {
     useCallback(() => {
       console.log('🔄 Screen focused - Refreshing company availability...');
       fetchServiceCompanies();
-      // reset package selection when screen refocuses
-      setSelectedPackage(null);
     }, [selectedIssueIds])
   );
 
@@ -426,20 +423,14 @@ export default function CompanySelectionScreen() {
     else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
     else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
-    // Calculate price: prefer selected package price, then selected issues total, then company.price
-    let packageInfo = null;
-    if (selectedCompany.packages && Array.isArray(selectedCompany.packages) && selectedPackage) {
-      // selectedPackage should be an object from the package list
-      packageInfo = selectedPackage;
-    }
-
+    // Calculate price from selected issues or company price
     const issueTotalPrice = Array.isArray(selectedIssues)
       ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
       : 0;
 
-    const computedPrice = packageInfo?.price ?? (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
+    const computedPrice = issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0);
 
-    // Add service to cart (include package info when available)
+    // Add service to cart
     addService({
       serviceTitle,
       categoryId, // Add categoryId for add-on services filtering
@@ -457,24 +448,10 @@ export default function CompanySelectionScreen() {
       bookingType,
       unitPrice: computedPrice,
       totalPrice: computedPrice,
-      additionalInfo: packageInfo ? { 
-        package: { 
-          id: packageInfo.id, 
-          name: packageInfo.name, 
-          price: packageInfo.price, 
-          description: packageInfo.description,
-          duration: packageInfo.duration,
-          unit: packageInfo.unit,
-          frequency: packageInfo.frequency,
-          type: packageInfo.type,
-        } 
-      } : undefined,
     });
 
     // Show success modal instead of Alert
     setShowSuccessModal(true);
-    // Reset package selection after adding
-    setSelectedPackage(null);
   }; 
 
   return (
@@ -555,7 +532,6 @@ export default function CompanySelectionScreen() {
               renderItem={({ item }) => {
                 const isSelected = item.id === selectedCompanyId;
                 const isBusy = (item as any).isBusy === true;
-                const hasPackages = item.packages && Array.isArray(item.packages) && item.packages.length > 0;
             
             return (
               <TouchableOpacity
@@ -605,145 +581,6 @@ export default function CompanySelectionScreen() {
                     {item.availability || 'Available'}
                   </Text>
                 </View>
-
-                {/* Package or Price Display */}
-                {hasPackages ? (
-                  <View style={styles.packageSection}>
-                    <Text style={styles.packageLabel}>
-                       {item.packages?.length || 0} Package{(item.packages?.length || 0) > 1 ? 's' : ''} Available
-                    </Text>
-                    
-                    {isSelected && (
-                      <View style={styles.packageGrid}>
-                        {item.packages?.map((pkg: any, idx: number) => {
-                          const pkgObj = typeof pkg === 'string' 
-                            ? { id: `${item.id}_pkg_${idx}`, name: pkg, price: item.price || 0 } 
-                            : pkg;
-                          const isPkgSelected = selectedPackage && selectedPackage.id === pkgObj.id;
-                          
-                          // 🔍 DEBUG: Log package data to verify unit field
-                          console.log(`📦 Package ${idx} data:`, {
-                            name: pkgObj.name,
-                            price: pkgObj.price,
-                            unit: pkgObj.unit,
-                            frequency: pkgObj.frequency,
-                            type: pkgObj.type,
-                            fullObject: pkgObj
-                          });
-                          
-                          // Determine frequency type from package data
-                          // Priority: 1. unit field, 2. frequency field, 3. type field, 4. name parsing
-                          let frequencyBadge = null;
-                          let frequencyColor = '#64748b';
-                          
-                          // Check if package has explicit unit, frequency or type field
-                          const explicitFrequency = pkgObj.unit || pkgObj.frequency || pkgObj.type || pkgObj.subscriptionType;
-                          const duration = pkgObj.duration; // Get duration (e.g., 2, 3, 6, 12)
-                          
-                          console.log(`🔍 Frequency detection for "${pkgObj.name}":`, {
-                            explicitFrequency,
-                            duration,
-                            unit: pkgObj.unit,
-                            frequency: pkgObj.frequency,
-                            type: pkgObj.type
-                          });
-                          
-                          if (explicitFrequency) {
-                            const freqLower = explicitFrequency.toLowerCase();
-                            if (freqLower.includes('month')) {
-                              // Show duration if available (e.g., "3 Months")
-                              if (duration && typeof duration === 'number' && duration > 0) {
-                                frequencyBadge = duration === 1 ? '1 Month' : `${duration} Months`;
-                              } else {
-                                frequencyBadge = 'Monthly';
-                              }
-                              frequencyColor = '#8b5cf6';
-                            } else if (freqLower.includes('week')) {
-                              if (duration && typeof duration === 'number' && duration > 0) {
-                                frequencyBadge = duration === 1 ? '1 Week' : `${duration} Weeks`;
-                              } else {
-                                frequencyBadge = 'Weekly';
-                              }
-                              frequencyColor = '#3b82f6';
-                            } else if (freqLower.includes('day')) {
-                              if (duration && typeof duration === 'number' && duration > 0) {
-                                frequencyBadge = duration === 1 ? '1 Day' : `${duration} Days`;
-                              } else {
-                                frequencyBadge = 'Daily';
-                              }
-                              frequencyColor = '#10b981';
-                            } else if (freqLower.includes('year') || freqLower.includes('annual')) {
-                              if (duration && typeof duration === 'number' && duration > 0) {
-                                frequencyBadge = duration === 1 ? '1 Year' : `${duration} Years`;
-                              } else {
-                                frequencyBadge = 'Yearly';
-                              }
-                              frequencyColor = '#f59e0b';
-                            }
-                          } else {
-                            // Fallback: parse from package name
-                            const pkgName = (pkgObj.name || '').toLowerCase();
-                            if (pkgName.includes('monthly') || pkgName.includes('month')) {
-                              frequencyBadge = 'Monthly';
-                              frequencyColor = '#8b5cf6';
-                            } else if (pkgName.includes('weekly') || pkgName.includes('week')) {
-                              frequencyBadge = 'Weekly';
-                              frequencyColor = '#3b82f6';
-                            } else if (pkgName.includes('daily') || pkgName.includes('day')) {
-                              frequencyBadge = 'Daily';
-                              frequencyColor = '#10b981';
-                            } else if (pkgName.includes('yearly') || pkgName.includes('year') || pkgName.includes('annual')) {
-                              frequencyBadge = 'Yearly';
-                              frequencyColor = '#f59e0b';
-                            }
-                          }
-                          
-                          console.log(`✅ Final badge for "${pkgObj.name}": ${frequencyBadge || 'None'}`);
-                          
-                          return (
-                            <TouchableOpacity
-                              key={pkgObj.id}
-                              style={[
-                                styles.packageOption,
-                                isPkgSelected && styles.packageOptionSelected
-                              ]}
-                              onPress={() => setSelectedPackage(pkgObj)}
-                            >
-                              <View style={styles.packageOptionHeader}>
-                                <View style={styles.packageNameRow}>
-                                  <Text style={styles.packageOptionName}>{pkgObj.name}</Text>
-                                  {frequencyBadge && (
-                                    <View style={[styles.frequencyBadge, { backgroundColor: frequencyColor }]}>
-                                      <Text style={styles.frequencyBadgeText}>{frequencyBadge}</Text>
-                                    </View>
-                                  )}
-                                </View>
-                                {isPkgSelected && (
-                                  <View style={styles.packageCheckmark}>
-                                    <Text style={styles.packageCheckmarkText}>✓</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text style={styles.packageOptionPrice}>₹{pkgObj.price}</Text>
-                              {pkgObj.description && (
-                                <Text style={styles.packageOptionDesc} numberOfLines={2}>
-                                  {pkgObj.description}
-                                </Text>
-                              )}
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  item.price && (
-                    <View style={styles.priceSection}>
-                      <Text style={styles.priceLabel}>Service Price</Text>
-                      <Text style={styles.priceValue}>₹{item.price}</Text>
-                    </View>
-                  )
-                )}
 
                 {/* Additional Info */}
                 {(item.rating || (item as any).totalWorkerCount) && (

@@ -264,7 +264,8 @@ export default function PackageSelectionScreen() {
     // Handle different package data structures
     let packageName = pkg.name || pkg.packageName || `Package ${index + 1}`;
     let packagePrice = pkg.price || 0;
-    let packageDuration = pkg.duration || '';
+    let packageDuration = pkg.duration; // Can be a number like 2, 3, 6, 12
+    let packageUnit = pkg.unit; // Can be "month", "week", "day", "year"
     
     // If package name contains price info like "1 month(s) - ₹998", parse it
     if (packageName.includes('-') && packageName.includes('₹')) {
@@ -276,43 +277,51 @@ export default function PackageSelectionScreen() {
       }
     }
     
-    // Determine proper duration text
+    // Build duration text from duration number and unit
     let durationText = '';
-    if (packageDuration) {
-      const durationLower = packageDuration.toString().toLowerCase();
+    
+    // Priority 1: Use explicit duration + unit fields from Firestore
+    if (packageDuration && packageUnit) {
+      const duration = Number(packageDuration);
+      const unit = packageUnit.toLowerCase();
       
-      // Check for month/monthly
-      if (durationLower.includes('month')) {
-        durationText = 'month';
-      } 
-      // Check for year/yearly
-      else if (durationLower.includes('year')) {
-        durationText = 'year';
-      }
-      // Check for week/weekly
-      else if (durationLower.includes('week')) {
-        durationText = 'week';
-      }
-      // Check for day/daily
-      else if (durationLower.includes('day')) {
-        durationText = 'day';
-      }
-      // If it's just a number, try to infer from package name or default to month
-      else if (!isNaN(Number(packageDuration))) {
-        // Check package name for hints
-        const nameLower = packageName.toLowerCase();
-        if (nameLower.includes('month')) {
-          durationText = 'month';
-        } else if (nameLower.includes('year')) {
-          durationText = 'year';
-        } else if (nameLower.includes('week')) {
-          durationText = 'week';
-        } else {
-          durationText = 'month'; // Default to month
-        }
+      // Pluralize unit if duration > 1
+      if (duration === 1) {
+        durationText = `${duration} ${unit}`;
       } else {
-        durationText = packageDuration; // Use as-is if it's already text
+        // Add 's' for plural (month -> months, week -> weeks, etc.)
+        const pluralUnit = unit.endsWith('s') ? unit : `${unit}s`;
+        durationText = `${duration} ${pluralUnit}`;
       }
+    }
+    // Priority 2: If only unit is provided (no duration number)
+    else if (packageUnit) {
+      durationText = packageUnit.toLowerCase();
+    }
+    // Priority 3: If only duration is provided (try to infer unit from name)
+    else if (packageDuration) {
+      const duration = Number(packageDuration);
+      const nameLower = packageName.toLowerCase();
+      
+      let inferredUnit = 'month'; // default
+      if (nameLower.includes('year')) inferredUnit = 'year';
+      else if (nameLower.includes('week')) inferredUnit = 'week';
+      else if (nameLower.includes('day')) inferredUnit = 'day';
+      
+      if (duration === 1) {
+        durationText = `${duration} ${inferredUnit}`;
+      } else {
+        const pluralUnit = inferredUnit.endsWith('s') ? inferredUnit : `${inferredUnit}s`;
+        durationText = `${duration} ${pluralUnit}`;
+      }
+    }
+    // Priority 4: Fallback - parse from package name
+    else {
+      const nameLower = packageName.toLowerCase();
+      if (nameLower.includes('month')) durationText = 'month';
+      else if (nameLower.includes('year')) durationText = 'year';
+      else if (nameLower.includes('week')) durationText = 'week';
+      else if (nameLower.includes('day')) durationText = 'day';
     }
     
     // Create consistent package ID for selection
