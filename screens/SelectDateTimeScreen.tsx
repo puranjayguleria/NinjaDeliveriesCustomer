@@ -1,35 +1,43 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ScrollView,
-  Alert,
-  Dimensions,
-  Platform,
-  Image,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { useServiceCart } from "../context/ServiceCartContext";
-import { Ionicons } from '@expo/vector-icons';
-
-const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+import { firestore } from "../firebase.native";
 
 export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { addService } = useServiceCart();
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, allCategories, fromServiceServices } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, fromServiceServices, isPackageBooking, selectedPackage } = route.params;
 
-  // Calculate price from selected issue objects (they include optional `price`)
-  const issueTotalPrice = Array.isArray(selectedIssues)
-    ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
-    : 0;
+  // Debug: Log all route params immediately
+  console.log('🚀 SelectDateTimeScreen MOUNTED with params:', JSON.stringify({
+    serviceTitle,
+    categoryId,
+    issues,
+    selectedIssueIds,
+    selectedIssues: selectedIssues?.map((s: any) => s.name),
+    fromServiceServices,
+    isPackageBooking,
+    selectedPackage: selectedPackage ? {
+      name: selectedPackage.name,
+      price: selectedPackage.price,
+      id: selectedPackage.id
+    } : null
+  }, null, 2));
 
-  const slots = [
+  // State for slots
+  const [slots, setSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(true);
+
+  // Predefined slots for services (non-package bookings)
+  const defaultSlots = [
     "9:00 AM - 11:00 AM",
     "11:00 AM - 1:00 PM", 
     "1:00 PM - 3:00 PM",
@@ -38,13 +46,154 @@ export default function SelectDateTimeScreen() {
     "7:00 PM - 9:00 PM",
   ];
 
-  const [time, setTime] = useState(slots[2]);
+  const [time, setTime] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split("T")[0];
   });
+
+  // Fetch slots based on booking type
+  useEffect(() => {
+    const fetchSlots = async () => {
+      try {
+        setLoadingSlots(true);
+        
+        console.log('🔍 SelectDateTimeScreen - Route params:', {
+          isPackageBooking,
+          isPackageBookingType: typeof isPackageBooking,
+          isPackageBookingTruthy: !!isPackageBooking,
+          selectedPackage: selectedPackage?.name,
+          hasSelectedPackage: !!selectedPackage,
+          serviceId: selectedIssueIds?.[0],
+          fromServiceServices
+        });
+        
+        // Check if this is a package booking (explicit true check)
+        if (isPackageBooking === true && selectedPackage) {
+          // For packages: fetch slots from Firestore
+          console.log('📦 PACKAGE BOOKING - Fetching slots from Firestore for package:', selectedPackage.name);
+          
+          // Get the service ID from selectedIssueIds
+          const serviceId = selectedIssueIds?.[0];
+          
+          if (serviceId) {
+            console.log('📦 Querying service_services collection for serviceId:', serviceId);
+            const serviceDoc = await firestore()
+              .collection('service_services')
+              .doc(serviceId)
+              .get();
+            
+            if (serviceDoc.exists) {
+              const serviceData = serviceDoc.data();
+              console.log('📦 Full service data from Firestore:', JSON.stringify(serviceData, null, 2));
+              
+              let packageSlots: string[] = [];
+              
+              // Check if service has packages array
+              if (serviceData?.packages && Array.isArray(serviceData.packages)) {
+                console.log('📦 Found packages array in service, searching for matching package...');
+                
+                // Find the selected package in the packages array
+                const matchingPackage = serviceData.packages.find((pkg: any) => 
+                  pkg.id === selectedPackage.id || 
+                  pkg.name === selectedPackage.name ||
+                  JSON.stringify(pkg) === JSON.stringify(selectedPackage)
+                );
+                
+                if (matchingPackage) {
+                  console.log('📦 Found matching package:', matchingPackage);
+                  
+                  // Check for availability.timeSlots structure (as shown in screenshot)
+                  if (matchingPackage.availability?.timeSlots && Array.isArray(matchingPackage.availability.timeSlots)) {
+                    console.log('📦 Found availability.timeSlots in package');
+                    packageSlots = matchingPackage.availability.timeSlots.map((slot: any) => {
+                      // Convert 24-hour format to 12-hour format with AM/PM
+                      const formatTime = (time: string) => {
+                        const [hours, minutes] = time.split(':');
+                        const hour = parseInt(hours);
+                        const ampm = hour >= 12 ? 'PM' : 'AM';
+                        const hour12 = hour % 12 || 12;
+                        return `${hour12}:${minutes} ${ampm}`;
+                      };
+                      
+                      return `${formatTime(slot.startTime)} - ${formatTime(slot.endTime)}`;
+                    });
+                  }
+                  // Fallback: Check for direct slots array
+                  else if (matchingPackage.slots && Array.isArray(matchingPackage.slots)) {
+                    console.log('📦 Found direct slots array in package');
+                    packageSlots = matchingPackage.slots;
+                  }
+                  // Fallback: Check for timeSlots array
+                  else if (matchingPackage.timeSlots && Array.isArray(matchingPackage.timeSlots)) {
+                    console.log('📦 Found timeSlots array in package');
+                    packageSlots = matchingPackage.timeSlots;
+                  }
+                }
+              }
+              
+              // If no slots found in packages array, try service-level slots
+              if (packageSlots.length === 0) {
+                console.log('📦 No slots in package, checking service-level slots...');
+                packageSlots = serviceData?.slots || serviceData?.timeSlots || serviceData?.availableSlots || [];
+              }
+              
+              // If still no slots, check selectedPackage object directly
+              if (packageSlots.length === 0 && selectedPackage.availability?.timeSlots) {
+                console.log('📦 Checking selectedPackage.availability.timeSlots from route params');
+                packageSlots = selectedPackage.availability.timeSlots.map((slot: any) => {
+                  const formatTime = (time: string) => {
+                    const [hours, minutes] = time.split(':');
+                    const hour = parseInt(hours);
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    const hour12 = hour % 12 || 12;
+                    return `${hour12}:${minutes} ${ampm}`;
+                  };
+                  return `${formatTime(slot.startTime)} - ${formatTime(slot.endTime)}`;
+                });
+              }
+              
+              console.log('📦 Final packageSlots:', packageSlots);
+              
+              if (packageSlots.length > 0) {
+                console.log('✅ Found slots from Firestore:', packageSlots);
+                setSlots(packageSlots);
+                setTime(packageSlots[0]); // Set first slot as default
+              } else {
+                console.log('⚠️ No slots found anywhere for package, using default slots as fallback');
+                setSlots(defaultSlots);
+                setTime(defaultSlots[2]); // Set middle slot as default
+              }
+            } else {
+              console.log('⚠️ Service document not found in Firestore, using default slots');
+              setSlots(defaultSlots);
+              setTime(defaultSlots[2]);
+            }
+          } else {
+            console.log('⚠️ No service ID provided for package, using default slots');
+            setSlots(defaultSlots);
+            setTime(defaultSlots[2]);
+          }
+        } else {
+          // For services: use predefined slots
+          console.log('💰 SERVICE BOOKING (NOT PACKAGE) - Using predefined slots');
+          setSlots(defaultSlots);
+          setTime(defaultSlots[2]); // Set middle slot as default
+        }
+      } catch (error) {
+        console.error('❌ Error fetching slots:', error);
+        // Fallback to default slots on error
+        setSlots(defaultSlots);
+        setTime(defaultSlots[2]);
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchSlots();
+  }, [isPackageBooking, selectedPackage, selectedIssueIds]);
 
   const getNext7Days = () => {
     const days = [];
@@ -82,8 +231,15 @@ export default function SelectDateTimeScreen() {
         <Text style={styles.headerTitle}>Select Date & Time</Text>
       </View>
 
-      {/* Main Content: Sidebar + Slots */}
-      <View style={styles.mainContent}>
+      {loadingSlots ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Loading available slots...</Text>
+        </View>
+      ) : (
+        <>
+          {/* Main Content: Sidebar + Slots */}
+          <View style={styles.mainContent}>
         {/* Left Sidebar - Selected Service Only */}
         <View style={styles.sidebar}>
           <View style={styles.sidebarContent}>
@@ -197,12 +353,16 @@ export default function SelectDateTimeScreen() {
               selectedTime: time,
               selectedDateFull: selected?.full,
               fromServiceServices, // Pass the flag forward
+              isPackageBooking, // Pass package flag
+              selectedPackage, // Pass package info
             });
           }}
         >
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
+      </>
+      )}
     </View>
   );
 }
@@ -373,7 +533,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  serviceNameText: {
+  serviceNameTextDark: {
     fontSize: 12,
     fontWeight: "600",
     color: "#0f172a",
@@ -604,5 +764,20 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+
+  // Loading Container
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 64,
+  },
+
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
   },
 });

@@ -251,6 +251,7 @@ export default function PackageSelectionScreen() {
         selectedIssues: [selectedDirectService],
         allCategories,
         fromServiceServices: true,
+        isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
       });
       return;
     }
