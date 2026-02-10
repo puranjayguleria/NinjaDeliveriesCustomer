@@ -165,6 +165,14 @@ const ValentineSpecialsScreen = () => {
     });
   }, [teddyImageUrl]);
 
+  // Use the stack header for title/back button; avoid rendering a second header/back button in the screen.
+  useEffect(() => {
+    navigation?.setOptions?.({
+      title: "Valentine Specials",
+      headerShown: true,
+    });
+  }, [navigation]);
+
   return (
     <View style={styles.container}>
       {/* Background Image - Using a network image as placeholder for the "second image" 
@@ -177,26 +185,7 @@ const ValentineSpecialsScreen = () => {
         resizeMode="cover"
       >
         <SafeAreaView style={styles.safeArea}>
-          {/* Back Button */}
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            accessibilityHint="Returns to previous screen"
-            accessibilityRole="button"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={28} color={Colors.valentine.primary} />
-          </TouchableOpacity>
-
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            {/* Header */}
-            <View style={styles.header}>
-              <Text style={styles.headerTitle} accessibilityRole="header">Valentine Specials</Text>
-              <Text style={styles.headerSubtitle}>
-                Surprise Your Loved Ones with Something Sweet
-              </Text>
-            </View>
 
             {/* Sale Banner */}
             <View style={styles.bannerContainer}>

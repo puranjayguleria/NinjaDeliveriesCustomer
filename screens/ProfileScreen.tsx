@@ -580,7 +580,15 @@ const ProfileScreen: React.FC = () => {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate("Login" as never)}
+          onPress={() =>
+            navigation.navigate(
+              "AppTabs" as never,
+              {
+                screen: "HomeTab",
+                params: { screen: "LoginInHomeStack" },
+              } as never
+            )
+          }
           style={{ backgroundColor: "#FF7043", marginTop: 16 }}
         >
           Login

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ninja Deliveries",
     "slug": "CustomerApp",
-    "version": "1.0.4",
+    "version": "1.0.6",
     "platforms": [
       "android",
       "ios"
@@ -20,10 +20,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ninjadeliveries.customer",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "26",
+      "buildNumber": "31",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["tez", "phonepe", "paytmmp"],
+        "LSApplicationQueriesSchemes": [
+          "tez",
+          "phonepe",
+          "paytmmp"
+        ],
         "NSLocationWhenInUseUsageDescription": "We need to access your location to deliver orders to your location.",
+        "NSPhotoLibraryUsageDescription": "We use your photo library only when you choose to upload a photo (for example, a profile picture or a support-related image).",
+        "NSPhotoLibraryAddUsageDescription": "We save photos to your library only when you explicitly choose to save an image from the app.",
         "NSUserNotificationUsageDescription": "We use notifications to update you on your order status and important alerts.",
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -51,7 +57,7 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
       ],
-      "versionCode": 41,
+      "versionCode": 42,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBqYwT_2hMwG1SrcLygclXsJmJc--QjDFg"
@@ -90,8 +96,6 @@
       },
       "iosReversedClientId": "com.googleusercontent.apps.1047234268136-87md54v87djhg5hrfiu33oamhb2c3nmi"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "runtimeVersion": "1.0.4"
   }
 }

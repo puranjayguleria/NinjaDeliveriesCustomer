@@ -377,8 +377,10 @@ const styles = StyleSheet.create({
   searchPlaceholder: {
     flex: 1,
     height: 44,
-    lineHeight: 44,
+    lineHeight: 20,
     fontSize: 15,
+    paddingVertical: 0,
+    textAlignVertical: "center",
     color: "#777",
   },
 

@@ -13,7 +13,7 @@ import {
   Image,
   StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";  // <-- ADD THIS
+import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -239,7 +239,7 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* ---------- Side nav ---------- */}

@@ -90,17 +90,6 @@ const ValentineSpecialSection = ({ storeId }: { storeId: string }) => {
           </View>
           <Text style={styles.subtitle}>From Dharamshala Today 💌</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() =>
-            navigation.navigate("CategoriesTab", {
-              screen: "CategoriesHome",
-              params: { autoOpenFirstCategory: true },
-            })
-          }
-          style={styles.seeMoreBtn}
-        >
-          <Text style={styles.seeMoreTxt}>See More {">"}</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Products List */}

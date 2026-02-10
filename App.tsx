@@ -326,7 +326,7 @@ function HomeStack() {
       <Stack.Screen
         name="ValentineSpecials"
         component={ValentineSpecialsScreen}
-        options={{ headerShown: false }}
+        options={{ title: "Valentine Specials", headerShown: true }}
       />
       <Stack.Screen
         name="RoseBouquetScreen"

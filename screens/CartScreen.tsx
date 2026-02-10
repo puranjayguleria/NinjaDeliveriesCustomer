@@ -1,5 +1,5 @@
 // screens/CartScreen.tsx
-// ✅ ONLINE payment (Razorpay TEST) added using hardcoded Cloud Function URLs (change later to ENV in prod)
+// ✅ ONLINE payment (Razorpay) added using hardcoded Cloud Function URLs (change later to ENV in prod)
 // ✅ Existing functionality preserved: delivery window checks, store-change clears cart, hotspots fee,
 //    promos, weather surge, stock batch update, orders paused modal, etc.
 // ✅ Safe payment flow: create Razorpay order (server) -> open Razorpay -> verify (server) -> create Firestore order
@@ -437,7 +437,6 @@ const CartScreen: React.FC = () => {
     fetchCartItems(true);
     watchPromos();
     const unsubscribe = watchUserLocations();
-    setLoading(false);
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -983,7 +982,7 @@ const CartScreen: React.FC = () => {
   };
 
   /***************************************
-   * RAZORPAY (TEST) - helpers
+  * RAZORPAY - helpers
    ***************************************/
  const createRazorpayOrderOnServer = async (amountRupees: number) => {
   const user = auth().currentUser;
@@ -1134,25 +1133,17 @@ const CartScreen: React.FC = () => {
 
     // If Razorpay isn't available in this binary, don't proceed.
     if (option === "online") {
-      if (Platform.OS === "ios") {
-        Alert.alert(
-          "Online payment unavailable",
-          "Online payments (Razorpay) aren’t available on iOS in this build. Please use Cash on Delivery or update the app when a new iOS version is released."
-        );
-        return;
-      }
-
       const RazorpayCheckout = getRazorpayCheckout();
       if (!RazorpayCheckout?.open) {
         Alert.alert(
           "Update required",
-          "Online payments require the latest app version. Please update Ninja Deliveries from the Play Store and try again.\n\nYou can still place this order using Cash on Delivery."
+          "Online payments require the latest app version. Please update Ninja Deliveries from the store and try again.\n\nYou can still place this order using Cash on Delivery."
         );
         return;
       }
     }
 
-    // ✅ ONLINE Razorpay TEST
+  // ✅ ONLINE Razorpay
     try {
       if (!selectedLocation) {
         Alert.alert("Select address", "Please select a delivery address first.");
@@ -1208,11 +1199,11 @@ const meta = await openRazorpayCheckout(
       }
     } catch (e: any) {
   console.error("[ONLINE PAYMENT]", e);
+  const raw = e?.description ?? e?.error?.description ?? e?.message ?? e;
   const msg =
-    e?.description ||
-    e?.error?.description ||
-    e?.message ||
-    "Payment was not completed. If money was deducted, it will be auto-refunded by your bank.";
+    typeof raw === "string"
+      ? raw
+      : "Payment was not completed. If money was deducted, it will be auto-refunded by your bank.";
   Alert.alert("Payment Failed", msg);
 } finally {
   setNavigating(false);
@@ -2026,7 +2017,7 @@ const meta = await openRazorpayCheckout(
                     { color: "#fff", fontWeight: "800" },
                   ]}
                 >
-                  Pay Online (Razorpay - Test)
+                  Pay Online
                 </Text>
               </TouchableOpacity>
 

@@ -2933,6 +2933,7 @@ searchFlex: {
     profileBtn: {
     marginLeft: 10,
     padding: 4,
+    marginTop: -4,
   },
    profileImg: {
    width: 38,
