@@ -275,7 +275,9 @@ export default function PackageSelectionScreen() {
       }
     }
     
-    const isSelected = selectedService?.id === service.id && selectedPackage === (pkg.id || pkg.name || index);
+    // Create consistent package ID for selection
+    const packageId = pkg.id || pkg.name || JSON.stringify(pkg);
+    const isSelected = selectedService?.id === service.id && selectedPackage === packageId;
 
     console.log('🎨 Rendering package card:', {
       serviceName: service.name,
@@ -283,18 +285,23 @@ export default function PackageSelectionScreen() {
       price: packagePrice,
       duration: packageDuration,
       isSelected,
+      packageId,
+      selectedPackage,
       rawPackage: pkg
     });
 
     return (
       <TouchableOpacity
-        key={`${service.id}-${pkg.id || pkg.name || index}`}
+        key={`${service.id}-${packageId}`}
         style={[
           styles.packageCard,
           isSelected && styles.packageCardSelected,
           pkg.isPopular && styles.popularPackageCard,
         ]}
-        onPress={() => handlePackageSelect(service, { ...pkg, name: packageName, price: packagePrice })}
+        onPress={() => {
+          console.log('📦 Package clicked:', packageName);
+          handlePackageSelect(service, { ...pkg, id: packageId, name: packageName, price: packagePrice });
+        }}
         activeOpacity={0.7}
       >
         {pkg.isPopular && (
@@ -452,13 +459,13 @@ export default function PackageSelectionScreen() {
           onPress={() => setShowPackagesModal(false)}
         >
           <TouchableOpacity 
-            style={styles.modalContainer}
+            style={[styles.modalContainer, styles.packagesModalContainer]}
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📦 Select Package</Text>
+            <View style={[styles.modalHeader, styles.packagesModalHeader]}>
+              <Text style={[styles.modalTitle, styles.packagesModalTitle]}>📦 Select Package</Text>
               <TouchableOpacity 
                 onPress={() => setShowPackagesModal(false)}
                 style={styles.modalCloseButton}
@@ -518,13 +525,13 @@ export default function PackageSelectionScreen() {
           onPress={() => setShowServicesModal(false)}
         >
           <TouchableOpacity 
-            style={styles.modalContainer}
+            style={[styles.modalContainer, styles.servicesModalContainer]}
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>💰 Select Service</Text>
+            <View style={[styles.modalHeader, styles.servicesModalHeader]}>
+              <Text style={[styles.modalTitle, styles.servicesModalTitle]}>💰 Select Service</Text>
               <TouchableOpacity 
                 onPress={() => setShowServicesModal(false)}
                 style={styles.modalCloseButton}
@@ -958,6 +965,34 @@ const styles = StyleSheet.create({
     minHeight: "85%",
     maxHeight: "85%",
     paddingBottom: 20,
+  },
+
+  // Packages Modal - Green Theme
+  packagesModalContainer: {
+    backgroundColor: "#f0fdf4",
+  },
+
+  packagesModalHeader: {
+    backgroundColor: "#dcfce7",
+    borderBottomColor: "#4CAF50",
+  },
+
+  packagesModalTitle: {
+    color: "#15803d",
+  },
+
+  // Services Modal - Red Theme
+  servicesModalContainer: {
+    backgroundColor: "#fef2f2",
+  },
+
+  servicesModalHeader: {
+    backgroundColor: "#fee2e2",
+    borderBottomColor: "#ef4444",
+  },
+
+  servicesModalTitle: {
+    color: "#dc2626",
   },
 
   modalHeader: {
