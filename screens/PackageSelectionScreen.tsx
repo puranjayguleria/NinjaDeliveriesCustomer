@@ -362,7 +362,7 @@ export default function PackageSelectionScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading services...</Text>
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </View>
     );
