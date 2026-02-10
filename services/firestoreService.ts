@@ -201,50 +201,45 @@ export class FirestoreService {
         // Use masterCategoryId if available
         if (categoryData?.masterCategoryId) {
           searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🔍 Using masterCategoryId: ${searchCategoryId}`);
         }
       }
 
-      // Fetch services for this category
+      // Directly check service_services collection for any service with packages
+      console.log(`🔍 Checking service_services for category: ${searchCategoryId}`);
+      
       const servicesSnapshot = await firestore()
-        .collection('app_services')
-        .where('masterCategoryId', '==', searchCategoryId)
+        .collection('service_services')
+        .where('categoryMasterId', '==', searchCategoryId)
         .where('isActive', '==', true)
-        .limit(50) // Limit for performance
         .get();
 
-      console.log(`📊 Found ${servicesSnapshot.size} active services in category`);
+      console.log(`📊 Found ${servicesSnapshot.size} services in service_services`);
 
       // Check if any service has packages
       let hasPackages = false;
+      let packageCount = 0;
+      let directPriceCount = 0;
       
       for (const doc of servicesSnapshot.docs) {
         const serviceData = doc.data();
         const serviceName = serviceData.name;
         
-        // Check in service_services for packages
-        try {
-          const serviceServicesSnapshot = await firestore()
-            .collection('service_services')
-            .where('name', '==', serviceName)
-            .where('categoryMasterId', '==', searchCategoryId)
-            .where('isActive', '==', true)
-            .limit(1)
-            .get();
-          
-          if (!serviceServicesSnapshot.empty) {
-            const serviceServiceData = serviceServicesSnapshot.docs[0].data();
-            if (serviceServiceData.packages && Array.isArray(serviceServiceData.packages) && serviceServiceData.packages.length > 0) {
-              console.log(`✅ Found package-based service: "${serviceName}" with ${serviceServiceData.packages.length} packages`);
-              hasPackages = true;
-              break; // Found at least one, no need to check more
-            }
-          }
-        } catch (err) {
-          console.log(`⚠️ Error checking packages for service "${serviceName}":`, err);
+        if (serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0) {
+          console.log(`✅ Package-based service found: "${serviceName}" (${serviceData.packages.length} packages)`);
+          hasPackages = true;
+          packageCount++;
+        } else {
+          console.log(`💰 Direct-price service found: "${serviceName}"`);
+          directPriceCount++;
         }
       }
 
-      console.log(`🔍 Category ${categoryId} has packages: ${hasPackages}`);
+      console.log(`📊 Category ${categoryId} summary:`);
+      console.log(`   - Package-based services: ${packageCount}`);
+      console.log(`   - Direct-price services: ${directPriceCount}`);
+      console.log(`   - Has packages: ${hasPackages}`);
+      
       return hasPackages;
       
     } catch (error) {
@@ -5538,12 +5533,12 @@ export class FirestoreService {
           // Fetch company details
           try {
             const companyDoc = await firestore()
-              .collection('service_companies')
+              .collection('service_company')
               .doc(companyId)
               .get();
             
             if (!companyDoc.exists) {
-              console.log(`   ⚠️ Company ${companyId} not found in service_companies`);
+              console.log(`   ⚠️ Company ${companyId} not found in service_company`);
               continue;
             }
             
@@ -5607,6 +5602,216 @@ export class FirestoreService {
       
     } catch (error) {
       console.error('❌ Error fetching companies by service names:', error);
+      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies by service IDs (for services from service_services collection)
+   * This is used when services are selected from PackageSelectionScreen (both packages and direct-price)
+   */
+  static async getCompaniesByServiceIds(serviceIds: string[], categoryId?: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies by service IDs:`, serviceIds);
+      console.log(`   Category ID:`, categoryId);
+      
+      const companyMap = new Map<string, ServiceCompany>();
+      let servicesWithoutCompanyId: any[] = [];
+      
+      // For each service ID, fetch the service and its company
+      for (const serviceId of serviceIds) {
+        console.log(`🔍 Fetching service: ${serviceId}`);
+        
+        try {
+          const serviceDoc = await firestore()
+            .collection('service_services')
+            .doc(serviceId)
+            .get();
+          
+          if (!serviceDoc.exists) {
+            console.log(`   ⚠️ Service ${serviceId} not found`);
+            continue;
+          }
+          
+          const serviceData = serviceDoc.data();
+          
+          if (!serviceData) {
+            console.log(`   ⚠️ Service ${serviceId} has no data`);
+            continue;
+          }
+          
+          console.log(`   📋 Service data:`, {
+            name: serviceData.name,
+            hasCompanyId: !!serviceData.companyId,
+            companyId: serviceData.companyId,
+            categoryMasterId: serviceData.categoryMasterId,
+            hasPackages: !!(serviceData.packages && Array.isArray(serviceData.packages)),
+            packagesCount: serviceData.packages?.length || 0,
+            price: serviceData.price,
+            allFields: Object.keys(serviceData)
+          });
+          
+          if (serviceData.isActive === false) {
+            console.log(`   ⚠️ Service ${serviceId} is not active, skipping`);
+            continue;
+          }
+          
+          // Check category filter if provided
+          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId !== categoryId) {
+            console.log(`   ⚠️ Service ${serviceId} doesn't match category ${categoryId}, skipping`);
+            continue;
+          }
+          
+          const companyId = serviceData.companyId;
+          
+          if (!companyId) {
+            console.log(`   ⚠️ Service ${serviceId} has NO companyId field - will use fallback approach`);
+            servicesWithoutCompanyId.push({ id: serviceId, data: serviceData });
+            continue;
+          }
+          
+          // Skip if we already have this company
+          if (companyMap.has(companyId)) {
+            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
+            continue;
+          }
+          
+          // Fetch company details
+          const companyDoc = await firestore()
+            .collection('service_company')
+            .doc(companyId)
+            .get();
+          
+          if (!companyDoc.exists) {
+            console.log(`   ⚠️ Company ${companyId} not found in service_company`);
+            continue;
+          }
+          
+          const companyData = companyDoc.data();
+          
+          if (!companyData) {
+            console.log(`   ⚠️ Company ${companyId} has no data`);
+            continue;
+          }
+          
+          // Check if company is active
+          if (companyData.isActive === false) {
+            console.log(`   ⚠️ Company ${companyId} is not active, skipping`);
+            continue;
+          }
+          
+          console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
+          
+          // Check if service has packages
+          const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+          
+          // Create company object
+          const company: ServiceCompany = {
+            id: serviceDoc.id, // Use service_services doc ID
+            companyId: companyId,
+            categoryMasterId: serviceData.categoryMasterId,
+            serviceName: serviceData.name || 'Unknown Service',
+            companyName: companyData.companyName || companyData.name || 'Unknown Company',
+            price: serviceData.price || 0,
+            isActive: true,
+            imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+            serviceType: serviceData.serviceType,
+            adminServiceId: serviceData.adminServiceId,
+            description: companyData.description,
+            rating: companyData.rating,
+            reviewCount: companyData.reviewCount,
+            contactInfo: companyData.contactInfo,
+            createdAt: serviceData.createdAt,
+            updatedAt: serviceData.updatedAt,
+            // Include packages if they exist
+            packages: hasPackages ? serviceData.packages : undefined,
+          };
+          
+          companyMap.set(companyId, company);
+          
+        } catch (error) {
+          console.error(`   ❌ Error fetching service ${serviceId}:`, error);
+        }
+      }
+      
+      // FALLBACK: If services don't have companyId, fetch ALL companies for the category
+      if (servicesWithoutCompanyId.length > 0) {
+        console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
+        console.log(`   Fetching ALL companies for category: ${categoryId}`);
+        
+        try {
+          let companiesQuery = firestore()
+            .collection('service_company')
+            .where('isActive', '==', true);
+          
+          // Add category filter if provided
+          if (categoryId && categoryId.trim() !== '') {
+            companiesQuery = companiesQuery.where('categoryMasterId', '==', categoryId);
+          }
+          
+          const companiesSnapshot = await companiesQuery.get();
+          console.log(`   Found ${companiesSnapshot.size} companies`);
+          
+          companiesSnapshot.forEach(companyDoc => {
+            const companyData = companyDoc.data();
+            const companyId = companyDoc.id;
+            
+            // Skip if already added
+            if (companyMap.has(companyId)) {
+              return;
+            }
+            
+            // Use the first service's data for the company entry
+            const firstService = servicesWithoutCompanyId[0];
+            const serviceData = firstService.data;
+            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+            
+            const company: ServiceCompany = {
+              id: firstService.id, // Use service_services doc ID
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceData.name || 'Unknown Service',
+              companyName: companyData.companyName || companyData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: companyData.description,
+              rating: companyData.rating,
+              reviewCount: companyData.reviewCount,
+              contactInfo: companyData.contactInfo,
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              packages: hasPackages ? serviceData.packages : undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            console.log(`   ✅ Added company: ${company.companyName}`);
+          });
+          
+        } catch (fallbackError) {
+          console.error(`   ❌ Fallback error:`, fallbackError);
+        }
+      }
+      
+      // Convert map to array
+      const companiesArray = Array.from(companyMap.values());
+      
+      console.log(`\n✅ FINAL RESULT: Found ${companiesArray.length} unique companies for service IDs`);
+      console.log(`   Companies:`, companiesArray.map(c => ({
+        companyName: c.companyName,
+        serviceName: c.serviceName,
+        price: c.price,
+        hasPackages: !!c.packages,
+        packagesCount: c.packages?.length || 0,
+        companyId: c.companyId
+      })));
+      
+      return companiesArray;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies by service IDs:', error);
       throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
     }
   }

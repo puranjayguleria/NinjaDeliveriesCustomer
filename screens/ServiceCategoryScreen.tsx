@@ -65,7 +65,7 @@ export default function ServiceCategoryScreen() {
     try {
       setLoading(true);
       
-      console.log('🔧 Fetching ONLY direct-price services (non-package) for category:', selectedCategoryId);
+      console.log('🔧 Fetching ALL services (both direct-price and package-based) for category:', selectedCategoryId);
 
       if (!selectedCategoryId) {
         console.error('No categoryId provided');
@@ -101,6 +101,7 @@ export default function ServiceCategoryScreen() {
       console.log(`� Found ${servicesSnapshot.size} total services in service_services`);
 
       const directPriceServices: ServiceIssue[] = [];
+      const packageBasedServices: ServiceIssue[] = [];
 
       servicesSnapshot.forEach(doc => {
         const data = doc.data();
@@ -109,30 +110,36 @@ export default function ServiceCategoryScreen() {
         console.log(`📋 Service: "${data.name}"`);
         console.log(`   - Has packages: ${hasPackages}`);
         
-        // Only include services WITHOUT packages (direct-price services)
+        const serviceIssue: ServiceIssue = {
+          id: doc.id,
+          name: data.name || '',
+          masterCategoryId: searchCategoryId,
+          isActive: data.isActive || false,
+          imageUrl: data.imageUrl || null,
+          price: data.price,
+          serviceType: data.serviceType,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        };
+        
         if (!hasPackages) {
           console.log(`   ✅ Direct-price service: "${data.name}"`);
-          
-          directPriceServices.push({
-            id: doc.id,
-            name: data.name || '',
-            masterCategoryId: searchCategoryId,
-            isActive: data.isActive || false,
-            imageUrl: data.imageUrl || null,
-            price: data.price,
-            serviceType: data.serviceType,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          });
+          directPriceServices.push(serviceIssue);
         } else {
-          console.log(`   🚫 Skipping package-based service: "${data.name}" (has ${data.packages.length} packages)`);
+          console.log(`   📦 Package-based service: "${data.name}" (has ${data.packages.length} packages)`);
+          packageBasedServices.push(serviceIssue);
         }
       });
       
-      console.log(`After filtering: ${directPriceServices.length} direct-price services (without packages)`);
-      console.log(`🔧 These services have direct prices, NOT packages`);
+      // Combine both types of services
+      const allServices = [...directPriceServices, ...packageBasedServices];
       
-      setIssues(directPriceServices);
+      console.log(`📊 Summary:`);
+      console.log(`   - Direct-price services: ${directPriceServices.length}`);
+      console.log(`   - Package-based services: ${packageBasedServices.length}`);
+      console.log(`   - Total services: ${allServices.length}`);
+      
+      setIssues(allServices);
       
     } catch (error) {
       console.error('Error fetching services:', error);
@@ -171,28 +178,65 @@ export default function ServiceCategoryScreen() {
     return [selectedIssue.name];
   }, [issues, selectedId]);
 
-  const onContinue = () => {
+  const onContinue = async () => {
     if (!selectedId) {
       Alert.alert("Select Issue", "Please select an issue.");
       return;
     }
 
-    // Go to slot selection first (new flow)
-    const selectedIssueObject = issues.find(i => i.id === selectedId);
+    try {
+      // Get the selected service
+      const selectedIssueObject = issues.find(i => i.id === selectedId);
+      
+      if (!selectedIssueObject) {
+        Alert.alert("Error", "Selected service not found.");
+        return;
+      }
 
-    // Pass service NAMES instead of IDs for service_services compatibility
-    const serviceNames = selectedIssueObject ? [selectedIssueObject.name] : selectedIssueTitles;
+      // Check if this service has packages by querying service_services
+      console.log(`🔍 Checking if service "${selectedIssueObject.name}" has packages...`);
+      
+      const serviceDoc = await firestore()
+        .collection('service_services')
+        .doc(selectedId)
+        .get();
+      
+      const serviceData = serviceDoc.data();
+      const hasPackages = serviceData?.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+      
+      console.log(`📦 Service "${selectedIssueObject.name}" has packages: ${hasPackages}`);
 
-    navigation.navigate("SelectDateTime", {
-      serviceTitle,
-      categoryId: selectedCategoryId,
-      issues: serviceNames, // Service names
-      selectedIssueIds: serviceNames, // Pass names as IDs for compatibility
-      selectedIssues: selectedIssueObject ? [selectedIssueObject] : [], // pass as array for compatibility
-      allCategories: categories, // 🆕 Pass all categories for sidebar
-      // Add flag to indicate this is from service_services
-      fromServiceServices: true,
-    });
+      if (hasPackages) {
+        // Package-based service - navigate to PackageSelection screen
+        console.log(`📦 Navigating to PackageSelection for package-based service`);
+        navigation.navigate("PackageSelection", {
+          serviceTitle,
+          categoryId: selectedCategoryId,
+          serviceId: selectedId,
+          serviceName: selectedIssueObject.name,
+          selectedIssues: [selectedIssueObject],
+          allCategories: categories,
+        });
+      } else {
+        // Direct-price service - navigate to SelectDateTime
+        console.log(`💰 Navigating to SelectDateTime for direct-price service`);
+        const serviceNames = [selectedIssueObject.name];
+        
+        navigation.navigate("SelectDateTime", {
+          serviceTitle,
+          categoryId: selectedCategoryId,
+          issues: serviceNames, // Service names
+          selectedIssueIds: serviceNames, // Pass names as IDs for compatibility
+          selectedIssues: [selectedIssueObject], // pass as array for compatibility
+          allCategories: categories, // 🆕 Pass all categories for sidebar
+          // Add flag to indicate this is from service_services (direct-price)
+          fromServiceServices: true,
+        });
+      }
+    } catch (error) {
+      console.error('Error checking service type:', error);
+      Alert.alert("Error", "Failed to load service details. Please try again.");
+    }
   };
 
   const issueIcon =

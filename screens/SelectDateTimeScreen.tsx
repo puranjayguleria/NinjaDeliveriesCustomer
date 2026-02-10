@@ -22,7 +22,7 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, allCategories } = route.params;
+  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, allCategories, fromServiceServices } = route.params;
 
   // Calculate price from selected issue objects (they include optional `price`)
   const issueTotalPrice = Array.isArray(selectedIssues)
@@ -195,7 +195,8 @@ export default function SelectDateTimeScreen() {
               issues,
               selectedDate,
               selectedTime: time,
-              selectedDateFull: selected?.full
+              selectedDateFull: selected?.full,
+              fromServiceServices, // Pass the flag forward
             });
           }}
         >

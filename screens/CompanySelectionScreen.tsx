@@ -208,35 +208,61 @@ export default function CompanySelectionScreen() {
     try {
       setLoading(true);
       console.log('🏢 Fetching companies for:', { serviceTitle, categoryId, selectedIssueIds, issues });
+      console.log('🏢 Route params:', route.params);
       
       let fetchedCompanies: ServiceCompany[];
       
-      // Check if this is from direct-price services (service_services without packages)
+      // Check if this is from service_services collection (both packages and direct-price)
       const fromServiceServices = route.params?.fromServiceServices === true;
       
-      if (fromServiceServices && issues && issues.length > 0) {
-        console.log('🏢 Fetching companies for DIRECT-PRICE services (no packages):', issues);
-        console.log('🏢 Category ID:', categoryId);
-        // For direct-price services, fetch companies by service NAMES
-        // Only pass categoryId if it's a valid non-empty string
-        const validCategoryId = categoryId && categoryId.trim() !== '' ? categoryId : undefined;
-        fetchedCompanies = await FirestoreService.getCompaniesByServiceNames(issues, validCategoryId);
-      } else if (selectedIssueIds && selectedIssueIds.length > 0) {
-        console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
-        // 🏢 NEW: Use enhanced method to get companies with detailed packages
-        fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
-      } else if (categoryId) {
-        console.log('🏢 Fetching companies by category ID:', categoryId);
-        // Fetch companies that provide services in this category
-        fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
-        // Enhance with detailed packages
-        fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+      console.log('🔍 Route params check:', {
+        fromServiceServices,
+        fromServiceServicesRaw: route.params?.fromServiceServices,
+        hasIssues: !!issues,
+        issuesLength: issues?.length,
+        issuesValue: issues,
+        hasSelectedIssueIds: !!selectedIssueIds,
+        selectedIssueIdsLength: selectedIssueIds?.length,
+        selectedIssueIdsValue: selectedIssueIds,
+      });
+      
+      if (fromServiceServices) {
+        console.log('✅ fromServiceServices is TRUE - Fetching companies from SERVICE_SERVICES collection');
+        
+        // For services from service_services, we need to use service IDs
+        if (selectedIssueIds && selectedIssueIds.length > 0) {
+          console.log('🏢 Using service IDs:', selectedIssueIds);
+          // Fetch companies by service IDs from service_services
+          fetchedCompanies = await FirestoreService.getCompaniesByServiceIds(selectedIssueIds, categoryId);
+        } else if (issues && issues.length > 0) {
+          console.log('🏢 Using service names:', issues);
+          // Fallback: fetch by service names
+          const validCategoryId = categoryId && categoryId.trim() !== '' ? categoryId : undefined;
+          fetchedCompanies = await FirestoreService.getCompaniesByServiceNames(issues, validCategoryId);
+        } else {
+          console.error('❌ No service IDs or names provided');
+          fetchedCompanies = [];
+        }
       } else {
-        console.log('🏢 Fetching all companies as fallback');
-        // Fallback to all companies
-        fetchedCompanies = await FirestoreService.getServiceCompanies();
-        // Enhance with detailed packages
-        fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+        console.log('❌ fromServiceServices is FALSE - Using OLD FLOW (app_services)');
+        
+        if (selectedIssueIds && selectedIssueIds.length > 0) {
+          console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
+          // For app_services (old flow)
+          fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
+        } else if (categoryId) {
+          console.log('🏢 Fetching companies by category ID:', categoryId);
+          // Fetch companies that provide services in this category
+          fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
+          // Enhance with detailed packages
+          fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+        } else {
+          console.log('🏢 Fetching all companies as fallback');
+          // Fallback to all companies
+          fetchedCompanies = await FirestoreService.getServiceCompanies();
+          // Enhance with detailed packages
+          fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+        }
       }
       
       console.log(`🏢 Found ${fetchedCompanies.length} companies:`, 

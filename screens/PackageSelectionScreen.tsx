@@ -27,21 +27,82 @@ export default function PackageSelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
-  const { serviceTitle, categoryId, allCategories } = route.params;
+  const { serviceTitle, categoryId, allCategories, serviceId, serviceName } = route.params;
 
   const [loading, setLoading] = useState(true);
-  const [services, setServices] = useState<ServiceIssue[]>([]);
+  const [packageBasedServices, setPackageBasedServices] = useState<ServiceIssue[]>([]);
+  const [directPriceServices, setDirectPriceServices] = useState<ServiceIssue[]>([]);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceIssue | null>(null);
+  const [selectedDirectService, setSelectedDirectService] = useState<ServiceIssue | null>(null);
 
   useEffect(() => {
-    fetchServicesWithPackages();
-  }, [categoryId]);
+    // If serviceId is provided, fetch only that service's packages
+    if (serviceId && serviceName) {
+      fetchSingleServicePackages();
+    } else {
+      // Otherwise, fetch ALL services (both package-based and direct-price) for the category
+      fetchAllServices();
+    }
+  }, [categoryId, serviceId]);
 
-  const fetchServicesWithPackages = async () => {
+  const fetchSingleServicePackages = async () => {
     try {
       setLoading(true);
-      console.log('📦 Fetching package-based services DIRECTLY from service_services for category:', categoryId);
+      console.log(`📦 Fetching packages for specific service: "${serviceName}" (ID: ${serviceId})`);
+
+      const serviceDoc = await firestore()
+        .collection('service_services')
+        .doc(serviceId)
+        .get();
+
+      if (!serviceDoc.exists) {
+        console.error('❌ Service not found');
+        Alert.alert('Error', 'Service not found. Please try again.');
+        navigation.goBack();
+        return;
+      }
+
+      const data = serviceDoc.data();
+      
+      if (!data?.packages || !Array.isArray(data.packages) || data.packages.length === 0) {
+        console.error('❌ No packages found for this service');
+        Alert.alert('Error', 'No packages available for this service.');
+        navigation.goBack();
+        return;
+      }
+
+      console.log(`📦 Found ${data.packages.length} packages for "${serviceName}"`);
+
+      const serviceWithPackages = {
+        id: serviceDoc.id,
+        name: data.name || serviceName,
+        masterCategoryId: data.categoryMasterId,
+        isActive: data.isActive || false,
+        imageUrl: data.imageUrl || null,
+        packages: data.packages,
+        price: data.price,
+        serviceType: data.serviceType,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+      };
+
+      setPackageBasedServices([serviceWithPackages]);
+      setSelectedService(serviceWithPackages);
+
+    } catch (error) {
+      console.error('❌ Error fetching service packages:', error);
+      Alert.alert('Error', 'Failed to load packages. Please try again.');
+      navigation.goBack();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllServices = async () => {
+    try {
+      setLoading(true);
+      console.log('📦 Fetching ALL services (packages + direct-price) from service_services for category:', categoryId);
 
       // Get the category to check if it has a masterCategoryId
       const categoryDoc = await firestore()
@@ -59,7 +120,7 @@ export default function PackageSelectionScreen() {
         }
       }
 
-      // Fetch DIRECTLY from service_services collection (not app_services)
+      // Fetch ALL services from service_services collection
       console.log(`📦 Querying service_services where categoryMasterId == "${searchCategoryId}"`);
       
       const servicesSnapshot = await firestore()
@@ -68,53 +129,51 @@ export default function PackageSelectionScreen() {
         .where('isActive', '==', true)
         .get();
 
-      console.log(`📦 Found ${servicesSnapshot.size} services in service_services collection`);
+      console.log(`📦 Found ${servicesSnapshot.size} total services in service_services collection`);
 
-      const servicesWithPackages: any[] = [];
+      const withPackages: any[] = [];
+      const withoutPackages: any[] = [];
 
       servicesSnapshot.forEach(doc => {
         const data = doc.data();
-        console.log(`📦 Service: "${data.name}"`);
-        console.log(`   - Has packages: ${!!(data.packages && Array.isArray(data.packages) && data.packages.length > 0)}`);
+        const hasPackages = data.packages && Array.isArray(data.packages) && data.packages.length > 0;
         
-        if (data.packages && Array.isArray(data.packages) && data.packages.length > 0) {
-          console.log(`   - Packages count: ${data.packages.length}`);
-          data.packages.forEach((pkg: any, idx: number) => {
-            console.log(`   - Package ${idx + 1}:`, pkg);
-          });
+        console.log(`📋 Service: "${data.name}" - Has packages: ${hasPackages}`);
+        
+        const serviceObj = {
+          id: doc.id,
+          name: data.name || '',
+          masterCategoryId: searchCategoryId,
+          isActive: data.isActive || false,
+          imageUrl: data.imageUrl || null,
+          packages: data.packages,
+          price: data.price,
+          serviceType: data.serviceType,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        };
 
-          servicesWithPackages.push({
-            id: doc.id,
-            name: data.name || '',
-            masterCategoryId: searchCategoryId,
-            isActive: data.isActive || false,
-            imageUrl: data.imageUrl || null,
-            packages: data.packages,
-            price: data.price,
-            serviceType: data.serviceType,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          });
+        if (hasPackages) {
+          console.log(`   ✅ Package-based: ${data.packages.length} packages`);
+          withPackages.push(serviceObj);
         } else {
-          console.log(`   - ⚠️ No packages found, skipping`);
+          console.log(`   💰 Direct-price: ₹${data.price}`);
+          withoutPackages.push(serviceObj);
         }
       });
 
-      console.log(`📦 Total package-based services: ${servicesWithPackages.length}`);
+      console.log(`📊 Summary:`);
+      console.log(`   - Package-based services: ${withPackages.length}`);
+      console.log(`   - Direct-price services: ${withoutPackages.length}`);
       
-      setServices(servicesWithPackages);
+      setPackageBasedServices(withPackages);
+      setDirectPriceServices(withoutPackages);
 
-      // If no package-based services found, redirect to ServiceCategory
-      if (servicesWithPackages.length === 0) {
-        console.log('📦 No package-based services, redirecting to ServiceCategory');
-        setTimeout(() => {
-          handleSkipToServices();
-        }, 500);
-      }
     } catch (error) {
-      console.error('❌ Error fetching services with packages:', error);
-      Alert.alert('Error', 'Failed to load packages. Please try again.');
-      setServices([]);
+      console.error('❌ Error fetching services:', error);
+      Alert.alert('Error', 'Failed to load services. Please try again.');
+      setPackageBasedServices([]);
+      setDirectPriceServices([]);
     } finally {
       setLoading(false);
     }
@@ -128,43 +187,71 @@ export default function PackageSelectionScreen() {
     });
     setSelectedService(service);
     setSelectedPackage(pkg.id || pkg.name || JSON.stringify(pkg));
+    setSelectedDirectService(null); // Clear direct service selection
+  };
+
+  const handleDirectServiceSelect = (service: ServiceIssue) => {
+    console.log('✅ Direct-price service selected:', {
+      service: service.name,
+      price: service.price
+    });
+    setSelectedDirectService(service);
+    setSelectedService(null); // Clear package selection
+    setSelectedPackage(null);
   };
 
   const handleContinue = () => {
-    if (!selectedService || !selectedPackage) {
-      Alert.alert("Select Package", "Please select a package to continue.");
+    // Check if package is selected
+    if (selectedService && selectedPackage) {
+      const selectedPkg = selectedService.packages?.find(
+        (p: any) => (p.id || p.name || JSON.stringify(p)) === selectedPackage
+      );
+
+      console.log('📦 Navigating with package-based service:', {
+        serviceId: selectedService.id,
+        serviceName: selectedService.name,
+        packageName: selectedPkg?.name,
+        fromServiceServices: true
+      });
+
+      // Navigate to SelectDateTime with package info
+      navigation.navigate("SelectDateTime", {
+        serviceTitle,
+        categoryId,
+        issues: [selectedService.name],
+        selectedIssueIds: [selectedService.id], // ✅ Pass service ID, not name
+        selectedIssues: [selectedService],
+        selectedPackage: selectedPkg,
+        isPackageBooking: true,
+        allCategories,
+        fromServiceServices: true,
+      });
       return;
     }
 
-    const selectedPkg = selectedService.packages?.find(
-      (p: any) => (p.id || p.name || JSON.stringify(p)) === selectedPackage
-    );
+    // Check if direct-price service is selected
+    if (selectedDirectService) {
+      console.log('💰 Navigating with direct-price service:', {
+        serviceId: selectedDirectService.id,
+        serviceName: selectedDirectService.name,
+        fromServiceServices: true
+      });
 
-    // Pass service NAME instead of ID for service_services compatibility
-    const serviceName = selectedService.name;
+      // Navigate to SelectDateTime with direct-price service
+      navigation.navigate("SelectDateTime", {
+        serviceTitle,
+        categoryId,
+        issues: [selectedDirectService.name],
+        selectedIssueIds: [selectedDirectService.id], // ✅ Pass service ID, not name
+        selectedIssues: [selectedDirectService],
+        allCategories,
+        fromServiceServices: true,
+      });
+      return;
+    }
 
-    // Navigate to SelectDateTime with package info
-    navigation.navigate("SelectDateTime", {
-      serviceTitle,
-      categoryId,
-      issues: [serviceName], // Service name
-      selectedIssueIds: [serviceName], // Pass name as ID for compatibility
-      selectedIssues: [selectedService],
-      selectedPackage: selectedPkg,
-      isPackageBooking: true,
-      allCategories,
-      // Add flag to indicate this is from service_services
-      fromServiceServices: true,
-    });
-  };
-
-  const handleSkipToServices = () => {
-    // Navigate to regular service selection
-    navigation.navigate("ServiceCategory", {
-      serviceTitle,
-      categoryId,
-      allCategories,
-    });
+    // Nothing selected
+    Alert.alert("Select Service", "Please select a package or service to continue.");
   };
 
   const renderPackageCard = (pkg: any, service: ServiceIssue, index: number) => {
@@ -266,34 +353,11 @@ export default function PackageSelectionScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Select Package</Text>
+          <Text style={styles.headerTitle}>{serviceTitle}</Text>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading packages...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // If no packages available, redirect to service selection
-  if (services.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Select Package</Text>
-        </View>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Package Plans Available</Text>
-          <Text style={styles.emptyText}>
-            This category doesn't have package plans. You can select services with direct pricing instead.
-          </Text>
-          <TouchableOpacity 
-            style={styles.continueToServicesBtn}
-            onPress={handleSkipToServices}
-          >
-            <Text style={styles.continueToServicesBtnText}>View Direct-Price Services</Text>
-          </TouchableOpacity>
+          <Text style={styles.loadingText}>Loading services...</Text>
         </View>
       </View>
     );
@@ -303,40 +367,105 @@ export default function PackageSelectionScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Select Package</Text>
-        <Text style={styles.headerSubtitle}>Choose a package plan that suits your needs</Text>
+        <Text style={styles.headerTitle}>{serviceTitle}</Text>
+        <Text style={styles.headerSubtitle}>Choose a package or service</Text>
       </View>
 
-      {/* Packages List */}
-      <FlatList
-        data={services}
-        keyExtractor={(item) => item.id}
-        renderItem={renderServiceWithPackages}
-        contentContainerStyle={styles.listContent}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      />
-
-      {/* Bottom Actions */}
-      <View style={styles.bottomBar}>
-        {/* Only show "View Direct-Price Services" button if package is NOT selected */}
-        {!selectedPackage && (
-          <TouchableOpacity 
-            style={styles.skipBtn}
-            onPress={handleSkipToServices}
-          >
-            <Text style={styles.skipBtnText}>View Direct-Price Services</Text>
-          </TouchableOpacity>
+      >
+        {/* Packages Section */}
+        {packageBasedServices.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>📦 Packages</Text>
+              <Text style={styles.sectionSubtitle}>
+                {packageBasedServices.length} package{packageBasedServices.length > 1 ? 's' : ''} available
+              </Text>
+            </View>
+            
+            {packageBasedServices.map((service) => (
+              <View key={service.id} style={styles.serviceSection}>
+                <Text style={styles.serviceName}>{service.name}</Text>
+                <View style={styles.packagesGrid}>
+                  {service.packages?.map((pkg: any, index: number) => 
+                    renderPackageCard(pkg, service, index)
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
         )}
 
-        {selectedPackage && (
+        {/* Direct-Price Services Section */}
+        {directPriceServices.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>💰 Services</Text>
+              <Text style={styles.sectionSubtitle}>
+                {directPriceServices.length} service{directPriceServices.length > 1 ? 's' : ''} available
+              </Text>
+            </View>
+            
+            {directPriceServices.map((service) => (
+              <TouchableOpacity
+                key={service.id}
+                style={[
+                  styles.directServiceCard,
+                  selectedDirectService?.id === service.id && styles.directServiceCardSelected
+                ]}
+                onPress={() => handleDirectServiceSelect(service)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.directServiceInfo}>
+                  <Text style={styles.directServiceName}>{service.name}</Text>
+                  {service.serviceType && (
+                    <Text style={styles.directServiceType}>{service.serviceType}</Text>
+                  )}
+                </View>
+                
+                <View style={styles.directServicePriceContainer}>
+                  <Text style={styles.directServicePrice}>₹{service.price}</Text>
+                </View>
+
+                <View style={[
+                  styles.checkbox, 
+                  selectedDirectService?.id === service.id && styles.checkboxChecked
+                ]}>
+                  {selectedDirectService?.id === service.id && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Empty State */}
+        {packageBasedServices.length === 0 && directPriceServices.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No Services Available</Text>
+            <Text style={styles.emptyText}>
+              This category doesn't have any services available at the moment.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Bottom Continue Button */}
+      {(selectedPackage || selectedDirectService) && (
+        <View style={styles.bottomBar}>
           <TouchableOpacity 
             style={styles.continueBtn}
             onPress={handleContinue}
           >
-            <Text style={styles.continueBtnText}>Continue with Package</Text>
+            <Text style={styles.continueBtnText}>
+              {selectedPackage ? 'Continue with Package' : 'Continue with Service'}
+            </Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -605,5 +734,78 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  scrollContent: {
+    paddingBottom: 100,
+  },
+
+  sectionContainer: {
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+
+  sectionHeader: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+
+  sectionSubtitle: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  directServiceCard: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    position: "relative",
+  },
+
+  directServiceCardSelected: {
+    borderColor: "#4CAF50",
+    backgroundColor: "#f0fdf4",
+  },
+
+  directServiceInfo: {
+    flex: 1,
+  },
+
+  directServiceName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+
+  directServiceType: {
+    fontSize: 12,
+    color: "#64748b",
+    textTransform: "capitalize",
+  },
+
+  directServicePriceContainer: {
+    marginRight: 40,
+  },
+
+  directServicePrice: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#4CAF50",
   },
 });
