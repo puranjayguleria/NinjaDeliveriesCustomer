@@ -986,7 +986,16 @@ export default function ServicesScreen() {
   }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, activitiesLoading, activities, navigation, renderBanner, getTimeAgo, activeBannerIndex]);
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={require('../assets/serviceBgYellow.png')}
+      style={styles.container}
+      resizeMode="cover"
+      imageStyle={{ 
+        opacity: 0.15,
+        width: '100%',
+        height: '100%',
+      }}
+    >
       {/* Add safety check for initial render */}
       {!serviceCategories && loading ? (
         <View style={styles.emptyLoadingContainer}>
@@ -1046,14 +1055,14 @@ export default function ServicesScreen() {
           keyboardDismissMode="on-drag"
         />
       )}
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f7fb",
+    // backgroundColor: "#ffffff",
   },
 
   // Header Styles
@@ -1448,7 +1457,7 @@ const styles = StyleSheet.create({
   activityCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "transparent",
+    // backgroundColor: "transparent",
     paddingVertical: 10,
     paddingHorizontal: 0,
     marginBottom: 0,
@@ -1592,7 +1601,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#f0f4f8",
+    // borderColor: "#f0f4f8",
   },
 
   listIconContainer: {
@@ -1675,7 +1684,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 10,
     borderWidth: 1,
-    borderColor: "#f0f4f8",
+    borderColor: "#ff2c07",
   },
 
   gridIconContainer: {
