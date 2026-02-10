@@ -23,10 +23,54 @@ export default function CompanySelectionScreen() {
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, selectedDate, selectedTime, selectedDateFull } = route.params;
+  const { 
+    serviceTitle, 
+    categoryId, 
+    issues, 
+    selectedIssueIds, 
+    selectedIssues, 
+    selectedDate, 
+    selectedTime, 
+    selectedDateFull,
+    fromServiceServices,
+    isPackageBooking,
+    selectedPackage: routeSelectedPackage
+  } = route.params || {};
+
+  // 🔍 DEBUG: Log all params on mount
+  useEffect(() => {
+    console.log('🚀 ========== CompanySelectionScreen MOUNTED ==========');
+    console.log('📋 All Route Params:', JSON.stringify(route.params, null, 2));
+    console.log('📋 Extracted Params:', {
+      serviceTitle,
+      categoryId,
+      issues,
+      selectedIssueIds,
+      selectedIssues: selectedIssues?.map((s: any) => ({ id: s.id, name: s.name })),
+      selectedDate,
+      selectedTime,
+      fromServiceServices,
+      isPackageBooking,
+      hasRouteSelectedPackage: !!routeSelectedPackage
+    });
+    console.log('========================================\n');
+  }, []);
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
+    // Validate required params
+    if (!serviceTitle) {
+      console.error('❌ Missing required param: serviceTitle');
+      setLoading(false);
+      return;
+    }
+    
+    if (!selectedIssueIds?.length && !issues?.length && !categoryId) {
+      console.error('❌ Missing required params: Need at least one of selectedIssueIds, issues, or categoryId');
+      setLoading(false);
+      return;
+    }
+    
     fetchServiceCompanies();
   }, [selectedIssueIds]);
 
@@ -149,7 +193,8 @@ export default function CompanySelectionScreen() {
         selectedIssueIds,
         selectedDate,
         selectedTime,
-        exactServiceName // Pass the exact service name for precise worker filtering
+        exactServiceName, // Pass the exact service name for precise worker filtering
+        fromServiceServices // Pass the data source flag
       );
       
       // Transform to match expected format
@@ -207,65 +252,86 @@ export default function CompanySelectionScreen() {
   const fetchServiceCompanies = async () => {
     try {
       setLoading(true);
-      console.log('🏢 Fetching companies for:', { serviceTitle, categoryId, selectedIssueIds, issues });
-      console.log('🏢 Route params:', route.params);
+      console.log('🏢 ========== FETCHING COMPANIES ==========');
+      console.log('🏢 Service Title:', serviceTitle);
+      console.log('🏢 Category ID:', categoryId);
+      console.log('🏢 Selected Issue IDs:', selectedIssueIds);
+      console.log('🏢 Issues:', issues);
+      console.log('🏢 All Route Params:', JSON.stringify(route.params, null, 2));
       
       let fetchedCompanies: ServiceCompany[];
       
       // Check if this is from service_services collection (both packages and direct-price)
       const fromServiceServices = route.params?.fromServiceServices === true;
       
-      console.log('🔍 Route params check:', {
-        fromServiceServices,
-        fromServiceServicesRaw: route.params?.fromServiceServices,
-        hasIssues: !!issues,
-        issuesLength: issues?.length,
-        issuesValue: issues,
-        hasSelectedIssueIds: !!selectedIssueIds,
-        selectedIssueIdsLength: selectedIssueIds?.length,
-        selectedIssueIdsValue: selectedIssueIds,
-      });
+      console.log('🔍 ========== ROUTE PARAMS CHECK ==========');
+      console.log('🔍 fromServiceServices:', fromServiceServices);
+      console.log('🔍 fromServiceServicesRaw:', route.params?.fromServiceServices);
+      console.log('🔍 hasIssues:', !!issues);
+      console.log('🔍 issuesLength:', issues?.length);
+      console.log('🔍 issuesValue:', issues);
+      console.log('🔍 hasSelectedIssueIds:', !!selectedIssueIds);
+      console.log('🔍 selectedIssueIdsLength:', selectedIssueIds?.length);
+      console.log('🔍 selectedIssueIdsValue:', selectedIssueIds);
       
       if (fromServiceServices) {
-        console.log('✅ fromServiceServices is TRUE - Fetching companies from SERVICE_SERVICES collection');
+        console.log('✅ ========== USING SERVICE_SERVICES FLOW ==========');
+        console.log('✅ This is from service_services collection');
         
         // For services from service_services, we need to use service IDs
         if (selectedIssueIds && selectedIssueIds.length > 0) {
-          console.log('🏢 Using service IDs:', selectedIssueIds);
+          console.log('🏢 Strategy: Using service IDs:', selectedIssueIds);
+          console.log('🏢 Calling: FirestoreService.getCompaniesByServiceIds()');
           // Fetch companies by service IDs from service_services
           fetchedCompanies = await FirestoreService.getCompaniesByServiceIds(selectedIssueIds, categoryId);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else if (issues && issues.length > 0) {
-          console.log('🏢 Using service names:', issues);
+          console.log('🏢 Strategy: Using service names (fallback):', issues);
+          console.log('🏢 Calling: FirestoreService.getCompaniesByServiceNames()');
           // Fallback: fetch by service names
           const validCategoryId = categoryId && categoryId.trim() !== '' ? categoryId : undefined;
           fetchedCompanies = await FirestoreService.getCompaniesByServiceNames(issues, validCategoryId);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else {
-          console.error('❌ No service IDs or names provided');
+          console.error('❌ ERROR: No service IDs or names provided');
+          console.error('❌ Cannot fetch companies without service identifiers');
           fetchedCompanies = [];
         }
       } else {
-        console.log('❌ fromServiceServices is FALSE - Using OLD FLOW (app_services)');
+        console.log('❌ ========== USING OLD FLOW (APP_SERVICES) ==========');
+        console.log('❌ This is from app_services collection (legacy)');
         
         if (selectedIssueIds && selectedIssueIds.length > 0) {
-          console.log('🏢 Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
+          console.log('🏢 Strategy: Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
+          console.log('🏢 Calling: FirestoreService.getCompaniesWithDetailedPackages()');
           // For app_services (old flow)
           fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else if (categoryId) {
-          console.log('🏢 Fetching companies by category ID:', categoryId);
+          console.log('🏢 Strategy: Fetching companies by category ID:', categoryId);
+          console.log('🏢 Calling: FirestoreService.getCompaniesByCategory()');
           // Fetch companies that provide services in this category
           fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (before enhancement)');
           // Enhance with detailed packages
+          console.log('🏢 Enhancing with detailed packages...');
           fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (after enhancement)');
         } else {
-          console.log('🏢 Fetching all companies as fallback');
+          console.log('🏢 Strategy: Fetching all companies as fallback');
+          console.log('🏢 Calling: FirestoreService.getServiceCompanies()');
           // Fallback to all companies
           fetchedCompanies = await FirestoreService.getServiceCompanies();
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (before enhancement)');
           // Enhance with detailed packages
+          console.log('🏢 Enhancing with detailed packages...');
           fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
+          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (after enhancement)');
         }
       }
       
-      console.log(`🏢 Found ${fetchedCompanies.length} companies:`, 
+      console.log(`\n🏢 ========== INITIAL FETCH COMPLETE ==========`);
+      console.log(`🏢 Found ${fetchedCompanies.length} companies BEFORE filtering:`, 
         fetchedCompanies.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
@@ -310,23 +376,35 @@ export default function CompanySelectionScreen() {
         return company;
       });
       
+      console.log(`📦 ========== SORTING PACKAGES ==========`);
       console.log(`📦 Packages sorted by frequency (monthly, weekly first)`);
       
       // Filter companies to only show those with active workers and check slot availability
+      console.log(`\n🔍 ========== FILTERING FOR AVAILABILITY ==========`);
+      console.log(`🔍 Selected Date: ${selectedDate}`);
+      console.log(`🔍 Selected Time: ${selectedTime}`);
+      console.log(`🔍 Will check slot-based availability: ${!!selectedDate && !!selectedTime}`);
+      
       const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
-      console.log(`🏢 After filtering: ${companiesWithActiveWorkers.length} companies with worker availability:`, 
+      console.log(`\n✅ ========== FINAL RESULT ==========`);
+      console.log(`✅ After filtering: ${companiesWithActiveWorkers.length} companies with worker availability:`, 
         companiesWithActiveWorkers.map(c => ({ 
           id: c.id, 
           companyName: c.companyName,
           serviceName: c.serviceName,
-          companyId: c.companyId
+          companyId: c.companyId,
+          availability: c.availability
         }))
       );
+      console.log(`✅ ========== COMPANIES SET TO STATE ==========\n`);
       
       setCompanies(companiesWithActiveWorkers);
     } catch (error) {
-      console.error('❌ Error fetching service companies:', error);
+      console.error('❌ ========== ERROR FETCHING COMPANIES ==========');
+      console.error('❌ Error details:', error);
+      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ ========================================\n');
       setCompanies([]);
     } finally {
       setLoading(false);
@@ -433,15 +511,42 @@ export default function CompanySelectionScreen() {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>No Companies Available</Text>
               <Text style={styles.emptyText}>
-                Please try choosing different slots or check back later.
-                 {'\n'}
+                {selectedDate && selectedTime 
+                  ? 'No service providers are available for the selected time slot. Please try choosing a different slot.'
+                  : 'No service providers found for this service. Please check back later or try a different service.'
+                }
+                {'\n'}
               </Text>
-              <TouchableOpacity 
-                style={styles.retryButton}
-                onPress={() => navigation.goBack()}
-              >
-                <Text style={styles.retryText}>Choose Different Slot</Text>
-              </TouchableOpacity>
+              
+              {/* Debug Info (only in development) */}
+              {__DEV__ && (
+                <View style={styles.debugInfo}>
+                  <Text style={styles.debugTitle}>Debug Info:</Text>
+                  <Text style={styles.debugText}>Service: {serviceTitle}</Text>
+                  <Text style={styles.debugText}>Category: {categoryId || 'N/A'}</Text>
+                  <Text style={styles.debugText}>From Service Services: {fromServiceServices ? 'Yes' : 'No'}</Text>
+                  <Text style={styles.debugText}>Selected IDs: {selectedIssueIds?.length || 0}</Text>
+                  <Text style={styles.debugText}>Issues: {issues?.length || 0}</Text>
+                </View>
+              )}
+              
+              <View style={styles.emptyActions}>
+                {selectedDate && selectedTime && (
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Text style={styles.retryText}>Choose Different Slot</Text>
+                  </TouchableOpacity>
+                )}
+                
+                <TouchableOpacity 
+                  style={[styles.retryButton, styles.retryButtonSecondary]}
+                  onPress={fetchServiceCompanies}
+                >
+                  <Text style={[styles.retryText, styles.retryTextSecondary]}>Retry</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <FlatList
@@ -1180,12 +1285,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+    marginHorizontal: 4,
+  },
+
+  retryButtonSecondary: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#3b82f6",
   },
 
   retryText: {
     color: "white",
     fontSize: 14,
     fontWeight: "600",
+  },
+
+  retryTextSecondary: {
+    color: "#3b82f6",
+  },
+
+  emptyActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+
+  debugInfo: {
+    backgroundColor: "#fef3c7",
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 16,
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#92400e",
+    marginBottom: 8,
+  },
+
+  debugText: {
+    fontSize: 11,
+    color: "#78350f",
+    marginBottom: 4,
+    fontFamily: "monospace",
   },
 
   // Modern Bottom Action Bar

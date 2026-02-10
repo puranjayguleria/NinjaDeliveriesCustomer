@@ -5612,24 +5612,34 @@ export class FirestoreService {
    */
   static async getCompaniesByServiceIds(serviceIds: string[], categoryId?: string): Promise<ServiceCompany[]> {
     try {
-      console.log(`🏢 Fetching companies by service IDs:`, serviceIds);
-      console.log(`   Category ID:`, categoryId);
+      console.log(`\n🏢 ========== getCompaniesByServiceIds CALLED ==========`);
+      console.log(`🏢 Service IDs to fetch:`, serviceIds);
+      console.log(`🏢 Service IDs count:`, serviceIds.length);
+      console.log(`🏢 Category ID filter:`, categoryId || 'None');
+      console.log(`🏢 ====================================================\n`);
       
       const companyMap = new Map<string, ServiceCompany>();
       let servicesWithoutCompanyId: any[] = [];
       
       // For each service ID, fetch the service and its company
       for (const serviceId of serviceIds) {
-        console.log(`🔍 Fetching service: ${serviceId}`);
+        console.log(`\n🔍 ========== Processing Service ${serviceIds.indexOf(serviceId) + 1}/${serviceIds.length} ==========`);
+        console.log(`🔍 Service ID: "${serviceId}"`);
+        console.log(`🔍 Service ID type: ${typeof serviceId}`);
+        console.log(`🔍 Service ID length: ${serviceId?.length || 0}`);
         
         try {
+          console.log(`📡 Querying Firestore: service_services/${serviceId}`);
           const serviceDoc = await firestore()
             .collection('service_services')
             .doc(serviceId)
             .get();
           
+          console.log(`📄 Document exists: ${serviceDoc.exists}`);
+          
           if (!serviceDoc.exists) {
-            console.log(`   ⚠️ Service ${serviceId} not found`);
+            console.log(`   ❌ Service document "${serviceId}" not found in service_services collection`);
+            console.log(`   💡 Check if this ID exists in your Firestore database`);
             continue;
           }
           
@@ -5656,10 +5666,15 @@ export class FirestoreService {
             continue;
           }
           
-          // Check category filter if provided
-          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId !== categoryId) {
-            console.log(`   ⚠️ Service ${serviceId} doesn't match category ${categoryId}, skipping`);
-            continue;
+          // Check category filter if provided - but be lenient for service_services
+          // Since we're querying by specific service ID, the category filter is less critical
+          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId && serviceData.categoryMasterId !== categoryId) {
+            console.log(`   ⚠️ Service ${serviceId} category mismatch:`);
+            console.log(`      Service categoryMasterId: ${serviceData.categoryMasterId}`);
+            console.log(`      Filter categoryId: ${categoryId}`);
+            console.log(`   💡 Skipping category filter since we're querying by specific service ID`);
+            // Don't skip - continue processing since we have a specific service ID
+            // continue;
           }
           
           const companyId = serviceData.companyId;
@@ -5677,13 +5692,51 @@ export class FirestoreService {
           }
           
           // Fetch company details
+          console.log(`   🔍 Fetching company document: ${companyId} from service_company collection`);
           const companyDoc = await firestore()
             .collection('service_company')
             .doc(companyId)
             .get();
           
+          console.log(`   📄 Company document exists: ${companyDoc.exists}`);
+          
           if (!companyDoc.exists) {
-            console.log(`   ⚠️ Company ${companyId} not found in service_company`);
+            console.log(`   ⚠️ Company ${companyId} not found in service_company collection`);
+            console.log(`   💡 Trying to use service data as company data (embedded approach)`);
+            
+            // FALLBACK: Use service data as company data if company document doesn't exist
+            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+            
+            // Try to fetch company logo separately even if company doc doesn't exist
+            let companyLogo = serviceData.imageUrl || null;
+            console.log(`   🖼️ Using service imageUrl as fallback: ${companyLogo ? 'Found' : 'Not found'}`);
+            
+            const company: ServiceCompany = {
+              id: serviceDoc.id,
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceData.name || 'Unknown Service',
+              companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: companyLogo,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: serviceData.description,
+              rating: serviceData.rating,
+              reviewCount: serviceData.reviewCount,
+              contactInfo: serviceData.contactInfo || {
+                phone: serviceData.phone,
+                email: serviceData.email,
+                address: serviceData.address,
+              },
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              packages: hasPackages ? serviceData.packages : undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            console.log(`   ✅ Added company from service data: ${company.companyName}`);
             continue;
           }
           
@@ -5694,13 +5747,28 @@ export class FirestoreService {
             continue;
           }
           
+          console.log(`   📋 Company data:`, {
+            companyName: companyData.companyName,
+            name: companyData.name,
+            isActive: companyData.isActive,
+            categoryMasterId: companyData.categoryMasterId,
+            allFields: Object.keys(companyData)
+          });
+          
           // Check if company is active
           if (companyData.isActive === false) {
-            console.log(`   ⚠️ Company ${companyId} is not active, skipping`);
+            console.log(`   ⚠️ Company ${companyId} (${companyData.companyName || companyData.name}) is not active (isActive: false), skipping`);
             continue;
           }
           
           console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
+          
+          // 🖼️ Fetch company logo - prioritize logoUrl from service_company
+          const companyLogo = companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null;
+          console.log(`   🖼️ Company logo URL: ${companyLogo ? 'Found' : 'Not found'}`);
+          if (companyLogo) {
+            console.log(`      Logo source: ${companyData.logoUrl ? 'logoUrl' : companyData.imageUrl ? 'imageUrl (company)' : 'imageUrl (service)'}`);
+          }
           
           // Check if service has packages
           const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
@@ -5714,7 +5782,7 @@ export class FirestoreService {
             companyName: companyData.companyName || companyData.name || 'Unknown Company',
             price: serviceData.price || 0,
             isActive: true,
-            imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+            imageUrl: companyLogo, // Use the logo from service_company
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
             description: companyData.description,
@@ -6120,7 +6188,8 @@ export class FirestoreService {
     selectedIssueIds: string[], 
     date: string, 
     time: string,
-    serviceType?: string
+    serviceType?: string,
+    fromServiceServices?: boolean
   ): Promise<(ServiceCompany & { 
     availabilityInfo: {
       available: boolean;
@@ -6135,13 +6204,21 @@ export class FirestoreService {
       console.log(`📋 Selected service IDs:`, selectedIssueIds);
       console.log(`🏷️ Service type:`, serviceType);
       console.log(`📂 Category ID:`, categoryId);
+      console.log(`🔍 From service_services:`, fromServiceServices);
       
       // Get companies based on selected issues
       let companies: ServiceCompany[];
       if (selectedIssueIds && selectedIssueIds.length > 0) {
-        console.log(`🔍 Using getCompaniesWithDetailedPackages for service IDs:`, selectedIssueIds);
-        companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
-        console.log(`📊 getCompaniesWithDetailedPackages returned ${companies.length} companies`);
+        // 🔥 CRITICAL FIX: Use correct method based on data source
+        if (fromServiceServices) {
+          console.log(`🔍 Using getCompaniesByServiceIds for service_services IDs:`, selectedIssueIds);
+          companies = await this.getCompaniesByServiceIds(selectedIssueIds, categoryId);
+          console.log(`📊 getCompaniesByServiceIds returned ${companies.length} companies`);
+        } else {
+          console.log(`🔍 Using getCompaniesWithDetailedPackages for app_services IDs:`, selectedIssueIds);
+          companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
+          console.log(`📊 getCompaniesWithDetailedPackages returned ${companies.length} companies`);
+        }
       } else if (categoryId) {
         console.log(`🔍 Using getCompaniesByCategory for category:`, categoryId);
         companies = await this.getCompaniesByCategory(categoryId);
