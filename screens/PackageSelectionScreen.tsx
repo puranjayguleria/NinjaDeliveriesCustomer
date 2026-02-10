@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Modal,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
@@ -35,6 +36,10 @@ export default function PackageSelectionScreen() {
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceIssue | null>(null);
   const [selectedDirectService, setSelectedDirectService] = useState<ServiceIssue | null>(null);
+  
+  // Modal states
+  const [showPackagesModal, setShowPackagesModal] = useState(false);
+  const [showServicesModal, setShowServicesModal] = useState(false);
 
   useEffect(() => {
     // If serviceId is provided, fetch only that service's packages
@@ -375,71 +380,52 @@ export default function PackageSelectionScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Packages Section */}
+        {/* Packages Section Button */}
         {packageBasedServices.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>📦 Packages</Text>
-              <Text style={styles.sectionSubtitle}>
-                {packageBasedServices.length} package{packageBasedServices.length > 1 ? 's' : ''} available
-              </Text>
-            </View>
-            
-            {packageBasedServices.map((service) => (
-              <View key={service.id} style={styles.serviceSection}>
-                <Text style={styles.serviceName}>{service.name}</Text>
-                <View style={styles.packagesGrid}>
-                  {service.packages?.map((pkg: any, index: number) => 
-                    renderPackageCard(pkg, service, index)
-                  )}
-                </View>
+          <TouchableOpacity 
+            style={[styles.sectionButton, styles.packagesSectionButton]}
+            onPress={() => {
+              console.log('📦 Opening Packages Modal');
+              console.log('Package-based services:', packageBasedServices.length);
+              setShowPackagesModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.sectionButtonContent}>
+              <Text style={styles.sectionButtonIcon}>📦</Text>
+              <View style={styles.sectionButtonTextContainer}>
+                <Text style={[styles.sectionButtonTitle, styles.packagesSectionTitle]}>Packages</Text>
+                <Text style={styles.sectionButtonSubtitle}>
+                  {packageBasedServices.length} package{packageBasedServices.length > 1 ? 's' : ''} available
+                </Text>
               </View>
-            ))}
-          </View>
+              <Text style={styles.sectionButtonArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
-        {/* Direct-Price Services Section */}
+        {/* Services Section Button */}
         {directPriceServices.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>💰 Services</Text>
-              <Text style={styles.sectionSubtitle}>
-                {directPriceServices.length} service{directPriceServices.length > 1 ? 's' : ''} available
-              </Text>
+          <TouchableOpacity 
+            style={[styles.sectionButton, styles.servicesSectionButton]}
+            onPress={() => {
+              console.log('💰 Opening Services Modal');
+              console.log('Direct-price services:', directPriceServices.length);
+              setShowServicesModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.sectionButtonContent}>
+              <Text style={styles.sectionButtonIcon}>💰</Text>
+              <View style={styles.sectionButtonTextContainer}>
+                <Text style={[styles.sectionButtonTitle, styles.servicesSectionTitle]}>Services</Text>
+                <Text style={styles.sectionButtonSubtitle}>
+                  {directPriceServices.length} service{directPriceServices.length > 1 ? 's' : ''} available
+                </Text>
+              </View>
+              <Text style={styles.sectionButtonArrow}>›</Text>
             </View>
-            
-            {directPriceServices.map((service) => (
-              <TouchableOpacity
-                key={service.id}
-                style={[
-                  styles.directServiceCard,
-                  selectedDirectService?.id === service.id && styles.directServiceCardSelected
-                ]}
-                onPress={() => handleDirectServiceSelect(service)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.directServiceInfo}>
-                  <Text style={styles.directServiceName}>{service.name}</Text>
-                  {service.serviceType && (
-                    <Text style={styles.directServiceType}>{service.serviceType}</Text>
-                  )}
-                </View>
-                
-                <View style={styles.directServicePriceContainer}>
-                  <Text style={styles.directServicePrice}>₹{service.price}</Text>
-                </View>
-
-                <View style={[
-                  styles.checkbox, 
-                  selectedDirectService?.id === service.id && styles.checkboxChecked
-                ]}>
-                  {selectedDirectService?.id === service.id && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* Empty State */}
@@ -452,6 +438,159 @@ export default function PackageSelectionScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Packages Modal */}
+      <Modal
+        visible={showPackagesModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPackagesModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPackagesModal(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalContainer}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📦 Select Package</Text>
+              <TouchableOpacity 
+                onPress={() => setShowPackagesModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Content */}
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {packageBasedServices.length > 0 ? (
+                packageBasedServices.map((service) => (
+                  <View key={service.id} style={styles.serviceSection}>
+                    <Text style={styles.serviceName}>{service.name}</Text>
+                    <View style={styles.packagesGrid}>
+                      {service.packages?.map((pkg: any, index: number) => 
+                        renderPackageCard(pkg, service, index)
+                      )}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyModalContent}>
+                  <Text style={styles.emptyModalText}>No packages available</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Modal Footer */}
+            {selectedPackage && (
+              <View style={styles.modalFooter}>
+                <TouchableOpacity 
+                  style={styles.modalContinueBtn}
+                  onPress={() => {
+                    setShowPackagesModal(false);
+                    handleContinue();
+                  }}
+                >
+                  <Text style={styles.modalContinueBtnText}>Continue with Package</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Services Modal */}
+      <Modal
+        visible={showServicesModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowServicesModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowServicesModal(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalContainer}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>💰 Select Service</Text>
+              <TouchableOpacity 
+                onPress={() => setShowServicesModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Content */}
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {directPriceServices.length > 0 ? (
+                directPriceServices.map((service) => (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={[
+                      styles.directServiceCard,
+                      selectedDirectService?.id === service.id && styles.directServiceCardSelected
+                    ]}
+                    onPress={() => handleDirectServiceSelect(service)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.directServiceInfo}>
+                      <Text style={styles.directServiceName}>{service.name}</Text>
+                      {service.serviceType && (
+                        <Text style={styles.directServiceType}>{service.serviceType}</Text>
+                      )}
+                    </View>
+                    
+                    <View style={styles.directServicePriceContainer}>
+                      <Text style={styles.directServicePrice}>₹{service.price}</Text>
+                    </View>
+
+                    <View style={[
+                      styles.checkbox, 
+                      selectedDirectService?.id === service.id && styles.checkboxChecked
+                    ]}>
+                      {selectedDirectService?.id === service.id && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyModalContent}>
+                  <Text style={styles.emptyModalText}>No services available</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Modal Footer */}
+            {selectedDirectService && (
+              <View style={styles.modalFooter}>
+                <TouchableOpacity 
+                  style={styles.modalContinueBtn}
+                  onPress={() => {
+                    setShowServicesModal(false);
+                    handleContinue();
+                  }}
+                >
+                  <Text style={styles.modalContinueBtnText}>Continue with Service</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Bottom Continue Button */}
       {(selectedPackage || selectedDirectService) && (
@@ -738,31 +877,163 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingBottom: 100,
+    paddingTop: 16,
+  },
+
+  // Section Buttons (replacing old section containers)
+  sectionButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  packagesSectionButton: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#4CAF50",
+  },
+
+  servicesSectionButton: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#ef4444",
+  },
+
+  sectionButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  sectionButtonIcon: {
+    fontSize: 32,
+    marginRight: 16,
+  },
+
+  sectionButtonTextContainer: {
+    flex: 1,
+  },
+
+  sectionButtonTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+
+  packagesSectionTitle: {
+    color: "#15803d",
+  },
+
+  servicesSectionTitle: {
+    color: "#dc2626",
+  },
+
+  sectionButtonSubtitle: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  sectionButtonArrow: {
+    fontSize: 28,
+    color: "#64748b",
+    fontWeight: "300",
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+
+  modalContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    minHeight: "85%",
+    maxHeight: "85%",
+    paddingBottom: 20,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  modalCloseText: {
+    fontSize: 20,
+    color: "#64748b",
+    fontWeight: "600",
+  },
+
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+
+  modalFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+
+  modalContinueBtn: {
+    backgroundColor: "#4CAF50",
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  modalContinueBtnText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  emptyModalContent: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  emptyModalText: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
   },
 
   sectionContainer: {
     marginBottom: 24,
     paddingHorizontal: 16,
-  },
-
-  sectionHeader: {
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "#e2e8f0",
-  },
-
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-
-  sectionSubtitle: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "500",
   },
 
   directServiceCard: {
