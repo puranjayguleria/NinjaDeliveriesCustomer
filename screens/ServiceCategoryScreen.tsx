@@ -231,6 +231,7 @@ export default function ServiceCategoryScreen() {
           allCategories: categories, // 🆕 Pass all categories for sidebar
           // Add flag to indicate this is from service_services (direct-price)
           fromServiceServices: true,
+          isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
         });
       }
     } catch (error) {
