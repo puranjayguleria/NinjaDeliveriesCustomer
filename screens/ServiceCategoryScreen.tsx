@@ -95,7 +95,7 @@ export default function ServiceCategoryScreen() {
       const servicesSnapshot = await firestore()
         .collection('service_services')
         .where('categoryMasterId', '==', searchCategoryId)
-        .where('isActive', '==', true)
+
         .get();
 
       console.log(`� Found ${servicesSnapshot.size} total services in service_services`);
@@ -226,7 +226,7 @@ export default function ServiceCategoryScreen() {
           serviceTitle,
           categoryId: selectedCategoryId,
           issues: serviceNames, // Service names
-          selectedIssueIds: serviceNames, // Pass names as IDs for compatibility
+          selectedIssueIds: [selectedId], // ✅ FIXED: Pass actual Firestore document ID, not service name
           selectedIssues: [selectedIssueObject], // pass as array for compatibility
           allCategories: categories, // 🆕 Pass all categories for sidebar
           // Add flag to indicate this is from service_services (direct-price)

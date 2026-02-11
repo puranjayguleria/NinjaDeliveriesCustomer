@@ -312,7 +312,12 @@ export class FirestoreService {
    */
   static async populateCategoryImages(categories: ServiceCategory[]): Promise<void> {
     try {
-      console.log('🖼️ Fetching category images from service_categories_master collection...');
+      console.log(`🖼️ Fetching category images for ${categories.length} categories...`);
+      
+      if (categories.length === 0) {
+        console.log('⚠️ No categories to populate images for');
+        return;
+      }
       
       // Fetch all documents from service_categories_master
       const masterSnapshot = await firestore()
@@ -320,6 +325,10 @@ export class FirestoreService {
         .get();
 
       console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+
+      if (masterSnapshot.size === 0) {
+        console.log('⚠️ WARNING: service_categories_master collection is empty!');
+      }
 
       // Create a map of category names to images for efficient lookup
       const imageMap = new Map<string, string>();
@@ -330,39 +339,49 @@ export class FirestoreService {
           // Store both exact name and lowercase name for flexible matching
           imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
           console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
+        } else {
+          console.log(`⚠️ Master category missing name or imageUrl:`, {
+            hasName: !!data.name,
+            hasImageUrl: !!data.imageUrl,
+            docId: doc.id
+          });
         }
       });
+
+      console.log(`🔍 Image map has ${imageMap.size} entries`);
 
       // Match categories with their images
       let imagesFound = 0;
       categories.forEach(category => {
         const categoryNameLower = category.name.toLowerCase().trim();
         
+        console.log(`  Searching for image: "${category.name}" (${categoryNameLower})`);
+        
         // Try exact match first
         if (imageMap.has(categoryNameLower)) {
           category.imageUrl = imageMap.get(categoryNameLower) || null;
           imagesFound++;
-          console.log(`✅ Matched image for "${category.name}"`);
+          console.log(`    ✅ Exact match found`);
         } else {
           // Try partial matching for similar names
           for (const [masterName, imageUrl] of imageMap.entries()) {
             if (masterName.includes(categoryNameLower) || categoryNameLower.includes(masterName)) {
               category.imageUrl = imageUrl;
               imagesFound++;
-              console.log(`✅ Partial match: "${category.name}" matched with "${masterName}"`);
+              console.log(`    ✅ Partial match: matched with "${masterName}"`);
               break;
             }
           }
-        }
-        
-        if (!category.imageUrl) {
-          console.log(`⚠️ No image found for "${category.name}"`);
+          
+          if (!category.imageUrl) {
+            console.log(`    ⚠️ No image match found`);
+          }
         }
       });
 
-      console.log(`🖼️ Successfully matched ${imagesFound}/${categories.length} categories with images`);
+      console.log(`🖼️ Image matching complete: ${imagesFound}/${categories.length} categories matched`);
     } catch (error) {
-      console.error('❌ Error fetching category images from service_categories_master:', error);
+      console.error('❌ Error in populateCategoryImages:', error);
       // Don't throw error - just continue without images
       console.log('⚠️ Continuing without category images...');
     }
