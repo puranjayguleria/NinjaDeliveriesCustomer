@@ -25,8 +25,8 @@ export default function ServiceCategoryScreen() {
 
   console.log('ServiceCategoryScreen params:', { serviceTitle, categoryId });
 
-  // Single-select states
-  const [selectedId, setSelectedId] = useState<string>("");
+  // Multi-select states
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,81 +142,83 @@ export default function ServiceCategoryScreen() {
   const hasMoreItems = issues.length > 5;
 
   const toggleSelect = (id: string) => {
-    // Single selection - if same id clicked, deselect it, otherwise select new one
-    if (selectedId === id) {
-      setSelectedId("");
+    // Multi-selection - toggle the id in the array
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
     } else {
-      setSelectedId(id);
+      setSelectedIds([...selectedIds, id]);
     }
   };
 
   const selectedIssueTitles = useMemo(() => {
-    if (!issues || !Array.isArray(issues) || !selectedId) return [];
+    if (!issues || !Array.isArray(issues) || selectedIds.length === 0) return [];
     
-    const selectedIssue = issues.find((x) => x.id === selectedId);
-    if (!selectedIssue) return [];
-
-    return [selectedIssue.name];
-  }, [issues, selectedId]);
+    return issues
+      .filter((issue) => selectedIds.includes(issue.id))
+      .map((issue) => issue.name);
+  }, [issues, selectedIds]);
 
   const onContinue = async () => {
-    if (!selectedId) {
-      Alert.alert("Select Issue", "Please select an issue.");
+    if (selectedIds.length === 0) {
+      Alert.alert("Select Services", "Please select at least one service.");
       return;
     }
 
     try {
-      // Get the selected service
-      const selectedIssueObject = issues.find(i => i.id === selectedId);
+      // Get all selected services
+      const selectedIssueObjects = issues.filter(i => selectedIds.includes(i.id));
       
-      if (!selectedIssueObject) {
-        Alert.alert("Error", "Selected service not found.");
+      if (selectedIssueObjects.length === 0) {
+        Alert.alert("Error", "Selected services not found.");
         return;
       }
 
-      // Check if this service has packages by querying service_services
-      console.log(`🔍 Checking if service "${selectedIssueObject.name}" has packages...`);
+      // Check if ANY of the selected services has packages
+      console.log(`🔍 Checking ${selectedIssueObjects.length} selected services for packages...`);
       
-      const serviceDoc = await firestore()
-        .collection('service_services')
-        .doc(selectedId)
-        .get();
+      let hasAnyPackages = false;
       
-      const serviceData = serviceDoc.data();
-      const hasPackages = serviceData?.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
-      
-      console.log(`📦 Service "${selectedIssueObject.name}" has packages: ${hasPackages}`);
-
-      if (hasPackages) {
-        // Package-based service - navigate to PackageSelection screen
-        console.log(`📦 Navigating to PackageSelection for package-based service`);
-        navigation.navigate("PackageSelection", {
-          serviceTitle,
-          categoryId: selectedCategoryId,
-          serviceId: selectedId,
-          serviceName: selectedIssueObject.name,
-          selectedIssues: [selectedIssueObject],
-          allCategories: categories,
-        });
-      } else {
-        // Direct-price service - navigate to SelectDateTime
-        console.log(`💰 Navigating to SelectDateTime for direct-price service`);
-        const serviceNames = [selectedIssueObject.name];
+      for (const service of selectedIssueObjects) {
+        const serviceDoc = await firestore()
+          .collection('service_services')
+          .doc(service.id)
+          .get();
         
-        navigation.navigate("SelectDateTime", {
-          serviceTitle,
-          categoryId: selectedCategoryId,
-          issues: serviceNames, // Service names
-          selectedIssueIds: [selectedId], // ✅ FIXED: Pass actual Firestore document ID, not service name
-          selectedIssues: [selectedIssueObject], // pass as array for compatibility
-          allCategories: categories, // 🆕 Pass all categories for sidebar
-          // Add flag to indicate this is from service_services (direct-price)
-          fromServiceServices: true,
-          isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
-        });
+        const serviceData = serviceDoc.data();
+        const hasPackages = serviceData?.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+        
+        if (hasPackages) {
+          hasAnyPackages = true;
+          console.log(`📦 Service "${service.name}" has packages`);
+        }
       }
+
+      if (hasAnyPackages) {
+        // If any service has packages, show alert
+        Alert.alert(
+          "Package Services Selected", 
+          "One or more selected services have package options. Please select services with packages separately.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      // All services are direct-price - navigate to SelectDateTime
+      console.log(`💰 Navigating to SelectDateTime with ${selectedIssueObjects.length} direct-price services`);
+      const serviceNames = selectedIssueObjects.map(s => s.name);
+      
+      navigation.navigate("SelectDateTime", {
+        serviceTitle,
+        categoryId: selectedCategoryId,
+        issues: serviceNames, // Service names
+        selectedIssueIds: selectedIds, // ✅ Pass actual Firestore document IDs
+        selectedIssues: selectedIssueObjects, // pass as array
+        allCategories: categories, // 🆕 Pass all categories for sidebar
+        fromServiceServices: true,
+        isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
+      });
     } catch (error) {
-      console.error('Error checking service type:', error);
+      console.error('Error checking service types:', error);
       Alert.alert("Error", "Failed to load service details. Please try again.");
     }
   };
@@ -229,7 +231,7 @@ export default function ServiceCategoryScreen() {
 
 
   const renderItem = ({ item }: any) => {
-    const checked = selectedId === item.id;
+    const checked = selectedIds.includes(item.id);
 
     return (
       <TouchableOpacity
@@ -331,14 +333,14 @@ export default function ServiceCategoryScreen() {
       </View>
 
       {/* Bottom Continue Button */}
-      {selectedId && (
+      {selectedIds.length > 0 && (
         <View style={styles.bottomBar}>
           <TouchableOpacity 
             style={styles.continueBtn} 
             onPress={onContinue}
           >
             <Text style={styles.continueBtnText}>
-              Continue (1 selected)
+              Continue ({selectedIds.length} selected)
             </Text>
           </TouchableOpacity>
         </View>
