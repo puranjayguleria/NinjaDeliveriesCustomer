@@ -518,18 +518,6 @@ export default function CompanySelectionScreen() {
                 {'\n'}
               </Text>
               
-              {/* Debug Info (only in development) */}
-              {__DEV__ && (
-                <View style={styles.debugInfo}>
-                  <Text style={styles.debugTitle}>Debug Info:</Text>
-                  <Text style={styles.debugText}>Service: {serviceTitle}</Text>
-                  <Text style={styles.debugText}>Category: {categoryId || 'N/A'}</Text>
-                  <Text style={styles.debugText}>From Service Services: {fromServiceServices ? 'Yes' : 'No'}</Text>
-                  <Text style={styles.debugText}>Selected IDs: {selectedIssueIds?.length || 0}</Text>
-                  <Text style={styles.debugText}>Issues: {issues?.length || 0}</Text>
-                </View>
-              )}
-              
               <View style={styles.emptyActions}>
                 {selectedDate && selectedTime && (
                   <TouchableOpacity 
@@ -1308,29 +1296,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginTop: 12,
-  },
-
-  debugInfo: {
-    backgroundColor: "#fef3c7",
-    padding: 12,
-    borderRadius: 8,
-    marginVertical: 16,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-
-  debugTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#92400e",
-    marginBottom: 8,
-  },
-
-  debugText: {
-    fontSize: 11,
-    color: "#78350f",
-    marginBottom: 4,
-    fontFamily: "monospace",
   },
 
   // Modern Bottom Action Bar

@@ -199,43 +199,22 @@ export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
-  const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
-  const activityScrollRef = React.useRef<ScrollView>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const currentBannerIndex = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
 
-  // Helper function to format time ago
-  const getTimeAgo = React.useCallback((timestamp: any) => {
-    if (!timestamp) return 'recently';
-    
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-    
-    return date.toLocaleDateString();
-  }, []);
-
   // Manual refresh function
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setLastUpdateTime(new Date());
     // Real-time listeners will automatically fetch fresh data
-    // Just wait a moment to show the refresh animation
     setTimeout(() => {
       setRefreshing(false);
     }, 1000);
@@ -245,7 +224,6 @@ export default function ServicesScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('📱 ServicesScreen focused - real-time listeners active');
-      setLastUpdateTime(new Date());
       return () => {
         console.log('📱 ServicesScreen unfocused');
       };
@@ -266,7 +244,7 @@ export default function ServicesScreen() {
           try {
             console.log(`📊 Real-time update: Found ${snapshot.size} active categories at ${new Date().toLocaleTimeString()}`);
             
-            const categories: ServiceCategory[] = [];
+            const allCategories: ServiceCategory[] = [];
             
             snapshot.forEach(doc => {
               const data = doc.data();
@@ -279,22 +257,24 @@ export default function ServicesScreen() {
                 createdAt: data.createdAt,
                 updatedAt: data.updatedAt,
               };
-              categories.push(category);
+              allCategories.push(category);
               
               // 🚨 DEBUG: Log each category with its ID
               console.log(`📋 Category: "${category.name}" -> ID: ${doc.id}`);
             });
 
             // Sort by name
-            categories.sort((a, b) => a.name.localeCompare(b.name));
+            allCategories.sort((a, b) => a.name.localeCompare(b.name));
 
             // Populate images from service_categories_master
-            await FirestoreService.populateCategoryImages(categories);
+            await FirestoreService.populateCategoryImages(allCategories);
 
-            setServiceCategories(categories);
+            setServiceCategories(allCategories);
             setLoading(false);
-            setLastUpdateTime(new Date());
-            console.log('✅ Real-time categories updated:', categories.length);
+            console.log('✅ Real-time categories updated:', allCategories.length);
+            
+            // TODO: Enable worker filtering once service_companies collection has data
+            // Currently showing all categories because no workers are assigned yet
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
             setError('Failed to load services. Pull down to refresh.');
@@ -359,7 +339,6 @@ export default function ServicesScreen() {
 
           setServiceBanners(banners);
           setBannersLoading(false);
-          setLastUpdateTime(new Date());
           console.log('✅ Real-time banners updated:', banners.length);
         },
         (error) => {
@@ -375,99 +354,6 @@ export default function ServicesScreen() {
       unsubscribe();
     };
   }, []);
-
-  // Real-time listener for live activities - shows all bookings from all users
-  useEffect(() => {
-    console.log('🔥 Setting up real-time listener for live activities (all bookings)...');
-    
-    setActivitiesLoading(true);
-
-    const unsubscribe = firestore()
-      .collection('service_bookings')
-      .onSnapshot(
-        (snapshot) => {
-          console.log(`📊 Real-time update: Found ${snapshot.size} bookings at ${new Date().toLocaleTimeString()}`);
-          
-          if (snapshot.size === 0) {
-            setActivities([]);
-            setActivitiesLoading(false);
-            return;
-          }
-
-          // Transform bookings into activity format
-          const transformedActivities: any[] = [];
-          
-          snapshot.forEach(doc => {
-            const booking = doc.data();
-            
-            // Get service name only (no customer name)
-            const serviceName = booking.serviceName || booking.category || 'Service';
-            
-            // Show simple booking message
-            const activityMessage = `${serviceName} service has been booked`;
-            
-            transformedActivities.push({
-              id: doc.id,
-              title: activityMessage,
-              status: booking.status || 'pending',
-              timestamp: booking.createdAt || booking.updatedAt,
-              serviceName: serviceName,
-            });
-          });
-
-          // Sort by timestamp on client side (most recent first)
-          transformedActivities.sort((a, b) => {
-            const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
-            const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp || 0);
-            return dateB.getTime() - dateA.getTime();
-          });
-          
-          setActivities(transformedActivities);
-          setActivitiesLoading(false);
-          setLastUpdateTime(new Date());
-          console.log('✅ Real-time live activities updated (all bookings):', transformedActivities.length);
-        },
-        (error) => {
-          console.error('❌ Real-time listener error for live activities:', error);
-          setActivities([]);
-          setActivitiesLoading(false);
-        }
-      );
-
-    // Cleanup listener on unmount
-    return () => {
-      console.log('🔥 Cleaning up live activities listener');
-      unsubscribe();
-    };
-  }, []);
-
-  // Smooth continuous auto-scroll effect for all activities
-  useEffect(() => {
-    if (activities.length <= 1) return;
-
-    let scrollPosition = 0;
-    const activityHeight = 70; // Updated height of each activity card
-    const totalActivities = activities.length;
-
-    const interval = setInterval(() => {
-      scrollPosition += activityHeight;
-      
-      // Reset to beginning when reaching the end
-      if (scrollPosition >= totalActivities * activityHeight) {
-        scrollPosition = 0;
-      }
-      
-      // Smooth scroll to next position
-      if (activityScrollRef.current) {
-        activityScrollRef.current.scrollTo({
-          y: scrollPosition,
-          animated: true,
-        });
-      }
-    }, 3000); // Scroll every 3 seconds
-
-    return () => clearInterval(interval);
-  }, [activities.length]);
 
   // Auto-scroll banners with pause
   useEffect(() => {
@@ -494,25 +380,28 @@ export default function ServicesScreen() {
     return () => clearInterval(interval);
   }, [serviceBanners.length]);
 
-  // Blinking animation for Live Activity dot
+  // Blinking animation for View All button (light)
   useEffect(() => {
     const blinkAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(blinkAnim, {
-          toValue: 0.2,
-          duration: 800,
+          toValue: 0.7,
+          duration: 1000,
           useNativeDriver: true,
         }),
         Animated.timing(blinkAnim, {
           toValue: 1,
-          duration: 800,
+          duration: 1000,
           useNativeDriver: true,
         }),
       ])
     );
+
     blinkAnimation.start();
 
-    return () => blinkAnimation.stop();
+    return () => {
+      blinkAnimation.stop();
+    };
   }, [blinkAnim]);
 
   // Search functionality - simplified without useMemo to avoid React null error
@@ -599,14 +488,13 @@ export default function ServicesScreen() {
     searchInputRef.current?.focus();
   };
 
-  // Data slices with null checks
-  const topCategories = searchQuery 
-    ? (filteredCategories || []).slice(0, 3) 
-    : (serviceCategories || []).slice(0, 3);
-    
+  // Data slices with null checks - Show only 6 categories in main view
   const listCategories = searchQuery 
     ? (filteredCategories || []).slice(0, 20) 
     : (serviceCategories || []).slice(0, 6);
+  
+  // Check if there are more categories to show
+  const hasMoreCategories = !searchQuery && (serviceCategories || []).length > 6;
 
   // Render functions
   const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
@@ -749,37 +637,6 @@ export default function ServicesScreen() {
     );
   }, [navigation]);
 
-  const renderCategoryCard = ({ item, index }: { item: ServiceCategory; index: number }) => {
-    if (!item || !item.name) return null; // Safety check
-    
-    const categoryStyle = getCategoryStyle(item.name, index);
-    return (
-      <TouchableOpacity
-        key={item.id}
-        style={[styles.categoryCard, { backgroundColor: categoryStyle.bgColor }]}
-        activeOpacity={0.7}
-        onPress={() => handleCategoryPress(item)}
-      >
-        <View style={[styles.iconContainer, { backgroundColor: categoryStyle.color }]}>
-          {item.imageUrl ? (
-            <Image 
-              source={{ uri: item.imageUrl }} 
-              style={styles.categoryImage}
-              resizeMode="cover"
-              onError={() => {
-                console.log(`⚠️ Failed to load image for ${item.name}, falling back to icon`);
-              }}
-            />
-          ) : (
-            <Ionicons name={categoryStyle.icon as any} size={28} color="white" />
-          )}
-        </View>
-        <Text style={styles.categoryTitle}>{item.name}</Text>
-        <Text style={styles.categorySubtitle}>Book now</Text>
-      </TouchableOpacity>
-    );
-  };
-
   const renderListItem = ({ item, index }: { item: ServiceCategory; index: number }) => {
     if (!item || !item.name) return null; // Safety check
     
@@ -817,45 +674,35 @@ export default function ServicesScreen() {
     return (
       <View>
         {/* Status Bar */}
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
         
-        {/* Header with Image Background */}
-        <ImageBackground
-          source={require('../assets/8.png')}
+        {/* Header with Gradient */}
+        <LinearGradient
+          colors={["#00b4a0", "#00d2c7"]}
           style={styles.topHeader}
-          resizeMode="cover"
         >
-          <View style={styles.headerOverlay}>
-            <View style={styles.headerRow}>
-              {/* Booking History Button */}
-              <TouchableOpacity 
-                style={styles.historyButton}
-                onPress={() => navigation.navigate("BookingHistory")}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={["#ef4444", "#dc2626"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.historyButtonGradient}
-                >
-                  <Ionicons name="receipt-outline" size={22} color="white" />
-                  <Text style={styles.historyButtonText}>History</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.headerContent}>
+            {/* Booking History Button */}
+            <TouchableOpacity 
+              style={styles.historyButton}
+              onPress={() => navigation.navigate("BookingHistory")}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="receipt-outline" size={22} color="white" />
+              <Text style={styles.historyButtonText}>History</Text>
+            </TouchableOpacity>
           </View>
-        </ImageBackground>
+        </LinearGradient>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
-            <Ionicons name="search" size={20} color="#ce0c8d" style={styles.searchIcon} />
+            <Ionicons name="search" size={20} color="#00b4a0" style={styles.searchIcon} />
             <TextInput
               ref={searchInputRef}
               style={styles.searchInput}
-              placeholder="What do you need?"
-              placeholderTextColor="#a0aec0"
+              placeholder="Search for services..."
+              placeholderTextColor="#94a3b8"
               value={searchQuery}
               onChangeText={handleSearch}
               onFocus={() => setIsSearchFocused(true)}
@@ -866,29 +713,22 @@ export default function ServicesScreen() {
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                <Ionicons name="close-circle-sharp" size={20} color="#cbd5e1" />
+                <Ionicons name="close-circle" size={20} color="#cbd5e1" />
               </TouchableOpacity>
             )}
           </View>
-          
-          {/* Real-time sync indicator - removed */}
         </View>
 
         {/* Show search results header when searching */}
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              Found {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
+              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found
             </Text>
-            {(filteredCategories || []).length === 0 && (
-              <Text style={styles.noResultsText}>
-                Try "electrician", "plumber", "cleaning", etc.
-              </Text>
-            )}
           </View>
         )}
 
-        {/* Only show banner and sections when not searching */}
+        {/* Only show banner when not searching */}
         {searchQuery.length === 0 && (
           <>
             {/* Service Banners */}
@@ -914,92 +754,36 @@ export default function ServicesScreen() {
                 {/* Pagination Dots */}
                 {serviceBanners.length > 1 && (
                   <View style={styles.paginationContainer}>
-                    {serviceBanners.map((_, index) => {
-                      const isActive = index === activeBannerIndex;
-                      
-                      if (isActive) {
-                        console.log('✅ Active dot index:', index, 'activeBannerIndex:', activeBannerIndex);
-                      }
-                      
-                      return (
-                        <View
-                          key={index}
-                          style={[
-                            styles.paginationDot,
-                            isActive && styles.paginationDotActive
-                          ]}
-                        />
-                      );
-                    })}
+                    {serviceBanners.map((_, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.paginationDot,
+                          index === activeBannerIndex && styles.paginationDotActive
+                        ]}
+                      />
+                    ))}
                   </View>
                 )}
               </View>
             )}
 
-            {/* Live Activity Section */}
-            <View style={styles.liveActivityContainer}>
-              <View style={styles.activityHeaderRow}>
-                <Animated.View style={[styles.syncDot, { opacity: blinkAnim }]} />
-                <Animated.Text style={[styles.activityHeading, { opacity: blinkAnim }]}>Live  Updates </Animated.Text>
-              </View>
-              
-              {activitiesLoading ? (
-                <View style={styles.activityLoadingContainer}>
-                  <ActivityIndicator size="small" color="#1e40af" />
-                  <Text style={styles.activityLoadingText}>Loading activities...</Text>
-                </View>
-              ) : activities && activities.length > 0 ? (
-                <ScrollView
-                  ref={activityScrollRef}
-                  style={styles.activityScrollContainer}
-                  showsVerticalScrollIndicator={false}
-                  nestedScrollEnabled={true}
-                  scrollEnabled={false}
-                >
-                  {activities.map((activity) => (
-                    <View key={activity.id} style={styles.activityCard}>
-                      {/* <Animated.View style={[styles.activityDot, { opacity: blinkAnim }]} /> */}
-                      <View style={styles.activityContent}>
-                        <View style={styles.activityRow}>
-                          <Animated.Text style={[styles.activityTitle, { opacity: blinkAnim }]} numberOfLines={2}>
-                            {activity.title}
-                          </Animated.Text>
-                        </View>
-                        <Animated.Text style={[styles.activityTime, { opacity: blinkAnim }]}>Recent Booking</Animated.Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              ) : (
-                <Text style={styles.noActivityText}>No recent activities</Text>
-              )}
-            </View>
-
             {/* All Services List Header */}
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>All Professional Services</Text>
+              <Text style={styles.sectionTitle}>All Services</Text>
             </View>
           </>
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, activitiesLoading, activities, navigation, renderBanner, getTimeAgo, activeBannerIndex]);
+  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex]);
 
   return (
-    <ImageBackground
-      source={require('../assets/serviceBgYellow.png')}
-      style={styles.container}
-      resizeMode="cover"
-      imageStyle={{ 
-        opacity: 0.15,
-        width: '100%',
-        height: '100%',
-      }}
-    >
+    <View style={styles.container}>
       {/* Add safety check for initial render */}
       {!serviceCategories && loading ? (
         <View style={styles.emptyLoadingContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color="#00b4a0" />
           <Text style={styles.emptyLoadingText}>Loading services...</Text>
         </View>
       ) : (
@@ -1011,23 +795,41 @@ export default function ServicesScreen() {
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           key="two-columns"
+          ListFooterComponent={
+            // View All Button - Only show when not searching and there are more categories
+            searchQuery.length === 0 && hasMoreCategories ? (
+              <View style={styles.viewAllButtonContainer}>
+                <Animated.View 
+                  style={{ opacity: blinkAnim }}
+                >
+                  <TouchableOpacity 
+                    style={styles.viewAllButton}
+                    onPress={handleViewAllCategories}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.viewAllText}>View All</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#00b4a0" />
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             loading ? (
               <View style={styles.emptyLoadingContainer}>
-                <ActivityIndicator size="large" color="#3b82f6" />
+                <ActivityIndicator size="large" color="#00b4a0" />
                 <Text style={styles.emptyLoadingText}>Loading services...</Text>
               </View>
             ) : error ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>{error}</Text>
-                <Text style={styles.emptySubText}>Last updated: {lastUpdateTime.toLocaleTimeString()}</Text>
               </View>
             ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>No services found</Text>
-                <Text style={styles.emptySubText}>Try searching with different keywords</Text>
+                <Text style={styles.emptySubText}>Try different keywords</Text>
               </View>
             ) : (
               <View style={styles.emptyContainer}>
@@ -1041,10 +843,8 @@ export default function ServicesScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={['#3b82f6', '#1e40af']}
-              tintColor="#3b82f6"
-              title="Syncing real-time data..."
-              titleColor="#64748b"
+              colors={['#00b4a0', '#00d2c7']}
+              tintColor="#00b4a0"
             />
           }
           removeClippedSubviews={false}
@@ -1055,144 +855,72 @@ export default function ServicesScreen() {
           keyboardDismissMode="on-drag"
         />
       )}
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: "#ffffff",
+    backgroundColor: "#fdfdfd",
   },
 
   // Header Styles
   topHeader: {
-    height: 215,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    overflow: "hidden",
-  },
-
-  headerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    paddingHorizontal: 2,
     paddingTop: 40,
-    paddingBottom: 32,
-    justifyContent: "flex-start",
+    paddingBottom: 20,
+    paddingHorizontal: 16,
   },
 
-  headerRow: {
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
   },
 
-  headerTextContainer: {
-    flex: 1,
-  },
-
   historyButton: {
-    borderRadius: 25,
-    elevation: 8,
-    shadowColor: '#ef4444',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-  },
-
-  historyButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
   },
 
   historyButtonText: {
     color: "white",
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-
-  header: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "white",
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-
-  headerSub: {
-    color: "rgba(255,255,255,0.9)",
     fontSize: 14,
-    fontWeight: "500",
-    lineHeight: 20,
+    fontWeight: "600",
   },
 
   // Search Bar Styles
   searchContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 20,
-    backgroundColor: "#f5f7fb",
-    marginTop: -20,
-    paddingBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: "#fdfdfd",
   },
 
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1.5,
-    borderColor: "#e8ecf1",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     elevation: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
   },
 
-  syncIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(16, 185, 129, 0.1)",
-    borderRadius: 20,
-    alignSelf: "center",
-  },
-
-  syncDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#10b981",
-    marginRight: 6,
-  },
-
-  syncText: {
-    fontSize: 11,
-    color: "#059669",
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-
   searchBarFocused: {
-    borderColor: "#1e40af",
-    backgroundColor: "white",
-    elevation: 5,
-    shadowColor: '#1e40af',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
+    borderColor: "#00b4a0",
+    elevation: 4,
+    shadowOpacity: 0.1,
   },
 
   searchIcon: {
@@ -1201,9 +929,9 @@ const styles = StyleSheet.create({
 
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: "#1e293b",
-    fontWeight: "500",
+    fontWeight: "400",
   },
 
   clearButton: {
@@ -1212,42 +940,20 @@ const styles = StyleSheet.create({
   },
 
   searchResultsHeader: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    backgroundColor: "#f5f7fb",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e8ecf1",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#f8fafc",
   },
 
   searchResultsText: {
     fontSize: 14,
-    color: "#1e40af",
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-
-  noResultsText: {
-    fontSize: 12,
-    color: "#94a3b8",
-    fontWeight: "400",
-  },
-
-  headerBadge: {
-    backgroundColor: "#10b981",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-
-  badgeText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
+    color: "#64748b",
+    fontWeight: "500",
   },
 
   // Banner Styles
   bannerContainer: {
-    paddingVertical: 20,
+    paddingVertical: 16,
   },
 
   bannerScrollContent: {
@@ -1258,26 +964,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 16,
-    gap: 8,
+    marginTop: 12,
+    gap: 6,
   },
 
   paginationDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: "#cbd5e1",
   },
 
   paginationDotActive: {
-    width: 10,
-    height: 10,
-    backgroundColor: "#10b981",
-    elevation: 2,
-    shadowColor: '#10b981',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    width: 8,
+    height: 8,
+    backgroundColor: "#00b4a0",
   },
 
   bannerItem: {
@@ -1286,34 +987,34 @@ const styles = StyleSheet.create({
   },
 
   gradientBanner: {
-    borderRadius: 24,
+    borderRadius: 16,
     overflow: "hidden",
-    height: 180,
-    elevation: 3,
+    height: 160,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
   },
 
   bannerImage: {
     width: "100%",
-    height: 180,
-    borderRadius: 24,
+    height: 160,
+    borderRadius: 16,
     overflow: "hidden",
   },
 
   bannerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: 24,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 16,
   },
 
   bannerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 24,
+    padding: 20,
     height: "100%",
   },
 
@@ -1323,346 +1024,60 @@ const styles = StyleSheet.create({
 
   bannerTitle: {
     color: "white",
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-    marginBottom: 8,
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 6,
   },
 
   bannerSubTitle: {
-    color: "rgba(255,255,255,0.95)",
-    fontSize: 14,
-    fontWeight: "500",
-    lineHeight: 20,
-    marginBottom: 12,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "400",
+    lineHeight: 18,
+    marginBottom: 10,
   },
 
   bannerOffer: {
-    backgroundColor: "rgba(255,255,255,0.25)",
-    backdropFilter: "blur(10px)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
-  },
-
-  offerText: {
-    color: "white",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  bannerTag: {
-    backgroundColor: "rgba(255,255,255,0.95)",
+    backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
     alignSelf: "flex-start",
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
   },
 
-  bannerTagText: {
-    color: "#1e40af",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  bannerIcon: {
-    marginLeft: 16,
-  },
-
-  // Section Styles
-  sectionContainer: {
-    paddingHorizontal: 24,
-    marginBottom: 28,
-  },
-
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.3,
-  },
-
-  // Live Activity Container Styles
-  liveActivityContainer: {
-    marginHorizontal: 16,
-    marginBottom: 28,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    backgroundColor: "white",
-    borderRadius: 20,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e8ecf1",
-  },
-
-  activityScrollContainer: {
-    height: 140,
-    overflow: 'hidden',
-  },
-
-  // Live Activity Section Styles
-  activityHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f4f8",
-  },
-
-  activityIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#f59e0b",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-    elevation: 3,
-    shadowColor: '#f59e0b',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-  },
-
-  activityHeading: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#1e293b",
-    flex: 1,
-  },
-
-  activityCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    // backgroundColor: "transparent",
-    paddingVertical: 10,
-    paddingHorizontal: 0,
-    marginBottom: 0,
-    borderRadius: 0,
-    borderWidth: 0,
-    height: 70,
-  },
-
-  // activityDot: {
-  //   width: 12,
-  //   height: 12,
-  //   borderRadius: 6,
-  //   backgroundColor: "#10b981",
-  //   marginTop: 4,
-  //   marginRight: 12,
-  //   flexShrink: 0,
-  // },
-
-  activityContent: {
-    flex: 1,
-  },
-
-  activityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
-    lineHeight: 20,
-    flex: 1,
-  },
-
-  activityTime: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "500",
-  },
-
-  activityLoadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-  },
-
-  activityLoadingText: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "500",
-    marginLeft: 8,
-  },
-
-  noActivityText: {
-    fontSize: 14,
-    color: "#64748b",
-    fontWeight: "500",
-    textAlign: "center",
-    paddingVertical: 20,
-  },
-
-  // Category Styles
-  categoryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-    gap: 12,
-  },
-
-  categoryCard: {
-    width: (width - 72) / 3,
-    borderRadius: 20,
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 10,
-  },
-
-  iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    overflow: "hidden",
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-
-  categoryImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-
-  categoryIcon: {
-    width: 32,
-    height: 32,
-  },
-
-  categoryTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-
-  categorySubtitle: {
-    fontSize: 11,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 15,
-    fontWeight: "400",
-  },
-
-  // List Styles
-  listCard: {
-    marginBottom: 14,
-    backgroundColor: "white",
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    marginHorizontal: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    // borderColor: "#f0f4f8",
-  },
-
-  listIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-    overflow: "hidden",
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
-  },
-
-  listCategoryImage: {
-    width: 150,
-    height: 50,
-    borderRadius: 16,
-  },
-
-  listContent: {
-    flex: 1,
-  },
-
-  listTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-
-  listSubtitle: {
-    color: "#64748b",
-    fontSize: 13,
-    fontWeight: "400",
-    marginBottom: 3,
-  },
-
-  listAvailability: {
-    color: "#1e40af",
+  offerText: {
+    color: "white",
     fontSize: 12,
     fontWeight: "600",
   },
 
-  listArrowContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#eff6ff",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 2,
-    shadowColor: '#1e40af',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
+  bannerTag: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginBottom: 10,
+  },
+
+  bannerTagText: {
+    color: "#00b4a0",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+
+  // Section Styles
+  sectionContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0f172a",
   },
 
   // Grid Styles (2 columns)
@@ -1675,61 +1090,42 @@ const styles = StyleSheet.create({
   gridCard: {
     width: (width - 48) / 2,
     backgroundColor: "white",
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
     alignItems: "center",
-    elevation: 3,
+    elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
     borderWidth: 1,
-    borderColor: "#ff2c07",
+    borderColor: "#f1f5f9",
   },
 
   gridIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 72,
+    height: 72,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 12,
     overflow: "hidden",
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
   },
 
   gridCategoryImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 72,
+    height: 72,
+    borderRadius: 16,
   },
 
   gridTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#0f172a",
     textAlign: "center",
-    letterSpacing: -0.2,
   },
 
   // Loading and Empty States
-  loadingContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 36,
-  },
-
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#1e40af",
-    fontWeight: "600",
-  },
-
   emptyLoadingContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -1738,9 +1134,9 @@ const styles = StyleSheet.create({
 
   emptyLoadingText: {
     marginTop: 16,
-    fontSize: 16,
-    color: "#1e40af",
-    fontWeight: "600",
+    fontSize: 15,
+    color: "#00b4a0",
+    fontWeight: "500",
   },
 
   emptyContainer: {
@@ -1771,37 +1167,34 @@ const styles = StyleSheet.create({
     color: "#cbd5e1",
   },
 
-  // Error States
-  errorContainer: {
+  // View All Button Styles
+  viewAllButtonContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+
+  viewAllButton: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#00b4a0",
+    gap: 6,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
   },
 
-  errorText: {
+  viewAllText: {
+    color: "#00b4a0",
     fontSize: 14,
-    color: "#64748b",
-    fontWeight: "500",
-    textAlign: "center",
-    marginBottom: 16,
-    marginTop: 12,
-  },
-
-  retryButton: {
-    backgroundColor: "#1e40af",
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#1e40af',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-  },
-
-  retryText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
   },
 });

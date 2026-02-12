@@ -276,42 +276,114 @@ export default function PackageSelectionScreen() {
       }
     }
     
-    // Determine proper duration text
+    // Determine proper duration text from duration field OR package name
     let durationText = '';
+    let fullDurationText = ''; // For showing complete duration like "3 months", "2 weeks"
+    
+    // First, try to get from duration field
     if (packageDuration) {
       const durationLower = packageDuration.toString().toLowerCase();
       
       // Check for month/monthly
       if (durationLower.includes('month')) {
         durationText = 'month';
+        // Try to extract number of months
+        const monthMatch = durationLower.match(/(\d+)\s*month/);
+        if (monthMatch) {
+          const count = parseInt(monthMatch[1]);
+          fullDurationText = count === 1 ? '1 month' : `${count} months`;
+        } else {
+          fullDurationText = packageDuration;
+        }
       } 
       // Check for year/yearly
       else if (durationLower.includes('year')) {
         durationText = 'year';
+        const yearMatch = durationLower.match(/(\d+)\s*year/);
+        if (yearMatch) {
+          const count = parseInt(yearMatch[1]);
+          fullDurationText = count === 1 ? '1 year' : `${count} years`;
+        } else {
+          fullDurationText = packageDuration;
+        }
       }
       // Check for week/weekly
       else if (durationLower.includes('week')) {
         durationText = 'week';
+        const weekMatch = durationLower.match(/(\d+)\s*week/);
+        if (weekMatch) {
+          const count = parseInt(weekMatch[1]);
+          fullDurationText = count === 1 ? '1 week' : `${count} weeks`;
+        } else {
+          fullDurationText = packageDuration;
+        }
       }
       // Check for day/daily
       else if (durationLower.includes('day')) {
         durationText = 'day';
+        const dayMatch = durationLower.match(/(\d+)\s*day/);
+        if (dayMatch) {
+          const count = parseInt(dayMatch[1]);
+          fullDurationText = count === 1 ? '1 day' : `${count} days`;
+        } else {
+          fullDurationText = packageDuration;
+        }
       }
-      // If it's just a number, try to infer from package name or default to month
+      // If it's just a number, try to infer from package name
       else if (!isNaN(Number(packageDuration))) {
-        // Check package name for hints
         const nameLower = packageName.toLowerCase();
         if (nameLower.includes('month')) {
           durationText = 'month';
+          fullDurationText = `${packageDuration} month${packageDuration > 1 ? 's' : ''}`;
         } else if (nameLower.includes('year')) {
           durationText = 'year';
+          fullDurationText = `${packageDuration} year${packageDuration > 1 ? 's' : ''}`;
         } else if (nameLower.includes('week')) {
           durationText = 'week';
+          fullDurationText = `${packageDuration} week${packageDuration > 1 ? 's' : ''}`;
+        } else if (nameLower.includes('day')) {
+          durationText = 'day';
+          fullDurationText = `${packageDuration} day${packageDuration > 1 ? 's' : ''}`;
         } else {
           durationText = 'month'; // Default to month
+          fullDurationText = `${packageDuration} month${packageDuration > 1 ? 's' : ''}`;
         }
       } else {
         durationText = packageDuration; // Use as-is if it's already text
+        fullDurationText = packageDuration;
+      }
+    } 
+    // If no duration field, try to extract from package name
+    else {
+      const nameLower = packageName.toLowerCase();
+      
+      // Check for patterns like "3 months", "2 weeks", etc.
+      const durationMatch = nameLower.match(/(\d+)\s*(month|week|day|year)/);
+      if (durationMatch) {
+        const count = parseInt(durationMatch[1]);
+        const unit = durationMatch[2];
+        durationText = unit;
+        fullDurationText = count === 1 ? `1 ${unit}` : `${count} ${unit}s`;
+      }
+      // Check package name for duration keywords without numbers
+      else if (nameLower.includes('month') || nameLower.includes('monthly')) {
+        durationText = 'month';
+        fullDurationText = '1 month';
+      } else if (nameLower.includes('year') || nameLower.includes('yearly') || nameLower.includes('annual')) {
+        durationText = 'year';
+        fullDurationText = '1 year';
+      } else if (nameLower.includes('week') || nameLower.includes('weekly')) {
+        durationText = 'week';
+        fullDurationText = '1 week';
+      } else if (nameLower.includes('day') || nameLower.includes('daily')) {
+        durationText = 'day';
+        fullDurationText = '1 day';
+      } else if (nameLower.includes('quarter') || nameLower.includes('quarterly')) {
+        durationText = 'quarter';
+        fullDurationText = '3 months';
+      } else if (nameLower.includes('half') && nameLower.includes('year')) {
+        durationText = 'half year';
+        fullDurationText = '6 months';
       }
     }
     
@@ -325,6 +397,7 @@ export default function PackageSelectionScreen() {
       price: packagePrice,
       duration: packageDuration,
       durationText,
+      fullDurationText,
       isSelected,
       packageId,
       selectedPackage,
@@ -358,6 +431,9 @@ export default function PackageSelectionScreen() {
           <Text style={styles.priceAmount}>{packagePrice}</Text>
           {durationText && (
             <Text style={styles.priceDuration}>/{durationText}</Text>
+          )}
+          {fullDurationText && (
+            <Text style={styles.priceDurationDetail}> ({fullDurationText})</Text>
           )}
         </View>
 
@@ -774,6 +850,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
     marginLeft: 4,
+  },
+
+  priceDurationDetail: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+    marginLeft: 6,
   },
 
   packageDescription: {

@@ -13,6 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory } from '../services/firestoreService';
+import { firestore } from '../firebase.native';
 
 // Function to get icon based on service category name
 const getCategoryIcon = (categoryName: string) => {
@@ -104,14 +105,19 @@ export default function AllServicesScreen() {
       // Log image statistics
       const categoriesWithImages = fetchedCategories.filter(cat => cat.imageUrl);
       console.log(`🖼️ AllServicesScreen: ${categoriesWithImages.length}/${fetchedCategories.length} categories have images`);
+      console.log(`📊 Showing all ${fetchedCategories.length} categories`);
+      
+      // TODO: Enable worker filtering once service_companies collection has data
+      // Currently showing all categories because no workers are assigned yet
       
       setCategories(fetchedCategories);
+      setFilteredCategories(fetchedCategories);
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching categories:', error);
+      setLoading(false);
       // Don't show alert since we have fallback data in the service
       // Alert.alert('Error', 'Failed to load service categories. Please try again.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -150,35 +156,29 @@ export default function AllServicesScreen() {
 
   const renderServiceItem = ({ item }: { item: ServiceCategory }) => (
     <TouchableOpacity
-      style={styles.serviceCard}
-      activeOpacity={0.8}
+      style={styles.categoryCard}
+      activeOpacity={0.7}
       onPress={() => handleServicePress(item)}
     >
-      <View style={styles.serviceIconContainer}>
+      <View style={styles.categoryIconContainer}>
         {item.imageUrl ? (
           <Image 
             source={{ uri: item.imageUrl }} 
-            style={styles.serviceImage}
+            style={styles.categoryImage}
             resizeMode="cover"
             onError={() => {
               console.log(`⚠️ Failed to load image for ${item.name} in AllServices, falling back to icon`);
             }}
           />
         ) : (
-          <Ionicons name={getCategoryIcon(item.name) as any} size={24} color="#64748b" />
+          <Ionicons name={getCategoryIcon(item.name) as any} size={32} color="#00b4a0" />
         )}
       </View>
-      <View style={styles.serviceContent}>
-        <Text style={styles.serviceName}>{item.name}</Text>
-        <Text style={styles.serviceDescription}>Professional service available</Text>
-      </View>
-      <View style={styles.serviceArrow}>
-        <Ionicons name="chevron-forward" size={20} color="#64748b" />
-      </View>
+      <Text style={styles.categoryName}>{item.name}</Text>
     </TouchableOpacity>
   );
 
-  const renderHeader = () => (
+  const renderHeader = React.useMemo(() => (
     <View style={styles.headerContainer}>
       <View style={styles.titleContainer}>
         <TouchableOpacity
@@ -187,14 +187,14 @@ export default function AllServicesScreen() {
         >
           <Ionicons name="arrow-back" size={24} color="#0f172a" />
         </TouchableOpacity>
-        <Text style={styles.title}>All Services</Text>
+        <Text style={styles.title}>All Categories</Text>
       </View>
       
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#64748b" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search services..."
+          placeholder="Search categories..."
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholderTextColor="#94a3b8"
@@ -209,14 +209,14 @@ export default function AllServicesScreen() {
         )}
       </View>
     </View>
-  );
+  ), [searchQuery, navigation]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="search-outline" size={64} color="#cbd5e1" />
-      <Text style={styles.emptyTitle}>No services found</Text>
+      <Text style={styles.emptyTitle}>No categories found</Text>
       <Text style={styles.emptyDescription}>
-        {searchQuery ? 'Try adjusting your search terms' : 'No services available at the moment'}
+        {searchQuery ? 'Try adjusting your search terms' : 'No categories available at the moment'}
       </Text>
     </View>
   );
@@ -224,8 +224,8 @@ export default function AllServicesScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading services...</Text>
+        <ActivityIndicator size="large" color="#00b4a0" />
+        <Text style={styles.loadingText}>Loading categories...</Text>
       </View>
     );
   }
@@ -238,10 +238,15 @@ export default function AllServicesScreen() {
         renderItem={renderServiceItem}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyState}
+        numColumns={3}
+        key="three-columns"
+        columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshing={loading}
         onRefresh={fetchServiceCategories}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       />
     </View>
   );
@@ -250,14 +255,14 @@ export default function AllServicesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fdfdfd',
   },
   
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fdfdfd',
   },
   
   loadingText: {
@@ -275,7 +280,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     paddingTop: 60,
     paddingBottom: 24,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
@@ -283,7 +288,7 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   
   backButton: {
@@ -297,17 +302,16 @@ const styles = StyleSheet.create({
   },
   
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#0f172a',
-    letterSpacing: -0.5,
   },
   
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8fafc',
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
@@ -320,7 +324,7 @@ const styles = StyleSheet.create({
   
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: '#0f172a',
     fontWeight: '400',
   },
@@ -328,65 +332,50 @@ const styles = StyleSheet.create({
   clearButton: {
     marginLeft: 8,
   },
-  
-  serviceCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 24,
+
+  gridRow: {
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
     marginBottom: 16,
-    borderRadius: 20,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
+  },
+
+  categoryCard: {
+    width: '31%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
-  },
-  
-  serviceIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    overflow: 'hidden', // Added for image clipping
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
 
-  serviceImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  
-  serviceContent: {
-    flex: 1,
-  },
-  
-  serviceName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-  
-  serviceDescription: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '400',
-  },
-  
-  serviceArrow: {
-    width: 32,
-    height: 32,
+  categoryIconContainer: {
+    width: 64,
+    height: 64,
     borderRadius: 16,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+
+  categoryImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+  },
+
+  categoryName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+    textAlign: 'center',
   },
   
   emptyContainer: {
