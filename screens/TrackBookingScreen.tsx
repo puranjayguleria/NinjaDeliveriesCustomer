@@ -445,10 +445,10 @@ export default function TrackBookingScreen() {
     if (booking.status === 'rejected' || booking.status === 'expired' || booking.status === 'cancelled') {
       const statusStep: TrackingStep = {
         id: booking.status,
-        title: booking.status === 'rejected' ? 'Booking Rejected by Admin' : 
+        title: booking.status === 'rejected' ? 'Booking Rejected by Company' : 
                booking.status === 'cancelled' ? 'Booking Cancelled by You' : 'Booking Expired',
         description: booking.status === 'rejected' 
-          ? 'This booking has been rejected by the admin. You can find alternative service providers below.'
+          ? 'This booking has been rejected by the company. You can find alternative service providers below.'
           : booking.status === 'cancelled'
           ? 'You have cancelled this booking. You can create a new booking if needed.'
           : 'This booking has expired. Please create a new booking.',
@@ -805,137 +805,6 @@ export default function TrackBookingScreen() {
               </View>
             </View>
           ))}
-        </View>
-
-        {/* Booking Info Card */}
-        <View style={styles.bookingCard}>
-          <View style={styles.bookingHeader}>
-            <Text style={styles.bookingId}>#{booking.id.substring(0, 8)}</Text>
-            <View style={[styles.statusBadge, { 
-              backgroundColor: BookingUtils.getStatusColor(booking.status)
-            }]}>
-              <Text style={styles.statusText}>
-                {BookingUtils.getStatusText(booking.status)}
-              </Text>
-            </View>
-          </View>
-          
-          <Text style={styles.serviceTitle}>{booking.serviceName}</Text>
-          
-          {booking.workName && booking.workName !== booking.serviceName && (
-            <Text style={styles.workDescription}>{booking.workName}</Text>
-          )}
-          
-          {/* Essential Details - Always Visible */}
-          <View style={styles.essentialDetails}>
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{BookingUtils.formatBookingDate(booking.date)}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="time" size={16} color="#6B7280" />
-              <Text style={styles.detailText}>{BookingUtils.formatBookingTime(booking.time)}</Text>
-            </View>
-            {booking.customerAddress && (
-              <View style={styles.detailRow}>
-                <Ionicons name="location" size={16} color="#6B7280" />
-                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
-                  {booking.customerAddress}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* More Details Button */}
-          <TouchableOpacity 
-            style={styles.moreDetailsButton}
-            onPress={() => setShowMoreDetails(!showMoreDetails)}
-          >
-            <Text style={styles.moreDetailsText}>
-              {showMoreDetails ? 'Less Details' : 'More Details'}
-            </Text>
-            <Ionicons 
-              name={showMoreDetails ? "chevron-up" : "chevron-down"} 
-              size={16} 
-              color="#6D28D9" 
-            />
-          </TouchableOpacity>
-
-          {/* Expandable Details Section */}
-          {showMoreDetails && (
-            <View style={styles.expandedDetails}>
-              <View style={styles.detailsDivider} />
-              
-              <View style={styles.detailRow}>
-                <Ionicons name="person" size={16} color="#6B7280" />
-                <Text style={styles.detailText}>Customer: {booking.customerName}</Text>
-              </View>
-              
-              {booking.customerPhone && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="call" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>{booking.customerPhone}</Text>
-                </View>
-              )}
-              
-              {booking.customerAddress && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="location" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>Full Address: {booking.customerAddress}</Text>
-                </View>
-              )}
-              
-              {booking.technicianName && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="construct" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>Technician: {booking.technicianName}</Text>
-                </View>
-              )}
-              
-              {booking.companyId && companyName && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="business" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>Company: {companyName}</Text>
-                </View>
-              )}
-              
-              {booking.createdAt && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="time-outline" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>
-                    Booked: {formatTimestamp(booking.createdAt)}
-                  </Text>
-                </View>
-              )}
-              
-              {booking.assignedAt && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="checkmark-circle-outline" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>
-                    Assigned: {formatTimestamp(booking.assignedAt)}
-                  </Text>
-                </View>
-              )}
-              
-              {booking.startedAt && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="play-circle-outline" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>
-                    Started: {formatTimestamp(booking.startedAt)}
-                  </Text>
-                </View>
-              )}
-              
-              {booking.completedAt && (
-                <View style={styles.detailRow}>
-                  <Ionicons name="checkmark-done-circle-outline" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>
-                    Completed: {formatTimestamp(booking.completedAt)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
         </View>
 
         {/* Booking Details Card */}

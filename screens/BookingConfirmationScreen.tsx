@@ -408,11 +408,6 @@ export default function BookingConfirmationScreen() {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Service Provider:</Text>
               <Text style={styles.detailValue}>{companyName || "Assigning..."}</Text>
-              {companyPhone && (
-                <TouchableOpacity onPress={handleCallAgency}>
-                  <Text style={styles.phoneText}>📞 {companyPhone}</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
 
