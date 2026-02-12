@@ -826,23 +826,27 @@ export default function ServicesScreen() {
         {/* Status Bar */}
         <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
         
-        {/* Header with Gradient */}
-        <LinearGradient
-          colors={["#56e23a", "#00d2c7"]}
+        {/* Header with Background Image */}
+        <ImageBackground
+          source={require('../assets/img.png')}
           style={styles.topHeader}
+          resizeMode="cover"
+          imageStyle={{ marginTop: 20 }}
         >
-          <View style={styles.headerContent}>
-            {/* Booking History Button */}
-            <TouchableOpacity 
-              style={styles.historyButton}
-              onPress={() => navigation.navigate("BookingHistory")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="receipt-outline" size={22} color="white" />
-              <Text style={styles.historyButtonText}>History</Text>
-            </TouchableOpacity>
+          <View style={styles.headerOverlay}>
+            <View style={styles.headerContent}>
+              {/* Booking History Button */}
+              <TouchableOpacity 
+                style={styles.historyButton}
+                onPress={() => navigation.navigate("BookingHistory")}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="receipt-outline" size={22} color="white" />
+                <Text style={styles.historyButtonText}>History</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </LinearGradient>
+        </ImageBackground>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -1088,24 +1092,33 @@ const styles = StyleSheet.create({
   // Header Styles
   topHeader: {
     paddingTop: 80,
-    paddingBottom: 20,
+    paddingBottom: 30,
     paddingHorizontal: 16,
+  },
+
+  headerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    justifyContent: "flex-end",
   },
 
   headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
+    marginTop: 20,
   },
 
   historyButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 16,
+    backgroundColor: "transparent",
+    paddingHorizontal: 8,
     paddingVertical: 10,
     borderRadius: 20,
-    gap: 6,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
   },
 
   historyButtonText: {
