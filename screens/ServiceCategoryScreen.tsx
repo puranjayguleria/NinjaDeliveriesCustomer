@@ -34,12 +34,6 @@ export default function ServiceCategoryScreen() {
   // 🆕 New states for category sidebar
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categoryId || "");
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
-
-  // Fetch categories for sidebar
-  useEffect(() => {
-    fetchCategories();
-  }, []);
 
   // Fetch issues when category changes
   useEffect(() => {
@@ -47,19 +41,6 @@ export default function ServiceCategoryScreen() {
       fetchServiceIssues();
     }
   }, [selectedCategoryId]);
-
-  const fetchCategories = async () => {
-    try {
-      setCategoriesLoading(true);
-      const fetchedCategories = await FirestoreService.getServiceCategories();
-      setCategories(fetchedCategories || []);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      setCategories([]);
-    } finally {
-      setCategoriesLoading(false);
-    }
-  };
 
   const fetchServiceIssues = async () => {
     try {
@@ -245,22 +226,7 @@ export default function ServiceCategoryScreen() {
       ? require("../assets/images/icon_cleaning.png")
       : require("../assets/images/icon_home_repair.png");
 
-  // Get selected category details
-  const selectedCategory = categories.find(cat => cat.id === selectedCategoryId);
 
-  // Function to get icon based on category name (same as ServicesScreen)
-  const getCategoryIcon = (categoryName: string) => {
-    const name = categoryName?.toLowerCase() || '';
-    
-    if (name.includes("electric")) return "flash-outline";
-    if (name.includes("plumb")) return "water-outline";
-    if (name.includes("car") || name.includes("wash")) return "car-outline";
-    if (name.includes("clean")) return "sparkles-outline";
-    if (name.includes("health")) return "fitness-outline";
-    if (name.includes("daily") || name.includes("wage")) return "people-outline";
-    
-    return "construct-outline";
-  };
 
   const renderItem = ({ item }: any) => {
     const checked = selectedId === item.id;
@@ -336,65 +302,32 @@ export default function ServiceCategoryScreen() {
         <Text style={styles.headerTitle}>Select Services</Text>
       </View>
 
-      {/* Main Content: Sidebar + Services */}
-      <View style={styles.mainContent}>
-        {/* Left Sidebar - Selected Category Only */}
-        <View style={styles.sidebar}>
-          {categoriesLoading ? (
-            <ActivityIndicator size="small" color="#2563eb" style={{ marginTop: 20 }} />
-          ) : selectedCategory ? (
-            <TouchableOpacity 
-              style={styles.selectedCategoryContainer}
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-            >
-              {selectedCategory.imageUrl ? (
-                <Image 
-                  source={{ uri: selectedCategory.imageUrl }} 
-                  style={styles.categoryImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.categoryIconContainer}>
-                  <Text style={styles.categoryIconText}>
-                    {selectedCategory.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.selectedCategoryName} numberOfLines={2}>
-                {selectedCategory.name}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Right Side - Services */}
-        <View style={styles.servicesContainer}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2563eb" />
-              <Text style={styles.loadingText}>Loading services...</Text>
-            </View>
-          ) : issues.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No Direct-Price Services</Text>
-              <Text style={styles.emptyText}>
-                No direct-price services available for this category. Check package plans instead.
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={displayedIssues}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              ListFooterComponent={ListFooter}
-              contentContainerStyle={{ paddingBottom: 100 }}
-              showsVerticalScrollIndicator={false}
-              refreshing={loading}
-              onRefresh={fetchServiceIssues}
-            />
-          )}
-        </View>
+      {/* Main Content: Services Only */}
+      <View style={styles.servicesContainer}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2563eb" />
+            <Text style={styles.loadingText}>Loading services...</Text>
+          </View>
+        ) : issues.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No Direct-Price Services</Text>
+            <Text style={styles.emptyText}>
+              No direct-price services available for this category. Check package plans instead.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={displayedIssues}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            ListFooterComponent={ListFooter}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            showsVerticalScrollIndicator={false}
+            refreshing={loading}
+            onRefresh={fetchServiceIssues}
+          />
+        )}
       </View>
 
       {/* Bottom Continue Button */}
@@ -441,93 +374,6 @@ const styles = StyleSheet.create({
   // Main Content Layout
   mainContent: {
     flex: 1,
-    flexDirection: "row",
-  },
-
-  // Left Sidebar
-  sidebar: {
-    width: 90,
-    backgroundColor: "#ffffff",
-    borderRightWidth: 1,
-    borderRightColor: "#e2e8f0",
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-
-  sidebarContent: {
-    paddingVertical: 8,
-  },
-
-  // Selected Category Display
-  selectedCategoryContainer: {
-    alignItems: "center",
-    paddingHorizontal: 8,
-  },
-
-  categoryImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    marginBottom: 8,
-  },
-
-  categoryIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-
-  categoryIconText: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#64748b",
-  },
-
-  selectedCategoryName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 14,
-  },
-
-  categoryItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    marginVertical: 4,
-    marginHorizontal: 8,
-    borderRadius: 12,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  categoryItemSelected: {
-    backgroundColor: "white",
-    borderLeftWidth: 3,
-    borderLeftColor: "#2563eb",
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  categoryText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 16,
-  },
-
-  categoryTextSelected: {
-    color: "#2563eb",
-    fontWeight: "700",
   },
 
   // Right Side - Services Container

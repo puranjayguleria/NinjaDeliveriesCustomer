@@ -238,22 +238,7 @@ export default function SelectDateTimeScreen() {
         </View>
       ) : (
         <>
-          {/* Main Content: Sidebar + Slots */}
-          <View style={styles.mainContent}>
-        {/* Left Sidebar - Selected Service Only */}
-        <View style={styles.sidebar}>
-          <View style={styles.sidebarContent}>
-            <TouchableOpacity 
-              style={styles.serviceLabelCard}
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.serviceLabelText}>SERVICE</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Right Side - Date & Time Selection */}
+          {/* Main Content: Date & Time Selection */}
         <ScrollView 
           style={styles.slotsContainer}
           showsVerticalScrollIndicator={false}
@@ -322,7 +307,6 @@ export default function SelectDateTimeScreen() {
             })}
           </View>
         </ScrollView>
-      </View>
 
       {/* Bottom Continue Button */}
       <View style={styles.bottomBar}>
@@ -391,188 +375,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Main Content Layout
-  mainContent: {
-    flex: 1,
-    flexDirection: "row",
-  },
-
-  // Left Sidebar - Service Display Only
-  sidebar: {
-    width: 100,
-    backgroundColor: "#ffffff",
-    borderRightWidth: 1,
-    borderRightColor: "#e2e8f0",
-    paddingVertical: 20,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    marginRight: 8,
-  },
-
-  sidebarContent: {
-    alignItems: "center",
-    paddingHorizontal: 8,
-  },
-
-  // Service Label Card
-  serviceLabelCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 4,
-    minHeight: 80,
-  },
-
-  serviceLabelText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#0a0000ff",
-    textAlign: "center",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-
-  serviceNameText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#ffffff",
-    textAlign: "center",
-    lineHeight: 16,
-  },
-
-  serviceDisplayContainer: {
-    alignItems: "center",
-  },
-
-  serviceLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  serviceTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 18,
-  },
-
-  categoryItem: {
-    alignItems: "center",
-  },
-
-  categoryItemSelected: {
-    backgroundColor: "#f0f9ff",
-  },
-
-  categoryIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: "#3b82f6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-
-  categoryIconContainerSelected: {
-    backgroundColor: "#3b82f6",
-  },
-
-  categoryIconText: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-
-  categoryIconTextSelected: {
-    color: "#ffffff",
-  },
-
-  categoryName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 14,
-    paddingHorizontal: 8,
-  },
-
-  categoryNameSelected: {
-    color: "#3b82f6",
-    fontWeight: "700",
-  },
-
-  // Service Name in Sidebar
-  serviceNameContainer: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-    paddingHorizontal: 8,
-    alignItems: "center",
-  },
-
-  serviceNameLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  serviceNameTextDark: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 16,
-  },
-
-  serviceIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-
-  serviceIconText: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#64748b",
-  },
-
-  serviceName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 14,
-    paddingHorizontal: 8,
-  },
-
   // Right Side - Slots Container
   slotsContainer: {
     flex: 1,
     backgroundColor: "#f8fafc",
     paddingHorizontal: 16,
     paddingTop: 20,
-    paddingLeft: 8,
   },
 
   sectionTitle: {
@@ -588,7 +396,7 @@ const styles = StyleSheet.create({
   },
 
   dateScrollContent: {
-    paddingRight: 16,
+    paddingRight: 18,
   },
 
   dateCard: {

@@ -77,7 +77,7 @@ export default function ServiceAddedModal({
             </View>
           </View>
 
-          {/* Info Note */}
+          {/* Info Note
           <View style={styles.noteContainer}>
             <View style={styles.noteIcon}>
               <Text style={styles.noteIconText}>ℹ</Text>
@@ -85,7 +85,7 @@ export default function ServiceAddedModal({
             <Text style={styles.noteText}>
               Only one service can be booked at a time. Previous service (if any) has been replaced.
             </Text>
-          </View>
+          </View> */}
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>

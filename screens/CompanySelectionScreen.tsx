@@ -484,23 +484,8 @@ export default function CompanySelectionScreen() {
         <Text style={styles.header}>Select Service Company </Text>
       </View>
 
-      {/* Main Content: Sidebar + Companies */}
-      <View style={styles.mainContent}>
-        {/* Left Sidebar - Company Label */}
-        <View style={styles.sidebar}>
-          <View style={styles.sidebarContent}>
-            <TouchableOpacity 
-              style={styles.companyLabelCard}
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.companyLabelText}>COMPANY</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Right Side - Companies List */}
-        <View style={styles.companiesContainer}>
+      {/* Main Content: Companies List */}
+      <View style={styles.companiesContainer}>
           {/* Companies List */}
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -780,7 +765,6 @@ export default function CompanySelectionScreen() {
             />
           )}
         </View>
-      </View>
 
       {/* Modern Bottom Action Bar */}
       {selectedCompany && (
@@ -849,75 +833,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Main Content Layout
-  mainContent: {
-    flex: 1,
-    flexDirection: "row",
-  },
-
-  // Left Sidebar - Service Display
-  sidebar: {
-    width: 100,
-    backgroundColor: "#ffffff",
-    borderRightWidth: 1,
-    borderRightColor: "#e2e8f0",
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-
-  sidebarContent: {
-    alignItems: "center",
-    paddingHorizontal: 8,
-  },
-
-  // Company Label Card
-  companyLabelCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 4,
-    minHeight: 80,
-  },
-
-  companyLabelText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#0b0000",
-    textAlign: "center",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-
-  serviceDisplayContainer: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-
-  serviceLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  serviceTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
-    lineHeight: 18,
-  },
-
-  // Right Side - Companies Container
+  // Companies Container
   companiesContainer: {
     flex: 1,
     backgroundColor: "#f8fafc",
