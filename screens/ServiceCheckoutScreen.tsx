@@ -181,7 +181,26 @@ export default function ServiceCheckoutScreen() {
     } else if (paymentMethod === 'cash') {
       console.log(`💵 Processing cash on service booking...`);
       // For cash payment, create bookings directly with pending payment status
-      await createBookings("pending");
+      const bookingIds = await createBookings("pending");
+      
+      // Clear cart immediately after successful booking creation
+      console.log("🧹 Clearing service cart after successful cash booking...");
+      clearCart();
+      
+      // Navigate to booking confirmation screen with first booking ID
+      if (bookingIds && bookingIds.length > 0) {
+        console.log(`🧭 Navigating to BookingConfirmation screen with booking ID: ${bookingIds[0]}`);
+        navigation.reset({
+          index: 0,
+          routes: [
+            { name: 'ServicesHome' },
+            { 
+              name: 'BookingConfirmation', 
+              params: { bookingId: bookingIds[0] } 
+            }
+          ],
+        });
+      }
     }
   };
 
@@ -268,7 +287,26 @@ export default function ServiceCheckoutScreen() {
             console.log("✅ Payment verified, creating bookings with payment details...");
             
             // Create bookings with paid status and Razorpay response
-            await createBookings("paid", response);
+            const bookingIds = await createBookings("paid", response);
+            
+            // Clear cart immediately after successful booking creation
+            console.log("🧹 Clearing service cart after successful payment...");
+            clearCart();
+            
+            // Navigate to booking confirmation screen with first booking ID
+            if (bookingIds && bookingIds.length > 0) {
+              console.log(`🧭 Navigating to BookingConfirmation screen with booking ID: ${bookingIds[0]}`);
+              navigation.reset({
+                index: 0,
+                routes: [
+                  { name: 'ServicesHome' },
+                  { 
+                    name: 'BookingConfirmation', 
+                    params: { bookingId: bookingIds[0] } 
+                  }
+                ],
+              });
+            }
             
           } catch (error) {
             console.error("❌ Payment verification failed:", error);
@@ -305,7 +343,7 @@ export default function ServiceCheckoutScreen() {
     }
   };
 
-  const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any) => {
+  const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any): Promise<string[]> => {
     setLoading(true);
     try {
       console.log(`🔍 Starting booking creation process...`);
@@ -471,13 +509,7 @@ export default function ServiceCheckoutScreen() {
           const paymentId = await FirestoreService.createServicePayment(paymentData);
           console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
           
-          return {
-            ...service,
-            bookingId,
-            paymentId,
-            notes,
-            paymentMethod,
-          };
+          return bookingId;
         } catch (serviceError: any) {
           console.error(`❌ Error creating booking ${index + 1} for service ${service.serviceTitle}:`, serviceError);
           throw serviceError;
@@ -485,13 +517,9 @@ export default function ServiceCheckoutScreen() {
       });
 
       console.log(`\n🔄 Creating ${bookingPromises.length} bookings simultaneously...`);
-      const bookings = await Promise.all(bookingPromises);
-      console.log(`✅ All ${bookings.length} bookings created successfully!`);
+      const bookingIds = await Promise.all(bookingPromises);
+      console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
       
-      // Clear cart after successful booking creation
-      clearCart();
-      console.log(`🧹 Cart cleared after successful booking creation`);
-
       // Fix existing bookings for website visibility
       console.log(`\n🔧 FIXING EXISTING BOOKINGS FOR WEBSITE...`);
       try {
@@ -502,16 +530,7 @@ export default function ServiceCheckoutScreen() {
         // Don't fail the booking process if this fails
       }
 
-      // Navigate to booking confirmation screen with the first booking details
-      const firstBooking = bookings[0];
-      console.log(`🧭 Navigating to BookingConfirmation with booking ID: ${firstBooking.bookingId}`);
-      
-      navigation.navigate("BookingConfirmation", {
-        bookingId: firstBooking.bookingId,
-        paymentMethod,
-        paymentStatus,
-        totalAmount: computedTotalAmount,
-      });
+      return bookingIds;
 
     } catch (error: any) {
       console.error('❌ Error creating bookings:', error);
@@ -523,6 +542,8 @@ export default function ServiceCheckoutScreen() {
         `Failed to create your bookings: ${error.message || 'Unknown error'}\n\nPlease try again or contact support if the issue persists.`,
         [{ text: "OK" }]
       );
+      
+      throw error;
     } finally {
       setLoading(false);
     }

@@ -1005,6 +1005,86 @@ const App: React.FC = () => {
     return () => unsub();
   }, []);
 
+  /* Check for pending payments on app startup - SILENT RECOVERY */
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    const checkPendingPayments = async () => {
+      try {
+        console.log('🔍 Silently checking for pending payments on app startup...');
+        
+        // Simplified query - get recent bookings with pending payment status
+        // No orderBy to avoid index requirement
+        const bookingsSnapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', user.uid)
+          .where('paymentStatus', '==', 'pending')
+          .where('paymentMethod', '==', 'online')
+          .limit(10)
+          .get();
+
+        if (bookingsSnapshot.empty) {
+          console.log('✅ No pending payments found');
+          return;
+        }
+
+        console.log(`📋 Found ${bookingsSnapshot.size} bookings with pending payments`);
+
+        // Filter to only recent bookings (last 24 hours) in memory
+        const oneDayAgo = new Date();
+        oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+        
+        const recentBookings = bookingsSnapshot.docs.filter(doc => {
+          const booking = doc.data();
+          const createdAt = booking.createdAt?.toDate?.() || new Date(booking.createdAt);
+          return createdAt > oneDayAgo;
+        });
+
+        console.log(`📋 ${recentBookings.length} recent bookings (last 24 hours)`);
+
+        // Check each booking's payment status in service_payments collection
+        for (const bookingDoc of recentBookings) {
+          const booking = bookingDoc.data();
+          const bookingId = bookingDoc.id;
+          
+          console.log(`🔍 Checking payment for booking ${bookingId}...`);
+          
+          // Check if payment was actually completed
+          const paymentSnapshot = await firestore()
+            .collection('service_payments')
+            .where('bookingId', '==', bookingId)
+            .where('paymentStatus', '==', 'paid')
+            .limit(1)
+            .get();
+
+          if (!paymentSnapshot.empty) {
+            // Payment was completed but booking status wasn't updated
+            console.log(`✅ Found completed payment for booking ${bookingId}, silently updating booking status...`);
+            
+            await firestore()
+              .collection('service_bookings')
+              .doc(bookingId)
+              .update({
+                paymentStatus: 'paid',
+                updatedAt: new Date(),
+              });
+            
+            console.log(`✅ Silently updated booking ${bookingId} payment status to paid`);
+            console.log(`📱 User stays on current screen - no navigation to confirmation`);
+          }
+        }
+        
+        console.log('✅ Silent payment recovery completed - user remains on home screen');
+      } catch (error) {
+        console.error('❌ Error checking pending payments:', error);
+      }
+    };
+
+    // Run check after a short delay to ensure Firebase is fully initialized
+    const timer = setTimeout(checkPendingPayments, 2000);
+    return () => clearTimeout(timer);
+  }, [user, firebaseReady]);
+
   if (!firebaseReady || loadingAuth || checkingOta) {
     return (
       <View style={styles.loadingContainer}>
