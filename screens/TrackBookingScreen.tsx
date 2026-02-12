@@ -19,6 +19,7 @@ import TechnicianInfo from "../components/TechnicianInfo";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 import BookingRejectionModal from "../components/BookingRejectionModal";
 import AddOnServicesModal from "../components/AddOnServicesModal";
+import RatingSuccessModal from "../components/RatingSuccessModal";
 
 type BookingStatus = ServiceBooking['status'];
 
@@ -59,6 +60,7 @@ export default function TrackBookingScreen() {
   const [categoryId, setCategoryId] = useState<string>("");
   const [addOnServices, setAddOnServices] = useState<any[]>([]);
   const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
+  const [showRatingSuccessModal, setShowRatingSuccessModal] = useState(false);
 
   // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
@@ -536,10 +538,11 @@ export default function TrackBookingScreen() {
         userFeedback || undefined
       );
 
-      Alert.alert("✅ Rating Submitted", "Thank you for your feedback!");
-      
       // Mark as already rated to prevent future submissions
       setHasAlreadyRated(true);
+      
+      // Show custom success modal
+      setShowRatingSuccessModal(true);
     } catch (error: any) {
       console.error("Error submitting rating:", error);
       
@@ -605,6 +608,12 @@ export default function TrackBookingScreen() {
     } catch (error) {
       Alert.alert("Error", "Failed to cancel booking. Please try again.");
     }
+  };
+
+  const handleRatingSuccessClose = () => {
+    setShowRatingSuccessModal(false);
+    // Navigate to main services screen
+    navigation.navigate("ServicesHome" as never);
   };
 
   const handleSelectNewCompany = async (selectedCompany: any) => {
@@ -1059,6 +1068,12 @@ export default function TrackBookingScreen() {
         ]}
         bookingId={bookingId}
         companyId={booking?.companyId} // Pass company ID to filter services
+      />
+
+      {/* Rating Success Modal */}
+      <RatingSuccessModal
+        visible={showRatingSuccessModal}
+        onClose={handleRatingSuccessClose}
       />
     </View>
   );
