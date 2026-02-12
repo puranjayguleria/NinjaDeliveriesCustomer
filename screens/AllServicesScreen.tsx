@@ -99,16 +99,13 @@ export default function AllServicesScreen() {
   const fetchServiceCategories = async () => {
     try {
       setLoading(true);
-      console.log('🏷️ AllServicesScreen: Fetching service categories with images...');
-      const fetchedCategories = await FirestoreService.getServiceCategories();
+      console.log('🏷️ AllServicesScreen: Fetching categories with active workers...');
+      const fetchedCategories = await FirestoreService.getCategoriesWithActiveWorkers();
       
       // Log image statistics
       const categoriesWithImages = fetchedCategories.filter(cat => cat.imageUrl);
       console.log(`🖼️ AllServicesScreen: ${categoriesWithImages.length}/${fetchedCategories.length} categories have images`);
-      console.log(`📊 Showing all ${fetchedCategories.length} categories`);
-      
-      // TODO: Enable worker filtering once service_companies collection has data
-      // Currently showing all categories because no workers are assigned yet
+      console.log(`📊 Showing ${fetchedCategories.length} categories with active workers`);
       
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);

@@ -195,10 +195,18 @@ const getCategoryStyle = (categoryName: string, index: number) => {
 //   },
 // ];
 
+interface LiveBooking {
+  id: string;
+  serviceName: string;
+  location: string;
+  timestamp: any;
+}
+
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
+  const [liveBookings, setLiveBookings] = useState<LiveBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,8 +216,13 @@ export default function ServicesScreen() {
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
+  const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
+  const currentBookingIndex = React.useRef(0);
+  const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
+  const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
+  const arrowAnim = React.useRef(new Animated.Value(0)).current;
 
   // Manual refresh function
   const onRefresh = useCallback(async () => {
@@ -269,12 +282,32 @@ export default function ServicesScreen() {
             // Populate images from service_categories_master
             await FirestoreService.populateCategoryImages(allCategories);
 
-            setServiceCategories(allCategories);
-            setLoading(false);
-            console.log('✅ Real-time categories updated:', allCategories.length);
+            // Filter to show only categories with active workers
+            console.log('🔍 Filtering categories with active workers...');
+            const companiesSnapshot = await firestore()
+              .collection('service_services')
+              .where('isActive', '==', true)
+              .get();
             
-            // TODO: Enable worker filtering once service_companies collection has data
-            // Currently showing all categories because no workers are assigned yet
+            const activeCategoryIds = new Set<string>();
+            companiesSnapshot.forEach(doc => {
+              const data = doc.data();
+              if (data.categoryMasterId) {
+                activeCategoryIds.add(data.categoryMasterId);
+              }
+            });
+            
+            const categoriesWithWorkers = allCategories.filter(category => {
+              const hasWorkersWithOwnId = activeCategoryIds.has(category.id);
+              const hasWorkersWithMasterId = category.masterCategoryId ? activeCategoryIds.has(category.masterCategoryId) : false;
+              return hasWorkersWithOwnId || hasWorkersWithMasterId;
+            });
+            
+            console.log(`✅ Showing ${categoriesWithWorkers.length}/${allCategories.length} categories with active workers`);
+
+            setServiceCategories(categoriesWithWorkers);
+            setLoading(false);
+            console.log('✅ Real-time categories updated:', categoriesWithWorkers.length);
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
             setError('Failed to load services. Pull down to refresh.');
@@ -355,6 +388,46 @@ export default function ServicesScreen() {
     };
   }, []);
 
+  // Real-time listener for live bookings
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listener for live bookings...');
+
+    const unsubscribe = firestore()
+      .collection('service_bookings')
+      .orderBy('createdAt', 'desc')
+      .limit(15)
+      .onSnapshot(
+        (snapshot) => {
+          console.log(`📊 Real-time update: Found ${snapshot.size} live bookings at ${new Date().toLocaleTimeString()}`);
+          
+          const bookings: LiveBooking[] = [];
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            bookings.push({
+              id: doc.id,
+              serviceName: data.serviceName || data.serviceTitle || 'Service',
+              location: data.address?.city || data.address?.area || 'Your area',
+              timestamp: data.createdAt,
+            });
+          });
+
+          setLiveBookings(bookings);
+          console.log('✅ Real-time bookings updated:', bookings.length);
+        },
+        (error) => {
+          console.error('❌ Real-time listener error for bookings:', error);
+          setLiveBookings([]);
+        }
+      );
+
+    // Cleanup listener on unmount
+    return () => {
+      console.log('🔥 Cleaning up live bookings listener');
+      unsubscribe();
+    };
+  }, []);
+
   // Auto-scroll banners with pause
   useEffect(() => {
     if (serviceBanners.length <= 1) return;
@@ -380,6 +453,35 @@ export default function ServicesScreen() {
     return () => clearInterval(interval);
   }, [serviceBanners.length]);
 
+  // Auto-scroll live bookings with smooth continuous marquee effect
+  useEffect(() => {
+    if (liveBookings.length === 0) return;
+
+    let animationFrameId: number;
+    const scrollSpeed = 1; // Pixels per frame - increased from 0.5 to 1
+
+    const smoothScroll = () => {
+      if (liveBookingsScrollRef.current) {
+        scrollX.current += scrollSpeed;
+        
+        liveBookingsScrollRef.current.scrollTo({
+          x: scrollX.current,
+          animated: false, // Use false for smooth continuous scroll
+        });
+      }
+      
+      animationFrameId = requestAnimationFrame(smoothScroll);
+    };
+
+    animationFrameId = requestAnimationFrame(smoothScroll);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [liveBookings.length]);
+
   // Blinking animation for View All button (light)
   useEffect(() => {
     const blinkAnimation = Animated.loop(
@@ -403,6 +505,54 @@ export default function ServicesScreen() {
       blinkAnimation.stop();
     };
   }, [blinkAnim]);
+
+  // Blinking animation for live bookings
+  useEffect(() => {
+    const blinkAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bookingBlinkAnim, {
+          toValue: 0.6,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingBlinkAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    blinkAnimation.start();
+
+    return () => {
+      blinkAnimation.stop();
+    };
+  }, [bookingBlinkAnim]);
+
+  // Arrow movement animation for View All button
+  useEffect(() => {
+    const arrowAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arrowAnim, {
+          toValue: 5,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(arrowAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    arrowAnimation.start();
+
+    return () => {
+      arrowAnimation.stop();
+    };
+  }, [arrowAnim]);
 
   // Search functionality - simplified without useMemo to avoid React null error
   const getFilteredCategories = () => {
@@ -678,7 +828,7 @@ export default function ServicesScreen() {
         
         {/* Header with Gradient */}
         <LinearGradient
-          colors={["#00b4a0", "#00d2c7"]}
+          colors={["#56e23a", "#00d2c7"]}
           style={styles.topHeader}
         >
           <View style={styles.headerContent}>
@@ -768,15 +918,103 @@ export default function ServicesScreen() {
               </View>
             )}
 
-            {/* All Services List Header */}
-            <View style={styles.sectionContainer}>
+            {/* All Services List Header with View All Button */}
+            <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>All Services</Text>
+              {hasMoreCategories && (
+                <TouchableOpacity 
+                  style={styles.viewAllButtonInline}
+                  onPress={handleViewAllCategories}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.viewAllTextInline}>View All</Text>
+                  <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
+                    <Ionicons name="arrow-forward" size={14} color="#00b4a0" />
+                  </Animated.View>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Live Updates Section */}
+            <View style={styles.liveUpdatesContainer}>
+              <View style={styles.liveUpdatesHeader}>
+                <Animated.View style={[styles.liveIndicator, { opacity: bookingBlinkAnim }]}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>Live Bookings</Text>
+                </Animated.View>
+              </View>
+              <View style={styles.liveUpdatesWrapper}>
+                <ScrollView 
+                  ref={liveBookingsScrollRef}
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  contentContainerStyle={styles.liveUpdatesScroll}
+                  onScroll={(event) => {
+                    const contentWidth = event.nativeEvent.contentSize.width;
+                    const scrollWidth = event.nativeEvent.layoutMeasurement.width;
+                    const currentScrollX = event.nativeEvent.contentOffset.x;
+                    
+                    // Reset scroll when reaching end for infinite loop effect
+                    if (currentScrollX >= contentWidth - scrollWidth) {
+                      scrollX.current = 0;
+                      liveBookingsScrollRef.current?.scrollTo({ x: 0, animated: false });
+                    }
+                  }}
+                >
+                  {liveBookings.length > 0 ? (
+                    <>
+                      {/* Original bookings */}
+                      {liveBookings.map((booking, index) => (
+                        <Animated.View 
+                          key={`original-${booking.id}`} 
+                          style={[
+                            styles.liveUpdateItem,
+                            { opacity: bookingBlinkAnim }
+                          ]}
+                        >
+                          <View style={styles.liveUpdateDot} />
+                          <Text style={styles.liveUpdateSimpleText}>
+                            <Text style={styles.liveUpdateBold}>{booking.serviceName}</Text>
+                            {' '} service has been booked in{' '}
+                            <Text style={styles.liveUpdateLocation}>{booking.location}</Text>
+                          </Text>
+                        </Animated.View>
+                      ))}
+                      {/* Duplicate bookings for seamless loop */}
+                      {liveBookings.map((booking, index) => (
+                        <Animated.View 
+                          key={`duplicate-${booking.id}`} 
+                          style={[
+                            styles.liveUpdateItem,
+                            { opacity: bookingBlinkAnim }
+                          ]}
+                        >
+                          <View style={styles.liveUpdateDot} />
+                          <Text style={styles.liveUpdateSimpleText}>
+                            <Text style={styles.liveUpdateBold}>{booking.serviceName}</Text>
+                            {' '}booked in{' '}
+                            <Text style={styles.liveUpdateLocation}>{booking.location}</Text>
+                          </Text>
+                        </Animated.View>
+                      ))}
+                    </>
+                  ) : (
+                    <View style={styles.liveUpdateItem}>
+                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
+                      <Text style={styles.liveUpdateSimpleText}>
+                        No active bookings right now
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
             </View>
           </>
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex]);
+  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex, hasMoreCategories, liveBookings, arrowAnim]);
 
   return (
     <View style={styles.container}>
@@ -795,25 +1033,7 @@ export default function ServicesScreen() {
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           key="two-columns"
-          ListFooterComponent={
-            // View All Button - Only show when not searching and there are more categories
-            searchQuery.length === 0 && hasMoreCategories ? (
-              <View style={styles.viewAllButtonContainer}>
-                <Animated.View 
-                  style={{ opacity: blinkAnim }}
-                >
-                  <TouchableOpacity 
-                    style={styles.viewAllButton}
-                    onPress={handleViewAllCategories}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.viewAllText}>View All</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#00b4a0" />
-                  </TouchableOpacity>
-                </Animated.View>
-              </View>
-            ) : null
-          }
+          ListFooterComponent={null}
           ListEmptyComponent={
             loading ? (
               <View style={styles.emptyLoadingContainer}>
@@ -867,7 +1087,7 @@ const styles = StyleSheet.create({
 
   // Header Styles
   topHeader: {
-    paddingTop: 40,
+    paddingTop: 80,
     paddingBottom: 20,
     paddingHorizontal: 16,
   },
@@ -1074,9 +1294,136 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
   sectionTitle: {
     fontSize: 20,
     fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  viewAllButtonInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#00b4a0",
+    gap: 4,
+  },
+
+  viewAllTextInline: {
+    color: "#00b4a0",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  // Live Updates Styles
+  liveUpdatesContainer: {
+    paddingVertical: 12,
+    // backgroundColor: "#f8fafc",
+    backgroundColor: "white",
+    marginBottom: 16,
+  },
+
+  liveUpdatesHeader: {
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+
+  liveIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#ef4444",
+    shadowColor: "#ef4444",
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 4,
+  },
+
+  liveText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+
+  liveUpdatesWrapper: {
+    overflow: "hidden",
+  },
+
+  liveUpdatesScroll: {
+    paddingHorizontal: 16,
+    flexDirection: "row",
+  },
+
+  liveUpdateItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 40,
+    gap: 8,
+  },
+
+  liveUpdateDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#00b4a0",
+  },
+
+  liveUpdateSimpleText: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  liveUpdateLocation: {
+    color: "#00b4a0",
+    fontWeight: "500",
+  },
+
+  liveUpdateCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+    marginRight: 10,
+    minWidth: 270,
+  },
+
+  liveUpdateText: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "400",
+  },
+
+  liveUpdateBold: {
+    fontWeight: "600",
     color: "#0f172a",
   },
 
@@ -1167,34 +1514,4 @@ const styles = StyleSheet.create({
     color: "#cbd5e1",
   },
 
-  // View All Button Styles
-  viewAllButtonContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-
-  viewAllButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#00b4a0",
-    gap: 6,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-
-  viewAllText: {
-    color: "#00b4a0",
-    fontSize: 14,
-    fontWeight: "600",
-  },
 });

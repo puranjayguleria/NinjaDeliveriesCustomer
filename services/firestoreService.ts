@@ -306,6 +306,73 @@ export class FirestoreService {
       throw new Error('Failed to fetch service categories. Please check your internet connection.');
     }
   }
+  /**
+   * Get only categories that have active workers/companies
+   */
+  static async getCategoriesWithActiveWorkers(): Promise<ServiceCategory[]> {
+    try {
+      console.log('🏷️ Fetching categories with active workers...');
+
+      // First, get all active categories
+      const allCategories = await this.getServiceCategories();
+      console.log(`📊 Total active categories from app_categories: ${allCategories.length}`);
+
+      // Get all active companies from service_services
+      const companiesSnapshot = await firestore()
+        .collection('service_services')
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`Found ${companiesSnapshot.size} active companies in service_services`);
+
+      // Collect all unique categoryMasterIds that have active companies
+      const activeCategoryIds = new Set<string>();
+      const categoryWorkerCount = new Map<string, number>();
+
+      companiesSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.categoryMasterId) {
+          activeCategoryIds.add(data.categoryMasterId);
+          categoryWorkerCount.set(
+            data.categoryMasterId, 
+            (categoryWorkerCount.get(data.categoryMasterId) || 0) + 1
+          );
+          console.log(`🔍 Worker found: ${data.name} -> categoryMasterId: ${data.categoryMasterId}`);
+        }
+      });
+
+      console.log(`Found ${activeCategoryIds.size} unique categories with active workers`);
+      console.log('Active category IDs with worker counts:', 
+        Array.from(categoryWorkerCount.entries()).map(([id, count]) => `${id}: ${count} workers`)
+      );
+
+      // Filter categories to only include those with active workers
+      const categoriesWithWorkers = allCategories.filter(category => {
+        // Check both the category's own ID and its masterCategoryId
+        const hasWorkersWithOwnId = activeCategoryIds.has(category.id);
+        const hasWorkersWithMasterId = category.masterCategoryId ? activeCategoryIds.has(category.masterCategoryId) : false;
+        const hasWorkers = hasWorkersWithOwnId || hasWorkersWithMasterId;
+
+        const workerCount = categoryWorkerCount.get(category.masterCategoryId || category.id) || 0;
+
+        if (hasWorkers) {
+          console.log(`✅ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has ${workerCount} active workers`);
+        } else {
+          console.log(`❌ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has NO active workers`);
+        }
+
+        return hasWorkers;
+      });
+
+      console.log(`✅ Returning ${categoriesWithWorkers.length}/${allCategories.length} categories with active workers`);
+
+      return categoriesWithWorkers;
+    } catch (error: any) {
+      console.error('❌ Error fetching categories with active workers:', error);
+      throw new Error('Failed to fetch categories with active workers. Please check your internet connection.');
+    }
+  }
+
 
   /**
    * Populate category images from service_categories_master collection
