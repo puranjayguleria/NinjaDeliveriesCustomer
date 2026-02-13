@@ -20,6 +20,8 @@ import { formatDateToDDMMYYYY } from "../utils/dateUtils";
 import { fixExistingBookingsForWebsite } from "../utils/fixExistingBookings";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { openRazorpayNative } from "../utils/razorpayNative";
+import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 
 const LOG_PREFIX = "🧾[SvcPay]";
 const log = (...args: any[]) => {
@@ -280,16 +282,6 @@ export default function ServiceCheckoutScreen() {
     log("razorpay_start", { computedTotalAmount, servicesCount: services?.length ?? 0 });
     setLoading(true);
     try {
-      // Prefer native Razorpay checkout when available (better UPI intent handoff),
-      // but keep WebView fallback for safety.
-      let RazorpayCheckout: any = null;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        RazorpayCheckout = require("react-native-razorpay");
-      } catch {
-        RazorpayCheckout = null;
-      }
-
       // Import auth and axios here to avoid issues
       const auth = require("@react-native-firebase/auth").default;
       const axios = require("axios").default;
@@ -312,21 +304,13 @@ export default function ServiceCheckoutScreen() {
 
       const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
 
-      // ✅ Create bookings first as PENDING (resilient to app kill)
-      // If user already has pending bookingIds for this attempt, reuse them.
-      let bookingIdsForPayment = pendingBookingIds;
-      if (!bookingIdsForPayment || bookingIdsForPayment.length === 0) {
-        log("create_pending_bookings_start");
-        const created = await createBookings("pending");
-        bookingIdsForPayment = created;
-        setPendingBookingIds(created);
-        log("create_pending_bookings_done", { bookingIds: created });
-      } else {
-        log("reuse_pending_bookings", { bookingIds: bookingIdsForPayment });
-      }
+      // IMPORTANT:
+      // Do NOT create service bookings before payment.
+      // We only create bookings after payment is verified.
+      // This avoids cluttering history with pending bookings when users cancel.
 
-      // Create Razorpay order
-  log("rzp_order_create_start", { amountRupees: computedTotalAmount });
+    // Create Razorpay order
+    log("rzp_order_create_start", { amountRupees: computedTotalAmount });
       const user = auth().currentUser;
       if (!user) throw new Error("Not logged in");
 
@@ -338,7 +322,7 @@ export default function ServiceCheckoutScreen() {
         currency: "INR",
         // Include booking ids so backend/webhooks can reconcile if needed.
         receipt: `service_${user.uid}_${Date.now()}`,
-        notes: { uid: user.uid, type: "service_booking", bookingIds: bookingIdsForPayment },
+        notes: { uid: user.uid, type: "service_booking" },
       };
 
   log("rzp_order_request", requestData);
@@ -350,55 +334,51 @@ export default function ServiceCheckoutScreen() {
 
   log("rzp_order_created", { orderId: data.orderId, keyId: data.keyId, currency: data.currency });
 
-      // Persist recovery state so if the app is killed during verification we can reconcile later.
+
+      // We only persist the razorpayOrderId for crash-safe verification.
+      // Bookings are created only after verification.
       await AsyncStorage.setItem(
         SERVICE_PAYMENT_RECOVERY_KEY,
         JSON.stringify({
           razorpayOrderId: String(data.orderId),
-          bookingIds: bookingIdsForPayment,
           createdAt: Date.now(),
         })
       );
 
-      log("recovery_saved", {
-        razorpayOrderId: String(data.orderId),
-        bookingIds: bookingIdsForPayment,
-      });
+      log("recovery_saved", { razorpayOrderId: String(data.orderId) });
 
       const contact = (user.phoneNumber || "").replace("+91", "");
 
       // --- Try Native Razorpay Checkout first ---
-      if (RazorpayCheckout?.open) {
+      try {
         log("native_checkout_attempt", { orderId: String(data.orderId), amountPaise });
-        try {
-          const nativeResult = await RazorpayCheckout.open({
-            key: String(data.keyId),
-            order_id: String(data.orderId),
-            amount: String(amountPaise),
-            currency: String(data.currency ?? "INR"),
-            name: "Ninja Services",
-            description: "Service booking payment",
-            prefill: {
-              contact,
-              email: "",
-              name: "",
-            },
-            notes: { uid: user.uid, type: "service_booking", bookingIds: bookingIdsForPayment },
-            theme: { color: "#059669" },
-          });
+        const nativeResult = await openRazorpayNative({
+          key: String(data.keyId),
+          order_id: String(data.orderId),
+          amount: String(amountPaise),
+          currency: String(data.currency ?? "INR"),
+          name: "Ninja Services",
+          description: "Service booking payment",
+          prefill: {
+            contact,
+            email: "",
+            name: "",
+          },
+          notes: { uid: user.uid, type: "service_booking" },
+          theme: { color: "#059669" },
+        });
 
-          log("native_checkout_success", nativeResult);
+        log("native_checkout_success", nativeResult);
 
           // Verify payment + finalize bookings on server (crash-safe)
           const VERIFY_FINALIZE_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsVerifyAndFinalize`;
           const verifyHeaders = await getAuthHeaders();
           log("verify_and_finalize_start", {
             razorpayOrderId: nativeResult?.razorpay_order_id,
-            bookingIds: bookingIdsForPayment,
           });
           const { data: verifyData } = await api.post(
             VERIFY_FINALIZE_URL,
-            { ...nativeResult, bookingIds: bookingIdsForPayment },
+            { ...nativeResult },
             { headers: verifyHeaders }
           );
 
@@ -410,36 +390,105 @@ export default function ServiceCheckoutScreen() {
 
           log("verify_and_finalize_verified");
 
-          setPendingBookingIds(null);
           await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
           log("recovery_cleared_after_verify");
+
+          // Create bookings only after verified payment
+          log("create_paid_bookings_after_verify_start");
+          const createdBookingIds = await createBookings("paid", nativeResult);
+          log("create_paid_bookings_after_verify_done", { bookingIds: createdBookingIds });
 
           log("clear_cart_after_verify");
           clearCart();
 
-          const bookingIds = bookingIdsForPayment || [];
-          if (bookingIds.length > 0) {
-            log("navigate_to_booking_confirmation", { bookingId: bookingIds[0] });
+          if (createdBookingIds.length > 0) {
+            log("navigate_to_booking_confirmation", { bookingId: createdBookingIds[0] });
             navigation.reset({
               index: 0,
               routes: [
                 { name: "ServicesHome" },
-                { name: "BookingConfirmation", params: { bookingId: bookingIds[0] } },
+                { name: "BookingConfirmation", params: { bookingId: createdBookingIds[0] } },
               ],
             });
           }
           return; // Don't fall through to WebView
-        } catch (nativeErr: any) {
-          warn("native_checkout_failed_fallback_to_webview", nativeErr);
-          // fall through to WebView
-        }
-      } else {
-        warn("native_checkout_unavailable_fallback_to_webview");
+      } catch (nativeErr: any) {
+        // Includes both "unavailable" and actual SDK failures
+        warn("native_checkout_failed_fallback_to_webview", nativeErr);
+        // fall through to WebView
       }
 
   // Navigate directly to Razorpay WebView.
   // Keep `loading=true` so the user doesn't see the Pay button again before WebView appears.
   log("navigate_to_webview", { orderId: String(data.orderId) });
+  const sessionId = registerRazorpayWebViewCallbacks({
+    onSuccess: async (response: any) => {
+      try {
+        log("webview_success_callback", response);
+        
+        // Verify payment + finalize bookings on server (crash-safe)
+        const VERIFY_FINALIZE_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsVerifyAndFinalize`;
+        const verifyHeaders = await getAuthHeaders();
+        log("verify_and_finalize_start", {
+          razorpayOrderId: response?.razorpay_order_id,
+        });
+        const { data: verifyData } = await api.post(
+          VERIFY_FINALIZE_URL,
+          { ...response },
+          { headers: verifyHeaders }
+        );
+
+        log("verify_and_finalize_response", verifyData);
+
+        if (!verifyData?.verified) {
+          throw new Error(verifyData?.error || "Payment verification failed");
+        }
+        
+        log("verify_and_finalize_verified");
+
+        // Clear recovery state now that backend confirmed.
+        await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
+        log("recovery_cleared_after_verify");
+
+        // Create bookings only after verified payment
+        log("create_paid_bookings_after_verify_start");
+        const createdBookingIds = await createBookings("paid", response);
+        log("create_paid_bookings_after_verify_done", { bookingIds: createdBookingIds });
+        
+        // Clear cart immediately after successful booking creation
+        log("clear_cart_after_verify");
+        clearCart();
+        
+        // Navigate to booking confirmation screen with first booking ID
+        if (createdBookingIds && createdBookingIds.length > 0) {
+          log("navigate_to_booking_confirmation", { bookingId: createdBookingIds[0] });
+          navigation.reset({
+            index: 0,
+            routes: [
+              { name: 'ServicesHome' },
+              { 
+                name: 'BookingConfirmation', 
+                params: { bookingId: createdBookingIds[0] } 
+              }
+            ],
+          });
+        }
+        
+      } catch (error) {
+        errorLog("verify_and_finalize_failed", error);
+        Alert.alert("Payment Verification Failed", "Please contact support.");
+      } finally {
+        // WebView flow has finished (success path attempted). Stop showing loading on this screen.
+        setLoading(false);
+      }
+    },
+    onFailure: (error: any) => {
+      warn("webview_failure_callback", error);
+      Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+      setLoading(false);
+    },
+  });
+
   navigation.navigate("RazorpayWebView", {
         orderId: String(data.orderId),
         amount: computedTotalAmount,
@@ -452,91 +501,8 @@ export default function ServiceCheckoutScreen() {
           email: "",
           name: "",
         },
-        onSuccess: async (response: any) => {
-          try {
-            log("webview_success_callback", response);
-            
-            // Verify payment + finalize bookings on server (crash-safe)
-            const VERIFY_FINALIZE_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsVerifyAndFinalize`;
-            const verifyHeaders = await getAuthHeaders();
-            log("verify_and_finalize_start", {
-              razorpayOrderId: response?.razorpay_order_id,
-              bookingIds: bookingIdsForPayment,
-            });
-            const { data: verifyData } = await api.post(
-              VERIFY_FINALIZE_URL,
-              { ...response, bookingIds: bookingIdsForPayment },
-              { headers: verifyHeaders }
-            );
-
-            log("verify_and_finalize_response", verifyData);
-
-            if (!verifyData?.verified) {
-              throw new Error(verifyData?.error || "Payment verification failed");
-            }
-            
-            log("verify_and_finalize_verified");
-
-            const bookingIds = bookingIdsForPayment || [];
-            if (bookingIds.length === 0) {
-              // Fallback (shouldn't happen): create bookings if pending ones were not created.
-              console.warn("⚠️ No pending bookingIds found. Creating paid bookings as fallback.");
-              const created = await createBookings("paid", response);
-              setPendingBookingIds(null);
-              // Clear cart immediately after successful booking creation
-              log("fallback_created_paid_bookings_clear_cart", { created });
-              clearCart();
-              if (created && created.length > 0) {
-                navigation.reset({
-                  index: 0,
-                  routes: [
-                    { name: 'ServicesHome' },
-                    { name: 'BookingConfirmation', params: { bookingId: created[0] } },
-                  ],
-                });
-              }
-              return;
-            }
-
-            setPendingBookingIds(null);
-
-            // Clear recovery state now that backend confirmed.
-            await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
-            log("recovery_cleared_after_verify");
-            
-            // Clear cart immediately after successful booking creation
-            log("clear_cart_after_verify");
-            clearCart();
-            
-            // Navigate to booking confirmation screen with first booking ID
-            if (bookingIds && bookingIds.length > 0) {
-              log("navigate_to_booking_confirmation", { bookingId: bookingIds[0] });
-              navigation.reset({
-                index: 0,
-                routes: [
-                  { name: 'ServicesHome' },
-                  { 
-                    name: 'BookingConfirmation', 
-                    params: { bookingId: bookingIds[0] } 
-                  }
-                ],
-              });
-            }
-            
-          } catch (error) {
-            errorLog("verify_and_finalize_failed", error);
-            Alert.alert("Payment Verification Failed", "Please contact support.");
-          } finally {
-            // WebView flow has finished (success path attempted). Stop showing loading on this screen.
-            setLoading(false);
-          }
-        },
-        onFailure: (error: any) => {
-          warn("webview_failure_callback", error);
-          Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
-          setLoading(false);
-        },
-      });
+        sessionId,
+  });
 
       // NOTE: Do not setLoading(false) here — we want the button to stay in "Processing" state
       // until either native SDK finishes or WebView callbacks fire.
@@ -741,16 +707,6 @@ export default function ServiceCheckoutScreen() {
       const bookingIds = await Promise.all(bookingPromises);
       console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
       
-      // Fix existing bookings for website visibility
-      console.log(`\n🔧 FIXING EXISTING BOOKINGS FOR WEBSITE...`);
-      try {
-        await fixExistingBookingsForWebsite();
-        console.log(`✅ All existing bookings should now be visible on website`);
-      } catch (fixError) {
-        console.error(`⚠️ Error fixing existing bookings:`, fixError);
-        // Don't fail the booking process if this fails
-      }
-
       return bookingIds;
 
     } catch (error: any) {

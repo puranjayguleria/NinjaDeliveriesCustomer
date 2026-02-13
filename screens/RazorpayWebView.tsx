@@ -4,6 +4,8 @@ import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from "expo-linking";
+import { consumeRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 
 interface RazorpayWebViewProps {
   route: {
@@ -19,8 +21,7 @@ interface RazorpayWebViewProps {
         email: string;
         name: string;
       };
-      onSuccess: (response: any) => void;
-      onFailure: (error: any) => void;
+      sessionId?: string;
     };
   };
 }
@@ -30,6 +31,10 @@ export default function RazorpayWebView() {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  // IMPORTANT:
+  // This screen is used in multiple stacks. Some show a native header/back button.
+  // To avoid double-back UI, we do not render our own back button inside the screen.
 
   const log = (...args: any[]) => {
     if (__DEV__) console.log("🌐[RZPWebView]", ...args);
@@ -43,9 +48,10 @@ export default function RazorpayWebView() {
     name = 'Ninja Deliveries',
     description = 'Order Payment',
     prefill,
-    onSuccess,
-    onFailure,
+    sessionId,
   } = route.params;
+
+  const { onSuccess, onFailure } = consumeRazorpayWebViewCallbacks(sessionId);
 
   log("mount", { orderId, amount, currency, name, description });
 
@@ -333,17 +339,6 @@ export default function RazorpayWebView() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Secure Payment</Text>
-        <View style={styles.headerRight}>
-          <Ionicons name="shield-checkmark" size={20} color="#059669" />
-        </View>
-      </View>
-
       {/* Loading Overlay */}
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -361,6 +356,42 @@ export default function RazorpayWebView() {
         onMessage={handleMessage}
         onLoadEnd={() => setLoading(false)}
         onError={handleError}
+        onShouldStartLoadWithRequest={(req) => {
+          const url = String(req?.url || "");
+
+          // WebView uses about:* internally on iOS.
+          // Allow about:blank (common during initialization), but block about:srcdoc to avoid Linking errors.
+          if (url === "about:blank") {
+            log("nav_allow_about_blank");
+            return true;
+          }
+          if (url.startsWith("about:srcdoc")) {
+            log("nav_block_about_srcdoc", { url });
+            return false;
+          }
+
+          // Allow the initial checkout html and normal web content.
+          if (url.startsWith("http://") || url.startsWith("https://")) {
+            return true;
+          }
+
+          if (url.startsWith("data:") || url.startsWith("blob:")) {
+            return true;
+          }
+
+          // For UPI / intent links, try opening externally.
+          if (url.startsWith("upi:") || url.startsWith("tez:") || url.startsWith("phonepe:") || url.startsWith("paytmmp:") || url.startsWith("paytm:") || url.startsWith("gpay:") || url.startsWith("bhim:") || url.startsWith("cred:") || url.startsWith("mobikwik:") || url.startsWith("freecharge:")) {
+            log("nav_open_external", { url });
+            Linking.openURL(url).catch((e) => {
+              console.warn("[RZPWebView] Error opening URL:", e);
+            });
+            return false;
+          }
+
+          // Block any other unknown schemes.
+          log("nav_block_unknown", { url });
+          return false;
+        }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={false}

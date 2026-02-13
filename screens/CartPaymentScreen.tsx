@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
+import { openRazorpayNative } from "../utils/razorpayNative";
 
 // WebView Razorpay Integration - No native module needed
 console.log("🚀 Cart Payment system initialized - WebView Razorpay Integration");
@@ -233,14 +234,47 @@ export default function CartPaymentScreen() {
         const serverOrder = await createRazorpayOrderOnServer(finalTotal);
         console.log("Server order created:", serverOrder);
 
-        // Open Razorpay WebView
-        console.log("Opening Razorpay WebView...");
-        await openRazorpayWebView(
-          serverOrder.keyId,
-          serverOrder.orderId,
-          serverOrder.amountPaise,
-          serverOrder.currency
-        );
+        // Try native checkout first (better UPI app redirection), fallback to WebView
+        const user = auth().currentUser;
+        const contact = (user?.phoneNumber || "").replace("+91", "");
+
+        try {
+          console.log("Attempting native Razorpay checkout...");
+          const nativeRes = await openRazorpayNative({
+            key: String(serverOrder.keyId),
+            order_id: String(serverOrder.orderId),
+            amount: String(serverOrder.amountPaise),
+            currency: String(serverOrder.currency || "INR"),
+            name: "Ninja Deliveries",
+            description: "Order payment",
+            prefill: { contact, email: "", name: "" },
+            notes: { type: "grocery_order", storeId: selectedLocation?.storeId || "" },
+            theme: { color: "#059669" },
+          });
+
+          console.log("Native payment successful:", nativeRes);
+          await verifyRazorpayPaymentOnServer({
+            razorpay_order_id: nativeRes.razorpay_order_id,
+            razorpay_payment_id: nativeRes.razorpay_payment_id,
+            razorpay_signature: nativeRes.razorpay_signature,
+          });
+
+          console.log("Payment verified (native), calling completion callback...");
+          if (onPaymentComplete) {
+            await onPaymentComplete("success", nativeRes);
+          }
+        } catch (nativeErr: any) {
+          console.warn("Native Razorpay failed, falling back to WebView:", nativeErr);
+
+          // Open Razorpay WebView
+          console.log("Opening Razorpay WebView...");
+          await openRazorpayWebView(
+            serverOrder.keyId,
+            serverOrder.orderId,
+            serverOrder.amountPaise,
+            serverOrder.currency
+          );
+        }
         
         // Note: Payment completion will be handled by WebView callbacks
         // The onSuccess/onFailure callbacks in openRazorpayWebView will handle the rest

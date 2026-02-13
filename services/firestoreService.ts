@@ -5138,6 +5138,95 @@ export class FirestoreService {
   }
 
   /**
+   * DEV ONLY: Delete service bookings for the currently logged-in user.
+   *
+   * This is meant to help QA/payment flow testing so BookingHistory starts clean.
+   * It also deletes any linked `service_payments` documents for deleted bookings.
+   */
+  static async devDeleteUserServiceBookings(options?: {
+    statuses?: Array<ServiceBooking['status'] | 'reject' | 'rejected'>;
+    limit?: number;
+    includePayments?: boolean;
+  }): Promise<{ deletedBookings: number; deletedPayments: number }>
+  {
+    if (!__DEV__) {
+      throw new Error('This action is only available in DEV builds');
+    }
+
+    const userId = this.getCurrentUserId();
+    if (!userId) {
+      throw new Error('Please log in to clear bookings');
+    }
+
+    const statuses = options?.statuses ?? ['pending', 'cancelled', 'rejected', 'reject'];
+    const limit = options?.limit ?? 200;
+    const includePayments = options?.includePayments ?? true;
+
+    console.log('🧹 DEV CLEANUP: Deleting user service bookings', { userId, statuses, limit, includePayments });
+
+    // Fetch bookings for user (client side filter by status to avoid composite index requirements)
+    const snapshot = await firestore()
+      .collection('service_bookings')
+      .where('customerId', '==', userId)
+      .get();
+
+    const bookingDocs = snapshot.docs
+      .filter((d) => statuses.includes(String(d.data()?.status ?? 'pending') as any))
+      .slice(0, limit);
+
+    const bookingIds = bookingDocs.map((d) => d.id);
+
+    let deletedBookings = 0;
+    let deletedPayments = 0;
+
+    // Delete payments first (query by bookingId)
+    if (includePayments && bookingIds.length > 0) {
+      const paymentDeletes: Array<Promise<void>> = [];
+      for (const bookingId of bookingIds) {
+        const paySnap = await firestore()
+          .collection('service_payments')
+          .where('customerId', '==', userId)
+          .where('bookingId', '==', bookingId)
+          .get();
+
+        paySnap.docs.forEach((p) => {
+          paymentDeletes.push(p.ref.delete());
+        });
+      }
+
+      if (paymentDeletes.length > 0) {
+        await Promise.all(paymentDeletes);
+        deletedPayments = paymentDeletes.length;
+      }
+    }
+
+    if (bookingDocs.length > 0) {
+      // Use batched writes (500 limit)
+      let batch = firestore().batch();
+      let batchCount = 0;
+
+      for (const doc of bookingDocs) {
+        batch.delete(doc.ref);
+        deletedBookings++;
+        batchCount++;
+
+        if (batchCount >= 450) {
+          await batch.commit();
+          batch = firestore().batch();
+          batchCount = 0;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+    }
+
+    console.log('✅ DEV CLEANUP DONE', { deletedBookings, deletedPayments });
+    return { deletedBookings, deletedPayments };
+  }
+
+  /**
    * Update payment status after successful Razorpay payment
    */
   static async updatePaymentAfterRazorpaySuccess(

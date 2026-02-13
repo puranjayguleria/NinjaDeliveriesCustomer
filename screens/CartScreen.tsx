@@ -41,6 +41,8 @@ import NotificationModal from "../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
+import { openRazorpayNative } from "../utils/razorpayNative";
+import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 import { useWeather } from "../context/WeatherContext";
 import { useRestaurantCart } from "../context/RestaurantCartContext";
 import { useServiceCart } from "../context/ServiceCartContext";
@@ -984,19 +986,45 @@ const CartScreen: React.FC = () => {
 
       const contact = (user.phoneNumber || "").replace("+91", "");
 
+      // --- Try Native Razorpay Checkout first (better UPI app redirection) ---
+      try {
+        const amountPaise = Math.round(finalTotal * 100);
+        const nativeRes = await openRazorpayNative({
+          key: String(serverOrder.keyId),
+          order_id: String(serverOrder.orderId),
+          amount: String(amountPaise),
+          currency: String(serverOrder.currency || "INR"),
+          name: "Ninja Deliveries",
+          description: "Grocery Order Payment",
+          prefill: { contact, email: "", name: "" },
+          // Keep notes minimal for grocery flow. (Services uses bookingIds etc.)
+          notes: { type: "grocery_order" },
+          theme: { color: "#059669" },
+        });
+
+        const razorpayMeta = {
+          razorpay_order_id: nativeRes.razorpay_order_id,
+          razorpay_payment_id: nativeRes.razorpay_payment_id,
+          razorpay_signature: nativeRes.razorpay_signature,
+        };
+
+        await verifyRazorpayPaymentOnServer(razorpayMeta);
+        await handlePaymentComplete("online", razorpayMeta, serverOrder);
+        setNavigating(false);
+        return; // don't fall through to WebView
+      } catch (nativeErr: any) {
+        // If native isn't available / fails, fall back to WebView.
+        if (__DEV__) {
+          console.warn("\uD83D\uDCB3[RZPNative] grocery_fallback_to_webview", nativeErr);
+          Alert.alert(
+            "Native UPI fallback",
+            "Native Razorpay didn't open. Using WebView fallback. Check console logs for details."
+          );
+        }
+      }
+
       // Navigate immediately to Razorpay WebView
-      navigation.navigate('RazorpayWebView', {
-        orderId: serverOrder.orderId,
-        amount: finalTotal,
-        keyId: serverOrder.keyId,
-        currency: serverOrder.currency || 'INR',
-        name: 'Ninja Deliveries',
-        description: 'Grocery Order Payment',
-        prefill: {
-          contact,
-          email: '',
-          name: '',
-        },
+      const sessionId = registerRazorpayWebViewCallbacks({
         onSuccess: async (response: any) => {
           try {
             console.log('Payment successful:', response);
@@ -1005,7 +1033,7 @@ const CartScreen: React.FC = () => {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             };
-            
+
             // Verify payment on server
             await verifyRazorpayPaymentOnServer(razorpayMeta);
 
@@ -1020,9 +1048,27 @@ const CartScreen: React.FC = () => {
         },
         onFailure: (error: any) => {
           console.error("Payment failed:", error);
-          Alert.alert("Payment Failed", error.description || "Payment was not completed. Please try again.");
+          Alert.alert(
+            "Payment Failed",
+            error.description || "Payment was not completed. Please try again."
+          );
           setNavigating(false);
         },
+      });
+
+      navigation.navigate('RazorpayWebView', {
+        orderId: serverOrder.orderId,
+        amount: finalTotal,
+        keyId: serverOrder.keyId,
+        currency: serverOrder.currency || 'INR',
+        name: 'Ninja Deliveries',
+        description: 'Grocery Order Payment',
+        prefill: {
+          contact,
+          email: '',
+          name: '',
+        },
+        sessionId,
       });
     } catch (error: any) {
       console.error("Online payment error:", error);

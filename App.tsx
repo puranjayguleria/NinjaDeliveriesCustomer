@@ -990,6 +990,19 @@ const App: React.FC = () => {
     })();
   }, []);
 
+  // DEV-only: prove whether native Razorpay module is actually bundled in this build
+  useEffect(() => {
+    if (!__DEV__) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { probeRazorpayNative } = require("./utils/razorpayProbe");
+      const res = probeRazorpayNative();
+      console.log("💳[RZPProbe]", res);
+    } catch (e) {
+      console.log("💳[RZPProbe] probe_failed", e);
+    }
+  }, []);
+
    useEffect(() => {
     if (!firebaseReady) return;
     const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
