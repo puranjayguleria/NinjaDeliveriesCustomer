@@ -9,12 +9,13 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
-  Image,
   ImageBackground,
   ScrollView,
   Animated,
   RefreshControl,
+  Platform,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
@@ -210,6 +211,9 @@ export default function ServicesScreen() {
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tapLoading, setTapLoading] = useState<{ visible: boolean; message?: string }>(
+    { visible: false }
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -457,6 +461,12 @@ export default function ServicesScreen() {
   useEffect(() => {
     if (liveBookings.length === 0) return;
 
+    // iOS: this continuous scroll can keep a responder active and make the
+    // rest of the screen feel "not clickable". Disable it on iOS.
+    if (Platform.OS === 'ios') {
+      return;
+    }
+
     let animationFrameId: number;
     const scrollSpeed = 1; // Pixels per frame - increased from 0.5 to 1
 
@@ -569,6 +579,15 @@ export default function ServicesScreen() {
 
   const filteredCategories = getFilteredCategories();
 
+  // Ensure we never leave the "Opening..." overlay stuck if navigation succeeds.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setTapLoading({ visible: false });
+      };
+    }, [])
+  );
+
   // Navigation functions
   const goTo = (screen: string, params: any) => {
     navigation.navigate(screen, params);
@@ -576,9 +595,17 @@ export default function ServicesScreen() {
 
   const handleCategoryPress = async (category: ServiceCategory) => {
     console.log('🎯 Category clicked:', category.name, category.id);
+
+    // Instant feedback so the user knows the tap registered.
+    setTapLoading({ visible: true, message: 'Opening…' });
     
     // Check if category has packages
-    const hasPackages = await FirestoreService.categoryHasPackages(category.id);
+    let hasPackages = false;
+    try {
+      hasPackages = await FirestoreService.categoryHasPackages(category.id);
+    } catch (e) {
+      console.log('⚠️ categoryHasPackages failed:', e);
+    }
     
     const navigationParams = {
       serviceTitle: category.name,
@@ -598,9 +625,16 @@ export default function ServicesScreen() {
   const handleBannerPress = async (banner: ServiceBanner) => {
     if (!banner.clickable) return;
 
+    setTapLoading({ visible: true, message: 'Opening…' });
+
     if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
       // Check if category has packages before navigating
-      const hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
+      let hasPackages = false;
+      try {
+        hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
+      } catch (e) {
+        console.log('⚠️ categoryHasPackages failed:', e);
+      }
       
       if (hasPackages) {
         console.log('✅ Category has packages, navigating to PackageSelection');
@@ -626,7 +660,13 @@ export default function ServicesScreen() {
   };
 
   const handleViewAllCategories = () => {
+    setTapLoading({ visible: true, message: 'Loading…' });
     navigation.navigate("AllServices");
+  };
+
+  const handleHistoryPress = () => {
+    setTapLoading({ visible: true, message: 'Loading…' });
+    navigation.navigate("BookingHistory");
   };
 
   const handleSearch = (text: string) => {
@@ -720,12 +760,15 @@ export default function ServicesScreen() {
         disabled={banner.clickable === false}
       >
         {banner.imageUrl ? (
-          <ImageBackground 
-            source={{ uri: banner.imageUrl }} 
-            style={styles.bannerImage}
-            resizeMode="cover"
-          >
-            <View style={styles.bannerOverlay}>
+          <View style={styles.bannerImage}>
+            <ExpoImage
+              source={{ uri: banner.imageUrl }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+            <View style={styles.bannerOverlay} pointerEvents="none">
               <View style={styles.bannerContent}>
                 <View style={styles.bannerTextSection}>
                   {/* Tag at the top */}
@@ -750,7 +793,7 @@ export default function ServicesScreen() {
                 </View>
               </View>
             </View>
-          </ImageBackground>
+          </View>
         ) : (
           <LinearGradient
             colors={[backgroundColor, backgroundColor + 'CC']}
@@ -799,12 +842,17 @@ export default function ServicesScreen() {
       >
         <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
           {item.imageUrl ? (
-            <Image 
-              source={{ uri: item.imageUrl }} 
+            <ExpoImage
+              source={{ uri: item.imageUrl }}
               style={styles.gridCategoryImage}
-              resizeMode="cover"
-              onError={() => {
-                console.log(`⚠️ Failed to load image for ${item.name} in list, falling back to icon`);
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+              onError={(e) => {
+                console.log(`⚠️ Failed to load image for ${item.name}`, {
+                  url: item.imageUrl,
+                  error: (e as any)?.nativeEvent,
+                });
               }}
             />
           ) : (
@@ -833,12 +881,12 @@ export default function ServicesScreen() {
           resizeMode="cover"
           imageStyle={{ marginTop: 20 }}
         >
-          <View style={styles.headerOverlay}>
+          <View style={styles.headerOverlay} pointerEvents="box-none">
             <View style={styles.headerContent}>
               {/* Booking History Button */}
               <TouchableOpacity 
                 style={styles.historyButton}
-                onPress={() => navigation.navigate("BookingHistory")}
+                onPress={handleHistoryPress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="receipt-outline" size={22} color="white" />
@@ -947,14 +995,15 @@ export default function ServicesScreen() {
                   <Text style={styles.liveText}>Live Bookings</Text>
                 </Animated.View>
               </View>
-              <View style={styles.liveUpdatesWrapper}>
+              <View style={styles.liveUpdatesWrapper} pointerEvents="box-none">
                 <ScrollView 
                   ref={liveBookingsScrollRef}
                   horizontal 
                   showsHorizontalScrollIndicator={false}
                   scrollEventThrottle={16}
+                  pointerEvents="box-none"
                   contentContainerStyle={styles.liveUpdatesScroll}
-                  onScroll={(event) => {
+                  onScroll={Platform.OS === 'ios' ? undefined : (event) => {
                     const contentWidth = event.nativeEvent.contentSize.width;
                     const scrollWidth = event.nativeEvent.layoutMeasurement.width;
                     const currentScrollX = event.nativeEvent.contentOffset.x;
@@ -1022,6 +1071,19 @@ export default function ServicesScreen() {
 
   return (
     <View style={styles.container}>
+      {tapLoading.visible && (
+        <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
+          <TouchableOpacity
+            style={styles.tapLoadingCard}
+            activeOpacity={1}
+            onPress={() => setTapLoading({ visible: false })}
+          >
+            <ActivityIndicator size="small" color="#00b4a0" />
+            <Text style={styles.tapLoadingText}>{tapLoading.message || 'Opening…'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Add safety check for initial render */}
       {!serviceCategories && loading ? (
         <View style={styles.emptyLoadingContainer}>
@@ -1075,8 +1137,9 @@ export default function ServicesScreen() {
           maxToRenderPerBatch={10}
           windowSize={10}
           initialNumToRender={searchQuery ? 20 : 6}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
+          nestedScrollEnabled
         />
       )}
     </View>
@@ -1087,6 +1150,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fdfdfd",
+  },
+
+  tapLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+    elevation: 999,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+
+  tapLoadingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+  },
+
+  tapLoadingText: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: "#0f172a",
+    fontWeight: "600",
   },
 
   // Header Styles

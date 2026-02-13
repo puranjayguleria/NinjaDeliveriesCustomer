@@ -35,10 +35,16 @@ const Stack = createNativeStackNavigator();
 export default function ServicesStack() {
   return (
     <Stack.Navigator 
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: true,
+        headerTitleAlign: "center",
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: "#ffffff" },
+        headerTintColor: "#0f172a",
+      }}
       initialRouteName="ServicesHome"
     >
-      <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+      <Stack.Screen name="ServicesHome" component={ServicesScreen} options={{ headerShown: false }} />
       <Stack.Screen name="AllServices" component={AllServicesScreen} />
 
       {/* Service Cart */}

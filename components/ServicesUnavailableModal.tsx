@@ -82,9 +82,13 @@ const ServicesUnavailableModal: React.FC<ServicesUnavailableModalProps> = ({
     }
   }, [visible]);
 
+  // Important: On iOS, keeping a <Modal> mounted with animated opacity can sometimes
+  // still intercept touches even when it *looks* hidden. Unmount completely when hidden.
+  if (!visible) return null;
+
   return (
     <Modal
-      visible={visible}
+      visible
       transparent
       animationType="none"
       onRequestClose={onClose}

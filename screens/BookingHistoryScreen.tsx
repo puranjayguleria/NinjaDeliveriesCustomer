@@ -18,6 +18,15 @@ import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import { FirestoreServiceExtensions } from "../services/firestoreServiceExtensions";
 import { BookingUtils } from "../utils/bookingUtils";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const LOG_PREFIX = "📚[SvcPay]";
+const log = (...args: any[]) => {
+  if (__DEV__) console.log(LOG_PREFIX, ...args);
+};
+const warn = (...args: any[]) => {
+  if (__DEV__) console.warn(LOG_PREFIX, ...args);
+};
 
 type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected' | 'cancelled';
 
@@ -32,6 +41,53 @@ export default function BookingHistoryScreen() {
   const [tabAnimation] = useState(new Animated.Value(0));
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<{id: string, serviceName: string, totalPrice?: number} | null>(null);
+
+  // If user killed the app during Razorpay verification, we keep a local recovery token.
+  // On booking history open, reconcile once so pending bookings become confirmed/paid.
+  const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
+
+  const reconcileServicePayments = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SERVICE_PAYMENT_RECOVERY_KEY);
+      if (!raw) return;
+
+      const recovery = JSON.parse(raw);
+      const razorpayOrderId = String(recovery?.razorpayOrderId || "");
+      if (!razorpayOrderId) return;
+
+  log("reconcile_start", { razorpayOrderId, recovery });
+
+      const auth = require("@react-native-firebase/auth").default;
+      const axios = require("axios").default;
+
+      const api = axios.create({
+        timeout: 20000,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const user = auth().currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken(true);
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+      const RECOVER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsReconcile`;
+
+      const { data } = await api.post(RECOVER_URL, { razorpayOrderId }, { headers });
+      log("reconcile_response", data);
+
+      if (data?.ok && (data?.updatedBookings > 0 || data?.alreadyFinalized)) {
+        log("reconcile_finalized_remove_recovery", {
+          updatedBookings: data?.updatedBookings,
+          alreadyFinalized: data?.alreadyFinalized,
+        });
+        await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
+      }
+    } catch (e) {
+      warn("reconcile_failed_nonfatal", e);
+    }
+  };
 
   // Fetch bookings from Firebase for currently logged-in user only
   const fetchBookings = async (isRefresh = false, filter: FilterStatus = 'all') => {
@@ -86,6 +142,9 @@ export default function BookingHistoryScreen() {
     // Fix any inconsistent booking statuses first
     const fixStatusesAndFetch = async () => {
       try {
+        // First reconcile any paid-but-not-finalized online service payments
+        await reconcileServicePayments();
+
         // Fix inconsistent statuses
         await FirestoreServiceExtensions.fixInconsistentBookingStatuses();
         

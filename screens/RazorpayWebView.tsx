@@ -31,6 +31,10 @@ export default function RazorpayWebView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const log = (...args: any[]) => {
+    if (__DEV__) console.log("🌐[RZPWebView]", ...args);
+  };
+
   const {
     orderId,
     amount,
@@ -42,6 +46,8 @@ export default function RazorpayWebView() {
     onSuccess,
     onFailure,
   } = route.params;
+
+  log("mount", { orderId, amount, currency, name, description });
 
   const razorpayHTML = `
     <!DOCTYPE html>
@@ -255,34 +261,39 @@ export default function RazorpayWebView() {
   const handleMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+
+      log("message", data);
       
       switch (data.type) {
         case 'success':
-          console.log('Payment successful:', data.data);
+          log('success', data.data);
           navigation.goBack();
           if (onSuccess) {
+            log('calling_onSuccess');
             onSuccess(data.data);
           }
           break;
           
         case 'failed':
-          console.log('Payment failed:', data.data);
+          log('failed', data.data);
           navigation.goBack();
           if (onFailure) {
+            log('calling_onFailure_failed');
             onFailure(data.data);
           }
           break;
           
         case 'cancelled':
-          console.log('Payment cancelled:', data.data);
+          log('cancelled', data.data);
           navigation.goBack();
           if (onFailure) {
+            log('calling_onFailure_cancelled');
             onFailure(data.data);
           }
           break;
       }
     } catch (error) {
-      console.error('Error parsing WebView message:', error);
+      log('parse_error', error);
       navigation.goBack();
       if (onFailure) {
         onFailure({ error: 'Payment processing error' });
@@ -455,9 +466,13 @@ const styles = StyleSheet.create({
   cancelButton: {
     paddingHorizontal: 32,
     paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
   },
   cancelButtonText: {
-    color: '#64748b',
+    color: '#334155',
     fontSize: 16,
     fontWeight: '500',
   },

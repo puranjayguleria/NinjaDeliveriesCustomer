@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
 
@@ -31,6 +30,16 @@ export default function PaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current);
+        loadingTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle both old single booking format and new multiple bookings format
   const {
@@ -185,6 +194,15 @@ export default function PaymentScreen() {
     console.log("handlePayment called with method:", selectedPaymentMethod);
     setLoading(true);
 
+    // Avoid a stuck overlay in odd edge cases (e.g., navigation interrupted).
+    // If the flow is still alive after 60s, user can try again.
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current);
+    }
+    loadingTimerRef.current = setTimeout(() => {
+      setLoading(false);
+    }, 60000);
+
     try {
       if (selectedPaymentMethod === "online") {
         console.log("Processing online payment for services...");
@@ -232,10 +250,16 @@ export default function PaymentScreen() {
             serverOrder.amountPaise,
             serverOrder.currency
           );
+
+          // The next screen (WebView) handles success/failure callbacks.
+          // Keep loader on briefly to cover navigation lag, then let it go.
+          setTimeout(() => setLoading(false), 800);
           
           // Navigation will be handled by WebView callbacks
         } catch (razorpayError: any) {
           console.error("Razorpay WebView error:", razorpayError);
+
+          setLoading(false);
           
           Alert.alert(
             "Payment Gateway Error",
@@ -257,6 +281,8 @@ export default function PaymentScreen() {
     } catch (error: any) {
       console.error("Payment error:", error);
       let message = "Payment failed. Please try again.";
+
+      setLoading(false);
       
       if (error?.description) {
         message = error.description;
@@ -327,29 +353,6 @@ export default function PaymentScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header Section */}
-      <View style={styles.headerSection}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        
-        <Text style={styles.header}>
-          {isAddOn ? "Add-On Payment" : "Payment"}
-        </Text>
-        <Text style={styles.subHeader}>
-          {isAddOn 
-            ? `Pay for ${addOnServices?.length || 0} additional service${(addOnServices?.length || 0) > 1 ? 's' : ''}`
-            : (isMultipleBookings 
-              ? `Review and confirm ${bookings.length} service booking${bookings.length > 1 ? 's' : ''}`
-              : "Review and confirm your booking"
-            )
-          }
-        </Text>
-      </View>
-
       {/* Scrollable Content */}
       <ScrollView 
         style={styles.scrollView}
@@ -544,14 +547,6 @@ export default function PaymentScreen() {
             </Text>
           )}
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.backBtn} 
-          onPress={() => navigation.goBack()}
-          disabled={loading}
-        >
-          <Text style={styles.backText}>Go Back</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Loading Overlay */}
@@ -573,44 +568,6 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: "#fafbfc",
-  },
-
-  // Header Section
-  headerSection: {
-    backgroundColor: "white",
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-  },
-
-  backButtonText: {
-    color: "#2563eb",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-
-  header: { 
-    fontSize: 28, 
-    fontWeight: "600",
-    color: "#0f172a",
-    letterSpacing: -0.6,
-    marginBottom: 8,
-  },
-
-  subHeader: { 
-    color: "#64748b", 
-    fontSize: 16, 
-    fontWeight: "400",
-    lineHeight: 24,
   },
 
   // Scroll View

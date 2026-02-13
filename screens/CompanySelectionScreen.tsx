@@ -23,6 +23,10 @@ export default function CompanySelectionScreen() {
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
+  // When service_services documents don't include a `price` in the objects passed via navigation,
+  // we fetch the authoritative `price` by id so cart totals don't end up as ₹0.
+  const [pricedSelectedIssues, setPricedSelectedIssues] = useState<any[] | null>(null);
+
   const { 
     serviceTitle, 
     categoryId, 
@@ -36,6 +40,69 @@ export default function CompanySelectionScreen() {
     isPackageBooking,
     selectedPackage: routeSelectedPackage
   } = route.params || {};
+
+  const effectiveSelectedPackage = selectedPackage || routeSelectedPackage;
+
+  useEffect(() => {
+    let isActive = true;
+
+    const enrichSelectedIssuesWithPrices = async () => {
+      try {
+        if (!Array.isArray(selectedIssueIds) || selectedIssueIds.length === 0) {
+          if (isActive) setPricedSelectedIssues(Array.isArray(selectedIssues) ? selectedIssues : null);
+          return;
+        }
+
+        const { firestore } = require('../firebase.native');
+        const snaps = await Promise.all(
+          selectedIssueIds.map((id: string) =>
+            firestore().collection('service_services').doc(id).get()
+          )
+        );
+
+        const priceMap = new Map<string, { price?: number; name?: string }>();
+        snaps.forEach((snap: any) => {
+          if (!snap?.exists) return;
+          const data: any = snap.data() || {};
+          const priceCandidate =
+            typeof data.price === 'number' ? data.price :
+            (typeof data.amount === 'number' ? data.amount :
+            (typeof data.basePrice === 'number' ? data.basePrice :
+            (typeof data.servicePrice === 'number' ? data.servicePrice : undefined)));
+          priceMap.set(snap.id, { price: priceCandidate, name: data.name });
+        });
+
+        // If selectedIssues is missing ids (or has incomplete data), we still create a priced list
+        // based on selectedIssueIds so we can always recover Firestore prices.
+        const baseIssues = Array.isArray(selectedIssues) && selectedIssues.length > 0
+          ? selectedIssues
+          : [];
+
+        const enrichedFromIds = selectedIssueIds.map((id: string) => {
+          const existing = baseIssues.find((x: any) => x?.id === id);
+          const mapped = priceMap.get(id);
+          return {
+            ...(existing || {}),
+            id,
+            name: existing?.name ?? mapped?.name,
+            price: (typeof existing?.price === 'number' ? existing.price : mapped?.price),
+          };
+        });
+
+        const enriched = enrichedFromIds.length > 0 ? enrichedFromIds : baseIssues;
+
+        if (isActive) setPricedSelectedIssues(enriched);
+      } catch (e) {
+        console.log('⚠️ Failed to enrich selectedIssues with prices:', e);
+        if (isActive) setPricedSelectedIssues(Array.isArray(selectedIssues) ? selectedIssues : null);
+      }
+    };
+
+    enrichSelectedIssuesWithPrices();
+    return () => {
+      isActive = false;
+    };
+  }, [selectedIssueIds, selectedIssues]);
 
   // 🔍 DEBUG: Log all params on mount
   useEffect(() => {
@@ -426,18 +493,23 @@ export default function CompanySelectionScreen() {
     else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
     else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
 
-    // Calculate price: prefer selected package price, then selected issues total, then company.price
-    let packageInfo = null;
-    if (selectedCompany.packages && Array.isArray(selectedCompany.packages) && selectedPackage) {
-      // selectedPackage should be an object from the package list
-      packageInfo = selectedPackage;
-    }
+    // Calculate price: if this is a package booking, ALWAYS take it from selected package.
+    // Otherwise use selected issues total (or company.price fallback).
+    const packageInfo = isPackageBooking ? effectiveSelectedPackage : null;
 
     // 🔧 FIX: Store issues with their individual prices and quantities
-    const issuesWithPrices = Array.isArray(selectedIssues) && selectedIssues.length > 0
-      ? selectedIssues.map((issue: any) => ({
+    const issuesSource = (Array.isArray(pricedSelectedIssues) && pricedSelectedIssues.length > 0)
+      ? pricedSelectedIssues
+      : selectedIssues;
+
+    const issuesWithPrices = Array.isArray(issuesSource) && issuesSource.length > 0
+      ? issuesSource.map((issue: any) => ({
           name: issue.name || issue,
-          price: typeof issue.price === 'number' ? issue.price : 0,
+          // Some service_services docs don't have price on each issue; fallback to company price
+          // so the cart never shows ₹0 incorrectly.
+          price: typeof issue.price === 'number'
+            ? issue.price
+            : (typeof selectedCompany?.price === 'number' ? selectedCompany.price : 0),
           quantity: 1, // Initialize with quantity 1
         }))
       : (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map((issue: any) => ({
@@ -446,11 +518,20 @@ export default function CompanySelectionScreen() {
           quantity: 1, // Initialize with quantity 1
         }));
 
-    const issueTotalPrice = issuesWithPrices.reduce((sum: number, issue: any) => sum + issue.price, 0);
-    const computedPrice = packageInfo?.price ?? (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
+    const issueTotalPrice = issuesWithPrices.reduce(
+      (sum: number, issue: any) => sum + (Number(issue.price) || 0) * (Number(issue.quantity) || 1),
+      0
+    );
+
+    const packagePrice = Number((packageInfo as any)?.price);
+    const computedPrice = (isPackageBooking && Number.isFinite(packagePrice) && packagePrice > 0)
+      ? packagePrice
+      : (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
 
     // Add service to cart (include package info when available)
     addService({
+      // For package bookings, serviceTitle is the category (e.g. "Home GYM"). Keep it for display,
+      // but make sure the actual package price is included below.
       serviceTitle,
       categoryId, // Add categoryId for add-on services filtering
       issues: issuesWithPrices, // Store issues with prices
@@ -467,17 +548,22 @@ export default function CompanySelectionScreen() {
       bookingType,
       unitPrice: computedPrice,
       totalPrice: computedPrice,
-      additionalInfo: packageInfo ? { 
-        package: { 
-          id: packageInfo.id, 
-          name: packageInfo.name, 
-          price: packageInfo.price, 
-          description: packageInfo.description,
-          duration: packageInfo.duration,
-          unit: packageInfo.unit,
-          frequency: packageInfo.frequency,
-          type: packageInfo.type,
-        } 
+      additionalInfo: packageInfo ? {
+        isPackageService: true,
+        packageName: (packageInfo as any)?.name,
+        packageType: (packageInfo as any)?.type,
+        packageDuration: (packageInfo as any)?.duration,
+        packageFeatures: (packageInfo as any)?.features,
+        package: {
+          id: (packageInfo as any)?.id,
+          name: (packageInfo as any)?.name,
+          price: (packageInfo as any)?.price,
+          description: (packageInfo as any)?.description,
+          duration: (packageInfo as any)?.duration,
+          unit: (packageInfo as any)?.unit,
+          frequency: (packageInfo as any)?.frequency,
+          type: (packageInfo as any)?.type,
+        }
       } : undefined,
     });
 

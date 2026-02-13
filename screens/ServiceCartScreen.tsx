@@ -16,6 +16,32 @@ export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
   const { state, removeService, updateService, clearCart, totalItems, totalAmount, hasServices } = useServiceCart();
 
+  // Defensive total calculation: some older cart items may have totalPrice=0 even though
+  // issues/package/unitPrice exist. This keeps the UI correct and prevents showing ₹0.
+  const computedTotalAmount = React.useMemo(() => {
+    return Object.values(state.items).reduce((sum, item) => {
+      const explicit = Number(item.totalPrice);
+      if (Number.isFinite(explicit) && explicit > 0) return sum + explicit;
+
+      // Derive from issues if present
+      const issuesTotal = (item.issues || []).reduce((issueSum: number, issue: any) => {
+        const obj = typeof issue === 'object' ? issue : { name: issue, price: item.unitPrice, quantity: 1 };
+        const p = Number(obj?.price) || 0;
+        const q = Number(obj?.quantity) || 1;
+        return issueSum + p * q;
+      }, 0);
+      if (issuesTotal > 0) return sum + issuesTotal;
+
+      // Package price fallback
+      const pkgPrice = Number(item.additionalInfo?.package?.price);
+      if (Number.isFinite(pkgPrice) && pkgPrice > 0) return sum + pkgPrice;
+
+      const unit = Number(item.unitPrice) || Number(item.company?.price) || 0;
+      const qty = Number(item.quantity) || 1;
+      return sum + unit * qty;
+    }, 0);
+  }, [state.items]);
+
   const handleRemoveService = (serviceId: string) => {
     Alert.alert(
       "Remove Service",
@@ -123,7 +149,7 @@ export default function ServiceCartScreen() {
     
     navigation.navigate("ServiceCheckout", {
       services: Object.values(state.items),
-      totalAmount,
+      totalAmount: computedTotalAmount,
     });
   };
 
@@ -252,16 +278,6 @@ export default function ServiceCartScreen() {
   if (!hasServices) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Service Cart</Text>
-        </View>
-
         <View style={styles.emptyContainer}>
           <Ionicons name="construct-outline" size={80} color="#ccc" />
           <Text style={styles.emptyTitle}>Your service cart is empty</Text>
@@ -281,22 +297,6 @@ export default function ServiceCartScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Service Cart ({totalItems})</Text>
-        <TouchableOpacity
-          style={styles.clearButton}
-          onPress={handleClearCart}
-        >
-          <Text style={styles.clearButtonText}>Clear All</Text>
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={Object.values(state.items)}
         renderItem={renderServiceItem}
@@ -308,7 +308,7 @@ export default function ServiceCartScreen() {
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Total Amount:</Text>
-          <Text style={styles.totalAmount}>₹{totalAmount}</Text>
+          <Text style={styles.totalAmount}>₹{computedTotalAmount}</Text>
         </View>
         <TouchableOpacity
           style={styles.checkoutButton}

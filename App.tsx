@@ -684,7 +684,8 @@ function AppTabs() {
           options={{ title: "Home" }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              if (route.state && route.state.index > 0) {
+              const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+              if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
                 e.preventDefault();
                 navigation.dispatch(
                   CommonActions.reset({
@@ -725,6 +726,12 @@ function AppTabs() {
           }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
+              // If Cart selection modal is open, close it so it can't trap the user on Cart.
+              if (cartModalVisible) {
+                setCartModalVisible(false);
+                setPendingNavigation(null);
+              }
+
               // Check if user is in Tanda location or other restricted locations
               // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
               const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
@@ -746,23 +753,20 @@ function AppTabs() {
               setServiceLoaderVisible(true);
               setTimeout(() => {
                 console.log("[Services Tab] Loader timeout completed, navigating...");
-                if (route.state && route.state.index > 0) {
-                  console.log("[Services Tab] Resetting navigation stack");
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: "ServicesTab",
-                          state: { routes: [{ name: "ServicesHome" }] },
-                        },
-                      ],
-                    })
-                  );
-                } else {
-                  console.log("[Services Tab] Navigating to ServicesTab");
-                  navigation.navigate("ServicesTab");
-                }
+                // Always reset Services stack to home so this tab press *always* lands on ServicesHome,
+                // even if the user is already focused on ServicesTab or coming from deep stacks.
+                console.log("[Services Tab] Resetting ServicesTab stack to ServicesHome");
+                navigation.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [
+                      {
+                        name: "ServicesTab",
+                        state: { routes: [{ name: "ServicesHome" }] },
+                      },
+                    ],
+                  })
+                );
                 console.log("[Services Tab] Hiding service loader");
                 setServiceLoaderVisible(false);
               }, 900);
@@ -788,7 +792,8 @@ function AppTabs() {
                   setCartModalVisible(true);
                 } else {
                   // Empty cart - go to unified cart
-                  if (route.state && route.state.index > 0) {
+                  const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+                  if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
                     e.preventDefault();
                     navigation.dispatch(
                       CommonActions.reset({
@@ -826,32 +831,43 @@ function AppTabs() {
       </Tab.Navigator>
       
       {/* Service Loader Modal */}
-      <RNModal visible={serviceLoaderVisible} transparent animationType="fade">
-        <View style={styles.serviceLoaderOverlay}>
-          <Image
-            source={require("./assets/ninjaServiceLoader.gif")}
-            style={styles.serviceLoaderImage}
-            resizeMode="contain"
-          />
-        </View>
-      </RNModal>
+      {serviceLoaderVisible && (
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <View style={styles.serviceLoaderOverlay}>
+            <Image
+              source={require("./assets/ninjaServiceLoader.gif")}
+              style={styles.serviceLoaderImage}
+              resizeMode="contain"
+            />
+          </View>
+        </RNModal>
+      )}
 
       {/* Services Unavailable Modal */}
-      <ServicesUnavailableModal
-        visible={servicesUnavailableModalVisible}
-        onClose={() => setServicesUnavailableModalVisible(false)}
-      />
+      {servicesUnavailableModalVisible && (
+        <ServicesUnavailableModal
+          visible
+          onClose={() => setServicesUnavailableModalVisible(false)}
+        />
+      )}
 
       {/* Cart Selection Modal */}
-      <CartSelectionModal
-        visible={cartModalVisible}
-        onClose={handleCartModalClose}
-        onSelectGrocery={handleSelectGrocery}
-        onSelectServices={handleSelectServices}
-        onSelectUnified={handleSelectUnified}
-        groceryItemCount={groceryTotalItems}
-        serviceItemCount={serviceTotalItems}
-      />
+      {cartModalVisible && (
+        <CartSelectionModal
+          visible
+          onClose={handleCartModalClose}
+          onSelectGrocery={handleSelectGrocery}
+          onSelectServices={handleSelectServices}
+          onSelectUnified={handleSelectUnified}
+          groceryItemCount={groceryTotalItems}
+          serviceItemCount={serviceTotalItems}
+        />
+      )}
           </View>
     </>
   );
@@ -969,10 +985,11 @@ const App: React.FC = () => {
   /* listen for token rotation → store in Firestore */
   useEffect(() => {
     const sub = Notifications.addPushTokenListener(({ type, data }) => {
-      if (type === "expo" && auth().currentUser) {
+      const uid = auth().currentUser?.uid;
+      if (type === "expo" && uid) {
         firestore()
           .collection("users")
-          .doc(auth().currentUser.uid)
+          .doc(uid)
           .set({ expoPushToken: data }, { merge: true });
       }
     });
@@ -1144,43 +1161,46 @@ const App: React.FC = () => {
       </CustomerProvider>
 
       {/* push-permission modal */}
-      <RNModal
-        visible={showNotifModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotifModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Enable Notifications</Text>
-            <Text style={styles.modalMessage}>
-              We use push notifications to keep you updated on your orders and
-              exclusive offers.
-            </Text>
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={async () => {
-                  setShowNotifModal(false);
-                  await ensurePushTokenSynced();
-                }}
-              >
-                <Text style={styles.modalButtonText}>Enable</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => setShowNotifModal(false)}
-              >
-                <Text
-                  style={[styles.modalButtonText, styles.modalCancelButtonText]}
+      {showNotifModal && (
+        <RNModal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowNotifModal(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Enable Notifications</Text>
+              <Text style={styles.modalMessage}>
+                We use push notifications to keep you updated on your orders and
+                exclusive offers.
+              </Text>
+              <View style={styles.modalButtonContainer}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={async () => {
+                    setShowNotifModal(false);
+                    await ensurePushTokenSynced();
+                  }}
                 >
-                  Later
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.modalButtonText}>Enable</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={() => setShowNotifModal(false)}
+                >
+                  <Text
+                    style={[styles.modalButtonText, styles.modalCancelButtonText]}
+                  >
+                    Later
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </RNModal>
+        </RNModal>
+      )}
       <Toast />
     </GestureHandlerRootView>
   );

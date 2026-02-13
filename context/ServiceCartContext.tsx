@@ -108,13 +108,48 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
     // Generate unique ID for this service booking
     const serviceId = `${service.bookingType}_${service.company.id}_${Date.now()}`;
 
-    // Determine unitPrice and totalPrice from what was passed in.
-    // Priority: explicit `unitPrice` -> explicit `totalPrice` (used as unit if unit missing) -> company.price -> 0
+    // Derive a reliable price.
+    // Some flows pass issues without price, or totalPrice/unitPrice as 0; we recover from issues/package/company.
     const explicitUnit = typeof (service as any).unitPrice === 'number' ? (service as any).unitPrice : undefined;
     const explicitTotal = typeof (service as any).totalPrice === 'number' ? (service as any).totalPrice : undefined;
 
-    const unitPrice = explicitUnit ?? explicitTotal ?? (typeof service.company?.price === 'number' ? service.company.price : 0);
-    const totalPrice = explicitTotal ?? unitPrice * 1;
+    const issuesTotal = (service.issues || []).reduce((sum: number, issue: any) => {
+      const obj = typeof issue === 'object' ? issue : { name: issue, price: undefined, quantity: 1 };
+      const p = typeof obj?.price === 'number'
+        ? obj.price
+        : (typeof service.company?.price === 'number' ? service.company.price : 0);
+      const q = typeof obj?.quantity === 'number' ? obj.quantity : 1;
+      return sum + p * q;
+    }, 0);
+
+    const packagePrice = Number((service as any)?.additionalInfo?.package?.price);
+    const derivedTotal =
+      (Number.isFinite(packagePrice) && packagePrice > 0)
+        ? packagePrice
+        : issuesTotal;
+
+    // Priority (best -> fallback): explicit total > 0, explicit unit > 0, derivedTotal > 0, company.price > 0, else 0.
+    const companyPrice = typeof service.company?.price === 'number' ? service.company.price : 0;
+
+    const unitPrice = (explicitUnit && explicitUnit > 0)
+      ? explicitUnit
+      : (derivedTotal > 0 ? derivedTotal : companyPrice);
+
+    const totalPrice = (explicitTotal && explicitTotal > 0)
+      ? explicitTotal
+      : (derivedTotal > 0 ? derivedTotal : unitPrice * 1);
+
+    console.log("🧾 [ServiceCart] addService pricing", {
+      serviceTitle: (service as any)?.serviceTitle,
+      explicitUnit,
+      explicitTotal,
+      issuesTotal,
+      packagePrice,
+      companyPrice,
+      computedUnitPrice: unitPrice,
+      computedTotalPrice: totalPrice,
+      issuesSample: Array.isArray((service as any)?.issues) ? (service as any).issues.slice(0, 2) : (service as any)?.issues,
+    });
 
     const newService: ServiceCartItem = {
       ...service,
