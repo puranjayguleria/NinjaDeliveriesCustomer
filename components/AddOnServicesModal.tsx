@@ -234,11 +234,26 @@ export default function AddOnServicesModal({
         };
       });
 
-      setServices(addOnServices);
-      console.log(`✅ Found ${addOnServices.length} available add-on services with pricing`);
-      console.log(`📊 Summary: ${allServices.length} total services, ${allServices.length - addOnServices.length} excluded, ${addOnServices.length} available`);
+      // Remove duplicates based on service name (case-insensitive)
+      const uniqueServices: AddOnService[] = [];
+      const seenNames = new Set<string>();
       
-      if (addOnServices.length === 0) {
+      for (const service of addOnServices) {
+        const normalizedName = service.name.toLowerCase().trim();
+        
+        if (!seenNames.has(normalizedName)) {
+          seenNames.add(normalizedName);
+          uniqueServices.push(service);
+        } else {
+          console.log(`🚫 Removing duplicate service: "${service.name}"`);
+        }
+      }
+
+      setServices(uniqueServices);
+      console.log(`✅ Found ${uniqueServices.length} unique add-on services with pricing (removed ${addOnServices.length - uniqueServices.length} duplicates)`);
+      console.log(`📊 Summary: ${allServices.length} total services, ${allServices.length - uniqueServices.length} excluded, ${uniqueServices.length} available`);
+      
+      if (uniqueServices.length === 0) {
         console.log(`ℹ️ No add-on services available - all services from this category are already booked`);
       }
     } catch (error) {

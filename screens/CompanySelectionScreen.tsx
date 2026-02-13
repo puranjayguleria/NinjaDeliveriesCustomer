@@ -428,26 +428,67 @@ export default function CompanySelectionScreen() {
 
     // Calculate price: prefer selected package price, then selected issues total, then company.price
     let packageInfo = null;
-    if (selectedCompany.packages && Array.isArray(selectedCompany.packages) && selectedPackage) {
-      // selectedPackage should be an object from the package list
+    
+    // Check if package was selected earlier (from PackageSelectionScreen)
+    if (routeSelectedPackage) {
+      packageInfo = routeSelectedPackage;
+      console.log('📦 Using package from route params:', packageInfo);
+    } 
+    // Or check if package was selected in company selection screen
+    else if (selectedCompany.packages && Array.isArray(selectedCompany.packages) && selectedPackage) {
       packageInfo = selectedPackage;
+      console.log('📦 Using package from company selection:', packageInfo);
     }
 
     // 🔧 FIX: Store issues with their individual prices and quantities
     const issuesWithPrices = Array.isArray(selectedIssues) && selectedIssues.length > 0
-      ? selectedIssues.map((issue: any) => ({
-          name: issue.name || issue,
-          price: typeof issue.price === 'number' ? issue.price : 0,
-          quantity: 1, // Initialize with quantity 1
-        }))
-      : (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map((issue: any) => ({
-          name: typeof issue === 'string' ? issue : issue.name || issue,
-          price: typeof issue === 'object' && typeof issue.price === 'number' ? issue.price : (selectedCompany?.price || 0),
-          quantity: 1, // Initialize with quantity 1
-        }));
+      ? selectedIssues.map((issue: any) => {
+          // For package bookings, don't use individual issue prices
+          // For direct services, use issue price or company price
+          const issuePrice = packageInfo 
+            ? 0  // Package price will be used as total, not per-issue
+            : (typeof issue.price === 'number' && issue.price > 0 ? issue.price : (selectedCompany?.price || 0));
+          
+          console.log(`💰 Issue pricing: "${issue.name || issue}" = ₹${issuePrice}`, {
+            isPackageBooking,
+            hasPackageInfo: !!packageInfo,
+            issuePrice: issue.price,
+            companyPrice: selectedCompany?.price,
+            finalPrice: issuePrice
+          });
+          
+          return {
+            name: issue.name || issue,
+            price: issuePrice,
+            quantity: 1,
+          };
+        })
+      : (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map((issue: any) => {
+          const issuePrice = packageInfo 
+            ? 0  // Package price will be used as total
+            : (typeof issue === 'object' && typeof issue.price === 'number' && issue.price > 0 
+                ? issue.price 
+                : (selectedCompany?.price || 0));
+          
+          return {
+            name: typeof issue === 'string' ? issue : issue.name || issue,
+            price: issuePrice,
+            quantity: 1,
+          };
+        });
 
-    const issueTotalPrice = issuesWithPrices.reduce((sum: number, issue: any) => sum + issue.price, 0);
+    // Calculate total: For packages use package price, for services sum all issue prices
+    const issueTotalPrice = issuesWithPrices.reduce((sum: number, issue: any) => sum + (issue.price * issue.quantity), 0);
     const computedPrice = packageInfo?.price ?? (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
+    
+    console.log('💰 Final pricing calculation:', {
+      packagePrice: packageInfo?.price,
+      issueTotalPrice,
+      companyPrice: selectedCompany?.price,
+      computedPrice,
+      numberOfIssues: issuesWithPrices.length,
+      issuesWithPrices
+    });
 
     // Add service to cart (include package info when available)
     addService({
@@ -590,7 +631,8 @@ export default function CompanySelectionScreen() {
                 </View>
 
                 {/* Package or Price Display */}
-                {hasPackages ? (
+                {/* Hide packages if user already selected a package earlier */}
+                {hasPackages && !isPackageBooking && !routeSelectedPackage ? (
                   <View style={styles.packageSection}>
                     <Text style={styles.packageLabel}>
                        {item.packages?.length || 0} Package{(item.packages?.length || 0) > 1 ? 's' : ''} Available
@@ -719,14 +761,7 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
                   </View>
-                ) : (
-                  item.price && (
-                    <View style={styles.priceSection}>
-                      <Text style={styles.priceLabel}>Service Price</Text>
-                      <Text style={styles.priceValue}>₹{item.price}</Text>
-                    </View>
-                  )
-                )}
+                ) : null}
 
                 {/* Additional Info */}
                 {item.rating && (
@@ -1095,30 +1130,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748b",
     lineHeight: 16,
-  },
-
-  // Price Section
-  priceSection: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 4,
-  },
-
-  priceLabel: {
-    fontSize: 13,
-    color: "#15803d",
-    fontWeight: "500",
-  },
-
-  priceValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#15803d",
   },
 
   // Meta Row

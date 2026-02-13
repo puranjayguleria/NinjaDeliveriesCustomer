@@ -151,43 +151,14 @@ export default function ServiceCartScreen() {
         <View style={styles.issuesContainer}>
           {(item.issues || []).map((issue, index) => {
             // Handle both string and object formats
-            const issueObj = typeof issue === 'object' ? issue : { name: issue, price: item.unitPrice, quantity: 1 };
-            const issueName = typeof issueObj.name === 'string' ? issueObj.name : (typeof issue === 'string' ? issue : 'Service');
-            const issuePrice = typeof issueObj.price === 'number' ? issueObj.price : item.unitPrice;
-            const issueQuantity = typeof issueObj.quantity === 'number' ? issueObj.quantity : 1;
-            const issueTotal = issuePrice * issueQuantity;
+            const issueName = typeof issue === 'object' && issue.name 
+              ? issue.name 
+              : (typeof issue === 'string' ? issue : 'Service');
             
             return (
               <View key={index} style={styles.issueRow}>
                 <View style={styles.issueInfo}>
-                  <View style={styles.issueNamePrice}>
-                    <Text style={styles.issueText}>{issueName}</Text>
-                    <Text style={styles.issuePrice}>₹{issuePrice} × {issueQuantity}</Text>
-                  </View>
-                  <Text style={styles.issueTotalPrice}>₹{issueTotal}</Text>
-                </View>
-                <View style={styles.issueActions}>
-                  <View style={styles.quantityControls}>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity - 1)}
-                    >
-                      <Ionicons name="remove" size={16} color="#666" />
-                    </TouchableOpacity>
-                    <Text style={styles.quantityText}>{issueQuantity}</Text>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity + 1)}
-                    >
-                      <Ionicons name="add" size={16} color="#666" />
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.removeIssueButton}
-                    onPress={() => handleRemoveIssue(item.id, index)}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#FF6B6B" />
-                  </TouchableOpacity>
+                  <Text style={styles.issueText}>{issueName}</Text>
                 </View>
               </View>
             );
@@ -452,7 +423,6 @@ const styles = StyleSheet.create({
   issueActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
   issueTag: {
     backgroundColor: "#f0f0f0",
@@ -466,39 +436,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#333",
     fontWeight: "600",
-    marginBottom: 2,
-  },
-  issuePrice: {
-    fontSize: 12,
-    color: "#6c757d",
-    fontWeight: "500",
-  },
-  issueTotalPrice: {
-    fontSize: 15,
-    color: "#4CAF50",
-    fontWeight: "700",
-  },
-  quantityControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#dee2e6",
-  },
-  quantityButton: {
-    padding: 6,
-    paddingHorizontal: 10,
-  },
-  quantityText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    minWidth: 24,
-    textAlign: "center",
-  },
-  removeIssueButton: {
-    padding: 4,
   },
   subtotalRow: {
     flexDirection: "row",
