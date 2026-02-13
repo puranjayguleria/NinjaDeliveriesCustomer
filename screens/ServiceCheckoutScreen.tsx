@@ -583,13 +583,40 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.issuesContainer}>
         <Text style={styles.issuesTitle}>Issues:</Text>
         <View style={styles.issuesList}>
-          {(item.issues || []).map((issue, index) => (
-            <View key={index} style={styles.issueTag}>
-              <Text style={styles.issueText}>{issue}</Text>
+          {(item.issues || []).map((issue, index) => {
+            // Handle both string and object formats for issues
+            const issueText = typeof issue === 'string' ? issue : issue?.name || 'Issue';
+            const issuePrice = typeof issue === 'object' ? issue?.price : null;
+            
+            return (
+              <View key={index} style={styles.issueTag}>
+                <Text style={styles.issueText}>
+                  {issueText}
+                  {issuePrice && ` - ₹${issuePrice}`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Add-ons Section */}
+      {(item.addOns || []).length > 0 && (
+        <View style={styles.addOnsContainer}>
+          <Text style={styles.addOnsTitle}>Add-ons:</Text>
+          {(item.addOns || []).map((addOn, index) => (
+            <View key={index} style={styles.addOnItem}>
+              <View style={styles.addOnHeader}>
+                <Text style={styles.addOnName}>{addOn.name}</Text>
+                <Text style={styles.addOnPrice}>₹{addOn.price}</Text>
+              </View>
+              {addOn.quantity && (
+                <Text style={styles.addOnQuantity}>Qty: {addOn.quantity}</Text>
+              )}
             </View>
           ))}
         </View>
-      </View>
+      )}
     </View>
   );
 
@@ -1103,6 +1130,47 @@ const styles = StyleSheet.create({
   issueText: {
     fontSize: 12,
     color: "#666",
+  },
+  addOnsContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    paddingTop: 12,
+    marginTop: 12,
+  },
+  addOnsTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#333",
+    marginBottom: 8,
+  },
+  addOnItem: {
+    backgroundColor: "#f9f9f9",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  addOnHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  addOnName: {
+    fontSize: 13,
+    color: "#333",
+    fontWeight: "500",
+    flex: 1,
+  },
+  addOnPrice: {
+    fontSize: 12,
+    color: "#4CAF50",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  addOnQuantity: {
+    fontSize: 11,
+    color: "#999",
+    marginTop: 2,
   },
   addOnButton: {
     flexDirection: "row",
