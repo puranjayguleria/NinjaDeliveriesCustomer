@@ -10,6 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
+  StatusBar,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -589,13 +590,28 @@ export default function ServiceCheckoutScreen() {
       const bookingPromises = services.map(async (service: ServiceCartItem, index: number) => {
         console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
         
+        // Debug: Log service additionalInfo to check package data
+        console.log('📦 Service additionalInfo:', JSON.stringify(service.additionalInfo, null, 2));
+        console.log('📦 Has package?', !!service.additionalInfo?.package);
+        if (service.additionalInfo?.package) {
+          console.log('📦 Package details:', {
+            id: service.additionalInfo.package.id,
+            name: service.additionalInfo.package.name,
+            price: service.additionalInfo.package.price,
+            unit: service.additionalInfo.package.unit,
+            frequency: service.additionalInfo.package.frequency
+          });
+        }
+        
         const selectedAddress = getSelectedAddress();
         console.log(`📍 Selected address for service ${index + 1}:`, selectedAddress);
         
         // Ensure all required fields have valid values
         const bookingData = {
           serviceName: service.serviceTitle || "Service",
-          workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
+          workName: (service.issues && service.issues.length > 0) 
+            ? service.issues.map((issue: any) => typeof issue === 'object' ? issue.name : issue).join(', ') 
+            : (service.serviceTitle || "Service"),
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
@@ -607,7 +623,7 @@ export default function ServiceCheckoutScreen() {
           totalPrice: service.totalPrice || 0,
           addOns: service.addOns || [],
           // Package information (if this is a package booking)
-          ...(service.additionalInfo?.package && {
+          ...(service.additionalInfo?.package ? {
             isPackage: true,
             packageId: service.additionalInfo.package.id || "",
             packageName: service.additionalInfo.package.name || "",
@@ -623,6 +639,8 @@ export default function ServiceCheckoutScreen() {
             packagePrice: service.additionalInfo.package.price || service.totalPrice || 0,
             packageDuration: service.additionalInfo.package.duration || "",
             packageDescription: service.additionalInfo.package.description || "",
+          } : {
+            isPackage: false, // Explicitly set to false for non-package bookings
           }),
           // Add location data for website access (CRITICAL for website integration)
           location: {
@@ -649,7 +667,9 @@ export default function ServiceCheckoutScreen() {
           // Add additional fields that website might expect
           bookingType: service.bookingType || 'service',
           category: service.serviceTitle || "Service",
-          subcategory: (service.issues && service.issues.length > 0) ? service.issues[0] : "",
+          subcategory: (service.issues && service.issues.length > 0) 
+            ? (typeof service.issues[0] === 'object' ? service.issues[0].name : service.issues[0])
+            : "",
         };
 
         console.log(`📋 About to create booking ${index + 1} with data:`, JSON.stringify(bookingData, null, 2));
@@ -765,15 +785,11 @@ export default function ServiceCheckoutScreen() {
                 typeof issue === "string"
                   ? issue
                   : String(issue?.name || "");
-              const issuePrice =
-                typeof issue === "object" && issue && typeof issue.price === "number"
-                  ? ` (₹${issue.price}${issue.quantity ? ` x${issue.quantity}` : ""})`
-                  : "";
 
               return (
                 <View key={index} style={styles.issueTag}>
                   <Text style={styles.issueText}>
-                    {issueText}{issuePrice}
+                    {issueText}
                   </Text>
                 </View>
               );
@@ -785,6 +801,18 @@ export default function ServiceCheckoutScreen() {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Service Checkout</Text>
+        <View style={styles.backButton} />
+      </View>
+      
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>Services ({services.length})</Text>
         
@@ -1153,12 +1181,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
-    paddingTop: 50,
   },
   backButton: {
     padding: 8,
@@ -1167,7 +1195,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#333",
-    marginLeft: 16,
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: 16,
   },
   content: {
     flex: 1,

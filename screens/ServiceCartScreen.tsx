@@ -7,6 +7,9 @@ import {
   FlatList,
   ScrollView,
   Alert,
+  SafeAreaView,
+  StatusBar,
+  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -172,88 +175,23 @@ export default function ServiceCartScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.serviceDetails}>
-        <Text style={styles.detailsTitle}>Selected Issues:</Text>
-        <View style={styles.issuesContainer}>
-          {(item.issues || []).map((issue, index) => {
-            // Handle both string and object formats
-            const issueObj = typeof issue === 'object' ? issue : { name: issue, price: item.unitPrice, quantity: 1 };
-            const issueName = typeof issueObj.name === 'string' ? issueObj.name : (typeof issue === 'string' ? issue : 'Service');
-            const issuePrice = typeof issueObj.price === 'number' ? issueObj.price : item.unitPrice;
-            const issueQuantity = typeof issueObj.quantity === 'number' ? issueObj.quantity : 1;
-            const issueTotal = issuePrice * issueQuantity;
-            
-            return (
-              <View key={index} style={styles.issueRow}>
-                <View style={styles.issueInfo}>
-                  <View style={styles.issueNamePrice}>
-                    <Text style={styles.issueText}>{issueName}</Text>
-                    <Text style={styles.issuePrice}>₹{issuePrice} × {issueQuantity}</Text>
-                  </View>
-                  <Text style={styles.issueTotalPrice}>₹{issueTotal}</Text>
-                </View>
-                <View style={styles.issueActions}>
-                  <View style={styles.quantityControls}>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity - 1)}
-                    >
-                      <Ionicons name="remove" size={16} color="#666" />
-                    </TouchableOpacity>
-                    <Text style={styles.quantityText}>{issueQuantity}</Text>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity + 1)}
-                    >
-                      <Ionicons name="add" size={16} color="#666" />
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.removeIssueButton}
-                    onPress={() => handleRemoveIssue(item.id, index)}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#FF6B6B" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+      {/* Package/Service Name and Price */}
+      <View style={styles.packageSection}>
+        <View style={styles.packageInfo}>
+          {/* Show selected issues/services */}
+          {item.issues && item.issues.length > 0 && (
+            <Text style={styles.serviceTitleText}>
+              {item.issues.map((issue, idx) => {
+                const issueName = typeof issue === 'object' ? issue.name : issue;
+                return idx === 0 ? issueName : `, ${issueName}`;
+              }).join('')}
+            </Text>
+          )}
+          {item.additionalInfo?.packageName && (
+            <Text style={styles.packageNameText}>{item.additionalInfo.packageName}</Text>
+          )}
         </View>
-        
-        {/* Subtotal for this service */}
-        <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Subtotal:</Text>
-          <Text style={styles.subtotalAmount}>₹{item.totalPrice}</Text>
-        </View>
-        
-        {/* 🔧 NEW: Show package information if available */}
-        {item.additionalInfo?.isPackageService && (
-          <View style={styles.packageInfoContainer}>
-            <Text style={styles.packageInfoTitle}>📦 Package Details:</Text>
-            <View style={styles.packageInfoRow}>
-              <Text style={styles.packageName}>{item.additionalInfo.packageName}</Text>
-              {item.additionalInfo.packageType && (
-                <View style={styles.packageTypeBadge}>
-                  <Text style={styles.packageTypeText}>{item.additionalInfo.packageType.toUpperCase()}</Text>
-                </View>
-              )}
-            </View>
-            {item.additionalInfo.packageDuration && (
-              <Text style={styles.packageDuration}>⏱️ Duration: {item.additionalInfo.packageDuration}</Text>
-            )}
-            {item.additionalInfo.packageFeatures && item.additionalInfo.packageFeatures.length > 0 && (
-              <View style={styles.packageFeatures}>
-                <Text style={styles.packageFeaturesTitle}>Includes:</Text>
-                {item.additionalInfo.packageFeatures.slice(0, 3).map((feature: string, fIndex: number) => (
-                  <Text key={fIndex} style={styles.packageFeature}>• {feature}</Text>
-                ))}
-                {item.additionalInfo.packageFeatures.length > 3 && (
-                  <Text style={styles.moreFeatures}>+{item.additionalInfo.packageFeatures.length - 3} more</Text>
-                )}
-              </View>
-            )}
-          </View>
-        )}
+        <Text style={styles.packagePrice}>₹{item.totalPrice}</Text>
       </View>
 
       <View style={styles.bookingDetails}>
@@ -278,6 +216,17 @@ export default function ServiceCartScreen() {
   if (!hasServices) {
     return (
       <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Service Cart</Text>
+          <View style={styles.backButton} />
+        </View>
         <View style={styles.emptyContainer}>
           <Ionicons name="construct-outline" size={80} color="#ccc" />
           <Text style={styles.emptyTitle}>Your service cart is empty</Text>
@@ -297,6 +246,23 @@ export default function ServiceCartScreen() {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Service Cart</Text>
+        <TouchableOpacity
+          style={styles.clearButton}
+          onPress={handleClearCart}
+        >
+          <Text style={styles.clearButtonText}>Clear All</Text>
+        </TouchableOpacity>
+      </View>
+      
       <FlatList
         data={Object.values(state.items)}
         renderItem={renderServiceItem}
@@ -337,7 +303,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
-    paddingTop: 50,
   },
   backButton: {
     padding: 8,
@@ -605,6 +570,43 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+
+  // Package Section Styles
+  packageSection: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+
+  packageInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  serviceTitleText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1e40af",
+    marginBottom: 4,
+  },
+
+  packageNameText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#3b82f6",
+  },
+
+  packagePrice: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#4CAF50",
   },
 
   // 🔧 NEW: Package Information Styles

@@ -53,6 +53,15 @@ export default function BookingConfirmationScreen() {
         setBookingData(booking);
         setTotalWithAddOns(booking.totalPrice || 0);
         
+        // Debug: Log package-related fields
+        console.log('📦 [BookingConfirmation] Booking package info:', {
+          isPackage: booking.isPackage,
+          packageName: booking.packageName,
+          packageId: booking.packageId,
+          packageType: booking.packageType,
+          bookingType: booking.bookingType
+        });
+        
         // Fetch company name if companyId exists
         if (booking.companyId) {
           try {
@@ -282,6 +291,16 @@ export default function BookingConfirmationScreen() {
       );
       return;
     }
+    
+    // Debug log to check worker info
+    console.log('🔍 [BookingConfirmation] Add-on services button clicked:', {
+      workerId: bookingData?.workerId,
+      technicianId: bookingData?.technicianId,
+      workerName: bookingData?.workerName,
+      technicianName: bookingData?.technicianName,
+      companyId: bookingData?.companyId
+    });
+    
     setShowAddOnModal(true);
   };
 
@@ -548,22 +567,53 @@ export default function BookingConfirmationScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           
-          {/* Add-On Services Button - Only show when technician is assigned */}
-          {categoryId && isTechnicianAssigned() && (
-            <TouchableOpacity 
-              style={styles.addOnButton}
-              onPress={handleAddOnServices}
-            >
-              <View style={styles.buttonIconWrapper}>
-                <Ionicons name="add-circle" size={22} color="#fff" />
-              </View>
-              <View style={styles.buttonTextWrapper}>
-                <Text style={styles.addOnButtonText}>Add More Services</Text>
-                <Text style={styles.buttonSubtext}>Enhance your booking</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </TouchableOpacity>
-          )}
+          {/* Add-On Services Button - Only show when technician is assigned and NOT a package booking */}
+          {(() => {
+            // Check if this is a package booking using multiple indicators
+            const isPackageBooking = bookingData?.isPackage === true || 
+                                     !!(bookingData?.packageName) || 
+                                     !!(bookingData?.packageId) ||
+                                     !!(bookingData?.packageType) ||
+                                     // Fallback: Check service name for package indicators
+                                     bookingData?.serviceName?.toLowerCase().includes('package') ||
+                                     bookingData?.serviceName?.toLowerCase().includes('monthly') ||
+                                     bookingData?.serviceName?.toLowerCase().includes('weekly') ||
+                                     // Specific service names that are package-based
+                                     bookingData?.serviceName?.toLowerCase().includes('gym') ||
+                                     bookingData?.serviceName?.toLowerCase().includes('yoga') ||
+                                     bookingData?.serviceName?.toLowerCase().includes('fitness');
+            
+            const shouldShowAddOn = categoryId && isTechnicianAssigned() && !isPackageBooking;
+            
+            // Debug logging
+            console.log('🔍 [BookingConfirmation] Add-on button visibility check:', {
+              categoryId,
+              isTechnicianAssigned: isTechnicianAssigned(),
+              'bookingData.isPackage': bookingData?.isPackage,
+              'bookingData.packageName': bookingData?.packageName,
+              'bookingData.packageId': bookingData?.packageId,
+              'bookingData.packageType': bookingData?.packageType,
+              'bookingData.serviceName': bookingData?.serviceName,
+              isPackageBooking,
+              shouldShowAddOn
+            });
+            
+            return shouldShowAddOn ? (
+              <TouchableOpacity 
+                style={styles.addOnButton}
+                onPress={handleAddOnServices}
+              >
+                <View style={styles.buttonIconWrapper}>
+                  <Ionicons name="add-circle" size={22} color="#fff" />
+                </View>
+                <View style={styles.buttonTextWrapper}>
+                  <Text style={styles.addOnButtonText}>Add More Services</Text>
+                  <Text style={styles.buttonSubtext}>Enhance your booking</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : null;
+          })()}
 
           {/* Primary Actions Grid */}
           <View style={styles.primaryActionsGrid}>
@@ -620,6 +670,7 @@ export default function BookingConfirmationScreen() {
         ]}
         bookingId={bookingId}
         companyId={displayData.companyId}
+        workerId={bookingData?.workerId || bookingData?.technicianId} // Pass worker ID for filtering
       />
     </View>
   );

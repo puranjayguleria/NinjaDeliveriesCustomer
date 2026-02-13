@@ -27,6 +27,7 @@ interface AddOnServicesModalProps {
   existingServices: string[]; // Services already booked
   bookingId?: string; // Add booking ID for payment integration
   companyId?: string; // Filter services by specific company
+  workerId?: string; // Filter services by specific worker (more specific than companyId)
 }
 
 export default function AddOnServicesModal({
@@ -36,7 +37,8 @@ export default function AddOnServicesModal({
   categoryId,
   existingServices,
   bookingId,
-  companyId, // Add companyId parameter
+  companyId,
+  workerId, // Add workerId parameter
 }: AddOnServicesModalProps) {
   const navigation = useNavigation<any>();
   const [services, setServices] = useState<AddOnService[]>([]);
@@ -55,19 +57,86 @@ export default function AddOnServicesModal({
       console.log(`🔧 AddOnServicesModal opened with:`, {
         categoryId,
         companyId,
+        workerId,
         existingServices,
         bookingId
       });
       fetchAddOnServices();
     }
-  }, [visible, categoryId]);
+  }, [visible, categoryId, workerId]);
 
   const fetchAddOnServices = async () => {
     try {
       setLoading(true);
       console.log(`🔧 Fetching add-on services for category: ${categoryId}`);
-      if (companyId) {
+      if (workerId) {
+        console.log(`👷 Filtering by specific worker: ${workerId}`);
+      } else if (companyId) {
         console.log(`🏢 Filtering by specific company: ${companyId}`);
+      }
+      
+      // If workerId is provided, fetch worker's assigned services first
+      let workerAssignedServiceIds: string[] = [];
+      let workerAssignedServiceNames: string[] = [];
+      let workerServicePrices: Map<string, number> = new Map(); // Map service name to price
+      
+      if (workerId) {
+        try {
+          const firestore = require('@react-native-firebase/firestore').default;
+          const workerDoc = await firestore()
+            .collection('service_workers')
+            .doc(workerId)
+            .get();
+          
+          if (workerDoc.exists) {
+            const workerData = workerDoc.data();
+            workerAssignedServiceIds = workerData?.assignedServices || [];
+            console.log(`👷 Worker assigned services (${workerAssignedServiceIds.length} items):`, workerAssignedServiceIds);
+            
+            // Fetch actual service names AND prices from service_services collection
+            console.log(`📦 Fetching service details from service_services collection...`);
+            const serviceDetailsPromises = workerAssignedServiceIds.map(async (serviceId) => {
+              try {
+                const serviceDoc = await firestore()
+                  .collection('service_services')
+                  .doc(serviceId)
+                  .get();
+                
+                if (serviceDoc.exists) {
+                  const serviceData = serviceDoc.data();
+                  const serviceName = serviceData?.serviceName || serviceData?.name;
+                  const servicePrice = serviceData?.price;
+                  
+                  if (serviceName) {
+                    console.log(`  ✅ ${serviceId} → "${serviceName}" (₹${servicePrice || 'N/A'})`);
+                    
+                    // Store price if available
+                    if (servicePrice && servicePrice > 0) {
+                      workerServicePrices.set(serviceName.toLowerCase().trim(), servicePrice);
+                    }
+                    
+                    return serviceName;
+                  }
+                }
+                console.log(`  ⚠️ ${serviceId} → No service details found`);
+                return null;
+              } catch (error) {
+                console.error(`  ❌ Error fetching ${serviceId}:`, error);
+                return null;
+              }
+            });
+            
+            const serviceNames = await Promise.all(serviceDetailsPromises);
+            workerAssignedServiceNames = serviceNames.filter(name => name !== null) as string[];
+            
+            console.log(`📋 Worker can provide these services:`, workerAssignedServiceNames);
+            console.log(`💰 Worker service prices:`, Object.fromEntries(workerServicePrices));
+          } else {
+            console.warn(`⚠️ Worker ${workerId} not found`);
+          }
+        } catch (error) {
+          console.error('Error fetching worker data:', error);
+        }
       }
       
       // Fetch all services for the category with complete details
@@ -98,24 +167,129 @@ export default function AddOnServicesModal({
         }
       }
       
-      // If companyId is provided, filter services to only those offered by this company
+      // Filter services based on worker or company
       let filteredServices = allServices;
-      if (companyId && companiesData.length > 0) {
-        console.log(`🏢 Filtering services by company ID: ${companyId}`);
-        const companyServiceNames = new Set(
-          companiesData.map(company => company.serviceName?.toLowerCase().trim()).filter(Boolean)
-        );
-        console.log(`🏢 Company offers these services:`, Array.from(companyServiceNames));
+      
+      // Priority 1: Filter by worker's assigned services (most specific)
+      if (workerId && workerAssignedServiceNames.length > 0) {
+        console.log(`👷 Filtering services by worker's assigned service names`);
+        console.log(`👷 Worker can provide ${workerAssignedServiceNames.length} services`);
+        console.log(`📊 Checking against ${allServices.length} services in category`);
+        console.log(`📊 Category services:`, allServices.map(s => s.name));
         
         filteredServices = allServices.filter(service => {
           const serviceName = service.name.toLowerCase().trim();
-          const isOffered = companyServiceNames.has(serviceName);
-          if (!isOffered) {
-            console.log(`🚫 Service "${service.name}" not offered by selected company`);
-          } else {
-            console.log(`✅ Service "${service.name}" IS offered by selected company`);
+          
+          console.log(`\n🔍 Checking service: "${service.name}"`);
+          
+          // Check if any assigned service matches this service
+          const isAssigned = workerAssignedServiceNames.some(assigned => {
+            const assignedLower = String(assigned).toLowerCase().trim();
+            
+            console.log(`  Comparing with assigned: "${assigned}"`);
+            
+            // Strategy 1: Exact match (ID or name)
+            if (assignedLower === serviceName || assignedLower === service.id) {
+              console.log(`  ✅ EXACT match!`);
+              return true;
+            }
+            
+            // Strategy 2: Partial match (name contains or is contained)
+            if (assignedLower.includes(serviceName) || serviceName.includes(assignedLower)) {
+              console.log(`  ✅ PARTIAL match!`);
+              return true;
+            }
+            
+            // Strategy 3: Normalize and compare (remove special chars, extra spaces)
+            const normalizeStr = (str: string) => str
+              .toLowerCase()
+              .replace(/[^\w\s]/g, '') // Remove special characters
+              .replace(/\s+/g, ' ')     // Normalize spaces
+              .trim();
+            
+            const normalizedService = normalizeStr(serviceName);
+            const normalizedAssigned = normalizeStr(assignedLower);
+            
+            console.log(`  Normalized: "${normalizedService}" vs "${normalizedAssigned}"`);
+            
+            if (normalizedService === normalizedAssigned) {
+              console.log(`  ✅ NORMALIZED match!`);
+              return true;
+            }
+            
+            // Strategy 4: Check if main keywords match
+            const serviceWords = normalizedService.split(' ').filter(w => w.length > 3);
+            const assignedWords = normalizedAssigned.split(' ').filter(w => w.length > 3);
+            
+            if (serviceWords.length > 0 && assignedWords.length > 0) {
+              const matchingWords = serviceWords.filter(sw => 
+                assignedWords.some(aw => sw === aw || sw.includes(aw) || aw.includes(sw))
+              );
+              
+              // If majority of words match (>60%), consider it a match
+              const matchPercentage = matchingWords.length / Math.min(serviceWords.length, assignedWords.length);
+              console.log(`  Keywords: ${matchingWords.length}/${Math.min(serviceWords.length, assignedWords.length)} match (${Math.round(matchPercentage * 100)}%)`);
+              
+              if (matchPercentage > 0.6) {
+                console.log(`  ✅ KEYWORD match!`);
+                return true;
+              }
+            }
+            
+            return false;
+          });
+          
+          if (!isAssigned) {
+            console.log(`  ❌ NO MATCH - Service NOT assigned to worker`);
           }
-          return isOffered;
+          
+          return isAssigned;
+        });
+        
+        console.log(`📊 After worker filter: ${filteredServices.length} services available`);
+      }
+      // Priority 2: Filter by company (if no worker specified)
+      else if (companyId && companiesData.length > 0) {
+        console.log(`🏢 Filtering services by company ID: ${companyId}`);
+        
+        // Create a map of service names offered by this company
+        const companyServiceNames = new Set(
+          companiesData.map(company => company.serviceName?.toLowerCase().trim()).filter(Boolean)
+        );
+        
+        // Also create a map of service IDs offered by this company
+        const companyServiceIds = new Set(
+          companiesData.map(company => company.serviceId || company.issueId).filter(Boolean)
+        );
+        
+        console.log(`🏢 Company offers these services:`, Array.from(companyServiceNames));
+        console.log(`🏢 Company service IDs:`, Array.from(companyServiceIds));
+        
+        filteredServices = allServices.filter(service => {
+          const serviceName = service.name.toLowerCase().trim();
+          
+          // Check 1: Exact service name match
+          if (companyServiceNames.has(serviceName)) {
+            console.log(`✅ Service "${service.name}" - exact name match`);
+            return true;
+          }
+          
+          // Check 2: Service ID match
+          if (companyServiceIds.has(service.id)) {
+            console.log(`✅ Service "${service.name}" - ID match`);
+            return true;
+          }
+          
+          // Check 3: Partial name match (company service name contains service name or vice versa)
+          for (const companyServiceName of companyServiceNames) {
+            if (serviceName.includes(companyServiceName) || companyServiceName.includes(serviceName)) {
+              console.log(`✅ Service "${service.name}" - partial match with "${companyServiceName}"`);
+              return true;
+            }
+          }
+          
+          console.log(`🚫 Service "${service.name}" not offered by selected company`);
+          return false;
         });
         
         console.log(`📊 After company filter: ${filteredServices.length} services available`);
@@ -206,26 +380,70 @@ export default function AddOnServicesModal({
 
       // Convert to AddOnService format with proper pricing from companies
       const addOnServices: AddOnService[] = availableServices.map(service => {
-        // Find the best price from companies offering this service
-        const serviceCompanies = companiesData.filter(company => 
-          company.serviceName && 
-          company.serviceName.toLowerCase().includes(service.name.toLowerCase())
-        );
-        
-        // Get the lowest price from available companies, or use service price, or default
         let bestPrice = service.price || 500; // Default fallback
+        const serviceName = service.name.toLowerCase().trim();
         
-        if (serviceCompanies.length > 0) {
-          const prices = serviceCompanies
-            .map(company => company.price)
-            .filter(price => price && price > 0);
+        // Priority 1: If workerId is provided, use worker's service price from service_services
+        if (workerId && workerServicePrices.size > 0) {
+          const workerPrice = workerServicePrices.get(serviceName);
           
-          if (prices.length > 0) {
-            bestPrice = Math.min(...prices);
+          if (workerPrice) {
+            bestPrice = workerPrice;
+            console.log(`💰 Service "${service.name}" - Using worker's price: ₹${bestPrice}`);
+          } else {
+            // Try partial match
+            for (const [name, price] of workerServicePrices.entries()) {
+              if (serviceName.includes(name) || name.includes(serviceName)) {
+                bestPrice = price;
+                console.log(`💰 Service "${service.name}" - Using worker's price (partial match): ₹${bestPrice}`);
+                break;
+              }
+            }
+            
+            if (bestPrice === (service.price || 500)) {
+              console.log(`  ⚠️ No worker price found for "${service.name}", using default: ₹${bestPrice}`);
+            }
           }
         }
-
-        console.log(`💰 Service "${service.name}" - Price: ₹${bestPrice} (from ${serviceCompanies.length} companies)`);
+        // Priority 2: If companyId is provided, try to get price from the specific company
+        else if (companyId && companiesData.length > 0) {
+          console.log(`💰 Looking for price of "${service.name}" from specific company ${companyId}`);
+          
+          // Find the company entry for this specific service
+          const companyService = companiesData.find(company => {
+            const companyServiceName = company.serviceName?.toLowerCase().trim();
+            
+            // Match by name
+            return companyServiceName === serviceName || 
+                   companyServiceName?.includes(serviceName) || 
+                   serviceName.includes(companyServiceName || '');
+          });
+          
+          if (companyService && companyService.price) {
+            bestPrice = companyService.price;
+            console.log(`  ✅ Found company-specific price: ₹${bestPrice}`);
+          } else {
+            console.log(`  ⚠️ No company-specific price found, using default: ₹${bestPrice}`);
+          }
+        }
+        // Priority 3: No specific worker/company, find the best price from all companies
+        else {
+          const serviceCompanies = companiesData.filter(company => 
+            company.serviceName && 
+            company.serviceName.toLowerCase().includes(service.name.toLowerCase())
+          );
+          
+          if (serviceCompanies.length > 0) {
+            const prices = serviceCompanies
+              .map(company => company.price)
+              .filter(price => price && price > 0);
+            
+            if (prices.length > 0) {
+              bestPrice = Math.min(...prices);
+              console.log(`💰 Service "${service.name}" - Best price: ₹${bestPrice} (from ${serviceCompanies.length} companies)`);
+            }
+          }
+        }
 
         return {
           ...service,
@@ -432,6 +650,7 @@ export default function AddOnServicesModal({
       // Create payment record for add-on services
       const paymentData = {
         bookingId: bookingId,
+        customerId: currentBooking.customerId || '',
         amount: totalAmount,
         paymentMethod: paymentMethod,
         paymentStatus: paymentMethod === 'cash' ? 'pending' as const : 'paid' as const,

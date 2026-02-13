@@ -125,6 +125,20 @@ export default function TrackBookingScreen() {
       );
       return;
     }
+    
+    // Debug log to check package status and worker info
+    console.log('🔍 Add-on services button clicked:', {
+      isPackage: booking?.isPackage,
+      packageName: booking?.packageName,
+      packageId: booking?.packageId,
+      bookingType: booking?.bookingType,
+      workerId: booking?.workerId,
+      technicianId: booking?.technicianId,
+      workerName: booking?.workerName,
+      technicianName: booking?.technicianName,
+      companyId: booking?.companyId
+    });
+    
     setShowAddOnModal(true);
   };
 
@@ -285,6 +299,15 @@ export default function TrackBookingScreen() {
 
       setBooking(bookingData);
       
+      // Debug: Log package-related fields
+      console.log('📦 Booking package info:', {
+        isPackage: bookingData.isPackage,
+        packageName: bookingData.packageName,
+        packageId: bookingData.packageId,
+        packageType: bookingData.packageType,
+        bookingType: bookingData.bookingType
+      });
+      
       // Try to determine category ID for add-on services
       await determineCategoryId(bookingData.serviceName);
       
@@ -352,6 +375,15 @@ export default function TrackBookingScreen() {
         // Update previous status for next comparison (set after the rejection check)
         setPreviousStatus(bookingData.status);
         setBooking(bookingData);
+        
+        // Debug: Log package-related fields in real-time updates
+        console.log('📦 Real-time booking package info:', {
+          isPackage: bookingData.isPackage,
+          packageName: bookingData.packageName,
+          packageId: bookingData.packageId,
+          packageType: bookingData.packageType,
+          bookingType: bookingData.bookingType
+        });
 
         // Try to determine category ID for add-on services
         await determineCategoryId(bookingData.serviceName);
@@ -965,27 +997,60 @@ export default function TrackBookingScreen() {
           </View>
         )}
 
-        {/* Add-On Services Button - Only show when technician is assigned and booking is active */}
-        {categoryId && isTechnicianAssigned() && isActive && (
-          <View style={styles.addOnSection}>
-            <TouchableOpacity 
-              style={styles.addOnButton}
-              onPress={handleAddOnServices}
-              activeOpacity={0.8}
-            >
-              <View style={styles.addOnButtonContent}>
-                <View style={styles.addOnIconWrapper}>
-                  <Ionicons name="add-circle" size={24} color="#fff" />
+        {/* Add-On Services Button - Only show when technician is assigned, booking is active, and NOT a package booking */}
+        {(() => {
+          // Check if this is a package booking using multiple indicators
+          // Note: isPackage can be explicitly false, so we check for true or presence of package fields
+          const isPackageBooking = booking?.isPackage === true || 
+                                   !!(booking?.packageName) || 
+                                   !!(booking?.packageId) ||
+                                   !!(booking?.packageType) ||
+                                   // Fallback: Check service name for package indicators
+                                   booking?.serviceName?.toLowerCase().includes('package') ||
+                                   booking?.serviceName?.toLowerCase().includes('monthly') ||
+                                   booking?.serviceName?.toLowerCase().includes('weekly') ||
+                                   // Specific service names that are package-based
+                                   booking?.serviceName?.toLowerCase().includes('gym') ||
+                                   booking?.serviceName?.toLowerCase().includes('yoga') ||
+                                   booking?.serviceName?.toLowerCase().includes('fitness');
+          
+          const shouldShowAddOn = categoryId && isTechnicianAssigned() && isActive && !isPackageBooking;
+          
+          // Debug logging
+          console.log('🔍 Add-on button visibility check:', {
+            categoryId,
+            isTechnicianAssigned: isTechnicianAssigned(),
+            isActive,
+            'booking.isPackage': booking?.isPackage,
+            'booking.packageName': booking?.packageName,
+            'booking.packageId': booking?.packageId,
+            'booking.packageType': booking?.packageType,
+            'booking.serviceName': booking?.serviceName,
+            isPackageBooking,
+            shouldShowAddOn
+          });
+          
+          return shouldShowAddOn ? (
+            <View style={styles.addOnSection}>
+              <TouchableOpacity 
+                style={styles.addOnButton}
+                onPress={handleAddOnServices}
+                activeOpacity={0.8}
+              >
+                <View style={styles.addOnButtonContent}>
+                  <View style={styles.addOnIconWrapper}>
+                    <Ionicons name="add-circle" size={24} color="#fff" />
+                  </View>
+                  <View style={styles.addOnTextWrapper}>
+                    <Text style={styles.addOnButtonText}>Add More Services</Text>
+                    <Text style={styles.addOnButtonSubtext}>Enhance your booking</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color="#fff" />
                 </View>
-                <View style={styles.addOnTextWrapper}>
-                  <Text style={styles.addOnButtonText}>Add More Services</Text>
-                  <Text style={styles.addOnButtonSubtext}>Enhance your booking</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={22} color="#fff" />
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
+              </TouchableOpacity>
+            </View>
+          ) : null;
+        })()}
 
         {/* Action Buttons */}
         {isActive && (
@@ -1067,7 +1132,8 @@ export default function TrackBookingScreen() {
           ...(booking?.addOns?.map(addon => addon.name) || [])
         ]}
         bookingId={bookingId}
-        companyId={booking?.companyId} // Pass company ID to filter services
+        companyId={booking?.companyId}
+        workerId={booking?.workerId || booking?.technicianId} // Pass worker ID for filtering
       />
 
       {/* Rating Success Modal */}

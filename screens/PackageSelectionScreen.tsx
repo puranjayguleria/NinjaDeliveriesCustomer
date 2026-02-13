@@ -266,6 +266,9 @@ export default function PackageSelectionScreen() {
     let packagePrice = pkg.price || 0;
     let packageDuration = pkg.duration || '';
     
+    // 🔥 NEW: Check for unit field from Firebase (month, week, year, day)
+    const packageUnit = pkg.unit || pkg.frequency || pkg.type || '';
+    
     // If package name contains price info like "1 month(s) - ₹998", parse it
     if (packageName.includes('-') && packageName.includes('₹')) {
       const parts = packageName.split('-');
@@ -276,12 +279,39 @@ export default function PackageSelectionScreen() {
       }
     }
     
-    // Determine proper duration text from duration field OR package name
+    // Determine proper duration text from unit field, duration field, OR package name
     let durationText = '';
     let fullDurationText = ''; // For showing complete duration like "3 months", "2 weeks"
     
-    // First, try to get from duration field
-    if (packageDuration) {
+    // 🔥 PRIORITY 1: Use unit field if available
+    if (packageUnit) {
+      const unitLower = packageUnit.toLowerCase();
+      
+      // Parse duration number
+      let durationCount = 1;
+      if (packageDuration) {
+        const durationNum = parseInt(packageDuration.toString());
+        if (!isNaN(durationNum) && durationNum > 0) {
+          durationCount = durationNum;
+        }
+      }
+      
+      // Determine unit type
+      if (unitLower.includes('month')) {
+        fullDurationText = durationCount === 1 ? '1 month' : `${durationCount} months`;
+      } else if (unitLower.includes('week')) {
+        fullDurationText = durationCount === 1 ? '1 week' : `${durationCount} weeks`;
+      } else if (unitLower.includes('day')) {
+        fullDurationText = durationCount === 1 ? '1 day' : `${durationCount} days`;
+      } else if (unitLower.includes('year')) {
+        fullDurationText = durationCount === 1 ? '1 year' : `${durationCount} years`;
+      } else {
+        // If unit is not recognized, use as-is
+        fullDurationText = `${durationCount} ${packageUnit}`;
+      }
+    }
+    // PRIORITY 2: Try to get from duration field
+    else if (packageDuration) {
       const durationLower = packageDuration.toString().toLowerCase();
       
       // Check for month/monthly
@@ -353,7 +383,7 @@ export default function PackageSelectionScreen() {
         fullDurationText = packageDuration;
       }
     } 
-    // If no duration field, try to extract from package name
+    // PRIORITY 3: If no duration field, try to extract from package name
     else {
       const nameLower = packageName.toLowerCase();
       
@@ -396,6 +426,7 @@ export default function PackageSelectionScreen() {
       packageName,
       price: packagePrice,
       duration: packageDuration,
+      unit: packageUnit,
       durationText,
       fullDurationText,
       isSelected,
@@ -429,9 +460,6 @@ export default function PackageSelectionScreen() {
         <View style={styles.priceContainer}>
           <Text style={styles.priceSymbol}>₹</Text>
           <Text style={styles.priceAmount}>{packagePrice}</Text>
-          {durationText && (
-            <Text style={styles.priceDuration}>/{durationText}</Text>
-          )}
           {fullDurationText && (
             <Text style={styles.priceDurationDetail}> ({fullDurationText})</Text>
           )}

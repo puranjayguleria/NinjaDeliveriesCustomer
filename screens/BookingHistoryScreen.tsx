@@ -46,43 +46,7 @@ export default function BookingHistoryScreen() {
   // On booking history open, reconcile once so pending bookings become confirmed/paid.
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
 
-  const devClearTestBookings = async () => {
-    if (!__DEV__) return;
 
-    Alert.alert(
-      'DEV: Clear test bookings',
-      'This will DELETE your Pending/Cancelled/Rejected service bookings (and linked service_payments) for the currently logged-in user. Use this only for testing.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              const result = await FirestoreService.devDeleteUserServiceBookings({
-                statuses: ['pending', 'cancelled', 'rejected', 'reject'],
-                limit: 300,
-                includePayments: true,
-              });
-
-              await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
-              Alert.alert(
-                'Cleared',
-                `Deleted ${result.deletedBookings} bookings and ${result.deletedPayments} payment records.`
-              );
-              fetchBookings(false, activeFilter);
-            } catch (e: any) {
-              console.error('DEV clear bookings failed', e);
-              Alert.alert('Failed', e?.message || 'Could not clear bookings');
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   const reconcileServicePayments = async () => {
     try {
@@ -513,17 +477,7 @@ export default function BookingHistoryScreen() {
           <Ionicons name="arrow-back" size={24} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Booking History</Text>
-        {__DEV__ ? (
-          <TouchableOpacity
-            style={styles.devClearButton}
-            onPress={devClearTestBookings}
-            accessibilityLabel="DEV clear test bookings"
-          >
-            <Ionicons name="trash-outline" size={20} color="#EF4444" />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Main Content: Sidebar + Bookings */}
@@ -691,12 +645,6 @@ const styles = StyleSheet.create({
 
   headerSpacer: {
     width: 20,
-  },
-
-  devClearButton: {
-    width: 28,
-    alignItems: "flex-end",
-    padding: 4,
   },
 
   // Main Content Layout
