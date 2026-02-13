@@ -25,8 +25,8 @@ export default function ServiceCategoryScreen() {
 
   console.log('ServiceCategoryScreen params:', { serviceTitle, categoryId });
 
-  // Multi-select states
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Quantity-based states (replacing multi-select)
+  const [serviceQuantities, setServiceQuantities] = useState<Record<string, number>>({});
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,32 +141,48 @@ export default function ServiceCategoryScreen() {
 
   const hasMoreItems = issues.length > 5;
 
-  const toggleSelect = (id: string) => {
-    // Multi-selection - toggle the id in the array
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
+  // Add service quantity
+  const addService = (id: string) => {
+    setServiceQuantities(prev => ({
+      ...prev,
+      [id]: (prev[id] || 0) + 1
+    }));
   };
 
-  const selectedIssueTitles = useMemo(() => {
-    if (!issues || !Array.isArray(issues) || selectedIds.length === 0) return [];
-    
-    return issues
-      .filter((issue) => selectedIds.includes(issue.id))
-      .map((issue) => issue.name);
-  }, [issues, selectedIds]);
+  // Remove service quantity
+  const removeService = (id: string) => {
+    setServiceQuantities(prev => {
+      const newQuantities = { ...prev };
+      if (newQuantities[id] > 1) {
+        newQuantities[id] -= 1;
+      } else {
+        delete newQuantities[id];
+      }
+      return newQuantities;
+    });
+  };
+
+  // Get selected services with quantities
+  const selectedServices = useMemo(() => {
+    return Object.entries(serviceQuantities).map(([id, quantity]) => {
+      const service = issues.find(issue => issue.id === id);
+      return { id, quantity, service };
+    }).filter(item => item.service);
+  }, [serviceQuantities, issues]);
+
+  const totalSelectedCount = useMemo(() => {
+    return Object.values(serviceQuantities).reduce((sum, qty) => sum + qty, 0);
+  }, [serviceQuantities]);
 
   const onContinue = async () => {
-    if (selectedIds.length === 0) {
-      Alert.alert("Select Services", "Please select at least one service.");
+    if (selectedServices.length === 0) {
+      Alert.alert("Select Services", "Please add at least one service.");
       return;
     }
 
     try {
-      // Get all selected services
-      const selectedIssueObjects = issues.filter(i => selectedIds.includes(i.id));
+      // Get all selected services with quantities
+      const selectedIssueObjects = selectedServices.map(item => item.service!);
       
       if (selectedIssueObjects.length === 0) {
         Alert.alert("Error", "Selected services not found.");
@@ -206,6 +222,7 @@ export default function ServiceCategoryScreen() {
       // All services are direct-price - navigate to SelectDateTime
       console.log(`💰 Navigating to SelectDateTime with ${selectedIssueObjects.length} direct-price services`);
       const serviceNames = selectedIssueObjects.map(s => s.name);
+      const selectedIds = selectedServices.map(s => s.id);
       
       navigation.navigate("SelectDateTime", {
         serviceTitle,
@@ -213,6 +230,7 @@ export default function ServiceCategoryScreen() {
         issues: serviceNames, // Service names
         selectedIssueIds: selectedIds, // ✅ Pass actual Firestore document IDs
         selectedIssues: selectedIssueObjects, // pass as array
+        serviceQuantities, // ✅ Pass quantities for each service
         allCategories: categories, // 🆕 Pass all categories for sidebar
         fromServiceServices: true,
         isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
@@ -231,13 +249,12 @@ export default function ServiceCategoryScreen() {
 
 
   const renderItem = ({ item }: any) => {
-    const checked = selectedIds.includes(item.id);
+    const quantity = serviceQuantities[item.id] || 0;
+    const hasQuantity = quantity > 0;
 
     return (
-      <TouchableOpacity
-        style={[styles.serviceCard, checked && styles.serviceCardSelected]}
-        activeOpacity={0.7}
-        onPress={() => toggleSelect(item.id)}
+      <View
+        style={[styles.serviceCard, hasQuantity && styles.serviceCardSelected]}
       >
         {/* Service Image */}
         {item.imageUrl ? (
@@ -256,16 +273,40 @@ export default function ServiceCategoryScreen() {
         
         <View style={styles.serviceTextContainer}>
           <Text style={styles.serviceTitle}>{item.name}</Text>
-          <Text style={styles.serviceSubTitle}>
-            {checked ? "Selected" : "Tap to select"}
-          </Text>
+          {item.price && (
+            <Text style={styles.servicePriceText}>₹{item.price}</Text>
+          )}
         </View>
         
-        {/* Checkbox on Right */}
-        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-          {checked && <Text style={styles.checkmark}>✓</Text>}
-        </View>
-      </TouchableOpacity>
+        {/* Quantity Controls */}
+        {!hasQuantity ? (
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => addService(item.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addButtonText}>ADD</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.quantityContainer}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => removeService(item.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.quantityButtonText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.quantityText}>{quantity}</Text>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => addService(item.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.quantityButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -333,16 +374,24 @@ export default function ServiceCategoryScreen() {
       </View>
 
       {/* Bottom Continue Button */}
-      {selectedIds.length > 0 && (
+      {totalSelectedCount > 0 && (
         <View style={styles.bottomBar}>
-          <TouchableOpacity 
-            style={styles.continueBtn} 
-            onPress={onContinue}
-          >
-            <Text style={styles.continueBtnText}>
-              Continue ({selectedIds.length} selected)
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.bottomBarContent}>
+            <View>
+              <Text style={styles.itemCountText}>
+                {totalSelectedCount} {totalSelectedCount === 1 ? 'item' : 'items'}
+              </Text>
+              <Text style={styles.serviceCountText}>
+                {selectedServices.length} {selectedServices.length === 1 ? 'service' : 'services'}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.continueBtn} 
+              onPress={onContinue}
+            >
+              <Text style={styles.continueBtnText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -405,34 +454,69 @@ const styles = StyleSheet.create({
   },
 
   serviceCardSelected: {
-    borderColor: "#0fcf0fff",
-    backgroundColor: "#f0f9ff",
+    borderColor: "#4CAF50",
+    backgroundColor: "#f0fdf4",
     elevation: 2,
   },
 
-  // Checkbox
-  checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#cbd5e1",
-    marginLeft: 14,
+  // Quantity Controls (Zomato-style)
+  addButton: {
+    backgroundColor: "white",
+    borderWidth: 1.5,
+    borderColor: "#4CAF50",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+
+  addButtonText: {
+    color: "#4CAF50",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  quantityContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4CAF50",
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    marginLeft: 12,
+  },
+
+  quantityButton: {
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "white",
-    flexShrink: 0,
+    borderRadius: 6,
   },
 
-  checkboxChecked: {
-    backgroundColor: "#1ec30fff",
-    borderColor: "#22e118ff",
-  },
-
-  checkmark: {
-    color: "white",
-    fontSize: 16,
+  quantityButtonText: {
+    color: "#4CAF50",
+    fontSize: 18,
     fontWeight: "700",
+    lineHeight: 20,
+  },
+
+  quantityText: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "700",
+    marginHorizontal: 12,
+    minWidth: 20,
+    textAlign: "center",
+  },
+
+  servicePriceText: {
+    fontSize: 14,
+    color: "#4CAF50",
+    fontWeight: "600",
+    marginTop: 2,
   },
 
   serviceIcon: {
@@ -522,9 +606,28 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 
+  bottomBarContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  itemCountText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  serviceCountText: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 2,
+  },
+
   continueBtn: {
     backgroundColor: "#4CAF50",
     paddingVertical: 14,
+    paddingHorizontal: 32,
     borderRadius: 12,
     alignItems: "center",
   },
