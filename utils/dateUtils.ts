@@ -1,5 +1,34 @@
 // src/utils/dateUtils.ts
 
+export const formatDateToDDMMYYYY = (dateString: string): string => {
+  try {
+    // Handle different date formats that might be stored
+    let date: Date;
+    
+    // If it's already in dd-mm-yyyy format, return as is
+    if (/^\d{2}-\d{2}-\d{4}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // Try parsing as ISO date or other common formats
+    date = new Date(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return dateString; // Return original if can't parse
+    }
+    
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}-${month}-${year}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return dateString; // Return original string if formatting fails
+  }
+};
+
 export const getCurrentWeekRange = (): { start: Date; end: Date } => {
     const today = new Date();
     const dayOfWeek = today.getDay(); // Sunday - Saturday : 0 - 6

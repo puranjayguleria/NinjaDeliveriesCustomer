@@ -17,6 +17,7 @@ import {
   Alert,
   AppState,
   Modal as RNModal,
+  Image,
 } from "react-native";
 import {
   NavigationContainer,
@@ -54,23 +55,32 @@ console.log('[RNFB] Native apps constant', NativeModules.RNFBAppModule?.NATIVE_F
 import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider } from "./context/LocationContext";
+import { useLocationContext } from "./context/LocationContext";
 import { OrderProvider, useOrder } from "./context/OrderContext";
+import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
 /* ──────────────────────────────────────────────────────────
    Screens
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/ProductsHomeScreen";
+import ServicesScreen from "./screens/ServicesScreen";
+import ServicesStack from "./navigation/ServicesStack";
+
 import CategoriesScreen from "./screens/CategoriesScreen";
 import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
+import CartPaymentScreen from "./screens/CartPaymentScreen";
+import UnifiedCartScreen from "./screens/UnifiedCartScreen";
+import CartSelectionModal from "./components/CartSelectionModal";
+import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
+import RazorpayWebView from "./screens/RazorpayWebView";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
 import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
 import OrderTrackingScreen from "./screens/OrderTrackingScreen";
 import RatingScreen from "./screens/RatingScreen";
 import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import ContactUsScreen from "./screens/ContactUsScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
@@ -449,7 +459,10 @@ function FeaturedStack() {
 
 const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="CartHome" component={CartScreen} />
+    <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
+    <Stack.Screen name="GroceryCart" component={CartScreen} />
+    <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
+    <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen
       name="OrderAllocating"
       component={OrderAllocatingScreen}
@@ -474,10 +487,80 @@ const ProfileStack = () => (
    ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
-  const totalItems = Object.values(cart).reduce((a, q) => a + q, 0);
+  const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
+  const { location } = useLocationContext(); // Add location context
+  const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
+  const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  
+  // Cart selection modal state
+  const [cartModalVisible, setCartModalVisible] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
+  const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
+  // Services unavailable modal state
+  const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
+  /*animation of blink and Side to Side (vibration)*/
+     const blinkAnim = useRef(new Animated.Value(1)).current;
+     const shakeAnim = useRef(new Animated.Value(0)).current;
+     // Services tab bounce animation
+     const serviceBounceAnim = useRef(new Animated.Value(0)).current;
+
+   useEffect(() => {
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(blinkAnim, {
+            toValue: 0.4,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkAnim, {
+            toValue: 1,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(shakeAnim, {
+            toValue: -3,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 3,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 0,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    ).start();
+
+    // Services tab bounce animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(serviceBounceAnim, {
+          toValue: -8,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(serviceBounceAnim, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+
 
   const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
   useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
@@ -505,8 +588,68 @@ function AppTabs() {
       },
     ]);
 
+  // Cart modal handlers
+  const handleCartModalClose = () => {
+    setCartModalVisible(false);
+    setPendingNavigation(null);
+  };
+
+  const handleSelectGrocery = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Navigate to grocery cart (original CartScreen)
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "CartFlow",
+              state: { routes: [{ name: "GroceryCart" }] },
+            },
+          ],
+        })
+      );
+    }
+    setPendingNavigation(null);
+  };
+
+  const handleSelectServices = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Show loader briefly, then navigate to services tab and service cart
+      setServiceLoaderVisible(true);
+      setTimeout(() => {
+        pendingNavigation.navigate("ServicesTab", { 
+          screen: "ServiceCart" 
+        });
+        setServiceLoaderVisible(false);
+      }, 500);
+    }
+    setPendingNavigation(null);
+  };
+
+  const handleSelectUnified = () => {
+    setCartModalVisible(false);
+    if (pendingNavigation) {
+      // Navigate to unified cart
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "CartFlow",
+              state: { routes: [{ name: "CartHome" }] },
+            },
+          ],
+        })
+      );
+    }
+    setPendingNavigation(null);
+  };
+
   return (
-    <View style={{ flex: 1 }}>
+    <>
+      <View style={{ flex: 1 }}>
       <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={({ route }) => {
@@ -515,11 +658,13 @@ function AppTabs() {
             CategoriesTab: "apps-outline",
             FeaturedTab: "star-outline",
             CartFlow: "cart-outline",
+            Profile: "person-outline",
+            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "gray",
+            tabBarInactiveTintColor: "grey",
             tabBarStyle: {
               backgroundColor: "#ffffff",
               borderTopWidth: 1,
@@ -528,20 +673,51 @@ function AppTabs() {
               paddingBottom: Platform.OS === "android" ? 10 : 30,
               elevation: 8,
             },
-            tabBarIcon: ({ color, size }) => (
-              <View style={{ width: size, height: size }}>
-                <Ionicons
-                  name={iconMap[route.name]}
-                  size={size}
-                  color={color}
-                />
-                {route.name === "CartFlow" && totalItems > 0 && (
-                  <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{totalItems}</Text>
-                  </View>
-                )}
-              </View>
-            ),
+            // tab bar icon configuration
+            tabBarIcon: ({ color, size }) => {
+              const isService = route.name === "ServicesTab";
+              const iconName = iconMap[route.name];
+
+              return (
+                <Animated.View
+                  style={{
+                    width: size + 12,
+                    height: size + 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
+                  }}
+                >
+                  {isService && (
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: -8,
+                        backgroundColor: "red",
+                        paddingHorizontal: 4,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
+                        NEW
+                      </Text>
+                    </View>
+                  )}
+
+                  <Ionicons
+                    name={iconName}
+                    size={size}
+                    color={isService ? "red" : color}
+                  />
+
+                  {route.name === "CartFlow" && totalItems > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>{totalItems}</Text>
+                    </View>
+                  )}
+                </Animated.View>
+              );
+            },
           };
         }}
       >
@@ -552,8 +728,8 @@ function AppTabs() {
           options={{ title: "Home" }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              const st: any = (route as any).state;
-              if (st && st.index > 0) {
+              const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+              if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
                 e.preventDefault();
                 navigation.dispatch(
                   CommonActions.reset({
@@ -577,7 +753,7 @@ function AppTabs() {
           component={CategoriesStack}
           options={{ title: "Categories" }}
         />
-
+        
         {/* ⿣ Featured Tab */}
         <Tab.Screen
           name="FeaturedTab"
@@ -585,7 +761,64 @@ function AppTabs() {
           options={{ title: "Featured" }}
         />
 
-        {/* ⿤ Cart (with existing login/reset logic) */}
+        {/* ⿣ Services Tab */}
+        <Tab.Screen
+          name="ServicesTab"
+          component={ServicesStack}
+          options={{
+            title: "Services",
+          }}
+          listeners={({ navigation, route }) => ({
+            tabPress: (e) => {
+              // If Cart selection modal is open, close it so it can't trap the user on Cart.
+              if (cartModalVisible) {
+                setCartModalVisible(false);
+                setPendingNavigation(null);
+              }
+
+              // Check if user is in Tanda location or other restricted locations
+              // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
+              const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
+              
+              // Debug: Log current storeId to help identify location
+              console.log("[Services Tab] Current storeId:", location?.storeId);
+              console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
+              console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
+              
+              if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
+                e.preventDefault();
+                setServicesUnavailableModalVisible(true);
+                return;
+              }
+              
+              // For non-restricted locations, show the service loader, then reset or navigate after a short delay
+              e.preventDefault();
+              console.log("[Services Tab] Showing service loader for non-restricted location");
+              setServiceLoaderVisible(true);
+              setTimeout(() => {
+                console.log("[Services Tab] Loader timeout completed, navigating...");
+                // Always reset Services stack to home so this tab press *always* lands on ServicesHome,
+                // even if the user is already focused on ServicesTab or coming from deep stacks.
+                console.log("[Services Tab] Resetting ServicesTab stack to ServicesHome");
+                navigation.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [
+                      {
+                        name: "ServicesTab",
+                        state: { routes: [{ name: "ServicesHome" }] },
+                      },
+                    ],
+                  })
+                );
+                console.log("[Services Tab] Hiding service loader");
+                setServiceLoaderVisible(false);
+              }, 900);
+            },
+          })}
+        />
+
+        {/* ⿤ Cart (with modal selection) */}
         <Tab.Screen
           name="CartFlow"
           component={CartStack}
@@ -595,28 +828,92 @@ function AppTabs() {
               if (!auth().currentUser) {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
-                // ...login prompt...
               } else {
-                const st: any = (route as any).state;
-                if (!(st && st.index > 0)) return;
+                // Show modal if both grocery and services have items, or if user wants to choose
+                if (groceryTotalItems > 0 || serviceTotalItems > 0) {
+                  e.preventDefault();
+                  setPendingNavigation(navigation);
+                  setCartModalVisible(true);
+                } else {
+                  // Empty cart - go to unified cart
+                  const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+                  if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
+                    e.preventDefault();
+                    navigation.dispatch(
+                      CommonActions.reset({
+                        index: 0,
+                        routes: [
+                          {
+                            name: "CartFlow",
+                            state: { routes: [{ name: "CartHome" }] },
+                          },
+                        ],
+                      })
+                    );
+                  }
+                }
+              }
+            },
+          })}
+        />
+
+        {/* ⿥ Profile */}
+        <Tab.Screen
+          name="Profile"
+          component={ProfileStack}
+          options={{ title: "Profile" }}
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              if (!auth().currentUser) {
+                promptLogin(navigation, "Profile");
                 e.preventDefault();
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "CartFlow",
-                        state: { routes: [{ name: "CartHome" }] },
-                      },
-                    ],
-                  })
-                );
+                // ...login prompt...
               }
             },
           })}
         />
       </Tab.Navigator>
+      
+      {/* Service Loader Modal */}
+      {serviceLoaderVisible && (
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <View style={styles.serviceLoaderOverlay}>
+            <Image
+              source={require("./assets/ninjaServiceLoader.gif")}
+              style={styles.serviceLoaderImage}
+              resizeMode="contain"
+            />
           </View>
+        </RNModal>
+      )}
+
+      {/* Services Unavailable Modal */}
+      {servicesUnavailableModalVisible && (
+        <ServicesUnavailableModal
+          visible
+          onClose={() => setServicesUnavailableModalVisible(false)}
+        />
+      )}
+
+      {/* Cart Selection Modal */}
+      {cartModalVisible && (
+        <CartSelectionModal
+          visible
+          onClose={handleCartModalClose}
+          onSelectGrocery={handleSelectGrocery}
+          onSelectServices={handleSelectServices}
+          onSelectUnified={handleSelectUnified}
+          groceryItemCount={groceryTotalItems}
+          serviceItemCount={serviceTotalItems}
+        />
+      )}
+          </View>
+    </>
   );
 }
 
@@ -732,11 +1029,11 @@ const App: React.FC = () => {
   /* listen for token rotation → store in Firestore */
   useEffect(() => {
     const sub = Notifications.addPushTokenListener(({ type, data }) => {
-      const u = auth().currentUser;
-      if (type === "expo" && u) {
+      const uid = auth().currentUser?.uid;
+      if (type === "expo" && uid) {
         firestore()
           .collection("users")
-          .doc(u.uid)
+          .doc(uid)
           .set({ expoPushToken: data }, { merge: true });
       }
     });
@@ -769,6 +1066,86 @@ const App: React.FC = () => {
     return () => unsub();
   }, []);
 
+  /* Check for pending payments on app startup - SILENT RECOVERY */
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    const checkPendingPayments = async () => {
+      try {
+        console.log('🔍 Silently checking for pending payments on app startup...');
+        
+        // Simplified query - get recent bookings with pending payment status
+        // No orderBy to avoid index requirement
+        const bookingsSnapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', user.uid)
+          .where('paymentStatus', '==', 'pending')
+          .where('paymentMethod', '==', 'online')
+          .limit(10)
+          .get();
+
+        if (bookingsSnapshot.empty) {
+          console.log('✅ No pending payments found');
+          return;
+        }
+
+        console.log(`📋 Found ${bookingsSnapshot.size} bookings with pending payments`);
+
+        // Filter to only recent bookings (last 24 hours) in memory
+        const oneDayAgo = new Date();
+        oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+        
+        const recentBookings = bookingsSnapshot.docs.filter(doc => {
+          const booking = doc.data();
+          const createdAt = booking.createdAt?.toDate?.() || new Date(booking.createdAt);
+          return createdAt > oneDayAgo;
+        });
+
+        console.log(`📋 ${recentBookings.length} recent bookings (last 24 hours)`);
+
+        // Check each booking's payment status in service_payments collection
+        for (const bookingDoc of recentBookings) {
+          const booking = bookingDoc.data();
+          const bookingId = bookingDoc.id;
+          
+          console.log(`🔍 Checking payment for booking ${bookingId}...`);
+          
+          // Check if payment was actually completed
+          const paymentSnapshot = await firestore()
+            .collection('service_payments')
+            .where('bookingId', '==', bookingId)
+            .where('paymentStatus', '==', 'paid')
+            .limit(1)
+            .get();
+
+          if (!paymentSnapshot.empty) {
+            // Payment was completed but booking status wasn't updated
+            console.log(`✅ Found completed payment for booking ${bookingId}, silently updating booking status...`);
+            
+            await firestore()
+              .collection('service_bookings')
+              .doc(bookingId)
+              .update({
+                paymentStatus: 'paid',
+                updatedAt: new Date(),
+              });
+            
+            console.log(`✅ Silently updated booking ${bookingId} payment status to paid`);
+            console.log(`📱 User stays on current screen - no navigation to confirmation`);
+          }
+        }
+        
+        console.log('✅ Silent payment recovery completed - user remains on home screen');
+      } catch (error) {
+        console.error('❌ Error checking pending payments:', error);
+      }
+    };
+
+    // Run check after a short delay to ensure Firebase is fully initialized
+    const timer = setTimeout(checkPendingPayments, 2000);
+    return () => clearTimeout(timer);
+  }, [user, firebaseReady]);
+
   if (!firebaseReady || loadingAuth || checkingOta) {
     return (
       <View style={styles.loadingContainer}>
@@ -793,10 +1170,10 @@ const App: React.FC = () => {
         <CustomerProvider>
         <CartProvider>
           <RestaurantCartProvider>
-
-          <LocationProvider>
-            <WeatherProvider>
-              <OrderProvider>
+            <ServiceCartProvider>
+              <LocationProvider>
+                <WeatherProvider>
+                  <OrderProvider>
                 <NavigationContainer>
                   <GlobalCongrats />
                   <RootStack.Navigator
@@ -820,64 +1197,61 @@ const App: React.FC = () => {
                       options={{ title: "Select Location" }}
                     />
                     <RootStack.Screen
-                      name="ContactUs"
-                      component={ContactUsScreen}
-                      options={{ title: "Contact Us", headerShown: true }}
-                    />
-                    <RootStack.Screen name="Profile" component={ProfileStack} />
-                    <RootStack.Screen
                       name="RewardScreen"
                       component={HiddenCouponCard}
                       options={{ title: "Reward Screen", headerShown: false }}
                     />
                   </RootStack.Navigator>
                 </NavigationContainer>
-                
-              </OrderProvider>
-            </WeatherProvider>
-          </LocationProvider>
+                  </OrderProvider>
+                </WeatherProvider>
+              </LocationProvider>
+            </ServiceCartProvider>
           </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
 
       {/* push-permission modal */}
-      <RNModal
-        visible={showNotifModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotifModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Enable Notifications</Text>
-            <Text style={styles.modalMessage}>
-              We use push notifications to keep you updated on your orders and
-              exclusive offers.
-            </Text>
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={async () => {
-                  setShowNotifModal(false);
-                  await ensurePushTokenSynced();
-                }}
-              >
-                <Text style={styles.modalButtonText}>Enable</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => setShowNotifModal(false)}
-              >
-                <Text
-                  style={[styles.modalButtonText, styles.modalCancelButtonText]}
+      {showNotifModal && (
+        <RNModal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowNotifModal(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Enable Notifications</Text>
+              <Text style={styles.modalMessage}>
+                We use push notifications to keep you updated on your orders and
+                exclusive offers.
+              </Text>
+              <View style={styles.modalButtonContainer}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={async () => {
+                    setShowNotifModal(false);
+                    await ensurePushTokenSynced();
+                  }}
                 >
-                  Later
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.modalButtonText}>Enable</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={() => setShowNotifModal(false)}
+                >
+                  <Text
+                    style={[styles.modalButtonText, styles.modalCancelButtonText]}
+                  >
+                    Later
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </RNModal>
+        </RNModal>
+      )}
       <Toast />
       </ErrorBoundary>
       </GestureHandlerRootView>
@@ -903,6 +1277,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+
+  serviceLoaderOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  serviceLoaderImage: {
+    width: 160,
+    height: 160,
+  },
 
   inProgressBar: {
     position: "absolute",

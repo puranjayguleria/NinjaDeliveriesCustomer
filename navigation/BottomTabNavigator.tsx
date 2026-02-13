@@ -40,8 +40,9 @@ const BottomTabNavigator: React.FC = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: "blue",
-        tabBarInactiveTintColor: "gray",
+       tabBarActiveTintColor: "#0d9488",     // Professional teal
+tabBarInactiveTintColor: "#64748b",   // Slate gray
+
         headerShown: false,
       })}
     >

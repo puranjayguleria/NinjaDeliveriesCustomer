@@ -1,5 +1,5 @@
 // screens/CartScreen.tsx
-// ✅ ONLINE payment (Razorpay) added using hardcoded Cloud Function URLs (change later to ENV in prod)
+// ✅ ONLINE payment (Razorpay TEST) added using hardcoded Cloud Function URLs (change later to ENV in prod)
 // ✅ Existing functionality preserved: delivery window checks, store-change clears cart, hotspots fee,
 //    promos, weather surge, stock batch update, orders paused modal, etc.
 // ✅ Safe payment flow: create Razorpay order (server) -> open Razorpay -> verify (server) -> create Firestore order
@@ -15,7 +15,6 @@ import {
   StyleSheet,
   Image,
   Alert,
-  Platform,
   ScrollView,
   Dimensions,
   Modal,
@@ -30,7 +29,7 @@ import {
 } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
+import firestore, { firebase } from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
@@ -43,58 +42,15 @@ import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
 import { useWeather } from "../context/WeatherContext";
-import { VALENTINE_PRODUCTS, SPECIAL_OFFERS } from "@/constants/ValentineProducts";
+import { useRestaurantCart } from "../context/RestaurantCartContext";
+import { useServiceCart } from "../context/ServiceCartContext";
+import PaymentMethodModal from "../components/PaymentMethodModal";
 
 
 
 
-// ✅ Razorpay SDK
-// NOTE: Lazy-load Razorpay to avoid app-launch crash loops if the native module
-// isn't available/initialized (e.g., OTA applied to an app binary built without Razorpay).
-type RazorpayCheckoutType = {
-  open: (options: any) => Promise<any>;
-};
-
-const getRazorpayCheckout = (): RazorpayCheckoutType | null => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require("react-native-razorpay");
-    // Some builds export as default, some via { RazorpayCheckout }, and some directly.
-    const candidate = (mod?.default || mod?.RazorpayCheckout || mod) as any;
-
-    if (!candidate || typeof candidate.open !== "function") {
-      console.warn("[Razorpay] Unexpected module shape", {
-        keys: mod ? Object.keys(mod) : null,
-        defaultType: typeof mod?.default,
-        hasNamed: Boolean(mod?.RazorpayCheckout),
-      });
-      return null;
-    }
-
-    return candidate as RazorpayCheckoutType;
-  } catch (e) {
-    console.warn("[Razorpay] Module not available", e);
-    return null;
-  }
-};
-
-const debugRazorpayAvailability = () => {
-  // Keep this minimal and safe: no secrets, just module presence/shape.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require("react-native-razorpay");
-    const candidate = (mod?.default || mod?.RazorpayCheckout || mod) as any;
-    console.log("[Razorpay] availability", {
-      hasModule: Boolean(mod),
-      keys: mod ? Object.keys(mod) : null,
-      hasDefault: Boolean(mod?.default),
-      hasNamed: Boolean(mod?.RazorpayCheckout),
-      hasOpen: typeof candidate?.open === "function",
-    });
-  } catch (e) {
-    console.log("[Razorpay] availability: require failed", String((e as any)?.message || e));
-  }
-};
+// ✅ WebView Razorpay Integration - No native module needed
+console.log("🚀 Cart system initialized - WebView Razorpay Integration");
 const api = axios.create({
   timeout: 20000,
   headers: { "Content-Type": "application/json" },
@@ -160,8 +116,8 @@ type Product = {
   discount?: number;
   image: string;
   quantity: number;
-  CGST: number;
-  SGST: number;
+  CGST?: number;
+  SGST?: number;
   cess?: number;
 
   // ✅ you already use matchingProducts in fetchRecommended
@@ -172,7 +128,7 @@ type Product = {
 type Hotspot = {
   id: string;
   name: string;
-  center: any;
+  center: firebase.firestore.GeoPoint;
   radiusKm: number;
   convenienceCharge: number;
   reasons: string[];
@@ -258,6 +214,9 @@ const CartScreen: React.FC = () => {
     addToCart,
   } = useCart();
 
+  const restaurantCart = useRestaurantCart();
+  const serviceCart = useServiceCart();
+
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState<
@@ -297,8 +256,8 @@ const CartScreen: React.FC = () => {
   const [notificationModalMessage, setNotificationModalMessage] = useState("");
 
   const [showLocationSheet, setShowLocationSheet] = useState<boolean>(false);
-  const [showPaymentSheet, setShowPaymentSheet] = useState<boolean>(false);
   const [showPausedModal, setShowPausedModal] = useState<boolean>(false);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
 
   const [navigating, setNavigating] = useState<boolean>(false);
 
@@ -321,7 +280,6 @@ const CartScreen: React.FC = () => {
       unseenChangeId.current !== null &&
       unseenChangeId.current > lastSeenChangeId.current &&
       !showLocationSheet &&
-      !showPaymentSheet &&
       isFocused
     ) {
       lastSeenChangeId.current = unseenChangeId.current;
@@ -384,22 +342,37 @@ const CartScreen: React.FC = () => {
     }
 
     if (currentStore && currentStore !== prevStoreIdRef.current) {
-      clearCart();
+      const allCartsEmpty = isAllCartsEmpty();
+      
+      // Only clear cart if switching to a different store that can't deliver to current location
+      // Allow location changes within the same delivery area without clearing cart
+      const shouldClearCart = false; // Changed: Don't automatically clear cart on location change
+      
+      if (!allCartsEmpty && shouldClearCart) {
+        // Clear all carts when store location changes and carts have items
+        clearAllCarts();
+      }
       setSelectedLocation(null);
       setShowLocationSheet(false);
-      setShowPaymentSheet(false);
       prevStoreIdRef.current = currentStore;
 
       if (isFocused) {
-        storeChangeSerial += 1;
+        if (allCartsEmpty) {
+          // Navigate directly to location selector for empty cart
+          navigation.navigate("LocationSelector", {
+            fromScreen: "Cart",
+          });
+        } else if (shouldClearCart) {
+          storeChangeSerial += 1;
         unseenChangeId.current = storeChangeSerial;
         setNotificationModalMessage(
           "Looks like you’ve switched to another store. Your cart has been emptied—please add items again."
         );
         maybeShowNotice();
+        }
       }
     }
-  }, [location.storeId, isFocused, clearCart]);
+  }, [location.storeId, isFocused, clearCart, navigation]);
 
   const animatedButtonColor = colorAnim.interpolate({
     inputRange: [0, 1],
@@ -424,7 +397,7 @@ const CartScreen: React.FC = () => {
       .where("storeId", "==", storeId)
       .get();
 
-    const list = snap.docs.map((d) => ({ ...(d.data() as Hotspot), id: d.id }));
+    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Hotspot) }));
     setHotspots(list);
   };
 
@@ -437,6 +410,7 @@ const CartScreen: React.FC = () => {
     fetchCartItems(true);
     watchPromos();
     const unsubscribe = watchUserLocations();
+    setLoading(false);
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -479,6 +453,12 @@ const CartScreen: React.FC = () => {
             "Sorry, we’re not delivering right now. Please try again during our next delivery window."
           );
         } else {
+          const allCartsEmpty = isAllCartsEmpty();
+          
+          // Only clear carts if they have items
+          if (!allCartsEmpty) {
+            clearAllCarts();
+          }
           setSelectedLocation(route.params.selectedLocation);
         }
         navigation.setParams({ selectedLocation: null });
@@ -555,7 +535,7 @@ const CartScreen: React.FC = () => {
         return;
       }
 
-  const batchPromises: Promise<any>[] = [];
+      const batchPromises: Promise<firebase.firestore.QuerySnapshot>[] = [];
       const tempIds = [...productIds];
 
       while (tempIds.length > 0) {
@@ -579,18 +559,18 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(batchPromises);
 
       const productsData: Product[] = [];
-      snapshots.forEach((snap: any) => {
-        snap.forEach((doc: any) => {
+      snapshots.forEach((snap) => {
+        snap.forEach((doc) => {
           const data = doc.data() as Product;
           if ((data.quantity ?? 0) > 0) {
             const existing = productsData.find((p) => p.id === doc.id);
             if (!existing) {
-              productsData.push({ ...data, id: doc.id });
+              productsData.push({ id: doc.id, ...data });
             } else {
               if (doc.ref.parent.path.includes("saleProducts") && data.discount) {
                 productsData[productsData.indexOf(existing)] = {
-                  ...data,
                   id: doc.id,
+                  ...data,
                 };
               }
             }
@@ -598,14 +578,6 @@ const CartScreen: React.FC = () => {
         });
       });
 
-      // Merge local Valentine products if they are in the cart
-      [...VALENTINE_PRODUCTS, ...SPECIAL_OFFERS].forEach((item) => {
-        if (cart[item.id] && !productsData.some((p) => p.id === item.id)) {
-          productsData.push(item as any);
-        }
-      });
-
-      // Filter to only items with quantity > 0 in cart
       const visible = productsData.filter((p) => (cart[p.id] ?? 0) > 0);
       setCartItems(visible);
 
@@ -625,8 +597,10 @@ const CartScreen: React.FC = () => {
     useCallback(() => {
       maybeShowNotice();
       return () => setNotificationModalVisible(false);
-    }, [showLocationSheet, showPaymentSheet])
+    }, [showLocationSheet])
   );
+
+  // Note: Removed automatic redirect for empty cart to allow manual location selection
 
   const fetchRecommended = async (baseItems: Product[]) => {
     try {
@@ -646,7 +620,7 @@ const CartScreen: React.FC = () => {
         return;
       }
 
-      const reads: Promise<any>[] = [];
+      const reads: Promise<firebase.firestore.QuerySnapshot>[] = [];
       for (let i = 0; i < idList.length; i += 10) {
         const chunk = idList.slice(i, i + 10);
         reads.push(
@@ -661,10 +635,10 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(reads);
 
       const recs: Product[] = [];
-      snapshots.forEach((snap: any) =>
-        snap.forEach((doc: any) => {
+      snapshots.forEach((snap) =>
+        snap.forEach((doc) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) > 0) recs.push({ ...data, id: doc.id });
+          if ((data.quantity ?? 0) > 0) recs.push({ id: doc.id, ...data });
         })
       );
 
@@ -796,9 +770,8 @@ const CartScreen: React.FC = () => {
           winner = { spot, distKm: km };
       });
 
-      const w = winner as any;
-      return w
-        ? { hotspot: w.spot, fee: n(w.spot.convenienceCharge) }
+      return winner
+        ? { hotspot: winner.spot, fee: n(winner.spot.convenienceCharge) }
         : { hotspot: null, fee: 0 };
     } catch (e) {
       console.error("[checkHotspot]", e);
@@ -977,12 +950,94 @@ const CartScreen: React.FC = () => {
     } else if (!selectedLocation && userLocations.length > 0) {
       setShowLocationSheet(true);
     } else {
-      setShowPaymentSheet(true);
+      // Show payment method selection modal
+      setShowPaymentModal(true);
     }
   };
 
   /***************************************
-  * RAZORPAY - helpers
+   * PAYMENT METHOD HANDLERS
+   ***************************************/
+  const handleCODPayment = async () => {
+    try {
+      setShowPaymentModal(false);
+      await handlePaymentComplete("cod");
+    } catch (error) {
+      console.error("COD payment error:", error);
+      Alert.alert("Error", "COD payment failed. Please try again.");
+    }
+  };
+
+  const handleOnlinePayment = async () => {
+    try {
+      setShowPaymentModal(false);
+      
+      // Show loading immediately
+      setNavigating(true);
+
+      // Create Razorpay order on server
+      const serverOrder = await createRazorpayOrderOnServer(finalTotal);
+      
+      // Navigate directly to RazorpayWebView for immediate payment
+      const user = auth().currentUser;
+      if (!user) throw new Error("Not logged in");
+
+      const contact = (user.phoneNumber || "").replace("+91", "");
+
+      // Navigate immediately to Razorpay WebView
+      navigation.navigate('RazorpayWebView', {
+        orderId: serverOrder.orderId,
+        amount: finalTotal,
+        keyId: serverOrder.keyId,
+        currency: serverOrder.currency || 'INR',
+        name: 'Ninja Deliveries',
+        description: 'Grocery Order Payment',
+        prefill: {
+          contact,
+          email: '',
+          name: '',
+        },
+        onSuccess: async (response: any) => {
+          try {
+            console.log('Payment successful:', response);
+            const razorpayMeta = {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            };
+            
+            // Verify payment on server
+            await verifyRazorpayPaymentOnServer(razorpayMeta);
+
+            // Complete the order
+            await handlePaymentComplete("online", razorpayMeta, serverOrder);
+          } catch (error) {
+            console.error("Payment completion error:", error);
+            Alert.alert("Error", "Payment verification failed. Please contact support.");
+          } finally {
+            setNavigating(false);
+          }
+        },
+        onFailure: (error: any) => {
+          console.error("Payment failed:", error);
+          Alert.alert("Payment Failed", error.description || "Payment was not completed. Please try again.");
+          setNavigating(false);
+        },
+      });
+    } catch (error: any) {
+      console.error("Online payment error:", error);
+      
+      if (error.code === "payment_cancelled") {
+        Alert.alert("Payment Cancelled", "You cancelled the payment. Please try again.");
+      } else {
+        Alert.alert("Payment Failed", error.message || "Failed to initiate payment. Please try again.");
+      }
+      setNavigating(false);
+    }
+  };
+
+  /***************************************
+   * RAZORPAY (TEST) - helpers
    ***************************************/
  const createRazorpayOrderOnServer = async (amountRupees: number) => {
   const user = auth().currentUser;
@@ -1026,163 +1081,40 @@ const CartScreen: React.FC = () => {
   return true;
 };
 
-
- const openRazorpayCheckout = async (
-  keyId: string,
-  orderId: string,
-  amountPaise: number,
-  currency: string
-) => {
-  debugRazorpayAvailability();
-  const user = auth().currentUser;
-  if (!user) throw new Error("Not logged in");
-
-  const contact = (user.phoneNumber || "").replace("+91", "");
-
-  const options: any = {
-    key: keyId,
-    order_id: orderId,
-    amount: String(amountPaise),
-    currency: currency || "INR",
-    name: "Ninja Deliveries",
-    description: "Order payment",
-
-    prefill: {
-      contact,
-      email: "",
-      name: "",
-      method: "upi", // ✅ this is the correct way on mobile :contentReference[oaicite:1]{index=1}
-    },
-
-    theme: { color: "#00C853" },
-  };
-
-  const RazorpayCheckout = getRazorpayCheckout();
-  if (!RazorpayCheckout?.open) {
-    throw new Error(
-      "Online payment isn't available (Razorpay not initialized). Please update the app or use Cash on Delivery."
-    );
-  }
-
-  try {
-    return (await RazorpayCheckout.open(options)) as {
-      razorpay_order_id: string;
-      razorpay_payment_id: string;
-      razorpay_signature: string;
-    };
-  } catch (e: any) {
-    // Surface a clearer message for the common native init failure case.
-    const msg = String(e?.description || e?.message || "");
-    if (/open/i.test(msg) && /null|undefined/i.test(msg)) {
-      throw new Error(
-        "Payment failed because Razorpay isn't initialized in this build. Please update the app."
-      );
-    }
-    throw e;
-  }
-};
-
-
-
   /***************************************
-   * PAYMENT
+   * PAYMENT COMPLETION HANDLER
    ***************************************/
-
-  const isUserCancelledRazorpay = (e: any) => {
-  const msg = String(e?.description || e?.message || "").toLowerCase();
-  return msg.includes("cancel") || msg.includes("dismiss") || msg.includes("closed");
-};
-  const handlePaymentOption = async (option: "cod" | "online") => {
-    setShowPaymentSheet(false);
-
-  // ✅ COD unchanged
-    if (option === "cod") {
-      try {
-        setNavigating(true);
-        const result = await handleCreateOrder("cod");
-        if (result) {
-          if (selectedPromo) {
-            setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
-            setSelectedPromo(null);
-          }
-          const { orderId, pickupCoords } = result;
-          clearCart();
-          setSelectedLocation(null);
-
-          navigation.navigate("OrderAllocating", {
-            orderId,
-            pickupCoords: {
-              latitude: Number(pickupCoords?.latitude) || 0,
-              longitude: Number(pickupCoords?.longitude) || 0,
-            },
-            dropoffCoords: {
-              latitude: Number(selectedLocation?.lat) || 0,
-              longitude: Number(selectedLocation?.lng) || 0,
-            },
-            totalCost: finalTotal,
-          });
-        }
-      } catch (error) {
-        console.error("Error during checkout:", error);
-        Alert.alert("Error", "Unable to complete checkout. Please try again.");
-      } finally {
-        setNavigating(false);
-      }
-      return;
-    }
-
-    // If Razorpay isn't available in this binary, don't proceed.
-    if (option === "online") {
-      const RazorpayCheckout = getRazorpayCheckout();
-      if (!RazorpayCheckout?.open) {
-        Alert.alert(
-          "Update required",
-          "Online payments require the latest app version. Please update Ninja Deliveries from the store and try again.\n\nYou can still place this order using Cash on Delivery."
-        );
-        return;
-      }
-    }
-
-  // ✅ ONLINE Razorpay
+  const handlePaymentComplete = async (
+    paymentMethod: "cod" | "online",
+    razorpayMeta?: RazorpayPaymentMeta,
+    serverOrder?: { orderId: string; amountPaise: number; currency: string; keyId: string }
+  ) => {
+    console.log("Payment completion handler called:", { paymentMethod, razorpayMeta, serverOrder });
     try {
-      if (!selectedLocation) {
-        Alert.alert("Select address", "Please select a delivery address first.");
-        return;
-      }
-      if (!fareData) {
-        Alert.alert("Please wait", "Pricing details are still loading.");
-        return;
-      }
-      
-
       setNavigating(true);
-
-      // 1) Create server order
-      const serverOrder = await createRazorpayOrderOnServer(finalTotal);
-
-const meta = await openRazorpayCheckout(
-  serverOrder.keyId,
-  serverOrder.orderId,
-  serverOrder.amountPaise,
-  serverOrder.currency
-);
-
-
-      // 3) Verify on server
-      await verifyRazorpayPaymentOnServer(meta);
-
-      // 4) Create Firestore order after verified
-      const result = await handleCreateOrder("online", meta,serverOrder);
-
+      const result = await handleCreateOrder(paymentMethod, razorpayMeta, serverOrder);
+      console.log("Order creation result:", result);
+      
       if (result) {
         if (selectedPromo) {
           setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
           setSelectedPromo(null);
         }
-
+        
         const { orderId, pickupCoords } = result;
-        clearCart();
+        // Clear all carts after successful order
+        clearAllCarts();
         setSelectedLocation(null);
+
+        console.log("Navigating to OrderAllocating with:", {
+          orderId,
+          pickupCoords,
+          dropoffCoords: {
+            latitude: Number(selectedLocation?.lat) || 0,
+            longitude: Number(selectedLocation?.lng) || 0,
+          },
+          totalCost: finalTotal,
+        });
 
         navigation.navigate("OrderAllocating", {
           orderId,
@@ -1197,17 +1129,13 @@ const meta = await openRazorpayCheckout(
           totalCost: finalTotal,
         });
       }
-    } catch (e: any) {
-  console.error("[ONLINE PAYMENT]", e);
-  const raw = e?.description ?? e?.error?.description ?? e?.message ?? e;
-  const msg =
-    typeof raw === "string"
-      ? raw
-      : "Payment was not completed. If money was deducted, it will be auto-refunded by your bank.";
-  Alert.alert("Payment Failed", msg);
-} finally {
-  setNavigating(false);
-}
+    } catch (error) {
+      console.error("Error during checkout:", error);
+      Alert.alert("Error", "Unable to complete checkout. Please try again.");
+      throw error; // Re-throw to let CartPaymentScreen handle the error display
+    } finally {
+      setNavigating(false);
+    }
   };
 
   /***************************************
@@ -1459,6 +1387,25 @@ const meta = await openRazorpayCheckout(
     );
   };
 
+  /**
+   * Clear grocery and services carts when location changes
+   * Keep restaurant cart as it's independent of location
+   */
+  const clearAllCarts = () => {
+    clearCart(); // Clear grocery cart
+    serviceCart.clearCart(); // Clear services cart
+  };
+
+  /**
+   * Check if all carts are empty
+   */
+  const isAllCartsEmpty = () => {
+    const groceryItemsCount = Object.keys(cart).length;
+    const serviceItemsCount = serviceCart.totalItems;
+    const restaurantItemsCount = restaurantCart.totalItems;
+    return groceryItemsCount === 0 && serviceItemsCount === 0 && restaurantItemsCount === 0;
+  };
+
   const handleDeleteLocation = async (locToDelete: any) => {
     try {
       const currentUser = auth().currentUser;
@@ -1506,6 +1453,16 @@ const meta = await openRazorpayCheckout(
               lng: item.lng,
               storeId: nearest.id,
             };
+
+            const allCartsEmpty = isAllCartsEmpty();
+            
+            // Don't clear carts when changing location - allow delivery to new address
+            // Only clear if explicitly switching to incompatible store
+            const shouldClearCart = false; // Changed: Don't clear cart on location change
+            
+            if (!allCartsEmpty && shouldClearCart) {
+              clearAllCarts();
+            }
 
             setSelectedLocation(fullLocation);
             updateLocation(fullLocation);
@@ -1563,8 +1520,8 @@ const meta = await openRazorpayCheckout(
             <Loader />
           </View>
         ) : Object.keys(cart).length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Your cart is empty.</Text>
+          <View style={styles.loaderContainer}>
+            <Loader />
           </View>
         ) : (
           <>
@@ -1881,7 +1838,7 @@ const meta = await openRazorpayCheckout(
                     : isOrderAcceptancePaused
                     ? "Orders Paused"
                     : selectedLocation
-                    ? "Pay Now"
+                    ? "Proceed to Payment"
                     : "Checkout"}
                 </Text>
               </AnimatedTouchable>
@@ -1981,60 +1938,9 @@ const meta = await openRazorpayCheckout(
           </View>
         </Modal>
 
-        {/* PAYMENT OPTIONS MODAL */}
-        <Modal
-          visible={showPaymentSheet}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowPaymentSheet(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.bottomSheet}>
-              <Text style={styles.bottomSheetTitle}>Payment Options</Text>
-
-              {/* COD */}
-              <TouchableOpacity
-                style={[
-                  styles.paymentOptionButton,
-                  { backgroundColor: "#6fdccf" },
-                ]}
-                onPress={() => handlePaymentOption("cod")}
-              >
-                <Text style={styles.paymentOptionText}>Pay on Delivery</Text>
-              </TouchableOpacity>
-
-              {/* ✅ ONLINE */}
-              <TouchableOpacity
-                style={[
-                  styles.paymentOptionButton,
-                  { backgroundColor: "#00C853" },
-                ]}
-                onPress={() => handlePaymentOption("online")}
-              >
-                <Text
-                  style={[
-                    styles.paymentOptionText,
-                    { color: "#fff", fontWeight: "800" },
-                  ]}
-                >
-                  Pay Online
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowPaymentSheet(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
         <NotificationModal
           visible={notificationModalVisible}
           message={notificationModalMessage}
-          onConfirm={() => setNotificationModalVisible(false)}
           onClose={() => setNotificationModalVisible(false)}
         />
 
@@ -2042,6 +1948,15 @@ const meta = await openRazorpayCheckout(
           visible={errorModalVisible}
           message={errorModalMessage}
           onClose={() => setErrorModalVisible(false)}
+        />
+
+        <PaymentMethodModal
+          visible={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSelectCOD={handleCODPayment}
+          onSelectOnline={handleOnlinePayment}
+          totalAmount={finalTotal}
+          loading={navigating}
         />
       </View>
     </SafeAreaView>
@@ -2296,15 +2211,6 @@ const styles = StyleSheet.create({
   deleteLocationButton: { paddingHorizontal: 8, paddingVertical: 4 },
   addressItemLabel: { fontSize: 13, fontWeight: "700", color: "#333" },
   addressItemAddress: { fontSize: 12, color: "#777" },
-
-  paymentOptionButton: {
-    backgroundColor: "#6fdccf",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  paymentOptionText: { color: "#1f4f4f", fontSize: 14, fontWeight: "600" },
 
   promoOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 8, justifyContent: "center", alignItems: "center", zIndex: 10 },
   lockContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 251, 251, 0.63)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 4 },

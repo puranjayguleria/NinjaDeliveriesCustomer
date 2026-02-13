@@ -170,7 +170,7 @@ export const RestaurantCartProvider = ({ children }: { children: ReactNode }) =>
       totalItems,
       totalAmount,
     }),
-    [state, totalItems, totalAmount]
+    [state]
   );
 
   return (

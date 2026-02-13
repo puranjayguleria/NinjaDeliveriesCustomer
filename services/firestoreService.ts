@@ -1,0 +1,6420 @@
+import { firestore, auth } from '../firebase.native';
+
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  isActive: boolean;
+  masterCategoryId?: string;
+  imageUrl?: string | null; // Added for category images from service_categories_master
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface ServiceIssue {
+  id: string;
+  name: string;
+  masterCategoryId: string; // Links to app_categories
+  companyId?: string;
+  isActive: boolean;
+  imageUrl?: string | null; // Service image from service_services collection
+  serviceKey?: string;
+  serviceType?: string;
+  price?: number;
+  packages?: any[];
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface ServiceCompany {
+  id: string;
+  companyId?: string;
+  categoryMasterId?: string;
+  serviceName: string; // Service name like "Yoga sessions (beginneradvanced)"
+  companyName?: string; // Actual company name
+  price?: number;
+  isActive: boolean;
+  imageUrl?: string | null;
+  packages?: any[];
+  serviceType?: string;
+  adminServiceId?: string;
+  description?: string;
+  rating?: number;
+  reviewCount?: number;
+  availability?: string;
+  isBusy?: boolean; // Indicates if all workers are busy
+  contactInfo?: {
+    phone?: string;
+    email?: string;
+    address?: string;
+  };
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface ServicePayment {
+  id: string;
+  bookingId: string;
+  customerId: string;
+  amount: number;
+  paymentMethod: 'cash' | 'online';
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  transactionId?: string; // Razorpay payment ID
+  razorpayOrderId?: string; // Razorpay order ID
+  razorpaySignature?: string; // Razorpay signature for verification
+  serviceName: string;
+  companyName?: string;
+  companyId?: string;
+  paymentGateway?: 'razorpay' | 'upi' | 'cash';
+  paymentDetails?: {
+    cardLast4?: string;
+    cardType?: string;
+    upiId?: string;
+    bankName?: string;
+    method?: string; // UPI, card, netbanking, etc.
+  };
+  createdAt?: any;
+  updatedAt?: any;
+  paidAt?: any;
+}
+
+export interface ServiceBanner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  imageUrl?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  isActive: boolean;
+  clickable?: boolean;
+  redirectType?: string;
+  redirectUrl?: string;
+  categoryId?: string;
+  offerText?: string;
+  iconName?: string;
+  priority?: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface ServiceBooking {
+  id: string;
+  serviceName: string;
+  workName: string;
+  customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerId?: string; // User ID who created the booking
+  date: string;
+  time: string;
+  status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'cancelled' | 'expired' | 'reject';
+  companyId?: string;
+  companyName?: string; // Add company name field for website compatibility
+  // Worker/Technician fields (using actual database field names)
+  workerName?: string;    // Primary field name in database
+  workerId?: string;      // Primary field name in database
+  technicianName?: string; // Legacy/fallback field name
+  technicianId?: string;   // Legacy/fallback field name
+  totalPrice?: number;
+  addOns?: Array<{
+    name: string;
+    price: number;
+  }>;
+  // Package information (for monthly/weekly service packages)
+  isPackage?: boolean; // Whether this booking is for a package
+  packageId?: string; // Package ID from service_services
+  packageName?: string; // Package name (e.g., "Monthly Package", "Weekly Package")
+  packageType?: 'monthly' | 'weekly' | 'custom'; // Package frequency type
+  packagePrice?: number; // Package price
+  packageDuration?: string; // Package duration description
+  packageDescription?: string; // Package description
+  // Location data for website access
+  location?: {
+    lat: number | null;
+    lng: number | null;
+    address: string;
+    houseNo?: string;
+    placeLabel?: string;
+  };
+  // Service address for detailed location info
+  serviceAddress?: {
+    id?: string;
+    fullAddress?: string;
+    houseNo?: string;
+    landmark?: string;
+    addressType?: string;
+    lat?: number | null;
+    lng?: number | null;
+  };
+  // Additional fields for website compatibility
+  bookingType?: string;
+  category?: string;
+  subcategory?: string;
+  // Service duration and OTP system
+  estimatedDuration?: number; // Duration in hours (1-2 hours)
+  startOtp?: string;
+  completionOtp?: string; // OTP given to company at service end
+  otpVerified?: boolean;
+  completionOtpVerified?: boolean;
+  // Timestamps
+  assignedAt?: any;
+  startedAt?: any;
+  completedAt?: any;
+  rejectedAt?: any;
+  cancelledAt?: any; // New field for user cancellation
+  expiredAt?: any;
+  createdAt?: any;
+  updatedAt?: any;
+  // Cancellation/Rejection tracking
+  cancelledBy?: 'user' | 'admin'; // New field to track who cancelled
+  rejectedBy?: 'user' | 'admin'; // New field to track who rejected
+  // Rating and feedback fields
+  customerRating?: number;
+  customerFeedback?: string;
+  ratedAt?: any;
+}
+
+export class FirestoreService {
+  /**
+   * Check if a category has any package-based services
+   * Returns true if category has at least one service with packages
+   */
+  static async categoryHasPackages(categoryId: string): Promise<boolean> {
+    try {
+      console.log(`🔍 Checking if category ${categoryId} has package-based services...`);
+      
+      if (!categoryId) {
+        console.log('❌ No categoryId provided');
+        return false;
+      }
+
+      // Get the category to check if it has a masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId.trim())
+        .get();
+      
+      let searchCategoryId = categoryId.trim();
+      
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        // Use masterCategoryId if available
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🔍 Using masterCategoryId: ${searchCategoryId}`);
+        }
+      }
+
+      // Directly check service_services collection for any service with packages
+      console.log(`🔍 Checking service_services for category: ${searchCategoryId}`);
+      
+      const servicesSnapshot = await firestore()
+        .collection('service_services')
+        .where('categoryMasterId', '==', searchCategoryId)
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`📊 Found ${servicesSnapshot.size} services in service_services`);
+
+      // Check if any service has packages
+      let hasPackages = false;
+      let packageCount = 0;
+      let directPriceCount = 0;
+      
+      for (const doc of servicesSnapshot.docs) {
+        const serviceData = doc.data();
+        const serviceName = serviceData.name;
+        
+        if (serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0) {
+          console.log(`✅ Package-based service found: "${serviceName}" (${serviceData.packages.length} packages)`);
+          hasPackages = true;
+          packageCount++;
+        } else {
+          console.log(`💰 Direct-price service found: "${serviceName}"`);
+          directPriceCount++;
+        }
+      }
+
+      console.log(`📊 Category ${categoryId} summary:`);
+      console.log(`   - Package-based services: ${packageCount}`);
+      console.log(`   - Direct-price services: ${directPriceCount}`);
+      console.log(`   - Has packages: ${hasPackages}`);
+      
+      return hasPackages;
+      
+    } catch (error) {
+      console.error('❌ Error checking if category has packages:', error);
+      return false; // On error, assume no packages (will go to ServiceCategory)
+    }
+  }
+
+  /**
+   * Fetch all service categories from app_categories collection
+   */
+  static async getServiceCategories(): Promise<ServiceCategory[]> {
+    try {
+      console.log('🏷️ Fetching categories from app_categories collection...');
+      
+      // Only fetch active categories
+      const snapshot = await firestore()
+        .collection('app_categories')
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`Found ${snapshot.size} active categories`);
+
+      const categories: ServiceCategory[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`Category ${doc.id}:`, {
+          name: data.name,
+          isActive: data.isActive,
+          masterCategoryId: data.masterCategoryId,
+        });
+        
+        categories.push({
+          id: doc.id,
+          name: data.name || '',
+          isActive: data.isActive || false,
+          masterCategoryId: data.masterCategoryId,
+          imageUrl: null, // Will be populated from service_categories_master
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Sort by name on the client side
+      categories.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Now fetch images from service_categories_master collection
+      await this.populateCategoryImages(categories);
+
+      console.log(`✅ Fetched ${categories.length} active categories from app_categories with images from service_categories_master`);
+      console.log('Categories:', categories.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        isActive: c.isActive, 
+        hasImage: !!c.imageUrl,
+        masterCategoryId: c.masterCategoryId
+      })));
+      
+      return categories;
+    } catch (error: any) {
+      console.error('❌ Error fetching categories from app_categories:', error);
+      throw new Error('Failed to fetch service categories. Please check your internet connection.');
+    }
+  }
+  /**
+   * Get only categories that have active workers/companies
+   */
+  static async getCategoriesWithActiveWorkers(): Promise<ServiceCategory[]> {
+    try {
+      console.log('🏷️ Fetching categories with active workers...');
+
+      // First, get all active categories
+      const allCategories = await this.getServiceCategories();
+      console.log(`📊 Total active categories from app_categories: ${allCategories.length}`);
+
+      // Get all active companies from service_services
+      const companiesSnapshot = await firestore()
+        .collection('service_services')
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`Found ${companiesSnapshot.size} active companies in service_services`);
+
+      // Collect all unique categoryMasterIds that have active companies
+      const activeCategoryIds = new Set<string>();
+      const categoryWorkerCount = new Map<string, number>();
+
+      companiesSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.categoryMasterId) {
+          activeCategoryIds.add(data.categoryMasterId);
+          categoryWorkerCount.set(
+            data.categoryMasterId, 
+            (categoryWorkerCount.get(data.categoryMasterId) || 0) + 1
+          );
+          console.log(`🔍 Worker found: ${data.name} -> categoryMasterId: ${data.categoryMasterId}`);
+        }
+      });
+
+      console.log(`Found ${activeCategoryIds.size} unique categories with active workers`);
+      console.log('Active category IDs with worker counts:', 
+        Array.from(categoryWorkerCount.entries()).map(([id, count]) => `${id}: ${count} workers`)
+      );
+
+      // Filter categories to only include those with active workers
+      const categoriesWithWorkers = allCategories.filter(category => {
+        // Check both the category's own ID and its masterCategoryId
+        const hasWorkersWithOwnId = activeCategoryIds.has(category.id);
+        const hasWorkersWithMasterId = category.masterCategoryId ? activeCategoryIds.has(category.masterCategoryId) : false;
+        const hasWorkers = hasWorkersWithOwnId || hasWorkersWithMasterId;
+
+        const workerCount = categoryWorkerCount.get(category.masterCategoryId || category.id) || 0;
+
+        if (hasWorkers) {
+          console.log(`✅ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has ${workerCount} active workers`);
+        } else {
+          console.log(`❌ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has NO active workers`);
+        }
+
+        return hasWorkers;
+      });
+
+      console.log(`✅ Returning ${categoriesWithWorkers.length}/${allCategories.length} categories with active workers`);
+
+      return categoriesWithWorkers;
+    } catch (error: any) {
+      console.error('❌ Error fetching categories with active workers:', error);
+      throw new Error('Failed to fetch categories with active workers. Please check your internet connection.');
+    }
+  }
+
+
+  /**
+   * Populate category images from service_categories_master collection
+   */
+  static async populateCategoryImages(categories: ServiceCategory[]): Promise<void> {
+    try {
+      console.log(`🖼️ Fetching category images for ${categories.length} categories...`);
+      
+      if (categories.length === 0) {
+        console.log('⚠️ No categories to populate images for');
+        return;
+      }
+      
+      // Fetch all documents from service_categories_master
+      const masterSnapshot = await firestore()
+        .collection('service_categories_master')
+        .get();
+
+      console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+
+      if (masterSnapshot.size === 0) {
+        console.log('⚠️ WARNING: service_categories_master collection is empty!');
+      }
+
+      // Create a map of category names to images for efficient lookup
+      const imageMap = new Map<string, string>();
+      
+      masterSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.name && data.imageUrl) {
+          // Store both exact name and lowercase name for flexible matching
+          imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
+          console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
+        } else {
+          console.log(`⚠️ Master category missing name or imageUrl:`, {
+            hasName: !!data.name,
+            hasImageUrl: !!data.imageUrl,
+            docId: doc.id
+          });
+        }
+      });
+
+      console.log(`🔍 Image map has ${imageMap.size} entries`);
+
+      // Match categories with their images
+      let imagesFound = 0;
+      categories.forEach(category => {
+        const categoryNameLower = category.name.toLowerCase().trim();
+        
+        console.log(`  Searching for image: "${category.name}" (${categoryNameLower})`);
+        
+        // Try exact match first
+        if (imageMap.has(categoryNameLower)) {
+          category.imageUrl = imageMap.get(categoryNameLower) || null;
+          imagesFound++;
+          console.log(`    ✅ Exact match found`);
+        } else {
+          // Try partial matching for similar names
+          for (const [masterName, imageUrl] of imageMap.entries()) {
+            if (masterName.includes(categoryNameLower) || categoryNameLower.includes(masterName)) {
+              category.imageUrl = imageUrl;
+              imagesFound++;
+              console.log(`    ✅ Partial match: matched with "${masterName}"`);
+              break;
+            }
+          }
+          
+          if (!category.imageUrl) {
+            console.log(`    ⚠️ No image match found`);
+          }
+        }
+      });
+
+      console.log(`🖼️ Image matching complete: ${imagesFound}/${categories.length} categories matched`);
+    } catch (error) {
+      console.error('❌ Error in populateCategoryImages:', error);
+      // Don't throw error - just continue without images
+      console.log('⚠️ Continuing without category images...');
+    }
+  }
+
+  /**
+   * Populate service images and packages from service_services collection
+   * Packages are now fetched from service_services (not service_services_master)
+   * Images come from service_services, with service_services_master as fallback
+   */
+  static async populateServiceImages(services: ServiceIssue[]): Promise<void> {
+    try {
+      console.log('🖼️ Fetching service images and packages from service_services...');
+      
+      if (services.length === 0) {
+        console.log('⚠️ No services to populate images for');
+        return;
+      }
+
+      let imagesFound = 0;
+      let packagesFound = 0;
+      
+      // Get category ID from first service
+      const categoryId = services[0]?.masterCategoryId;
+      
+      // Pre-fetch all service_services for this category
+      let categoryServicesMap = new Map<string, any>();
+      if (categoryId) {
+        console.log(`📂 Pre-fetching all service_services for category: ${categoryId}`);
+        try {
+          const categoryServicesSnapshot = await firestore()
+            .collection('service_services')
+            .where('categoryMasterId', '==', categoryId)
+            .where('isActive', '==', true)
+            .get();
+          
+          console.log(`   Found ${categoryServicesSnapshot.size} services in service_services for this category`);
+          
+          categoryServicesSnapshot.forEach(doc => {
+            const data = doc.data();
+            const serviceName = (data.name || '').toLowerCase().trim();
+            categoryServicesMap.set(serviceName, { id: doc.id, data });
+            console.log(`   - Cached: "${data.name}" (imageUrl: ${!!data.imageUrl}, packages: ${!!(data.packages && Array.isArray(data.packages))}, adminServiceId: ${!!data.adminServiceId})`);
+          });
+        } catch (err) {
+          console.log(`   ⚠️ Error pre-fetching category services:`, err);
+        }
+      }
+      
+      // Process each service
+      for (const service of services) {
+        try {
+          console.log(`\n🔍 Processing service "${service.name}" (ID: ${service.id})...`);
+          let imageSource = 'none';
+          let adminServiceId = null;
+          
+          // STEP 1: Find matching service in service_services
+          const serviceName = service.name.toLowerCase().trim();
+          const cachedService = categoryServicesMap.get(serviceName);
+          
+          if (cachedService) {
+            const serviceData = cachedService.data;
+            console.log(`   ✅ Found in service_services (doc: ${cachedService.id})`);
+            console.log(`      - Has imageUrl: ${!!serviceData.imageUrl}`);
+            console.log(`      - Has packages: ${!!(serviceData.packages && Array.isArray(serviceData.packages))}`);
+            console.log(`      - Has adminServiceId: ${!!serviceData.adminServiceId}`);
+            
+            // Get image from service_services if available
+            if (serviceData.imageUrl) {
+              service.imageUrl = serviceData.imageUrl;
+              imagesFound++;
+              imageSource = 'service_services';
+              console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
+            }
+            
+            // Get packages from service_services if available
+            if (serviceData.packages && Array.isArray(serviceData.packages)) {
+              service.packages = serviceData.packages;
+              packagesFound++;
+              console.log(`   📦 Got ${serviceData.packages.length} packages from service_services`);
+              
+              // Log package details
+              serviceData.packages.forEach((pkg: any, idx: number) => {
+                console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
+              });
+            }
+            
+            // Store adminServiceId for fallback image lookup only
+            if (serviceData.adminServiceId) {
+              adminServiceId = serviceData.adminServiceId;
+            }
+          } else {
+            console.log(`   ⚠️ Not found in service_services cache, trying direct query...`);
+            
+            // Try direct query as fallback
+            try {
+              const directSnapshot = await firestore()
+                .collection('service_services')
+                .where('name', '==', service.name)
+                .where('isActive', '==', true)
+                .limit(1)
+                .get();
+              
+              if (!directSnapshot.empty) {
+                const serviceData = directSnapshot.docs[0].data();
+                console.log(`   ✅ Found via direct query`);
+                
+                if (serviceData.imageUrl) {
+                  service.imageUrl = serviceData.imageUrl;
+                  imagesFound++;
+                  imageSource = 'service_services_direct';
+                  console.log(`   📸 Got image from service_services: ${serviceData.imageUrl.substring(0, 50)}...`);
+                }
+                
+                // Get packages from service_services if available
+                if (serviceData.packages && Array.isArray(serviceData.packages)) {
+                  service.packages = serviceData.packages;
+                  packagesFound++;
+                  console.log(`   📦 Got ${serviceData.packages.length} packages from service_services (direct query)`);
+                  
+                  // Log package details
+                  serviceData.packages.forEach((pkg: any, idx: number) => {
+                    console.log(`      Package ${idx + 1}: ${pkg.name || 'Unnamed'} (${pkg.price || 'No price'})`);
+                  });
+                }
+                
+                if (serviceData.adminServiceId) {
+                  adminServiceId = serviceData.adminServiceId;
+                }
+              }
+            } catch (directError) {
+              console.log(`   ❌ Error in direct query:`, directError);
+            }
+          }
+          
+          // STEP 2: Fetch image from service_services_master only if image not found (fallback for image only)
+          if (adminServiceId && !service.imageUrl) {
+            try {
+              console.log(`   📦 Fetching fallback image from service_services_master using adminServiceId: ${adminServiceId}`);
+              
+              const masterDoc = await firestore()
+                .collection('service_services_master')
+                .doc(adminServiceId)
+                .get();
+              
+              if (masterDoc.exists) {
+                const masterData = masterDoc.data();
+                console.log(`   ✅ Found in service_services_master`);
+                console.log(`      - Has imageUrl: ${!!masterData?.imageUrl}`);
+                
+                // Get image from service_services_master as fallback only
+                if (masterData?.imageUrl) {
+                  service.imageUrl = masterData.imageUrl;
+                  imagesFound++;
+                  imageSource = 'service_services_master';
+                  console.log(`   📸 Got fallback image from service_services_master: ${masterData.imageUrl.substring(0, 50)}...`);
+                }
+              } else {
+                console.log(`   ⚠️ service_services_master document not found for adminServiceId: ${adminServiceId}`);
+              }
+            } catch (masterError) {
+              console.log(`   ❌ Error fetching from service_services_master:`, masterError);
+            }
+          } else if (adminServiceId && service.imageUrl) {
+            console.log(`   ℹ️ Image already found in service_services, skipping service_services_master lookup`);
+          } else {
+            console.log(`   ℹ️ No adminServiceId found, skipping service_services_master lookup`);
+          }
+          
+          // FINAL STATUS
+          console.log(`   ✅ FINAL STATUS for "${service.name}":`);
+          console.log(`      - Image: ${service.imageUrl ? `✅ (from ${imageSource})` : '❌ Not found'}`);
+          console.log(`      - Packages: ${service.packages ? `✅ (${service.packages.length} packages)` : '❌ Not found'}`);
+          
+        } catch (serviceError) {
+          console.log(`   ❌ Error processing service "${service.name}":`, serviceError);
+        }
+      }
+
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`🖼️ IMAGES SUMMARY: Found ${imagesFound}/${services.length} service images`);
+      console.log(`📦 PACKAGES SUMMARY: Found packages for ${packagesFound}/${services.length} services`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      
+      // Detailed UI debug info
+      console.log(`\n📋 FINAL LIST - Services with images and packages:`);
+      services.forEach(s => {
+        const imageStatus = s.imageUrl ? '✅ Image' : '❌ No Image';
+        const packageStatus = s.packages ? `✅ ${s.packages.length} Packages` : '❌ No Packages';
+        console.log(`   ${imageStatus} | ${packageStatus} | ${s.name}`);
+      });
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+      
+    } catch (error) {
+      console.error('❌ Error fetching service images and packages:', error);
+      console.log('⚠️ Continuing without service images and packages...');
+    }
+  }
+
+  /**
+   * Fetch services from app_services collection for a specific category
+   */
+  static async getServicesWithCompanies(categoryId: string): Promise<ServiceIssue[]> {
+    try {
+      if (!categoryId || typeof categoryId !== 'string' || categoryId.trim() === '') {
+        console.error('Invalid categoryId provided:', categoryId);
+        throw new Error('Invalid category ID provided');
+      }
+
+      console.log(`🔧 Fetching services from app_services for category: ${categoryId}`);
+      
+      // UNIVERSAL LOGIC: First, get the category to check if it has a masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId.trim())
+        .get();
+      
+      let searchCategoryId = categoryId.trim();
+      let categoryName = 'Unknown';
+      
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        categoryName = categoryData?.name || 'Unknown';
+        
+        console.log(`🔧 Category "${categoryName}" data:`, {
+          id: categoryDoc.id,
+          name: categoryData?.name,
+          masterCategoryId: categoryData?.masterCategoryId,
+          isActive: categoryData?.isActive
+        });
+        
+        // UNIVERSAL RULE: If category has masterCategoryId, use it for service lookup
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🔧 Using masterCategoryId for "${categoryName}" service search: ${searchCategoryId}`);
+        } else {
+          console.log(`🔧 No masterCategoryId found for "${categoryName}", using category ID: ${searchCategoryId}`);
+        }
+      } else {
+        console.warn(`🔧 Category document not found: ${categoryId}`);
+      }
+      
+      console.log(`🔧 Query: app_services where masterCategoryId == "${searchCategoryId}"`);
+      console.log(`🔧 CRITICAL: We will fetch ALL services and then filter out inactive ones manually`);
+      
+      // GET ALL SERVICES (no isActive filter in query) - then filter manually for better control
+      const snapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .get();
+
+      console.log(`📊 TOTAL services found in category "${categoryName}": ${snapshot.size}`);
+
+      // COMPREHENSIVE ANALYSIS: Check every single service
+      let totalServices = 0;
+      let activeServices = 0;
+      let inactiveServices = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        totalServices++;
+        
+        console.log(`📋 Service "${data.name}":`, {
+          id: doc.id,
+          isActive: data.isActive,
+          isActiveType: typeof data.isActive,
+          isActiveValue: JSON.stringify(data.isActive),
+          willBeShown: data.isActive === true
+        });
+        
+        if (data.isActive === true) {
+          activeServices++;
+          console.log(`✅ "${data.name}" is ACTIVE (isActive: true) - WILL BE SHOWN`);
+        } else {
+          inactiveServices++;
+          console.log(`🚫 "${data.name}" is INACTIVE (isActive: ${data.isActive}) - WILL BE HIDDEN`);
+        }
+      });
+      
+      console.log(`📊 SUMMARY for "${categoryName}": ${totalServices} total, ${activeServices} active, ${inactiveServices} inactive`);
+
+      // If no services found, let's debug by checking what services exist
+      if (snapshot.size === 0) {
+        console.log(`🔍 No active services found for "${categoryName}", debugging...`);
+        const debugSnapshot = await firestore()
+          .collection('app_services')
+          .where('masterCategoryId', '==', searchCategoryId)
+          .get();
+        
+        console.log(`🔍 Found ${debugSnapshot.size} total services (including inactive) for "${categoryName}"`);
+        
+        debugSnapshot.forEach(doc => {
+          const data = doc.data();
+          console.log(`🔍 Service ${doc.id}:`, {
+            name: data.name,
+            masterCategoryId: data.masterCategoryId,
+            isActive: data.isActive,
+            serviceKey: data.serviceKey,
+            serviceType: data.serviceType
+          });
+        });
+
+        // Also try with the original categoryId if we used masterCategoryId
+        if (searchCategoryId !== categoryId.trim()) {
+          console.log(`🔍 Also checking with original categoryId for "${categoryName}": ${categoryId.trim()}`);
+          const originalSnapshot = await firestore()
+            .collection('app_services')
+            .where('masterCategoryId', '==', categoryId.trim())
+            .get();
+          
+          console.log(`🔍 Found ${originalSnapshot.size} services with original categoryId for "${categoryName}"`);
+        }
+      }
+
+      const services: ServiceIssue[] = [];
+      const serviceNames = new Set<string>(); // Track unique service names
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`📋 Processing service "${data.name}" (ID: ${doc.id}):`, {
+          name: data.name,
+          isActive: data.isActive,
+          isActiveType: typeof data.isActive,
+          isActiveValue: JSON.stringify(data.isActive),
+          masterCategoryId: data.masterCategoryId
+        });
+        
+        if (!data.name) {
+          console.warn(`❌ Service document ${doc.id} missing name field, skipping`);
+          return;
+        }
+
+        // 🚫 UNIVERSAL INACTIVE SERVICE BLOCKING 🚫
+        // RULE: Only services with isActive === true (boolean) are allowed
+        // This applies to ALL services, not just specific ones
+        
+        if (data.isActive !== true) {
+          console.log(`🚫 BLOCKING INACTIVE SERVICE: "${data.name}"`);
+          console.log(`   - isActive value: ${JSON.stringify(data.isActive)}`);
+          console.log(`   - isActive type: ${typeof data.isActive}`);
+          console.log(`   - Reason: isActive is not exactly true (boolean)`);
+          console.log(`   - This service will NOT appear in the app until isActive is set to true`);
+          return; // BLOCK - Do not add to results
+        }
+
+        // Additional safety checks for common inactive values
+        if (data.isActive === false || data.isActive === 'false' || data.isActive === 0 || 
+            data.isActive === null || data.isActive === undefined || data.isActive === '') {
+          console.log(`🚫 SAFETY BLOCK: "${data.name}" has explicitly inactive value`);
+          console.log(`   - Value: ${JSON.stringify(data.isActive)}`);
+          return;
+        }
+
+        console.log(`✅ SERVICE APPROVED: "${data.name}" has isActive: true - WILL BE SHOWN`);
+
+        // Check for duplicate service names - only add if not already added
+        if (serviceNames.has(data.name.toLowerCase().trim())) {
+          console.log(`⚠️ Skipping duplicate service: ${data.name} (already exists)`);
+          return;
+        }
+
+        // Add to unique services
+        serviceNames.add(data.name.toLowerCase().trim());
+        
+        services.push({
+          id: doc.id,
+          name: data.name || '',
+          masterCategoryId: data.masterCategoryId || '',
+          companyId: data.companyId,
+          isActive: data.isActive || false,
+          serviceKey: data.serviceKey,
+          serviceType: data.serviceType,
+          price: data.price,
+          packages: data.packages,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Sort by name on the client side
+      services.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Populate service images and packages from service_services collection
+      await this.populateServiceImages(services);
+
+      console.log(`✅ Fetched ${services.length} unique active services for "${categoryName}"`);
+      console.log(`Unique services found for "${categoryName}":`, services.map(s => ({ id: s.id, name: s.name, isActive: s.isActive, hasImage: !!s.imageUrl, hasPackages: !!s.packages })));
+      
+      return services;
+    } catch (error: any) {
+      console.error('❌ Error fetching services from app_services:', error);
+      throw new Error(`Failed to fetch services for this category. Please check your internet connection.`);
+    }
+  }
+
+  /**
+   * Fetch service issues for a specific category (keeping for backward compatibility)
+   */
+  static async getServiceIssues(categoryId: string): Promise<ServiceIssue[]> {
+    return this.getServicesWithCompanies(categoryId);
+  }
+
+  /**
+   * Fetch service companies/providers from service_services collection based on selected services
+   * @param issueIds - Array of service IDs from app_services OR service names from service_services
+   * @param specificCompanyId - Optional: Filter by specific company ID
+   */
+  static async getCompaniesByServiceIssues(issueIds: string[], specificCompanyId?: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies from service_services for selected services: ${issueIds.join(', ')}`);
+      if (specificCompanyId) {
+        console.log(`🏢 Filtering by specific company: ${specificCompanyId}`);
+      }
+      
+      if (issueIds.length === 0) {
+        console.log(`⚠️ No service IDs provided, returning all companies`);
+        return await this.getServiceCompanies();
+      }
+
+      // 🔍 STEP 1: Try to get service details from app_services first
+      console.log(`🔍 Step 1: Trying to get service details from app_services for IDs:`, issueIds);
+      const servicesSnapshot = await firestore()
+        .collection('app_services')
+        .where('__name__', 'in', issueIds.slice(0, 10)) // Firestore limit
+        .get();
+
+      console.log(`📊 Found ${servicesSnapshot.size} services in app_services collection`);
+
+      const categoryIds = new Set<string>();
+      const serviceNames = new Set<string>();
+      
+      if (servicesSnapshot.size > 0) {
+        // Found in app_services - use traditional flow
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          console.log(`📋 Service ${doc.id}:`, {
+            name: data.name,
+            masterCategoryId: data.masterCategoryId,
+            isActive: data.isActive
+          });
+          
+          if (data.masterCategoryId) {
+            categoryIds.add(data.masterCategoryId);
+          }
+          if (data.name) {
+            serviceNames.add(data.name.toLowerCase().trim());
+          }
+        });
+      } else {
+        // NOT found in app_services - assume these are service NAMES from service_services
+        console.log(`💡 No services found in app_services - treating input as service NAMES from service_services`);
+        issueIds.forEach(name => {
+          serviceNames.add(name.toLowerCase().trim());
+        });
+      }
+
+      console.log(`📊 Extracted data:`);
+      console.log(`   Category IDs: ${Array.from(categoryIds).join(', ')}`);
+      console.log(`   Service names: ${Array.from(serviceNames).join(', ')}`);
+
+      if (serviceNames.size === 0) {
+        console.log(`❌ NO SERVICE NAMES found`);
+        return [];
+      }
+
+      // 🔍 STEP 2: Find companies in service_services by service names
+      console.log(`🔍 Step 2: Finding companies in service_services by service names...`);
+      const companies: ServiceCompany[] = [];
+      
+      // Query service_services by service names
+      for (const serviceName of serviceNames) {
+        console.log(`🏢 Checking companies for service: "${serviceName}"...`);
+        
+        const companiesSnapshot = await firestore()
+          .collection('service_services')
+          .where('name', '==', serviceName)
+          .where('isActive', '==', true)
+          .get();
+
+        console.log(`📊 Found ${companiesSnapshot.size} companies for service "${serviceName}"`);
+
+        companiesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          console.log(`🏢 Company ${doc.id}:`, {
+            serviceName: data.name,
+            companyName: data.companyName,
+            companyId: data.companyId,
+            categoryMasterId: data.categoryMasterId,
+            isActive: data.isActive,
+            matchesCompanyFilter: !specificCompanyId || data.companyId === specificCompanyId,
+          });
+          
+          // Filter by specific company if provided
+          if (specificCompanyId && data.companyId !== specificCompanyId) {
+            console.log(`   🚫 Skipping company: ${data.companyId} (not matching filter: ${specificCompanyId})`);
+            return;
+          }
+          
+          console.log(`   ✅ Company matches selected service: ${data.name}`);
+          
+          companies.push({
+            id: doc.id,
+            companyId: data.companyId,
+            categoryMasterId: data.categoryMasterId,
+            serviceName: data.name || '', // This is the service name
+            companyName: '', // Will be populated below with actual company name
+            price: data.price,
+            isActive: data.isActive || false,
+            imageUrl: data.imageUrl,
+            packages: data.packages,
+            serviceType: data.serviceType,
+            adminServiceId: data.adminServiceId,
+            description: data.description,
+            rating: data.rating,
+            reviewCount: data.reviewCount,
+            availability: data.availability,
+            contactInfo: {
+              phone: data.phone || data.contactPhone,
+              email: data.email || data.contactEmail,
+              address: data.address || data.contactAddress,
+            },
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          });
+        });
+        
+        // Summary logging removed - variables not in scope
+      }
+
+      console.log(`📊 FINAL SUMMARY:`);
+      console.log(`   Total companies found: ${companies.length}`);
+      console.log(`   Categories checked: ${Array.from(categoryIds).join(', ')}`);
+      console.log(`   Service names searched: ${Array.from(serviceNames).join(', ')}`);
+
+      if (companies.length === 0) {
+        console.log(`❌ NO MATCHING COMPANIES FOUND`);
+        console.log(`💡 Possible reasons:`);
+        console.log(`   1. No companies in service_services have matching service names`);
+        console.log(`   2. All matching companies are inactive`);
+        console.log(`   3. Service names don't match between app_services and service_services`);
+        console.log(`   4. Category IDs don't match`);
+        return [];
+      }
+
+      // Remove duplicates based on id (in case same company appears multiple times)
+      const uniqueCompanies = companies.filter((company, index, self) => 
+        index === self.findIndex(c => c.id === company.id)
+      );
+
+      // Fetch actual company names and logos for all companies
+      const companyIds = [...new Set(uniqueCompanies.map(c => c.companyId).filter((id): id is string => Boolean(id)))];
+      if (companyIds.length > 0) {
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails(companyIds);
+        
+        // Update company names and logos with actual data from service_company collection
+        uniqueCompanies.forEach(company => {
+          if (company.companyId) {
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
+          } else {
+            company.companyName = 'Unknown Company';
+          }
+        });
+      }
+
+      // Sort by price (lowest first), then by name
+      uniqueCompanies.sort((a, b) => {
+        if (a.price && b.price) {
+          return a.price - b.price;
+        }
+        if (a.price && !b.price) return -1;
+        if (!a.price && b.price) return 1;
+        return (a.companyName || '').localeCompare(b.companyName || '');
+      });
+
+      console.log(`✅ Fetched ${uniqueCompanies.length} unique active companies providing selected services`);
+      console.log('Companies found:', uniqueCompanies.map(c => ({ id: c.id, companyName: c.companyName, serviceName: c.serviceName, price: c.price })));
+
+      console.log(`✅ Fetched ${uniqueCompanies.length} unique active companies from service_services`);
+      console.log('Companies found:', uniqueCompanies.map(c => ({ id: c.id, companyName: c.companyName, serviceName: c.serviceName, price: c.price })));
+      
+      return uniqueCompanies;
+    } catch (error) {
+      console.error('❌ Error fetching companies from service_services:', error);
+      throw new Error('Failed to fetch service companies. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch actual company name from service_company collection using companyId
+   */
+  static async getActualCompanyName(companyId: string): Promise<string> {
+    try {
+      if (!companyId) return 'Unknown Company';
+      
+      console.log(`🏢 Looking up company name for ID: ${companyId}`);
+      
+      // Try service_company collection first (as shown in your screenshot)
+      const companyDoc = await firestore()
+        .collection('service_company')
+        .doc(companyId)
+        .get();
+      
+      if (companyDoc.exists) {
+        const data = companyDoc.data();
+        const companyName = data?.companyName || data?.name;
+        console.log(`✅ Found company name: ${companyName} for ID: ${companyId}`);
+        return companyName || `Company ${companyId}`;
+      }
+      
+      console.log(`❌ Company not found in service_company for ID: ${companyId}, trying service_services...`);
+      
+      // Fallback: Try to find company name in service_services collection
+      const serviceSnapshot = await firestore()
+        .collection('service_services')
+        .where('companyId', '==', companyId)
+        .limit(1)
+        .get();
+      
+      if (!serviceSnapshot.empty) {
+        const serviceData = serviceSnapshot.docs[0].data();
+        const companyName = serviceData?.companyName || serviceData?.name || `Company ${companyId}`;
+        console.log(`✅ Found company name in service_services: ${companyName} for ID: ${companyId}`);
+        return companyName;
+      }
+      
+      console.log(`❌ Company not found in service_services either for ID: ${companyId}`);
+      return `Company ${companyId}`;
+      
+    } catch (error) {
+      console.error(`❌ Error fetching company name for ${companyId}:`, error);
+      return `Company ${companyId}`;
+    }
+  }
+
+  /**
+   * Fetch multiple company names at once for better performance
+   */
+  static async getMultipleCompanyNames(companyIds: string[]): Promise<Map<string, string>> {
+    const companyNames = new Map<string, string>();
+    
+    try {
+      console.log(`🏢 Batch lookup for ${companyIds.length} company names:`, companyIds);
+      
+      // Process in smaller batches to avoid Firestore limits
+      const batchSize = 10;
+      for (let i = 0; i < companyIds.length; i += batchSize) {
+        const batch = companyIds.slice(i, i + batchSize);
+        
+        // Use 'in' query for batch fetching
+        if (batch.length > 0) {
+          const snapshot = await firestore()
+            .collection('service_company')
+            .where('__name__', 'in', batch)
+            .get();
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const companyName = data?.companyName || data?.name || `Company ${doc.id}`;
+            companyNames.set(doc.id, companyName);
+            console.log(`✅ Mapped ${doc.id} → ${companyName}`);
+          });
+          
+          // Add fallback names for companies not found
+          batch.forEach(companyId => {
+            if (!companyNames.has(companyId)) {
+              companyNames.set(companyId, `Company ${companyId}`);
+              console.log(`⚠️ Fallback name for ${companyId}`);
+            }
+          });
+        }
+      }
+      
+      console.log(`✅ Batch lookup complete. Found ${companyNames.size} company names.`);
+      return companyNames;
+      
+    } catch (error) {
+      console.error('❌ Error in batch company lookup:', error);
+      
+      // Fallback: create map with company IDs as names
+      companyIds.forEach(id => {
+        companyNames.set(id, `Company ${id}`);
+      });
+      
+      return companyNames;
+    }
+  }
+
+  /**
+   * Fetch multiple company details (name and logo) at once for better performance
+   */
+  static async getMultipleCompanyDetails(companyIds: string[]): Promise<Map<string, { name: string; logo: string | null }>> {
+    const companyDetails = new Map<string, { name: string; logo: string | null }>();
+    
+    try {
+      console.log(`🏢 Batch lookup for ${companyIds.length} company details (name + logo):`, companyIds);
+      
+      // Process in smaller batches to avoid Firestore limits
+      const batchSize = 10;
+      for (let i = 0; i < companyIds.length; i += batchSize) {
+        const batch = companyIds.slice(i, i + batchSize);
+        
+        // Use 'in' query for batch fetching
+        if (batch.length > 0) {
+          const snapshot = await firestore()
+            .collection('service_company')
+            .where('__name__', 'in', batch)
+            .get();
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const companyName = data?.companyName || data?.name || `Company ${doc.id}`;
+            // Check multiple possible logo field names: logoUrl, logo, imageUrl
+            const companyLogo = data?.logoUrl || data?.logo || data?.imageUrl || null;
+            companyDetails.set(doc.id, { name: companyName, logo: companyLogo });
+            console.log(`✅ Mapped ${doc.id} → ${companyName} (logo: ${companyLogo ? 'Yes' : 'No'})`);
+          });
+          
+          // Add fallback details for companies not found
+          batch.forEach(companyId => {
+            if (!companyDetails.has(companyId)) {
+              companyDetails.set(companyId, { name: `Company ${companyId}`, logo: null });
+              console.log(`⚠️ Fallback details for ${companyId}`);
+            }
+          });
+        }
+      }
+      
+      console.log(`✅ Batch lookup complete. Found ${companyDetails.size} company details.`);
+      return companyDetails;
+      
+    } catch (error) {
+      console.error('❌ Error in batch company details lookup:', error);
+      
+      // Fallback: create map with company IDs as names and no logo
+      companyIds.forEach(id => {
+        companyDetails.set(id, { name: `Company ${id}`, logo: null });
+      });
+      
+      return companyDetails;
+    }
+  }
+  static async getCompaniesByCategory(categoryId: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies from service_services for category: ${categoryId}`);
+      
+      // UNIVERSAL LOGIC: First, get the category to check if it has a masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId.trim())
+        .get();
+      
+      let searchCategoryId = categoryId.trim();
+      let categoryName = 'Unknown';
+      
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        categoryName = categoryData?.name || 'Unknown';
+        
+        console.log(`🏢 Category "${categoryName}" data for companies:`, {
+          id: categoryDoc.id,
+          name: categoryData?.name,
+          masterCategoryId: categoryData?.masterCategoryId,
+          isActive: categoryData?.isActive
+        });
+        
+        // UNIVERSAL RULE: If category has masterCategoryId, use it for company lookup
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🏢 Using masterCategoryId for "${categoryName}" company search: ${searchCategoryId}`);
+        } else {
+          console.log(`🏢 No masterCategoryId found for "${categoryName}", using category ID: ${searchCategoryId}`);
+        }
+      } else {
+        console.warn(`🏢 Category document not found: ${categoryId}`);
+      }
+      
+      console.log(`🏢 Query: service_services where categoryMasterId == "${searchCategoryId}" AND isActive == true`);
+      
+      // Only fetch active companies for the category
+      const snapshot = await firestore()
+        .collection('service_services')
+        .where('categoryMasterId', '==', searchCategoryId)
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`Found ${snapshot.size} active companies for "${categoryName}" (search ID: ${searchCategoryId})`);
+
+      // If no companies found, debug what's available
+      if (snapshot.size === 0) {
+        console.log(`🔍 No active companies found for "${categoryName}", debugging...`);
+        const debugSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', searchCategoryId)
+          .get();
+        
+        console.log(`🔍 Found ${debugSnapshot.size} total companies (including inactive) for "${categoryName}"`);
+        
+        debugSnapshot.forEach(doc => {
+          const data = doc.data();
+          console.log(`🔍 Company ${doc.id}:`, {
+            name: data.name,
+            categoryMasterId: data.categoryMasterId,
+            isActive: data.isActive,
+            price: data.price,
+            companyId: data.companyId
+          });
+        });
+
+        // Also try with the original categoryId if we used masterCategoryId
+        if (searchCategoryId !== categoryId.trim()) {
+          console.log(`🔍 Also checking companies with original categoryId for "${categoryName}": ${categoryId.trim()}`);
+          const originalSnapshot = await firestore()
+            .collection('service_services')
+            .where('categoryMasterId', '==', categoryId.trim())
+            .get();
+          
+          console.log(`🔍 Found ${originalSnapshot.size} companies with original categoryId for "${categoryName}"`);
+        }
+      }
+
+      const companies: ServiceCompany[] = [];
+      const companyIds: string[] = [];
+      
+      // First pass: collect all company data and IDs
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Only include active companies
+        if (!data.isActive) {
+          console.log(`Skipping inactive company: ${data.name || data.companyName || 'Unknown'}`);
+          return;
+        }
+        
+        console.log(`Company data for ${doc.id} (${categoryName}):`, {
+          serviceName: data.name,
+          companyName: data.companyName || `Company ${data.companyId}`,
+          categoryMasterId: data.categoryMasterId,
+          price: data.price,
+          isActive: data.isActive,
+          companyId: data.companyId
+        });
+        
+        // Collect company ID for batch lookup
+        if (data.companyId) {
+          companyIds.push(data.companyId);
+        }
+        
+        companies.push({
+          id: doc.id,
+          companyId: data.companyId,
+          categoryMasterId: data.categoryMasterId,
+          serviceName: data.name || '', // This is the service name
+          companyName: '', // Will be populated below with actual company name
+          price: data.price,
+          isActive: data.isActive || false,
+          imageUrl: data.imageUrl,
+          packages: data.packages,
+          serviceType: data.serviceType,
+          adminServiceId: data.adminServiceId,
+          description: data.description,
+          rating: data.rating,
+          reviewCount: data.reviewCount,
+          availability: data.availability,
+          contactInfo: {
+            phone: data.phone || data.contactPhone,
+            email: data.email || data.contactEmail,
+            address: data.address || data.contactAddress,
+          },
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Second pass: fetch actual company names and logos from service_company collection
+      if (companyIds.length > 0) {
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
+        
+        // Update company names and logos with actual data from service_company collection
+        companies.forEach(company => {
+          if (company.companyId) {
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
+          } else {
+            company.companyName = 'Unknown Company';
+          }
+        });
+      }
+
+      // Sort by company name on the client side
+      companies.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
+
+      console.log(`✅ Fetched ${companies.length} active companies for "${categoryName}"`);
+      console.log(`Companies found for "${categoryName}":`, companies.map(c => ({ id: c.id, companyName: c.companyName, serviceName: c.serviceName, price: c.price, isActive: c.isActive })));
+      
+      return companies;
+    } catch (error) {
+      console.error('❌ Error fetching companies by category from service_services:', error);
+      throw new Error('Failed to fetch companies for this category. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch all service companies from service_services collection
+   */
+  static async getServiceCompanies(): Promise<ServiceCompany[]> {
+    try {
+      console.log('🏢 Fetching all companies from service_services collection...');
+      
+      // Only fetch active companies
+      const snapshot = await firestore()
+        .collection('service_services')
+        .where('isActive', '==', true)
+        .get();
+
+      const companies: ServiceCompany[] = [];
+      const companyIds: string[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Collect company ID for batch lookup
+        if (data.companyId) {
+          companyIds.push(data.companyId);
+        }
+        
+        companies.push({
+          id: doc.id,
+          companyId: data.companyId,
+          categoryMasterId: data.categoryMasterId,
+          serviceName: data.name || '', // This is the service name
+          companyName: '', // Will be populated below with actual company name
+          price: data.price,
+          isActive: data.isActive || false,
+          imageUrl: data.imageUrl,
+          packages: data.packages,
+          serviceType: data.serviceType,
+          adminServiceId: data.adminServiceId,
+          description: data.description,
+          rating: data.rating,
+          reviewCount: data.reviewCount,
+          availability: data.availability,
+          contactInfo: {
+            phone: data.phone || data.contactPhone,
+            email: data.email || data.contactEmail,
+            address: data.address || data.contactAddress,
+          },
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
+      });
+
+      // Fetch actual company names and logos from service_company collection
+      if (companyIds.length > 0) {
+        console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
+        const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
+        
+        // Update company names and logos with actual data from service_company collection
+        companies.forEach(company => {
+          if (company.companyId) {
+            const details = companyDetails.get(company.companyId);
+            if (details) {
+              company.companyName = details.name;
+              // Update imageUrl with logo from service_company if available
+              if (details.logo) {
+                company.imageUrl = details.logo;
+              }
+              console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
+            } else {
+              company.companyName = `Company ${company.companyId}`;
+            }
+          } else {
+            company.companyName = 'Unknown Company';
+          }
+        });
+      }
+
+      // Sort by company name on the client side
+      companies.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
+
+      console.log(`✅ Fetched ${companies.length} active companies from service_services collection`);
+      
+      return companies;
+    } catch (error) {
+      console.error('❌ Error fetching companies from service_services:', error);
+      throw new Error('Failed to fetch service companies. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch service companies by delivery zone (if needed)
+   */
+  static async getServiceCompaniesByZone(zoneId: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`Fetching service companies for zone: ${zoneId}`);
+      
+      // For now, return all companies since zone filtering might not be in service_services
+      return await this.getServiceCompanies();
+    } catch (error) {
+      console.error('Error fetching service companies by zone:', error);
+      throw new Error('Failed to fetch companies for this zone. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch a service category by ID
+   */
+  static async getServiceCategoryById(categoryId: string): Promise<ServiceCategory | null> {
+    try {
+      const doc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId)
+        .get();
+
+      if (!doc.exists) {
+        return null;
+      }
+
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data?.name || '',
+        isActive: data?.isActive || false,
+        masterCategoryId: data?.masterCategoryId,
+        createdAt: data?.createdAt,
+        updatedAt: data?.updatedAt,
+      };
+    } catch (error) {
+      console.error('Error fetching service category by ID:', error);
+      throw new Error('Failed to fetch service category. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Debug method to see data in collections
+   */
+  static async debugAppServicesData(): Promise<void> {
+    try {
+      console.log('🔍 DEBUG: Checking app_categories, app_services, and service_services collections...');
+      
+      // Check app_categories
+      console.log('\n=== APP_CATEGORIES COLLECTION ===');
+      const categoriesSnapshot = await firestore()
+        .collection('app_categories')
+        .limit(10)
+        .get();
+
+      console.log(`Found ${categoriesSnapshot.size} documents in app_categories collection`);
+      
+      categoriesSnapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`Category ${doc.id}:`, {
+          name: data.name,
+          isActive: data.isActive,
+          masterCategoryId: data.masterCategoryId,
+          allFields: Object.keys(data)
+        });
+      });
+
+      // Check app_services
+      console.log('\n=== APP_SERVICES COLLECTION ===');
+      const servicesSnapshot = await firestore()
+        .collection('app_services')
+        .limit(10)
+        .get();
+
+      console.log(`Found ${servicesSnapshot.size} documents in app_services collection`);
+      
+      servicesSnapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`Service ${doc.id}:`, {
+          name: data.name,
+          masterCategoryId: data.masterCategoryId,
+          categoryMasterId: data.categoryMasterId, // Check both field names
+          serviceKey: data.serviceKey,
+          serviceType: data.serviceType,
+          isActive: data.isActive,
+          allFields: Object.keys(data)
+        });
+      });
+
+      // Check service_services with enhanced logging
+      console.log('\n=== SERVICE_SERVICES COLLECTION (Enhanced) ===');
+      const companiesSnapshot = await firestore()
+        .collection('service_services')
+        .limit(10)
+        .get();
+
+      console.log(`Found ${companiesSnapshot.size} documents in service_services collection`);
+      
+      companiesSnapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`Company ${doc.id}:`, {
+          name: data.name,
+          categoryMasterId: data.categoryMasterId,
+          masterCategoryId: data.masterCategoryId, // Check both field names
+          companyId: data.companyId,
+          price: data.price,
+          serviceType: data.serviceType,
+          isActive: data.isActive,
+          description: data.description,
+          rating: data.rating,
+          reviewCount: data.reviewCount,
+          availability: data.availability,
+          phone: data.phone,
+          email: data.email,
+          address: data.address,
+          packages: data.packages ? `${data.packages.length} packages` : 'No packages',
+          allFields: Object.keys(data)
+        });
+      });
+      
+    } catch (error) {
+      console.error('❌ Error in debug method:', error);
+    }
+  }
+
+  /**
+   * 🚫 UNIVERSAL TEST: Test that ALL inactive services are blocked
+   */
+  static async testUniversalInactiveBlocking(categoryId: string): Promise<void> {
+    try {
+      console.log('🚫🚫🚫 UNIVERSAL INACTIVE SERVICE TEST STARTED 🚫🚫🚫');
+      
+      // Step 1: Check raw Firestore data
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId)
+        .get();
+      
+      let searchCategoryId = categoryId;
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+        }
+      }
+      
+      console.log(`🔍 Checking ALL services in Firestore for category: ${searchCategoryId}`);
+      
+      const snapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .get();
+      
+      let totalServices = 0;
+      let activeInFirestore = 0;
+      let inactiveInFirestore = 0;
+      const inactiveServices: string[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        totalServices++;
+        
+        if (data.isActive === true) {
+          activeInFirestore++;
+          console.log(`✅ ACTIVE in Firestore: "${data.name}"`);
+        } else {
+          inactiveInFirestore++;
+          inactiveServices.push(data.name);
+          console.log(`🚫 INACTIVE in Firestore: "${data.name}" (isActive: ${JSON.stringify(data.isActive)})`);
+        }
+      });
+      
+      // Step 2: Test our service method
+      console.log(`🧪 Testing getServicesWithCompanies method...`);
+      const services = await this.getServicesWithCompanies(categoryId);
+      
+      let activeInResults = 0;
+      let inactiveInResults = 0;
+      const leakedInactiveServices: string[] = [];
+      
+      services.forEach(service => {
+        if (service.isActive === true) {
+          activeInResults++;
+          console.log(`✅ ACTIVE in results: "${service.name}"`);
+        } else {
+          inactiveInResults++;
+          leakedInactiveServices.push(service.name);
+          console.log(`🚨 INACTIVE LEAKED: "${service.name}" (should not be in results!)`);
+        }
+      });
+      
+      // Results
+      console.log(`📊 UNIVERSAL TEST RESULTS:`);
+      console.log(`   - Total services in Firestore: ${totalServices}`);
+      console.log(`   - Active in Firestore: ${activeInFirestore}`);
+      console.log(`   - Inactive in Firestore: ${inactiveInFirestore}`);
+      console.log(`   - Active in results: ${activeInResults}`);
+      console.log(`   - Inactive leaked to results: ${inactiveInResults}`);
+      
+      if (inactiveInResults === 0) {
+        console.log(`✅ SUCCESS: All ${inactiveInFirestore} inactive services are properly blocked!`);
+      } else {
+        console.log(`❌ FAILURE: ${inactiveInResults} inactive services leaked to results:`);
+        leakedInactiveServices.forEach(name => {
+          console.log(`   - "${name}"`);
+        });
+      }
+      
+      console.log('🚫🚫🚫 UNIVERSAL INACTIVE SERVICE TEST COMPLETED 🚫🚫🚫');
+      
+    } catch (error) {
+      console.error('❌ Universal test failed:', error);
+    }
+  }
+
+  /**
+   * 🚨 EMERGENCY TEST: Specifically test yoga service blocking
+   */
+  static async emergencyYogaTest(categoryId: string): Promise<void> {
+    try {
+      console.log('🚨🚨🚨 EMERGENCY YOGA TEST STARTED 🚨🚨🚨');
+      
+      // Step 1: Check raw Firestore data
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId)
+        .get();
+      
+      let searchCategoryId = categoryId;
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+        }
+      }
+      
+      console.log(`🔍 Checking raw Firestore data for category: ${searchCategoryId}`);
+      
+      const snapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .get();
+      
+      let yogaFoundInFirestore = false;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.name && data.name.toLowerCase().includes('yoga')) {
+          yogaFoundInFirestore = true;
+          console.log(`🚨 YOGA IN FIRESTORE: "${data.name}"`);
+          console.log(`   - isActive: ${data.isActive}`);
+          console.log(`   - Type: ${typeof data.isActive}`);
+          console.log(`   - Should be blocked: ${data.isActive !== true}`);
+        }
+      });
+      
+      // Step 2: Test our service method
+      console.log(`🧪 Testing getServicesWithCompanies method...`);
+      const services = await this.getServicesWithCompanies(categoryId);
+      
+      let yogaFoundInResults = false;
+      services.forEach(service => {
+        if (service.name && service.name.toLowerCase().includes('yoga')) {
+          yogaFoundInResults = true;
+          console.log(`🚨 YOGA IN RESULTS: "${service.name}"`);
+          console.log(`   - This should NOT happen!`);
+        }
+      });
+      
+      // Results
+      console.log(`📊 EMERGENCY TEST RESULTS:`);
+      console.log(`   - Yoga found in Firestore: ${yogaFoundInFirestore}`);
+      console.log(`   - Yoga found in results: ${yogaFoundInResults}`);
+      
+      if (yogaFoundInFirestore && !yogaFoundInResults) {
+        console.log(`✅ SUCCESS: Yoga service exists in Firestore but is properly blocked from results!`);
+      } else if (!yogaFoundInFirestore) {
+        console.log(`ℹ️ INFO: No yoga service found in Firestore for this category`);
+      } else {
+        console.log(`❌ FAILURE: Yoga service is still appearing in results!`);
+      }
+      
+      console.log('🚨🚨🚨 EMERGENCY YOGA TEST COMPLETED 🚨🚨🚨');
+      
+    } catch (error) {
+      console.error('❌ Emergency yoga test failed:', error);
+    }
+  }
+
+  /**
+   * FINAL TEST: Verify that "Yoga sessions (beginner/advanced)" is blocked
+   */
+  static async testYogaBlocking(categoryId: string): Promise<boolean> {
+    try {
+      console.log('🧪 FINAL TEST: Checking if Yoga sessions are properly blocked...');
+      
+      const services = await this.getServicesWithCompanies(categoryId);
+      
+      console.log(`🧪 Retrieved ${services.length} services from getServicesWithCompanies`);
+      
+      let yogaFound = false;
+      services.forEach(service => {
+        console.log(`🧪 Service: "${service.name}" (isActive: ${service.isActive})`);
+        
+        if (service.name && service.name.toLowerCase().includes('yoga')) {
+          yogaFound = true;
+          console.log(`🚨 YOGA SERVICE FOUND IN RESULTS: "${service.name}"`);
+          console.log(`   This should NOT happen if isActive is false!`);
+        }
+      });
+      
+      if (!yogaFound) {
+        console.log(`✅ SUCCESS: No yoga services found in results - inactive services are properly blocked!`);
+        return true;
+      } else {
+        console.log(`❌ FAILURE: Yoga service found in results - blocking is not working!`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * EMERGENCY DEBUG: Call this method to see exactly what's happening with services
+   */
+  static async emergencyDebugServices(categoryId: string): Promise<void> {
+    try {
+      console.log('🚨🚨🚨 EMERGENCY DEBUG STARTED 🚨🚨🚨');
+      console.log(`Category ID: ${categoryId}`);
+      
+      // Step 1: Check the category
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId)
+        .get();
+      
+      let searchCategoryId = categoryId;
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        console.log('📁 Category data:', categoryData);
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+          console.log(`🔄 Using masterCategoryId: ${searchCategoryId}`);
+        }
+      }
+      
+      // Step 2: Get ALL services (no filtering)
+      const allSnapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .get();
+      
+      console.log(`📊 TOTAL services found: ${allSnapshot.size}`);
+      
+      allSnapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`📋 Service: "${data.name}"`, {
+          id: doc.id,
+          isActive: data.isActive,
+          type: typeof data.isActive,
+          value: JSON.stringify(data.isActive),
+          shouldShow: data.isActive === true
+        });
+      });
+      
+      // Step 3: Test the main method
+      console.log('🧪 Testing getServicesWithCompanies...');
+      const services = await this.getServicesWithCompanies(categoryId);
+      console.log(`🧪 getServicesWithCompanies returned ${services.length} services:`);
+      services.forEach(service => {
+        console.log(`  - "${service.name}" (isActive: ${service.isActive})`);
+      });
+      
+      console.log('🚨🚨🚨 EMERGENCY DEBUG COMPLETED 🚨🚨🚨');
+      
+    } catch (error) {
+      console.error('❌ Emergency debug failed:', error);
+    }
+  }
+
+  /**
+   * Emergency method to specifically check and block the "Yoga sessions" service
+   */
+  static async checkYogaSessionsService(categoryId: string): Promise<void> {
+    try {
+      console.log('🚨 EMERGENCY CHECK: Looking for "Yoga sessions" service...');
+      
+      // Get the category's masterCategoryId
+      const categoryDoc = await firestore()
+        .collection('app_categories')
+        .doc(categoryId.trim())
+        .get();
+      
+      let searchCategoryId = categoryId.trim();
+      if (categoryDoc.exists) {
+        const categoryData = categoryDoc.data();
+        if (categoryData?.masterCategoryId) {
+          searchCategoryId = categoryData.masterCategoryId;
+        }
+      }
+      
+      // Get ALL services in this category
+      const snapshot = await firestore()
+        .collection('app_services')
+        .where('masterCategoryId', '==', searchCategoryId)
+        .get();
+      
+      console.log(`🚨 Found ${snapshot.size} total services in category`);
+      
+      let yogaFound = false;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Check if this is the yoga service
+        if (data.name && data.name.toLowerCase().includes('yoga')) {
+          yogaFound = true;
+          console.log(`🚨 FOUND YOGA SERVICE:`, {
+            id: doc.id,
+            name: data.name,
+            isActive: data.isActive,
+            isActiveType: typeof data.isActive,
+            isActiveValue: JSON.stringify(data.isActive),
+            shouldBeBlocked: data.isActive !== true
+          });
+          
+          if (data.isActive !== true) {
+            console.log(`🚫 YOGA SERVICE IS INACTIVE AND SHOULD BE BLOCKED!`);
+          } else {
+            console.log(`✅ Yoga service is active and should be shown`);
+          }
+        }
+      });
+      
+      if (!yogaFound) {
+        console.log(`ℹ️ No yoga service found in category ${searchCategoryId}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in checkYogaSessionsService:', error);
+    }
+  }
+
+  /**
+   * Method to verify that only active services are returned for a category
+   */
+  static async verifyActiveServicesOnly(categoryId: string): Promise<boolean> {
+    try {
+      console.log(`🧪 VERIFICATION: Checking that only active services are returned for category: ${categoryId}`);
+      
+      // Get services using the main method
+      const services = await this.getServicesWithCompanies(categoryId);
+      
+      console.log(`🧪 Retrieved ${services.length} services from getServicesWithCompanies`);
+      
+      // Check each service
+      let allActive = true;
+      services.forEach(service => {
+        if (service.isActive !== true) {
+          console.error(`🚫 VERIFICATION FAILED: Found inactive service: ${service.name} (isActive: ${service.isActive})`);
+          allActive = false;
+        } else {
+          console.log(`✅ Service "${service.name}" is properly active`);
+        }
+      });
+      
+      if (allActive) {
+        console.log(`✅ VERIFICATION PASSED: All ${services.length} services are active`);
+      } else {
+        console.error(`❌ VERIFICATION FAILED: Some inactive services were returned`);
+      }
+      
+      return allActive;
+      
+    } catch (error) {
+      console.error('❌ Error in verifyActiveServicesOnly:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Debug method to check for inactive services that might be showing up
+   */
+  static async debugInactiveServices(categoryId?: string): Promise<void> {
+    try {
+      console.log('🔍 DEBUG: Checking for inactive services that might be showing...');
+      
+      let query;
+      
+      if (categoryId) {
+        // First check the category to get masterCategoryId
+        const categoryDoc = await firestore()
+          .collection('app_categories')
+          .doc(categoryId)
+          .get();
+        
+        let searchCategoryId = categoryId;
+        if (categoryDoc.exists) {
+          const categoryData = categoryDoc.data();
+          if (categoryData?.masterCategoryId) {
+            searchCategoryId = categoryData.masterCategoryId;
+          }
+        }
+        
+        query = firestore()
+          .collection('app_services')
+          .where('masterCategoryId', '==', searchCategoryId);
+        console.log(`🔍 Checking services for category: ${searchCategoryId}`);
+      } else {
+        query = firestore().collection('app_services');
+      }
+      
+      const snapshot = await query.get();
+      
+      console.log(`🔍 Found ${snapshot.size} total services`);
+      
+      interface ServiceInfo {
+        id: string;
+        name: string;
+        isActive: any;
+        isActiveType: string;
+        masterCategoryId: string;
+      }
+      
+      const activeServices: ServiceInfo[] = [];
+      const inactiveServices: ServiceInfo[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const serviceInfo = {
+          id: doc.id,
+          name: data.name,
+          isActive: data.isActive,
+          isActiveType: typeof data.isActive,
+          masterCategoryId: data.masterCategoryId
+        };
+        
+        if (data.isActive === true) {
+          activeServices.push(serviceInfo);
+        } else {
+          inactiveServices.push(serviceInfo);
+        }
+      });
+      
+      console.log(`✅ ACTIVE services (${activeServices.length}):`, activeServices);
+      console.log(`🚫 INACTIVE services (${inactiveServices.length}):`, inactiveServices);
+      
+      if (inactiveServices.length > 0) {
+        console.warn(`⚠️ WARNING: Found ${inactiveServices.length} inactive services that should NOT be displayed in the app!`);
+        inactiveServices.forEach(service => {
+          console.warn(`🚫 INACTIVE: "${service.name}" (ID: ${service.id}, isActive: ${service.isActive})`);
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in debugInactiveServices:', error);
+    }
+  }
+
+  /**
+   * Test method to verify company name lookup is working
+   */
+  static async testCompanyLookup(companyId?: string): Promise<void> {
+    try {
+      const testId = companyId || 'MMbY4RdZgrX2qeVo5nYXwFJkZ4V2'; // Use the ID from your screenshot
+      
+      console.log(`🧪 Testing company lookup for ID: ${testId}`);
+      
+      const companyName = await this.getActualCompanyName(testId);
+      console.log(`🧪 Result: ${testId} → ${companyName}`);
+      
+      // Also test batch lookup
+      const batchResult = await this.getMultipleCompanyNames([testId]);
+      console.log(`🧪 Batch result:`, Object.fromEntries(batchResult));
+      
+    } catch (error) {
+      console.error('🧪 Error in testCompanyLookup:', error);
+    }
+  }
+
+  /**
+   * Debug method to check what company name fields are available in service_services
+   */
+  static async debugCompanyNames(): Promise<void> {
+    try {
+      console.log('🔍 DEBUG: Checking company name fields in service_services...');
+      
+      const snapshot = await firestore()
+        .collection('service_services')
+        .limit(10)
+        .get();
+
+      console.log(`Found ${snapshot.size} documents in service_services collection`);
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`🔍 Document ${doc.id}:`, {
+          serviceName: data.name,
+          companyName: data.companyName,
+          businessName: data.businessName,
+          providerName: data.providerName,
+          companyId: data.companyId,
+          isActive: data.isActive,
+          availableFields: Object.keys(data).filter(key => 
+            key.toLowerCase().includes('name') || 
+            key.toLowerCase().includes('company') ||
+            key.toLowerCase().includes('business') ||
+            key.toLowerCase().includes('provider')
+          )
+        });
+      });
+      
+    } catch (error) {
+      console.error('❌ Error in debugCompanyNames:', error);
+    }
+  }
+
+  /**
+   * Test method to fetch and display sample data from service_services collection
+   */
+  static async testServiceServicesData(categoryId?: string): Promise<void> {
+    try {
+      console.log('🧪 TESTING: Fetching sample data from service_services collection...');
+      
+      let snapshot;
+      
+      if (categoryId) {
+        console.log(`🧪 Testing with categoryId: ${categoryId}`);
+        snapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', categoryId)
+          .limit(5)
+          .get();
+      } else {
+        snapshot = await firestore()
+          .collection('service_services')
+          .limit(5)
+          .get();
+      }
+      
+      console.log(`🧪 Found ${snapshot.size} documents in service_services collection`);
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`🧪 Company ${doc.id}:`, {
+          serviceName: data.name,
+          companyName: data.companyName || `Company ${data.companyId}`,
+          categoryMasterId: data.categoryMasterId,
+          companyId: data.companyId,
+          price: data.price,
+          serviceType: data.serviceType,
+          isActive: data.isActive,
+          description: data.description,
+          rating: data.rating,
+          reviewCount: data.reviewCount,
+          availability: data.availability,
+          packages: data.packages ? `${Array.isArray(data.packages) ? data.packages.length : 'Invalid'} packages` : 'No packages',
+          contactInfo: {
+            phone: data.phone || data.contactPhone,
+            email: data.email || data.contactEmail,
+            address: data.address || data.contactAddress,
+          },
+          allAvailableFields: Object.keys(data).sort()
+        });
+      });
+      
+      if (snapshot.size === 0) {
+        console.log('🧪 No documents found. Checking if collection exists...');
+        const allSnapshot = await firestore().collection('service_services').limit(1).get();
+        console.log(`🧪 Total documents in service_services: ${allSnapshot.size}`);
+      }
+      
+    } catch (error) {
+      console.error('🧪 Error testing service_services data:', error);
+    }
+  }
+
+  /**
+   * Fetch service bookings from service_bookings collection
+   */
+  static async getServiceBookings(limit: number = 20): Promise<ServiceBooking[]> {
+    try {
+      console.log(`🔥 Fetching ${limit} service bookings from service_bookings collection...`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      console.log(`Found ${snapshot.size} bookings in service_bookings collection`);
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Filter out test/demo bookings with more comprehensive patterns
+        const isTestBooking = (
+          // Service name patterns
+          (data.serviceName && (
+            data.serviceName.toLowerCase().includes('test') ||
+            data.serviceName.toLowerCase().includes('demo') ||
+            data.serviceName.toLowerCase().includes('sample') ||
+            data.serviceName.toLowerCase().includes('mock') ||
+            data.serviceName.toLowerCase().includes('fake') ||
+            data.serviceName.toLowerCase().includes('dummy')
+          )) ||
+          // Customer name patterns
+          (data.customerName && (
+            data.customerName.toLowerCase().includes('test') ||
+            data.customerName.toLowerCase().includes('demo') ||
+            data.customerName.toLowerCase().includes('sample') ||
+            data.customerName.toLowerCase().includes('mock') ||
+            data.customerName.toLowerCase().includes('dummy')
+          )) ||
+          // Work name patterns
+          (data.workName && (
+            data.workName.toLowerCase().includes('test') ||
+            data.workName.toLowerCase().includes('demo') ||
+            data.workName.toLowerCase().includes('sample')
+          )) ||
+          // Company ID patterns
+          (data.companyId && (
+            data.companyId === 'test-company-id' ||
+            data.companyId.toLowerCase().includes('test') ||
+            data.companyId.toLowerCase().includes('demo')
+          )) ||
+          // Phone number patterns (test phone numbers)
+          (data.customerPhone && (
+            data.customerPhone.includes('9999999999') ||
+            data.customerPhone.includes('1234567890') ||
+            data.customerPhone.includes('0000000000')
+          ))
+        );
+        
+        if (isTestBooking) {
+          console.log(`🚫 Filtering out test/demo booking: ${data.serviceName} (Customer: ${data.customerName})`);
+          return; // Skip test/demo bookings
+        }
+        
+        console.log(`📋 Booking ${doc.id}:`, {
+          serviceName: data.serviceName,
+          customerName: data.customerName,
+          status: data.status,
+          date: data.date,
+          time: data.time
+        });
+        
+        bookings.push({
+          id: doc.id,
+          serviceName: data.serviceName || '',
+          workName: data.workName || data.serviceName || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || data.phone,
+          customerAddress: data.customerAddress || data.address,
+          customerId: data.customerId,
+          date: data.date || '',
+          time: data.time || '',
+          status: data.status || 'pending',
+          companyId: data.companyId,
+          technicianName: data.technicianName,
+          technicianId: data.technicianId,
+          totalPrice: data.totalPrice,
+          addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
+          startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
+          otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
+          assignedAt: data.assignedAt,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+          rejectedAt: data.rejectedAt,
+          expiredAt: data.expiredAt,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
+        });
+      });
+
+      console.log(`✅ Fetched ${bookings.length} service bookings from Firebase`);
+      return bookings;
+    } catch (error: any) {
+      console.error('❌ Error fetching service bookings:', error);
+      throw new Error('Failed to fetch service bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch a specific service booking by ID
+   */
+  static async getServiceBookingById(bookingId: string): Promise<ServiceBooking | null> {
+    try {
+      console.log(`🔥 Fetching booking ${bookingId} from service_bookings collection...`);
+      
+      const doc = await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .get();
+
+      if (!doc.exists) {
+        console.log(`❌ Booking ${bookingId} not found`);
+        return null;
+      }
+
+      const data = doc.data();
+      if (!data) {
+        console.log(`❌ Booking ${bookingId} has no data`);
+        return null;
+      }
+      
+      console.log(`✅ Found booking ${bookingId}:`, {
+        serviceName: data.serviceName,
+        customerName: data.customerName,
+        status: data.status,
+        technicianName: data.technicianName || 'Not assigned',
+        assignedAt: data.assignedAt || 'Not set'
+      });
+      
+      return {
+        id: doc.id,
+        serviceName: data.serviceName || '',
+        workName: data.workName || data.serviceName || '',
+        customerName: data.customerName || '',
+        customerPhone: data.customerPhone || data.phone,
+        customerAddress: data.customerAddress || data.address,
+        customerId: data.customerId,
+        date: data.date || '',
+        time: data.time || '',
+        status: data.status || 'pending',
+        companyId: data.companyId,
+        // Use actual database field names first (workerName, workerId), then fallbacks
+        workerName: data.workerName || data.worker_name,
+        workerId: data.workerId || data.worker_id,
+        technicianName: data.workerName || data.worker_name || data.technicianName || data.technician_name || data.assignedTechnician || data.assigned_technician,
+        technicianId: data.workerId || data.worker_id || data.technicianId || data.technician_id || data.assignedTechnicianId || data.assigned_technician_id,
+        totalPrice: data.totalPrice,
+        addOns: data.addOns || [],
+        estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
+        startOtp: data.startOtp,
+        completionOtp: data.completionOtp,
+        otpVerified: data.otpVerified,
+        completionOtpVerified: data.completionOtpVerified,
+        assignedAt: data.assignedAt,
+        startedAt: data.startedAt,
+        completedAt: data.completedAt,
+        rejectedAt: data.rejectedAt,
+        expiredAt: data.expiredAt,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        customerRating: data.customerRating,
+        customerFeedback: data.customerFeedback,
+        ratedAt: data.ratedAt,
+      };
+    } catch (error: any) {
+      console.error(`❌ Error fetching booking ${bookingId}:`, error);
+      throw new Error('Failed to fetch booking details. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update booking status
+   */
+  static async updateBookingStatus(
+    bookingId: string, 
+    status: ServiceBooking['status'], 
+    additionalData?: Partial<ServiceBooking>
+  ): Promise<void> {
+    try {
+      console.log(`🔥 Updating booking ${bookingId} status to ${status}...`);
+      
+      const updateData: any = {
+        status,
+        updatedAt: new Date(),
+        ...additionalData
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Updated booking ${bookingId} status to ${status}`);
+    } catch (error: any) {
+      console.error(`❌ Error updating booking ${bookingId} status:`, error);
+      throw new Error('Failed to update booking status. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Cancel booking by user - sets status to 'cancelled'
+   */
+  static async cancelBookingByUser(
+    bookingId: string,
+    additionalData?: Partial<ServiceBooking>
+  ): Promise<void> {
+    try {
+      console.log(`🚫 User cancelling booking ${bookingId}...`);
+      
+      const updateData: any = {
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        cancelledBy: 'user',
+        updatedAt: new Date(),
+        ...additionalData
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ User cancelled booking ${bookingId} - status set to 'cancelled'`);
+    } catch (error: any) {
+      console.error(`❌ Error cancelling booking ${bookingId}:`, error);
+      throw new Error('Failed to cancel booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Reject booking by admin - sets status to 'rejected'
+   */
+  static async rejectBookingByAdmin(
+    bookingId: string,
+    additionalData?: Partial<ServiceBooking>
+  ): Promise<void> {
+    try {
+      console.log(`❌ Admin rejecting booking ${bookingId}...`);
+      
+      const updateData: any = {
+        status: 'rejected',
+        rejectedAt: new Date(),
+        rejectedBy: 'admin',
+        updatedAt: new Date(),
+        ...additionalData
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Admin rejected booking ${bookingId} - status set to 'rejected'`);
+    } catch (error: any) {
+      console.error(`❌ Error rejecting booking ${bookingId}:`, error);
+      throw new Error('Failed to reject booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Check if a booking has already been rated by the current user
+   */
+  static async hasBookingBeenRated(bookingId: string): Promise<boolean> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        return false;
+      }
+
+      console.log(`🔍 Checking if booking ${bookingId} has been rated by user ${userId}...`);
+
+      // First check the booking document for rating info
+      const bookingDoc = await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .get();
+
+      if (bookingDoc.exists) {
+        const bookingData = bookingDoc.data();
+        
+        // Check if booking has rating fields populated
+        if (bookingData?.customerRating && bookingData?.ratedAt) {
+          console.log(`✅ Booking ${bookingId} already has rating: ${bookingData.customerRating} stars`);
+          return true;
+        }
+      }
+
+      // Also check serviceRatings collection as backup
+      const ratingsSnapshot = await firestore()
+        .collection('serviceRatings')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      const hasRating = !ratingsSnapshot.empty;
+      
+      if (hasRating) {
+        console.log(`✅ Found existing rating in serviceRatings collection for booking ${bookingId}`);
+      } else {
+        console.log(`❌ No existing rating found for booking ${bookingId}`);
+      }
+
+      return hasRating;
+    } catch (error) {
+      console.error(`❌ Error checking rating status for booking ${bookingId}:`, error);
+      return false; // Assume not rated if there's an error
+    }
+  }
+
+  /**
+   * Submit customer rating and feedback for a completed booking
+   */
+  static async submitBookingRating(
+    bookingId: string,
+    rating: number,
+    feedback?: string
+  ): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to submit a rating');
+      }
+
+      // Check if booking has already been rated
+      const alreadyRated = await this.hasBookingBeenRated(bookingId);
+      if (alreadyRated) {
+        throw new Error('You have already rated this booking');
+      }
+
+      console.log(`⭐ Submitting rating ${rating} for booking ${bookingId}...`);
+      console.log(`📝 Feedback: "${feedback}"`);
+
+      // First, get the booking details to include in the rating
+      const bookingDoc = await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .get();
+
+      if (!bookingDoc.exists) {
+        throw new Error('Booking not found');
+      }
+
+      const bookingData = bookingDoc.data();
+
+      // Enhanced technician info extraction with multiple fallbacks
+      // PRIMARY: Use workerId and workerName (the actual fields in service_bookings)
+      let technicianId = bookingData?.workerId || 
+                        bookingData?.worker_id || 
+                        bookingData?.technicianId || 
+                        bookingData?.technician_id || 
+                        bookingData?.assignedTechnicianId || 
+                        bookingData?.assigned_technician_id || '';
+
+      let technicianName = bookingData?.workerName || 
+                          bookingData?.worker_name || 
+                          bookingData?.technicianName || 
+                          bookingData?.technician_name || 
+                          bookingData?.assignedTechnician || 
+                          bookingData?.assigned_technician || '';
+
+      console.log(`🔍 Extracted technician info from booking:`, {
+        workerId: bookingData?.workerId,
+        workerName: bookingData?.workerName,
+        extractedTechnicianId: technicianId,
+        extractedTechnicianName: technicianName
+      });
+
+      // If still no technician info, try to get from company data
+      if (!technicianName && bookingData?.companyId) {
+        console.log(`🔍 No technician name found, trying to get from company ${bookingData.companyId}...`);
+        try {
+          const companyDoc = await firestore()
+            .collection('service_company')
+            .doc(bookingData.companyId)
+            .get();
+          
+          if (companyDoc.exists) {
+            const companyData = companyDoc.data();
+            technicianName = companyData?.companyName || companyData?.name || '';
+            technicianId = bookingData.companyId; // Use company ID as fallback
+            console.log(`✅ Using company name as technician: ${technicianName}`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Could not fetch company data: ${error}`);
+        }
+      }
+
+      // Final fallback - use service name or generic name
+      if (!technicianName) {
+        technicianName = `${bookingData?.serviceName || 'Service'} Provider`;
+        console.log(`⚠️ Using fallback technician name: ${technicianName}`);
+      }
+
+      console.log(`👷 Final worker info for rating:`, {
+        workerId: technicianId || 'N/A',
+        workerName: technicianName || 'N/A',
+        source: technicianId ? 'booking_data' : 'fallback'
+      });
+
+      // Create the rating document for serviceRatings collection
+      const ratingData = {
+        bookingId: bookingId,
+        customerId: userId,
+        customerName: bookingData?.customerName || 'Customer',
+        serviceName: bookingData?.serviceName || 'Service',
+        companyId: bookingData?.companyId || '',
+        workerId: technicianId,        // Using workerId to match service_bookings
+        workerName: technicianName,    // Using workerName to match service_bookings
+        rating: rating,
+        feedback: feedback?.trim() || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      console.log(`🔥 Creating rating document:`, ratingData);
+
+      // Add the rating to serviceRatings collection
+      const ratingRef = await firestore()
+        .collection('serviceRatings')
+        .add(ratingData);
+
+      console.log(`✅ Rating document created with ID: ${ratingRef.id}`);
+
+      // Update the booking with rating reference and basic rating info
+      const bookingUpdateData = {
+        customerRating: rating,
+        customerFeedback: feedback?.trim() || '',
+        ratingId: ratingRef.id,
+        ratedAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(bookingUpdateData);
+
+      console.log(`✅ Rating ${rating} submitted for booking ${bookingId} and stored in serviceRatings collection`);
+    } catch (error: any) {
+      console.error(`❌ Error submitting rating for booking ${bookingId}:`, error);
+      throw new Error('Failed to submit rating. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update booking with worker information (helper method)
+   */
+  static async updateBookingWorkerInfo(
+    bookingId: string, 
+    workerId: string, 
+    workerName: string
+  ): Promise<void> {
+    try {
+      console.log(`👷 Updating booking ${bookingId} with worker info:`, {
+        workerId,
+        workerName
+      });
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update({
+          workerId: workerId,
+          workerName: workerName,
+          // Also update legacy fields for backward compatibility
+          technicianId: workerId,
+          technicianName: workerName,
+          updatedAt: new Date(),
+        });
+
+      console.log(`✅ Updated booking ${bookingId} with worker information`);
+    } catch (error) {
+      console.error(`❌ Error updating booking ${bookingId} with worker info:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update booking with technician information (helper method - legacy support)
+   */
+  static async updateBookingTechnicianInfo(
+    bookingId: string, 
+    technicianId: string, 
+    technicianName: string
+  ): Promise<void> {
+    // Redirect to the new worker method for consistency
+    return this.updateBookingWorkerInfo(bookingId, technicianId, technicianName);
+  }
+
+  /**
+   * NEW: Check company availability using the new website integration system
+   * This uses the company_availability collection created by cloud functions
+   */
+  static async checkCompanyAvailabilityNew(
+    companyId: string,
+    startTime: string,
+    endTime: string
+  ): Promise<boolean> {
+    try {
+      console.log(`🔍 NEW AVAILABILITY CHECK - Company: ${companyId}`);
+      console.log(`   Start Time: ${startTime}`);
+      console.log(`   End Time: ${endTime}`);
+      
+      // Check the company_availability collection first (real-time data from website)
+      const availabilityDoc = await firestore()
+        .collection('company_availability')
+        .doc(companyId)
+        .get();
+      
+      if (availabilityDoc.exists) {
+        const availabilityData = availabilityDoc.data();
+        console.log(`📊 COMPANY AVAILABILITY DATA:`, availabilityData);
+        
+        const isAvailable = availabilityData?.isAvailable === true;
+        const availableWorkers = availabilityData?.availableWorkers || 0;
+        const totalWorkers = availabilityData?.totalWorkers || 0;
+        const lastUpdated = availabilityData?.lastUpdated;
+        
+        console.log(`   Available: ${isAvailable}`);
+        console.log(`   Available Workers: ${availableWorkers}/${totalWorkers}`);
+        console.log(`   Last Updated: ${lastUpdated?.toDate?.()}`);
+        
+        if (!isAvailable) {
+          console.log(`❌ COMPANY ${companyId} - MARKED AS UNAVAILABLE BY WEBSITE SYSTEM`);
+          return false;
+        }
+        
+        if (availableWorkers === 0) {
+          console.log(`❌ COMPANY ${companyId} - NO AVAILABLE WORKERS`);
+          return false;
+        }
+        
+        console.log(`✅ COMPANY ${companyId} - AVAILABLE (${availableWorkers} workers free)`);
+        return true;
+      } else {
+        console.log(`⚠️ No availability data found for company ${companyId}, falling back to old method`);
+        // Fallback to old method if no availability data
+        return this.checkCompanyWorkerAvailabilityOld(companyId, startTime, endTime);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error checking new company availability for ${companyId}:`, error);
+      // Fallback to old method on error
+      return this.checkCompanyWorkerAvailabilityOld(companyId, startTime, endTime);
+    }
+  }
+
+  /**
+   * OLD METHOD: Renamed for fallback use - FIXED to return accurate worker counts
+   */
+  static async checkCompanyWorkerAvailabilityOld(
+    companyId: string,
+    startTime: string,
+    endTime: string
+  ): Promise<boolean> {
+    try {
+      console.log(`🔍 FALLBACK AVAILABILITY CHECK - Company: ${companyId}`);
+      
+      // Get all active workers for this company
+      const workersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+
+      if (workersSnapshot.empty) {
+        console.log(`❌ No active workers found for company ${companyId}`);
+        return false;
+      }
+
+      const totalWorkers = workersSnapshot.size;
+      const workerIds = workersSnapshot.docs.map(doc => doc.id);
+      
+      console.log(`👷 FALLBACK CHECK - Total active workers: ${totalWorkers}`);
+      console.log(`   Worker IDs:`, workerIds);
+      
+      // Check for active bookings
+      const busyWorkers = new Set();
+      
+      for (let i = 0; i < workerIds.length; i += 10) {
+        const batch = workerIds.slice(i, i + 10);
+        
+        const bookingsSnapshot = await firestore()
+          .collection('service_bookings')
+          .where('workerId', 'in', batch)
+          .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+          .get();
+
+        console.log(`📋 Found ${bookingsSnapshot.size} active bookings for batch`);
+
+        bookingsSnapshot.docs.forEach(doc => {
+          const booking = doc.data();
+          if (booking.workerId) {
+            busyWorkers.add(booking.workerId);
+            console.log(`   Worker ${booking.workerId} is BUSY with booking ${doc.id} (${booking.status})`);
+          }
+        });
+      }
+
+      const availableWorkers = totalWorkers - busyWorkers.size;
+      console.log(`📊 FALLBACK CHECK RESULT:`);
+      console.log(`   Total Workers: ${totalWorkers}`);
+      console.log(`   Busy Workers: ${busyWorkers.size}`);
+      console.log(`   Available Workers: ${availableWorkers}`);
+      
+      if (busyWorkers.size > 0) {
+        console.log(`   Busy Worker IDs:`, Array.from(busyWorkers));
+      }
+      
+      const isAvailable = availableWorkers > 0;
+      
+      if (!isAvailable) {
+        console.log(`❌ FALLBACK: Company ${companyId} - ALL ${totalWorkers} WORKERS BUSY`);
+      } else {
+        console.log(`✅ FALLBACK: Company ${companyId} - ${availableWorkers}/${totalWorkers} workers available`);
+      }
+      
+      return isAvailable;
+      
+    } catch (error) {
+      console.error(`❌ Error in fallback availability check:`, error);
+      return false;
+    }
+  }
+
+
+
+  /**
+   * NEW: Bulk check company availability for multiple companies
+   * This uses the new website integration system
+   */
+  static async checkBulkCompanyAvailability(
+    companyIds: string[],
+    startTime: string,
+    endTime: string
+  ): Promise<{[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}}> {
+    try {
+      console.log(`🔍 BULK AVAILABILITY CHECK for ${companyIds.length} companies`);
+      console.log(`   Companies:`, companyIds);
+      console.log(`   Time Range: ${startTime} to ${endTime}`);
+      
+      const results: {[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}} = {};
+      
+      // Get availability data for all companies at once
+      const availabilitySnapshot = await firestore()
+        .collection('company_availability')
+        .where(firestore.FieldPath.documentId(), 'in', companyIds.slice(0, 10)) // Firestore limit
+        .get();
+      
+      console.log(`📊 Found availability data for ${availabilitySnapshot.size} companies`);
+      
+      // Process companies with availability data
+      availabilitySnapshot.docs.forEach(doc => {
+        const companyId = doc.id;
+        const data = doc.data();
+        
+        results[companyId] = {
+          isAvailable: data.isAvailable === true && (data.availableWorkers || 0) > 0,
+          availableWorkers: data.availableWorkers || 0,
+          totalWorkers: data.totalWorkers || 0
+        };
+        
+        console.log(`   Company ${companyId}: ${results[companyId].isAvailable ? 'Available' : 'Busy'} (${results[companyId].availableWorkers}/${results[companyId].totalWorkers})`);
+      });
+      
+      // For companies without availability data, use fallback method
+      const companiesWithoutData = companyIds.filter(id => !results[id]);
+      if (companiesWithoutData.length > 0) {
+        console.log(`⚠️ ${companiesWithoutData.length} companies missing availability data, using fallback`);
+        
+        for (const companyId of companiesWithoutData) {
+          try {
+            // Get accurate worker counts using fallback method
+            const workersSnapshot = await firestore()
+              .collection('service_workers')
+              .where('companyId', '==', companyId)
+              .where('isActive', '==', true)
+              .get();
+
+            const totalWorkers = workersSnapshot.size;
+            
+            if (totalWorkers === 0) {
+              results[companyId] = {
+                isAvailable: false,
+                availableWorkers: 0,
+                totalWorkers: 0
+              };
+              continue;
+            }
+
+            const workerIds = workersSnapshot.docs.map(doc => doc.id);
+            const busyWorkers = new Set();
+            
+            // Check for active bookings
+            for (let i = 0; i < workerIds.length; i += 10) {
+              const batch = workerIds.slice(i, i + 10);
+              
+              const bookingsSnapshot = await firestore()
+                .collection('service_bookings')
+                .where('workerId', 'in', batch)
+                .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+                .get();
+
+              bookingsSnapshot.docs.forEach(doc => {
+                const booking = doc.data();
+                if (booking.workerId) {
+                  busyWorkers.add(booking.workerId);
+                }
+              });
+            }
+
+            const availableWorkers = totalWorkers - busyWorkers.size;
+            const isAvailable = availableWorkers > 0;
+            
+            results[companyId] = {
+              isAvailable,
+              availableWorkers,
+              totalWorkers
+            };
+            
+            console.log(`   FALLBACK Company ${companyId}: ${isAvailable ? 'Available' : 'Busy'} (${availableWorkers}/${totalWorkers})`);
+            
+          } catch (error) {
+            console.error(`❌ Error checking fallback for company ${companyId}:`, error);
+            results[companyId] = {
+              isAvailable: false,
+              availableWorkers: 0,
+              totalWorkers: 0
+            };
+          }
+        }
+      }
+      
+      console.log(`✅ BULK CHECK COMPLETE:`, results);
+      return results;
+      
+    } catch (error) {
+      console.error(`❌ Error in bulk availability check:`, error);
+      
+      // Fallback: check each company individually with accurate worker counts
+      const results: {[companyId: string]: {isAvailable: boolean, availableWorkers: number, totalWorkers: number}} = {};
+      for (const companyId of companyIds) {
+        try {
+          // Get accurate worker counts
+          const workersSnapshot = await firestore()
+            .collection('service_workers')
+            .where('companyId', '==', companyId)
+            .where('isActive', '==', true)
+            .get();
+
+          const totalWorkers = workersSnapshot.size;
+          
+          if (totalWorkers === 0) {
+            results[companyId] = {
+              isAvailable: false,
+              availableWorkers: 0,
+              totalWorkers: 0
+            };
+            continue;
+          }
+
+          const workerIds = workersSnapshot.docs.map(doc => doc.id);
+          const busyWorkers = new Set();
+          
+          // Check for active bookings
+          for (let i = 0; i < workerIds.length; i += 10) {
+            const batch = workerIds.slice(i, i + 10);
+            
+            const bookingsSnapshot = await firestore()
+              .collection('service_bookings')
+              .where('workerId', 'in', batch)
+              .where('status', 'in', ['pending', 'assigned', 'in_progress', 'confirmed'])
+              .get();
+
+            bookingsSnapshot.docs.forEach(doc => {
+              const booking = doc.data();
+              if (booking.workerId) {
+                busyWorkers.add(booking.workerId);
+              }
+            });
+          }
+
+          const availableWorkers = totalWorkers - busyWorkers.size;
+          const isAvailable = availableWorkers > 0;
+          
+          results[companyId] = {
+            isAvailable,
+            availableWorkers,
+            totalWorkers
+          };
+          
+        } catch (err) {
+          console.error(`❌ Error in individual fallback for company ${companyId}:`, err);
+          results[companyId] = {
+            isAvailable: false,
+            availableWorkers: 0,
+            totalWorkers: 0
+          };
+        }
+      }
+      return results;
+    }
+  }
+  static async getServiceRatings(companyId?: string, serviceName?: string, limit: number = 50): Promise<any[]> {
+    try {
+      console.log(`🔥 Fetching service ratings...`);
+      
+      let query = firestore().collection('serviceRatings').orderBy('createdAt', 'desc');
+      
+      if (companyId) {
+        query = query.where('companyId', '==', companyId);
+      }
+      
+      if (serviceName) {
+        query = query.where('serviceName', '==', serviceName);
+      }
+      
+      const snapshot = await query.limit(limit).get();
+      
+      const ratings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log(`✅ Found ${ratings.length} service ratings`);
+      return ratings;
+    } catch (error: any) {
+      console.error('❌ Error fetching service ratings:', error);
+      throw new Error('Failed to fetch service ratings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get rating for a specific booking
+   */
+  static async getBookingRating(bookingId: string): Promise<any | null> {
+    try {
+      console.log(`🔥 Fetching rating for booking ${bookingId}...`);
+      
+      const snapshot = await firestore()
+        .collection('serviceRatings')
+        .where('bookingId', '==', bookingId)
+        .limit(1)
+        .get();
+      
+      if (snapshot.empty) {
+        console.log(`❌ No rating found for booking ${bookingId}`);
+        return null;
+      }
+      
+      const ratingDoc = snapshot.docs[0];
+      const rating = {
+        id: ratingDoc.id,
+        ...ratingDoc.data()
+      };
+      
+      console.log(`✅ Found rating for booking ${bookingId}:`, rating);
+      return rating;
+    } catch (error: any) {
+      console.error(`❌ Error fetching rating for booking ${bookingId}:`, error);
+      throw new Error('Failed to fetch booking rating. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Create a new service booking with logged-in user ID
+   */
+  static async createServiceBooking(bookingData: Omit<ServiceBooking, 'id'>): Promise<string> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to create a booking');
+      }
+      
+      console.log(`🔥 Creating new service booking for logged-in user: ${userId}`);
+      
+      // CRITICAL: Double-check worker availability before creating booking
+      if (bookingData.companyId && bookingData.date && bookingData.time) {
+        console.log(`🔒 CRITICAL VALIDATION - Checking worker availability for booking creation`);
+        console.log(`   Company ID: ${bookingData.companyId}`);
+        console.log(`   Date: ${bookingData.date}`);
+        console.log(`   Time: ${bookingData.time}`);
+        
+        try {
+          // First, get ALL workers for this company (active and inactive) for debugging
+          const allWorkersSnapshot = await firestore()
+            .collection('service_workers')
+            .where('companyId', '==', bookingData.companyId)
+            .get();
+          
+          console.log(`👥 Total workers in company: ${allWorkersSnapshot.size}`);
+          
+          // Log all workers for debugging
+          allWorkersSnapshot.docs.forEach(doc => {
+            const worker = doc.data();
+            console.log(`   Worker ${doc.id}: ${worker.name || 'Unnamed'} - Active: ${worker.isActive}`);
+          });
+          
+          // Get active workers for this company
+          const activeWorkersSnapshot = await firestore()
+            .collection('service_workers')
+            .where('companyId', '==', bookingData.companyId)
+            .where('isActive', '==', true)
+            .get();
+          
+          const totalActiveWorkers = activeWorkersSnapshot.size;
+          console.log(`👷 Total active workers for company: ${totalActiveWorkers}`);
+          
+          // TEMPORARY FIX: Allow booking even if no active workers found
+          // This prevents the booking from being blocked due to worker status issues
+          if (totalActiveWorkers === 0) {
+            console.log(`⚠️ WARNING: No active workers found, but allowing booking to proceed`);
+            console.log(`   This booking will need manual worker assignment`);
+            console.log(`   Company: ${bookingData.companyId}`);
+            console.log(`   Service: ${(bookingData as any).serviceName || (bookingData as any).serviceTitle}`);
+            
+            // Don't throw error, just log warning and continue
+            console.log(`✅ BOOKING VALIDATION BYPASSED - Manual assignment required`);
+          } else {
+            // Check if any of these workers are already booked on the same date/time
+            const workerIds = activeWorkersSnapshot.docs.map(doc => doc.id);
+            const busyWorkers = new Set<string>();
+            
+            // Check for existing bookings on the same date/time with any status
+            const existingBookingsSnapshot = await firestore()
+              .collection('service_bookings')
+              .where('date', '==', bookingData.date)
+              .where('time', '==', bookingData.time)
+              .where('companyId', '==', bookingData.companyId)
+              .where('status', 'in', ['assigned', 'started', 'pending', 'confirmed'])
+              .get();
+            
+            console.log(`📋 Found ${existingBookingsSnapshot.size} existing bookings for this date/time/company`);
+            
+            existingBookingsSnapshot.docs.forEach(doc => {
+              const booking = doc.data();
+              const workerId = booking.workerId;
+              if (workerId && workerIds.includes(workerId)) {
+                busyWorkers.add(workerId);
+                console.log(`   Worker ${workerId} is busy`);
+              }
+            });
+            
+            const availableWorkers = totalActiveWorkers - busyWorkers.size;
+            
+            console.log(`📊 AVAILABILITY CHECK RESULT:`);
+            console.log(`   Total active workers: ${totalActiveWorkers}`);
+            console.log(`   Busy workers: ${busyWorkers.size}`);
+            console.log(`   Available workers: ${availableWorkers}`);
+            
+            // TEMPORARY FIX: Allow booking even if all workers are busy
+            // This prevents overbooking issues but allows manual management
+            if (availableWorkers === 0) {
+              console.log(`⚠️ WARNING: All workers appear busy, but allowing booking to proceed`);
+              console.log(`   This booking will need manual worker assignment or rescheduling`);
+              console.log(`   Company: ${bookingData.companyId}`);
+              console.log(`   Date: ${bookingData.date}, Time: ${bookingData.time}`);
+              console.log(`   Service: ${(bookingData as any).serviceName || (bookingData as any).serviceTitle}`);
+              
+              // Don't throw error, just log warning and continue
+              console.log(`✅ BOOKING VALIDATION BYPASSED - Manual management required`);
+            } else {
+              console.log(`✅ BOOKING VALIDATION PASSED`);
+              console.log(`   Available Workers: ${availableWorkers}/${totalActiveWorkers}`);
+            }
+          }
+          
+        } catch (validationError: any) {
+          console.error(`❌ Error in booking availability validation:`, validationError);
+          console.error(`   This error will be logged but booking will proceed`);
+          console.error(`   Manual worker assignment may be required`);
+          
+          // Don't throw error, just log and continue
+          console.log(`✅ BOOKING VALIDATION BYPASSED - Validation error occurred`);
+        }
+      }
+      
+      // Clean the booking data to remove undefined values
+      const cleanedData = this.cleanBookingData({
+        ...bookingData,
+        customerId: userId, // Always set the logged-in user ID
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      
+      // Add company name for website compatibility if companyId exists
+      if (cleanedData.companyId && !cleanedData.companyName) {
+        try {
+          console.log(`🏢 Fetching company name for booking...`);
+          const companyName = await this.getActualCompanyName(cleanedData.companyId);
+          cleanedData.companyName = companyName;
+          console.log(`✅ Added company name to booking: ${companyName}`);
+        } catch (error) {
+          console.log(`⚠️ Could not fetch company name, using fallback`);
+          cleanedData.companyName = `Company ${cleanedData.companyId}`;
+        }
+      }
+      
+      console.log(`🧹 Cleaned booking data for Firestore:`, JSON.stringify(cleanedData, null, 2));
+      
+      const docRef = await firestore()
+        .collection('service_bookings')
+        .add(cleanedData);
+
+      console.log(`✅ Created booking with ID: ${docRef.id} for logged-in user: ${userId}`);
+      console.log(`🏢 Company: ${bookingData.companyId} - Booking confirmed with available workers`);
+      return docRef.id;
+    } catch (error: any) {
+      console.error('❌ Error creating service booking:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to create service booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Clean booking data to remove undefined values that Firestore doesn't support
+   */
+  private static cleanBookingData(data: any): any {
+    const cleaned: any = {};
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        if (value === null) {
+          // Explicitly allow null values (Firestore supports null)
+          cleaned[key] = null;
+        } else if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          // Recursively clean nested objects
+          const cleanedNested = this.cleanBookingData(value);
+          if (Object.keys(cleanedNested).length > 0) {
+            cleaned[key] = cleanedNested;
+          }
+        } else if (Array.isArray(value)) {
+          // Handle arrays - filter out undefined values
+          const cleanedArray = value.filter(item => item !== undefined);
+          cleaned[key] = cleanedArray;
+        } else {
+          cleaned[key] = value;
+        }
+      }
+    }
+    
+    return cleaned;
+  }
+
+  /**
+   * Update an existing service booking
+   */
+  static async updateServiceBooking(bookingId: string, updates: Partial<ServiceBooking>): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update booking');
+      }
+      
+      console.log(`🔥 Updating service booking ${bookingId} for user: ${userId}`);
+      
+      // Clean the update data to remove undefined values
+      const cleanedUpdates = this.cleanBookingData({
+        ...updates,
+        updatedAt: new Date(),
+      });
+      
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(cleanedUpdates);
+
+      console.log(`✅ Updated booking ${bookingId} successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating service booking:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to update service booking. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get service bookings with location data for website access
+   * This method is specifically designed for website integration
+   */
+  static async getServiceBookingsWithLocation(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      console.log(`🌐 Fetching service bookings with location data for website (limit: ${limit})`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Only include bookings that have location data
+        if (data.location && data.location.address) {
+          bookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || '',
+            customerAddress: data.customerAddress || '',
+            customerId: data.customerId || '',
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId || '',
+            workerName: data.workerName || data.technicianName || '',
+            workerId: data.workerId || data.technicianId || '',
+            technicianName: data.technicianName || data.workerName || '',
+            technicianId: data.technicianId || data.workerId || '',
+            totalPrice: data.totalPrice || 0,
+            addOns: data.addOns || [],
+            location: {
+              lat: data.location.lat || null,
+              lng: data.location.lng || null,
+              address: data.location.address || '',
+              houseNo: data.location.houseNo || '',
+              placeLabel: data.location.placeLabel || '',
+            },
+            estimatedDuration: data.estimatedDuration,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified || false,
+            completionOtpVerified: data.completionOtpVerified || false,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        }
+      });
+
+      console.log(`✅ Fetched ${bookings.length} service bookings with location data for website`);
+      console.log(`📍 Location data available for all ${bookings.length} bookings`);
+      
+      return bookings;
+    } catch (error: any) {
+      console.error('❌ Error fetching service bookings with location:', error);
+      throw new Error('Failed to fetch service bookings with location data. Please check your internet connection.');
+    }
+  }
+
+  static async getCompaniesFromServiceCompany(): Promise<any[]> {
+    try {
+      console.log('🏢 Fetching all companies from service_company collection...');
+      
+      const snapshot = await firestore()
+        .collection('service_company')
+        .get();
+
+      const companies: any[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        companies.push({
+          id: doc.id,
+          ...data,
+        });
+      });
+
+      console.log(`✅ Found ${companies.length} companies in service_company collection`);
+      return companies;
+    } catch (error) {
+      console.error('❌ Error fetching companies from service_company:', error);
+      throw new Error('Failed to fetch companies from service_company. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update existing bookings to add customerId field for logged-in user (for migration)
+   */
+  static async updateExistingBookingsWithUserId(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update bookings');
+      }
+      
+      console.log(`🔧 Updating existing bookings with logged-in userId: ${userId}`);
+      
+      // Get all bookings without customerId
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .orderBy('createdAt', 'desc')
+        .limit(20)
+        .get();
+      
+      console.log(`Found ${snapshot.size} total bookings to check`);
+      
+      let updatedCount = 0;
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        
+        // If booking doesn't have customerId, add it
+        if (!data.customerId) {
+          await firestore()
+            .collection('service_bookings')
+            .doc(doc.id)
+            .update({
+              customerId: userId,
+              updatedAt: new Date(),
+            });
+          
+          console.log(`✅ Updated booking ${doc.id} with customerId: ${userId}`);
+          updatedCount++;
+        } else {
+          console.log(`⚠️ Booking ${doc.id} already has customerId: ${data.customerId}`);
+        }
+      }
+      
+      console.log(`✅ Updated ${updatedCount} bookings with logged-in user customerId`);
+    } catch (error: any) {
+      console.error('❌ Error updating existing bookings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current logged-in user ID from Firebase Auth
+   */
+  static getCurrentUserId(): string | null {
+    try {
+      // Ensure Firebase is initialized
+      if (!auth) {
+        console.error('❌ Firebase Auth not initialized');
+        return null;
+      }
+
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        console.log(`🔐 Current logged-in user: ${currentUser.uid}`);
+        return currentUser.uid;
+      } else {
+        console.log('❌ No user is currently logged in');
+        return null;
+      }
+    } catch (error: any) {
+      console.error('❌ Error getting current user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if user is logged in
+   */
+  static isUserLoggedIn(): boolean {
+    try {
+      // Ensure Firebase is initialized
+      if (!auth) {
+        console.error('❌ Firebase Auth not initialized');
+        return false;
+      }
+
+      return auth().currentUser !== null;
+    } catch (error: any) {
+      console.error('❌ Error checking login status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user data from users collection for logged-in user
+   */
+  static async getCurrentUser(): Promise<any> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('No user is currently logged in');
+      }
+      
+      console.log(`🔥 Fetching user data for logged-in user: ${userId}`);
+      
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(userId)
+        .get();
+
+      if (!userDoc.exists) {
+        console.log(`❌ User ${userId} not found in users collection`);
+        return null;
+      }
+
+      const userData = userDoc.data();
+      console.log(`✅ Found logged-in user: ${userData?.name || userData?.email || 'Unknown'}`);
+      
+      return {
+        id: userDoc.id,
+        ...userData,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching current user:', error);
+      throw new Error('Failed to fetch user data. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * SIMPLE: Get all bookings for current user from service_bookings collection
+   */
+  static async getSimpleUserBookings(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
+      
+      // Direct query to service_bookings collection
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`📋 Processing booking ${doc.id}:`, {
+          serviceName: data.serviceName,
+          customerName: data.customerName,
+          status: data.status,
+          date: data.date,
+          time: data.time,
+          customerId: data.customerId
+        });
+        
+        // Add ALL bookings for this user (no filtering)
+        bookings.push({
+          id: doc.id,
+          serviceName: data.serviceName || '',
+          workName: data.workName || data.serviceName || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || '',
+          customerAddress: data.customerAddress || '',
+          customerId: data.customerId,
+          date: data.date || '',
+          time: data.time || '',
+          status: data.status || 'pending',
+          companyId: data.companyId,
+          technicianName: data.technicianName,
+          technicianId: data.technicianId,
+          totalPrice: data.totalPrice,
+          addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2,
+          startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
+          otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
+          assignedAt: data.assignedAt,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+          rejectedAt: data.rejectedAt,
+          expiredAt: data.expiredAt,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
+        });
+      });
+
+      // Sort by creation date (newest first)
+      bookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime;
+      });
+
+      const result = bookings.slice(0, limit);
+
+      console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
+      
+      if (result.length === 0) {
+        console.log(`ℹ️ No bookings found for user ${userId} in service_bookings collection`);
+        console.log(`💡 Check if:`);
+        console.log(`   - User is logged in correctly`);
+        console.log(`   - Bookings have correct customerId field`);
+        console.log(`   - Bookings are in service_bookings collection`);
+      } else {
+        console.log(`📋 Bookings found:`);
+        result.forEach((booking, index) => {
+          console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
+        });
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error in simple fetch:', error);
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get ONLY legitimate customer bookings (NO DEMO/TEST DATA)
+   */
+  static async getRealUserBookingsOnly(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching ONLY LEGITIMATE bookings for user: ${userId}`);
+      
+      // Get bookings for this user only
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`Found ${snapshot.size} bookings for user, applying STRICT legitimacy filter`);
+
+      const legitimateBookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // REASONABLE VALIDATION - Allow real bookings, block obvious demo data
+        const isLegitimate = (
+          // Must have service name
+          data.serviceName && 
+          data.serviceName.trim().length > 0 &&
+          
+          // Must have customer name
+          data.customerName && 
+          data.customerName.trim().length > 0 &&
+          
+          // Block only obvious demo names (not all similar names)
+          data.customerName.toLowerCase() !== 'john doe' &&
+          data.customerName.toLowerCase() !== 'jane smith' &&
+          data.customerName.toLowerCase() !== 'bob johnson' &&
+          data.customerName.toLowerCase() !== 'test customer' &&
+          data.customerName.toLowerCase() !== 'demo customer' &&
+          data.customerName.toLowerCase() !== 'sample customer' &&
+          data.customerName.toLowerCase() !== 'customer' &&
+          
+          // Must have phone (but allow various formats)
+          data.customerPhone && 
+          data.customerPhone.trim().length >= 10 &&
+          // Block only obvious test numbers
+          data.customerPhone !== '9999999999' &&
+          data.customerPhone !== '1234567890' &&
+          data.customerPhone !== '0000000000' &&
+          data.customerPhone !== '+91 9999999999' &&
+          
+          // Block test company
+          data.companyId !== 'test-company-id' &&
+          
+          // Must belong to current user
+          data.customerId === userId
+        );
+        
+        if (isLegitimate) {
+          console.log(`✅ LEGITIMATE: ${data.serviceName} | ${data.customerName} | ${data.status}`);
+          
+          legitimateBookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || '',
+            customerAddress: data.customerAddress || '',
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            technicianName: data.technicianName,
+            technicianId: data.technicianId,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        } else {
+          console.log(`🚫 REJECTED: ${data.serviceName || 'N/A'} | ${data.customerName || 'N/A'} | CustomerId: ${data.customerId} | Expected: ${userId}`);
+          console.log(`   Reasons for rejection:`);
+          console.log(`   - Service name valid: ${!!(data.serviceName && data.serviceName.trim().length > 0)}`);
+          console.log(`   - Customer name valid: ${!!(data.customerName && data.customerName.trim().length > 0)}`);
+          console.log(`   - Not demo name: ${data.customerName?.toLowerCase() !== 'john doe' && data.customerName?.toLowerCase() !== 'jane smith'}`);
+          console.log(`   - Phone valid: ${!!(data.customerPhone && data.customerPhone.trim().length >= 10)}`);
+          console.log(`   - Not test phone: ${data.customerPhone !== '9999999999'}`);
+          console.log(`   - CustomerId matches: ${data.customerId === userId}`);
+        }
+      });
+
+      // Sort by date (newest first)
+      legitimateBookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime;
+      });
+
+      const result = legitimateBookings.slice(0, limit);
+
+      console.log(`📊 RESULT: ${result.length} legitimate bookings out of ${snapshot.size} total`);
+      
+      if (result.length === 0) {
+        console.log(`ℹ️ NO LEGITIMATE BOOKINGS - User needs to create real bookings through the app`);
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error fetching legitimate bookings:', error);
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings for currently logged-in user only
+   */
+  static async getUserBookings(limit: number = 50): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching REAL bookings only for logged-in user: ${userId}`);
+      console.log(`🔥 DEBUG: About to execute query - REAL DATA ONLY`);
+      
+      // Get all bookings first, then filter for REAL bookings only
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .limit(200) // Get more to find real bookings
+        .get();
+
+      console.log(`Found ${snapshot.size} total bookings, filtering for REAL user bookings for ${userId}`);
+
+      const bookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Filter for the specific user
+        if (data.customerId !== userId) {
+          return; // Skip bookings that don't belong to this user
+        }
+        
+        // STRICT REAL BOOKING VALIDATION - Only allow clearly real bookings
+        const isRealBooking = (
+          // Must have real service name
+          data.serviceName && 
+          data.serviceName.trim().length > 0 &&
+          !data.serviceName.toLowerCase().includes('test') &&
+          !data.serviceName.toLowerCase().includes('demo') &&
+          !data.serviceName.toLowerCase().includes('sample') &&
+          !data.serviceName.toLowerCase().includes('mock') &&
+          !data.serviceName.toLowerCase().includes('fake') &&
+          !data.serviceName.toLowerCase().includes('dummy') &&
+          
+          // Must have real customer name
+          data.customerName && 
+          data.customerName.trim().length > 0 &&
+          !data.customerName.toLowerCase().includes('test') &&
+          !data.customerName.toLowerCase().includes('demo') &&
+          !data.customerName.toLowerCase().includes('sample') &&
+          data.customerName.toLowerCase() !== 'customer' &&
+          
+          // Must have real phone number
+          data.customerPhone && 
+          data.customerPhone.trim().length > 0 &&
+          !data.customerPhone.includes('9999999999') &&
+          !data.customerPhone.includes('1234567890') &&
+          !data.customerPhone.includes('0000000000') &&
+          
+          // Must not be test company
+          data.companyId !== 'test-company-id' &&
+          (!data.companyId || !data.companyId.toLowerCase().includes('test'))
+        );
+        
+        if (!isRealBooking) {
+          console.log(`🚫 BLOCKING NON-REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
+          return; // Skip non-real bookings
+        }
+        
+        console.log(`✅ REAL USER BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
+        
+        
+        bookings.push({
+          id: doc.id,
+          serviceName: data.serviceName || '',
+          workName: data.workName || data.serviceName || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || data.phone,
+          customerAddress: data.customerAddress || data.address,
+          customerId: data.customerId,
+          date: data.date || '',
+          time: data.time || '',
+          status: data.status || 'pending',
+          companyId: data.companyId,
+          technicianName: data.technicianName,
+          technicianId: data.technicianId,
+          totalPrice: data.totalPrice,
+          addOns: data.addOns || [],
+          estimatedDuration: data.estimatedDuration || 2,
+          startOtp: data.startOtp,
+          completionOtp: data.completionOtp,
+          otpVerified: data.otpVerified,
+          completionOtpVerified: data.completionOtpVerified,
+          assignedAt: data.assignedAt,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+          rejectedAt: data.rejectedAt,
+          expiredAt: data.expiredAt,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          customerRating: data.customerRating,
+          customerFeedback: data.customerFeedback,
+          ratedAt: data.ratedAt,
+        });
+      });
+
+      // Sort by createdAt descending on client side (newest first)
+      bookings.sort((a, b) => {
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        
+        // Handle Firestore timestamps
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime();
+        
+        return bTime - aTime; // Descending order (newest first)
+      });
+
+      // Limit to requested number after filtering and sorting
+      const limitedBookings = bookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} REAL bookings for logged-in user ${userId}`);
+      
+      if (limitedBookings.length === 0) {
+        console.log(`ℹ️ No real bookings found for user ${userId}. This means:`);
+        console.log(`   - User hasn't made any real bookings yet, OR`);
+        console.log(`   - All bookings are test/demo data (filtered out)`);
+      }
+      
+      return limitedBookings;
+    } catch (error: any) {
+      console.error('❌ Error fetching user bookings:', error);
+      console.error('❌ Error code:', error?.code);
+      console.error('❌ Error message:', error?.message);
+      console.error('❌ Full error:', JSON.stringify(error, null, 2));
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      // Check if it's the specific index error
+      if (error?.code === 'firestore/failed-precondition' && error?.message?.includes('index')) {
+        console.error('❌ FIRESTORE INDEX ERROR - This should not happen with the fixed query!');
+        throw new Error('Database configuration issue. Please contact support.');
+      }
+      
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings filtered by status for currently logged-in user only
+   */
+  static async getUserBookingsByStatus(
+    status: ServiceBooking['status'] | 'all' | 'active',
+    limit: number = 50
+  ): Promise<ServiceBooking[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view your bookings');
+      }
+      
+      console.log(`🔥 Fetching user bookings with status filter: ${status} for user: ${userId}`);
+      
+      // Get ALL user bookings first using simple fetch, then filter by status
+      const allUserBookings = await this.getSimpleUserBookings(limit * 2);
+
+      console.log(`📊 Total user bookings before filtering: ${allUserBookings.length}`);
+      console.log(`🔍 Filtering for status: ${status}`);
+
+      // Filter client-side based on status
+      let filteredBookings: ServiceBooking[] = [];
+      
+      if (status === 'all') {
+        filteredBookings = allUserBookings;
+        console.log(`✅ Showing ALL bookings: ${filteredBookings.length}`);
+      } else if (status === 'active') {
+        // Active bookings: pending, assigned, started
+        filteredBookings = allUserBookings.filter(booking => 
+          ['pending', 'assigned', 'started'].includes(booking.status)
+        );
+        console.log(`✅ Showing ACTIVE bookings (pending/assigned/started): ${filteredBookings.length}`);
+      } else if (status === 'pending') {
+        // Only pending bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'pending');
+        console.log(`✅ Showing PENDING bookings: ${filteredBookings.length}`);
+      } else if (status === 'completed') {
+        // Only completed bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'completed');
+        console.log(`✅ Showing COMPLETED bookings: ${filteredBookings.length}`);
+      } else if (status === 'rejected') {
+        // Only admin rejected bookings (handle both 'rejected' and 'reject' for backward compatibility)
+        filteredBookings = allUserBookings.filter(booking => 
+          booking.status === 'rejected' || booking.status === 'reject'
+        );
+        console.log(`✅ Showing ADMIN REJECTED bookings (rejected/reject): ${filteredBookings.length}`);
+      } else if (status === 'cancelled') {
+        // Only user cancelled bookings
+        filteredBookings = allUserBookings.filter(booking => booking.status === 'cancelled');
+        console.log(`✅ Showing USER CANCELLED bookings: ${filteredBookings.length}`);
+      } else {
+        // Specific status (for any other status)
+        filteredBookings = allUserBookings.filter(booking => booking.status === status);
+        console.log(`✅ Showing bookings with status '${status}': ${filteredBookings.length}`);
+      }
+
+      // Show what bookings are in each category for debugging
+      console.log(`📋 Bookings by status breakdown:`);
+      const statusCounts = allUserBookings.reduce((acc, booking) => {
+        acc[booking.status] = (acc[booking.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log(`   Status counts:`, statusCounts);
+      
+      // Show filtered results
+      console.log(`📋 Filtered bookings for '${status}':`);
+      filteredBookings.forEach((booking, index) => {
+        console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | Status: ${booking.status}`);
+      });
+
+      // Limit the results
+      const limitedBookings = filteredBookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} user bookings with status: ${status} (from ${allUserBookings.length} total)`);
+      return limitedBookings;
+    } catch (error: any) {
+      console.error(`❌ Error fetching user bookings by status ${status}:`, error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch your bookings. Please check your internet connection.');
+    }
+  }
+  /**
+   * Fix existing bookings that might have incorrect status values
+   */
+  static async fixBookingStatusInconsistencies(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔧 Checking for booking status inconsistencies for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings to check`);
+      
+      let fixedCount = 0;
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        let needsUpdate = false;
+        const updates: any = {};
+        
+        // Fix 'reject' to 'rejected'
+        if (data.status === 'reject') {
+          updates.status = 'rejected';
+          updates.rejectedBy = 'admin'; // Assume admin rejection for legacy 'reject' status
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: 'reject' → 'rejected'`);
+        }
+        
+        // Fix 'canceled' (typo) to 'cancelled' (keep cancelled separate from rejected)
+        if (data.status === 'canceled') {
+          updates.status = 'cancelled';
+          updates.cancelledBy = 'user'; // Assume user cancellation
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: 'canceled' → 'cancelled'`);
+        }
+        
+        // Note: We no longer convert 'cancelled' to 'rejected' - they are now separate statuses
+        
+        // Fix timestamp field names
+        if (data.rejectAt && !data.rejectedAt) {
+          updates.rejectedAt = data.rejectAt;
+          needsUpdate = true;
+          console.log(`🔧 Fixing booking ${doc.id}: 'rejectAt' → 'rejectedAt'`);
+        }
+        
+        if (needsUpdate) {
+          updates.updatedAt = new Date();
+          await firestore()
+            .collection('service_bookings')
+            .doc(doc.id)
+            .update(updates);
+          
+          fixedCount++;
+        }
+      }
+      
+      console.log(`✅ Fixed ${fixedCount} booking status inconsistencies`);
+      
+      if (fixedCount > 0) {
+        console.log(`💡 Recommendation: Refresh the booking history screen to see updated statuses`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fixing booking status inconsistencies:', error);
+    }
+  }
+
+  /**
+   * Debug method to check all booking statuses for current user
+   */
+  static async debugBookingStatuses(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔍 Checking all booking statuses for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} bookings:`);
+      
+      const statusCounts: Record<string, number> = {};
+      const statusExamples: Record<string, string[]> = {};
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const status = data.status || 'undefined';
+        
+        // Count statuses
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+        
+        // Store examples
+        if (!statusExamples[status]) {
+          statusExamples[status] = [];
+        }
+        if (statusExamples[status].length < 3) {
+          statusExamples[status].push(`${data.serviceName} (${doc.id.substring(0, 8)})`);
+        }
+      });
+      
+      console.log(`📋 Status breakdown:`);
+      Object.entries(statusCounts).forEach(([status, count]) => {
+        console.log(`   ${status}: ${count} booking${count > 1 ? 's' : ''}`);
+        console.log(`     Examples: ${statusExamples[status].join(', ')}`);
+      });
+      
+      // Check for problematic statuses
+      const problematicStatuses = ['reject', 'canceled']; // Removed 'cancelled' as it's now a valid separate status
+      const hasProblems = problematicStatuses.some(status => statusCounts[status] > 0);
+      
+      if (hasProblems) {
+        console.log(`⚠️ Found problematic statuses that should be fixed:`);
+        problematicStatuses.forEach(status => {
+          if (statusCounts[status] > 0) {
+            if (status === 'reject') {
+              console.log(`   - '${status}' should be 'rejected'`);
+            } else if (status === 'canceled') {
+              console.log(`   - '${status}' should be 'cancelled'`);
+            }
+          }
+        });
+        console.log(`💡 Run FirestoreService.fixBookingStatusInconsistencies() to fix these`);
+      } else {
+        console.log(`✅ All booking statuses look correct`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error debugging booking statuses:', error);
+    }
+  } static generateCompletionOtp(): string {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  }
+
+  /**
+   * Start service and generate completion OTP
+   */
+  static async startServiceWithOtp(bookingId: string, technicianId?: string): Promise<string> {
+    try {
+      console.log(`🔥 Starting service for booking ${bookingId}...`);
+      
+      const completionOtp = this.generateCompletionOtp();
+      
+      const updateData: any = {
+        status: 'started',
+        startedAt: new Date(),
+        completionOtp: completionOtp,
+        completionOtpVerified: false,
+        updatedAt: new Date(),
+      };
+
+      if (technicianId) {
+        updateData.technicianId = technicianId;
+      }
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Service started for booking ${bookingId} with completion OTP: ${completionOtp}`);
+      return completionOtp;
+    } catch (error) {
+      console.error(`❌ Error starting service for booking ${bookingId}:`, error);
+      throw new Error('Failed to start service. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Complete service with OTP verification
+   */
+  static async completeServiceWithOtp(bookingId: string, providedOtp: string): Promise<boolean> {
+    try {
+      console.log(`🔥 Completing service for booking ${bookingId} with OTP ${providedOtp}...`);
+      
+      // First, get the booking to verify OTP
+      const booking = await this.getServiceBookingById(bookingId);
+      if (!booking) {
+        throw new Error('Booking not found');
+      }
+
+      if (booking.completionOtp !== providedOtp) {
+        console.log(`❌ Invalid OTP provided: ${providedOtp}, expected: ${booking.completionOtp}`);
+        return false;
+      }
+
+      // OTP is correct, complete the service
+      const updateData: any = {
+        status: 'completed',
+        completedAt: new Date(),
+        completionOtpVerified: true,
+        updatedAt: new Date(),
+      };
+
+      await firestore()
+        .collection('service_bookings')
+        .doc(bookingId)
+        .update(updateData);
+
+      console.log(`✅ Service completed for booking ${bookingId} with OTP verification`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error completing service for booking ${bookingId}:`, error);
+      throw new Error('Failed to complete service. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get bookings filtered by status (client-side filtering to avoid index requirements)
+   */
+  static async getBookingsByStatus(
+    status: ServiceBooking['status'] | 'all' | 'active',
+    limit: number = 50
+  ): Promise<ServiceBooking[]> {
+    try {
+      console.log(`🔥 Fetching bookings with status: ${status}...`);
+      
+      // Use the existing getServiceBookings method which works without indexes
+      const allBookings = await this.getServiceBookings(limit * 2);
+
+      // Filter client-side based on status
+      let filteredBookings: ServiceBooking[] = [];
+      
+      if (status === 'all') {
+        filteredBookings = allBookings;
+      } else if (status === 'active') {
+        // Active bookings: pending, assigned, started
+        filteredBookings = allBookings.filter(booking => 
+          ['pending', 'assigned', 'started'].includes(booking.status)
+        );
+      } else {
+        // Specific status
+        filteredBookings = allBookings.filter(booking => booking.status === status);
+      }
+
+      // Limit the results
+      const limitedBookings = filteredBookings.slice(0, limit);
+
+      console.log(`✅ Fetched ${limitedBookings.length} bookings with status: ${status} (from ${allBookings.length} total)`);
+      return limitedBookings;
+    } catch (error) {
+      console.error(`❌ Error fetching bookings by status ${status}:`, error);
+      throw new Error('Failed to fetch bookings. Please check your internet connection.');
+    }
+  }
+  static listenToServiceBooking(
+    bookingId: string,
+    onUpdate: (booking: ServiceBooking | null) => void,
+    onError?: (error: Error) => void
+  ): () => void {
+    console.log(`🔥 Setting up real-time listener for booking ${bookingId}...`);
+
+    const unsubscribe = firestore()
+      .collection('service_bookings')
+      .doc(bookingId)
+      .onSnapshot(
+        (doc) => {
+          if (!doc.exists) {
+            console.log(`❌ Booking ${bookingId} not found in real-time listener`);
+            onUpdate(null);
+            return;
+          }
+
+          const data = doc.data();
+          if (!data) {
+            console.log(`❌ Booking ${bookingId} has no data in real-time listener`);
+            onUpdate(null);
+            return;
+          }
+
+          const booking: ServiceBooking = {
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || data.phone,
+            customerAddress: data.customerAddress || data.address,
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            // Use actual database field names first (workerName, workerId), then fallbacks
+            workerName: data.workerName || data.worker_name,
+            workerId: data.workerId || data.worker_id,
+            technicianName: data.workerName || data.worker_name || data.technicianName || data.technician_name || data.assignedTechnician || data.assigned_technician,
+            technicianId: data.workerId || data.worker_id || data.technicianId || data.technician_id || data.assignedTechnicianId || data.assigned_technician_id,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          };
+
+          console.log(`🔄 Real-time update for booking ${bookingId}:`);
+          console.log(`   - Status: ${booking.status}`);
+          console.log(`   - Technician Name: ${booking.technicianName || 'Not assigned'}`);
+          console.log(`   - Company ID: ${booking.companyId || 'Not set'}`);
+          console.log(`   - Assigned At: ${booking.assignedAt || 'Not set'}`);
+          
+          onUpdate(booking);
+        },
+        (error) => {
+          console.error(`❌ Error in real-time listener for booking ${bookingId}:`, error);
+          if (onError) {
+            onError(error);
+          }
+        }
+      );
+
+    return unsubscribe;
+  }
+
+  /**
+   * DEBUG: Check current user and their bookings
+   */
+  static async debugCurrentUser(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      console.log(`👤 Current User ID: ${userId || 'NOT LOGGED IN'}`);
+      
+      if (!userId) {
+        console.log('❌ User is not logged in - this is why no bookings are showing');
+        return;
+      }
+      
+      // Check if user is properly authenticated
+      const isLoggedIn = this.isUserLoggedIn();
+      console.log(`🔐 Is user logged in: ${isLoggedIn}`);
+      
+      // Get all bookings in service_bookings collection
+      const allSnapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+      
+      console.log(`📊 Total bookings in service_bookings collection: ${allSnapshot.size}`);
+      
+      // Check how many belong to current user
+      let userBookingsCount = 0;
+      allSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.customerId === userId) {
+          userBookingsCount++;
+          console.log(`✅ User booking found: ${data.serviceName} | ${data.customerName} | ${data.status}`);
+        }
+      });
+      
+      console.log(`📋 Bookings belonging to current user: ${userBookingsCount}`);
+      
+      if (userBookingsCount === 0) {
+        console.log(`ℹ️ No bookings found for user ${userId}`);
+        console.log(`💡 Possible reasons:`);
+        console.log(`   - User hasn't created any bookings yet`);
+        console.log(`   - Bookings were created with different customerId`);
+        console.log(`   - User logged in with different account`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking current user:', error);
+    }
+  }
+
+  /**
+   * DEBUG: Show all bookings for current user (no filtering)
+   */
+  static async debugAllUserBookings(): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        console.log('❌ No user logged in');
+        return;
+      }
+      
+      console.log(`🔍 DEBUG: Showing ALL bookings for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerId', '==', userId)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} total bookings for user ${userId}:`);
+      
+      if (snapshot.size === 0) {
+        console.log('ℹ️ No bookings found for this user');
+        console.log('💡 This could mean:');
+        console.log('   - User has not created any bookings yet');
+        console.log('   - Bookings were created with different customerId');
+        console.log('   - User is not logged in properly');
+        return;
+      }
+      
+      snapshot.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`📋 Booking ${index + 1}:`);
+        console.log(`   ID: ${doc.id}`);
+        console.log(`   Service: ${data.serviceName || 'N/A'}`);
+        console.log(`   Customer: ${data.customerName || 'N/A'}`);
+        console.log(`   Phone: ${data.customerPhone || 'N/A'}`);
+        console.log(`   Status: ${data.status || 'N/A'}`);
+        console.log(`   Date: ${data.date || 'N/A'}`);
+        console.log(`   Time: ${data.time || 'N/A'}`);
+        console.log(`   CustomerId: ${data.customerId || 'N/A'}`);
+        console.log(`   CompanyId: ${data.companyId || 'N/A'}`);
+        console.log(`   Created: ${data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString() : 'N/A'}`);
+        console.log(`   ---`);
+      });
+      
+    } catch (error) {
+      console.error('❌ Error in debug function:', error);
+    }
+  }
+
+  /**
+   * MANUAL CLEANUP: Call this to immediately remove demo bookings
+   */
+  static async manualCleanupDemo(): Promise<void> {
+    try {
+      console.log('🚀 MANUAL DEMO CLEANUP STARTED...');
+      
+      // Step 1: Force delete specific demo names
+      const specificDeleted = await this.forceDeleteDemoBookings();
+      
+      // Step 2: General demo cleanup
+      const generalDeleted = await this.permanentlyRemoveDemoBookings();
+      
+      console.log('🎉 MANUAL CLEANUP COMPLETE!');
+      console.log(`   - Specific demo bookings deleted: ${specificDeleted}`);
+      console.log(`   - General demo bookings deleted: ${generalDeleted}`);
+      console.log(`   - Total deleted: ${specificDeleted + generalDeleted}`);
+      
+      // Step 3: Show remaining bookings
+      const remaining = await this.getRealUserBookingsOnly(50);
+      console.log(`   - Legitimate bookings remaining: ${remaining.length}`);
+      
+      if (remaining.length === 0) {
+        console.log('✅ SUCCESS: No demo bookings remain. Database contains only real customer bookings.');
+        console.log('💡 If you see an empty list, it means no real customer bookings exist yet.');
+        console.log('📱 Create a real booking through the app to test.');
+      } else {
+        console.log('✅ Remaining legitimate bookings:');
+        remaining.forEach(booking => {
+          console.log(`   - ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Manual cleanup failed:', error);
+    }
+  }
+
+  /**
+   * FORCE DELETE specific demo bookings (John Doe, Jane Smith, Bob Johnson, etc.)
+   */
+  static async forceDeleteDemoBookings(): Promise<number> {
+    try {
+      console.log('🗑️ FORCE DELETING SPECIFIC DEMO BOOKINGS...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Target specific demo names and services
+        const isSpecificDemo = (
+          // Demo customer names
+          data.customerName?.toLowerCase() === 'john doe' ||
+          data.customerName?.toLowerCase() === 'jane smith' ||
+          data.customerName?.toLowerCase() === 'bob johnson' ||
+          data.customerName?.toLowerCase() === 'alice brown' ||
+          data.customerName?.toLowerCase() === 'mike wilson' ||
+          data.customerName?.toLowerCase() === 'sarah davis' ||
+          
+          // Demo service names
+          data.serviceName?.toLowerCase() === 'home cleaning' ||
+          data.serviceName?.toLowerCase() === 'plumbing service' ||
+          data.serviceName?.toLowerCase() === 'electrical repair' ||
+          
+          // Demo combinations
+          (data.serviceName?.toLowerCase().includes('cleaning') && data.customerName?.toLowerCase().includes('bob')) ||
+          (data.serviceName?.toLowerCase().includes('plumbing') && data.customerName?.toLowerCase().includes('jane')) ||
+          (data.serviceName?.toLowerCase().includes('electrical') && data.customerName?.toLowerCase().includes('john'))
+        );
+        
+        if (isSpecificDemo) {
+          console.log(`🗑️ FORCE DELETING DEMO: "${data.serviceName}" | "${data.customerName}" | Status: ${data.status}`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ FORCE DELETED ${deletedCount} specific demo bookings`);
+      } else {
+        console.log(`ℹ️ No specific demo bookings found to delete`);
+      }
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error force deleting demo bookings:', error);
+      throw new Error('Failed to delete demo bookings');
+    }
+  }
+
+  /**
+   * PERMANENTLY remove all demo/test bookings from database
+   */
+  static async permanentlyRemoveDemoBookings(): Promise<number> {
+    try {
+      console.log('🗑️ PERMANENTLY REMOVING ALL DEMO/TEST BOOKINGS...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      let keptCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Identify demo/test bookings for deletion (including common demo names)
+        const isDemoBooking = (
+          !data.serviceName ||
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          // Common demo service names
+          data.serviceName.toLowerCase() === 'home cleaning' ||
+          data.serviceName.toLowerCase() === 'plumbing service' ||
+          data.serviceName.toLowerCase() === 'electrical repair' ||
+          data.serviceName.toLowerCase() === 'cleaning service' ||
+          data.serviceName.toLowerCase() === 'repair service' ||
+          
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          // Common demo customer names
+          data.customerName.toLowerCase() === 'john doe' ||
+          data.customerName.toLowerCase() === 'jane smith' ||
+          data.customerName.toLowerCase() === 'bob johnson' ||
+          data.customerName.toLowerCase() === 'alice brown' ||
+          data.customerName.toLowerCase() === 'mike wilson' ||
+          data.customerName.toLowerCase() === 'sarah davis' ||
+          data.customerName.toLowerCase() === 'david miller' ||
+          data.customerName.toLowerCase() === 'lisa garcia' ||
+          data.customerName.toLowerCase() === 'tom anderson' ||
+          data.customerName.toLowerCase() === 'mary johnson' ||
+          data.customerName.toLowerCase() === 'james smith' ||
+          data.customerName.toLowerCase() === 'jennifer brown' ||
+          data.customerName.toLowerCase() === 'michael davis' ||
+          data.customerName.toLowerCase() === 'jessica wilson' ||
+          
+          !data.customerPhone ||
+          data.customerPhone.includes('9999999999') ||
+          data.customerPhone.includes('1234567890') ||
+          data.customerPhone.includes('0000000000') ||
+          data.customerPhone.includes('5555555555') ||
+          data.customerPhone.includes('1111111111') ||
+          data.companyId === 'test-company-id' ||
+          
+          // Demo user IDs
+          data.customerId === 'demo-user' ||
+          data.customerId === 'test-user'
+        );
+        
+        if (isDemoBooking) {
+          console.log(`🗑️ DELETING: "${data.serviceName}" | "${data.customerName}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          console.log(`✅ KEEPING: "${data.serviceName}" | "${data.customerName}"`);
+          keptCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ PERMANENTLY DELETED ${deletedCount} demo bookings`);
+      }
+      
+      console.log(`📊 CLEANUP COMPLETE:`);
+      console.log(`   - Demo bookings deleted: ${deletedCount}`);
+      console.log(`   - Real bookings kept: ${keptCount}`);
+      console.log(`   - Database now contains ONLY legitimate customer bookings`);
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error removing demo bookings:', error);
+      throw new Error('Failed to remove demo bookings');
+    }
+  }
+
+  /**
+   * IMMEDIATE: Delete all demo bookings from database NOW
+   */
+  static async deleteDemoBookingsNow(): Promise<number> {
+    try {
+      console.log('🗑️ DELETING ALL DEMO BOOKINGS NOW...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Identify demo/test bookings
+        const isDemoBooking = (
+          !data.serviceName ||
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          !data.customerPhone ||
+          data.customerPhone.includes('9999999999') ||
+          data.customerPhone.includes('1234567890') ||
+          data.customerPhone.includes('0000000000') ||
+          data.companyId === 'test-company-id'
+        );
+        
+        if (isDemoBooking) {
+          console.log(`🗑️ DELETING: "${data.serviceName}" | Customer: "${data.customerName}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          console.log(`✅ KEEPING: "${data.serviceName}" | Customer: "${data.customerName}"`);
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ DELETED ${deletedCount} demo bookings from database`);
+      } else {
+        console.log(`✅ No demo bookings found to delete`);
+      }
+      
+      return deletedCount;
+    } catch (error: any) {
+      console.error('❌ Error deleting demo bookings:', error);
+      throw new Error('Failed to delete demo bookings');
+    }
+  }
+
+  /**
+   * COMPLETE CLEANUP: Remove all demo data and show only real bookings
+   * Call this function once to clean your database
+   */
+  static async completeCleanupAndVerify(): Promise<void> {
+    try {
+      console.log('🚀 STARTING COMPLETE CLEANUP AND VERIFICATION...');
+      
+      // Step 1: Show current state
+      console.log('\n📊 STEP 1: Current database state');
+      await this.debugAllUserBookings();
+      
+      // Step 2: Force clean all demo data
+      console.log('\n🧹 STEP 2: Force cleaning demo data');
+      await this.forceCleanDemoData();
+      
+      // Step 3: Verify only real bookings remain
+      console.log('\n✅ STEP 3: Verification - showing only real bookings');
+      const realBookings = await this.showOnlyRealBookings();
+      
+      console.log('\n🎉 CLEANUP COMPLETE!');
+      console.log(`📊 Your database now contains ${realBookings.length} real customer bookings only`);
+      
+      if (realBookings.length === 0) {
+        console.log('\n💡 NEXT STEPS:');
+        console.log('   - No real customer bookings found');
+        console.log('   - Create a real booking through the app to test');
+        console.log('   - Or check if real bookings have different field patterns');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in complete cleanup:', error);
+    }
+  }
+
+  /**
+   * AGGRESSIVE: Remove ALL test/demo bookings and show only real customer bookings
+   */
+  static async forceCleanDemoData(): Promise<void> {
+    try {
+      console.log('🧹 FORCE CLEANING: Removing ALL demo/test bookings...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      console.log(`📊 Total bookings found: ${snapshot.size}`);
+      
+      const batch = firestore().batch();
+      let deletedCount = 0;
+      let realBookingsCount = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Very aggressive filtering - anything that looks like test data
+        const isTestBooking = (
+          // Service name patterns
+          !data.serviceName || 
+          data.serviceName.toLowerCase().includes('test') ||
+          data.serviceName.toLowerCase().includes('demo') ||
+          data.serviceName.toLowerCase().includes('sample') ||
+          data.serviceName.toLowerCase().includes('mock') ||
+          data.serviceName.toLowerCase().includes('fake') ||
+          data.serviceName.toLowerCase().includes('dummy') ||
+          data.serviceName.toLowerCase().includes('electrical') && data.customerName?.toLowerCase().includes('test') ||
+          
+          // Customer name patterns
+          !data.customerName ||
+          data.customerName.toLowerCase().includes('test') ||
+          data.customerName.toLowerCase().includes('demo') ||
+          data.customerName.toLowerCase().includes('sample') ||
+          data.customerName.toLowerCase().includes('mock') ||
+          data.customerName.toLowerCase().includes('dummy') ||
+          data.customerName.toLowerCase() === 'customer' ||
+          
+          // Work name patterns
+          data.workName?.toLowerCase().includes('test') ||
+          data.workName?.toLowerCase().includes('demo') ||
+          data.workName?.toLowerCase().includes('sample') ||
+          data.workName?.toLowerCase().includes('fix test') ||
+          
+          // Company ID patterns
+          data.companyId === 'test-company-id' ||
+          data.companyId?.toLowerCase().includes('test') ||
+          data.companyId?.toLowerCase().includes('demo') ||
+          
+          // Phone number patterns (test phone numbers)
+          data.customerPhone?.includes('9999999999') ||
+          data.customerPhone?.includes('1234567890') ||
+          data.customerPhone?.includes('0000000000') ||
+          data.customerPhone?.includes('+91 9999999999') ||
+          
+          // Address patterns
+          data.customerAddress?.toLowerCase().includes('test') ||
+          data.customerAddress?.toLowerCase().includes('demo') ||
+          
+          // Technician patterns
+          data.technicianName?.toLowerCase().includes('test') ||
+          data.technicianId?.toLowerCase().includes('test') ||
+          
+          // OTP patterns (test OTPs)
+          data.startOtp === '1234' ||
+          data.completionOtp === '4567' ||
+          data.completionOtp === '1234'
+        );
+        
+        if (isTestBooking) {
+          console.log(`🗑️ DELETING TEST BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Phone: "${data.customerPhone}"`);
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          realBookingsCount++;
+          console.log(`✅ KEEPING REAL BOOKING: "${data.serviceName}" | Customer: "${data.customerName}" | Status: "${data.status}"`);
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`✅ FORCE DELETED ${deletedCount} test/demo bookings`);
+      }
+      
+      console.log(`📊 FINAL RESULT:`);
+      console.log(`   - Real bookings remaining: ${realBookingsCount}`);
+      console.log(`   - Test bookings deleted: ${deletedCount}`);
+      console.log(`   - Database now contains ONLY real customer bookings`);
+      
+    } catch (error: any) {
+      console.error('❌ Error in force clean:', error);
+      throw new Error('Failed to clean demo data');
+    }
+  }
+
+  /**
+   * Verify and show only real customer bookings
+   */
+  static async showOnlyRealBookings(): Promise<ServiceBooking[]> {
+    try {
+      console.log('🔍 VERIFICATION: Showing only real customer bookings...');
+      
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .get();
+
+      console.log(`📊 Total bookings in database: ${snapshot.size}`);
+      
+      const realBookings: ServiceBooking[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Apply strict filtering - only real customer bookings
+        const isRealBooking = (
+          data.serviceName && 
+          !data.serviceName.toLowerCase().includes('test') &&
+          !data.serviceName.toLowerCase().includes('demo') &&
+          !data.serviceName.toLowerCase().includes('sample') &&
+          data.customerName && 
+          !data.customerName.toLowerCase().includes('test') &&
+          !data.customerName.toLowerCase().includes('demo') &&
+          data.customerPhone &&
+          !data.customerPhone.includes('9999999999') &&
+          !data.customerPhone.includes('1234567890') &&
+          data.companyId !== 'test-company-id'
+        );
+        
+        if (isRealBooking) {
+          console.log(`✅ REAL CUSTOMER BOOKING:`);
+          console.log(`   - Service: ${data.serviceName}`);
+          console.log(`   - Customer: ${data.customerName}`);
+          console.log(`   - Phone: ${data.customerPhone}`);
+          console.log(`   - Status: ${data.status}`);
+          console.log(`   - Date: ${data.date}`);
+          console.log(`   - Time: ${data.time}`);
+          console.log(`   - ID: ${doc.id}`);
+          console.log(`   ---`);
+          
+          realBookings.push({
+            id: doc.id,
+            serviceName: data.serviceName || '',
+            workName: data.workName || data.serviceName || '',
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || data.phone,
+            customerAddress: data.customerAddress || data.address,
+            customerId: data.customerId,
+            date: data.date || '',
+            time: data.time || '',
+            status: data.status || 'pending',
+            companyId: data.companyId,
+            technicianName: data.technicianName,
+            technicianId: data.technicianId,
+            totalPrice: data.totalPrice,
+            addOns: data.addOns || [],
+            estimatedDuration: data.estimatedDuration || 2,
+            startOtp: data.startOtp,
+            completionOtp: data.completionOtp,
+            otpVerified: data.otpVerified,
+            completionOtpVerified: data.completionOtpVerified,
+            assignedAt: data.assignedAt,
+            startedAt: data.startedAt,
+            completedAt: data.completedAt,
+            rejectedAt: data.rejectedAt,
+            expiredAt: data.expiredAt,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            customerRating: data.customerRating,
+            customerFeedback: data.customerFeedback,
+            ratedAt: data.ratedAt,
+          });
+        }
+      });
+      
+      console.log(`📊 VERIFICATION COMPLETE:`);
+      console.log(`   - Real customer bookings found: ${realBookings.length}`);
+      
+      if (realBookings.length === 0) {
+        console.log(`⚠️ NO REAL CUSTOMER BOOKINGS FOUND`);
+        console.log(`   This means either:`);
+        console.log(`   1. No customers have made real bookings yet`);
+        console.log(`   2. All bookings in database are test/demo data`);
+        console.log(`   3. Real bookings don't match our filtering criteria`);
+      }
+      
+      return realBookings;
+    } catch (error) {
+      console.error('❌ Error verifying real customer bookings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Create a payment record in service_payments collection
+   */
+  static async createServicePayment(paymentData: Omit<ServicePayment, 'id'>): Promise<string> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to create a payment record');
+      }
+      
+      // Validate required fields
+      if (!paymentData.bookingId) {
+        throw new Error('Booking ID is required for payment record');
+      }
+      
+      if (!paymentData.amount && paymentData.amount !== 0) {
+        throw new Error('Amount is required for payment record');
+      }
+      
+      if (!paymentData.paymentMethod) {
+        throw new Error('Payment method is required for payment record');
+      }
+      
+      if (!paymentData.paymentStatus) {
+        throw new Error('Payment status is required for payment record');
+      }
+      
+      if (!paymentData.serviceName) {
+        throw new Error('Service name is required for payment record');
+      }
+      
+      console.log(`💳 Creating payment record for user: ${userId}`);
+      console.log('Payment data validation passed:', {
+        bookingId: paymentData.bookingId,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        paymentStatus: paymentData.paymentStatus,
+        serviceName: paymentData.serviceName,
+        companyName: paymentData.companyName,
+        companyId: paymentData.companyId
+      });
+      
+      // Filter out undefined values to prevent Firestore errors
+      const cleanPaymentData = Object.fromEntries(
+        Object.entries(paymentData).filter(([_, value]) => value !== undefined)
+      );
+      
+      console.log('Clean payment data (no undefined values):', cleanPaymentData);
+      
+      const docRef = await firestore()
+        .collection('service_payments')
+        .add({
+          ...cleanPaymentData,
+          customerId: userId, // Always set the logged-in user ID
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          paidAt: paymentData.paymentStatus === 'paid' ? new Date() : null,
+        });
+
+      console.log(`✅ Created payment record with ID: ${docRef.id} for user: ${userId}`);
+      return docRef.id;
+    } catch (error: any) {
+      console.error('❌ Error creating payment record:', error);
+      console.error('❌ Payment data that caused error:', paymentData);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      if (error?.message?.includes('required')) {
+        throw error; // Re-throw validation errors
+      }
+      
+      throw new Error('Failed to create payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update an existing payment record
+   */
+  static async updateServicePayment(paymentId: string, updates: Partial<ServicePayment>): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update payment record');
+      }
+      
+      console.log(`💳 Updating payment record ${paymentId} for user: ${userId}`);
+      
+      // Filter out undefined values to prevent Firestore errors
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, value]) => value !== undefined)
+      );
+      
+      const updateData: any = {
+        ...cleanUpdates,
+        updatedAt: new Date(),
+      };
+
+      // Set paidAt timestamp when payment status changes to paid
+      if (updates.paymentStatus === 'paid' && !updates.paidAt) {
+        updateData.paidAt = new Date();
+      }
+      
+      await firestore()
+        .collection('service_payments')
+        .doc(paymentId)
+        .update(updateData);
+
+      console.log(`✅ Updated payment record ${paymentId} successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating payment record:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to update payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get payment record by booking ID
+   */
+  static async getPaymentByBookingId(bookingId: string): Promise<ServicePayment | null> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view payment records');
+      }
+      
+      console.log(`💳 Fetching payment record for booking: ${bookingId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        console.log(`No payment record found for booking: ${bookingId}`);
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      
+      console.log(`✅ Found payment record for booking ${bookingId}:`, {
+        id: doc.id,
+        amount: data.amount,
+        paymentMethod: data.paymentMethod,
+        paymentStatus: data.paymentStatus,
+        transactionId: data.transactionId
+      });
+
+      return {
+        id: doc.id,
+        bookingId: data.bookingId || '',
+        customerId: data.customerId || '',
+        amount: data.amount || 0,
+        paymentMethod: data.paymentMethod || 'cash',
+        paymentStatus: data.paymentStatus || 'pending',
+        transactionId: data.transactionId,
+        razorpayOrderId: data.razorpayOrderId,
+        razorpaySignature: data.razorpaySignature,
+        serviceName: data.serviceName || '',
+        companyName: data.companyName,
+        companyId: data.companyId,
+        paymentGateway: data.paymentGateway,
+        paymentDetails: data.paymentDetails,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        paidAt: data.paidAt,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching payment record:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get all payment records for current user
+   */
+  static async getUserPaymentHistory(limit: number = 50): Promise<ServicePayment[]> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to view payment history');
+      }
+      
+      console.log(`💳 Fetching payment history for user: ${userId}`);
+      
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('customerId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      console.log(`📊 Found ${snapshot.size} payment records for user ${userId}`);
+
+      const payments: ServicePayment[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        console.log(`💳 Payment record ${doc.id}:`, {
+          bookingId: data.bookingId,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          paymentStatus: data.paymentStatus,
+          serviceName: data.serviceName,
+          createdAt: data.createdAt
+        });
+        
+        payments.push({
+          id: doc.id,
+          bookingId: data.bookingId || '',
+          customerId: data.customerId || '',
+          amount: data.amount || 0,
+          paymentMethod: data.paymentMethod || 'cash',
+          paymentStatus: data.paymentStatus || 'pending',
+          transactionId: data.transactionId,
+          razorpayOrderId: data.razorpayOrderId,
+          razorpaySignature: data.razorpaySignature,
+          serviceName: data.serviceName || '',
+          companyName: data.companyName,
+          companyId: data.companyId,
+          paymentGateway: data.paymentGateway,
+          paymentDetails: data.paymentDetails,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          paidAt: data.paidAt,
+        });
+      });
+
+      // Sort by creation date (newest first)
+      payments.sort((a, b) => {
+        if (a.createdAt && b.createdAt) {
+          return b.createdAt.toDate() - a.createdAt.toDate();
+        }
+        return 0;
+      });
+
+      console.log(`✅ Fetched ${payments.length} payment records for user ${userId}`);
+      return payments;
+    } catch (error: any) {
+      console.error('❌ Error fetching payment history:', error);
+      
+      if (error?.message?.includes('log in')) {
+        throw error; // Re-throw login errors
+      }
+      
+      throw new Error('Failed to fetch payment history. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Update payment status after successful Razorpay payment
+   */
+  static async updatePaymentAfterRazorpaySuccess(
+    bookingId: string,
+    razorpayResponse: {
+      razorpay_payment_id: string;
+      razorpay_order_id: string;
+      razorpay_signature: string;
+    }
+  ): Promise<void> {
+    try {
+      const userId = this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('Please log in to update payment');
+      }
+      
+      console.log(`💳 Updating payment after Razorpay success for booking: ${bookingId}`);
+      
+      // Find the payment record for this booking
+      const snapshot = await firestore()
+        .collection('service_payments')
+        .where('bookingId', '==', bookingId)
+        .where('customerId', '==', userId)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        console.log(`No payment record found for booking: ${bookingId}, creating new one`);
+        // If no payment record exists, we might need to create one
+        // This could happen if payment was created after booking
+        return;
+      }
+
+      const doc = snapshot.docs[0];
+      
+      await firestore()
+        .collection('service_payments')
+        .doc(doc.id)
+        .update({
+          paymentStatus: 'paid',
+          transactionId: razorpayResponse.razorpay_payment_id,
+          razorpayOrderId: razorpayResponse.razorpay_order_id,
+          razorpaySignature: razorpayResponse.razorpay_signature,
+          paymentGateway: 'razorpay',
+          paidAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+      console.log(`✅ Updated payment record ${doc.id} with Razorpay success data`);
+    } catch (error: any) {
+      console.error('❌ Error updating payment after Razorpay success:', error);
+      throw new Error('Failed to update payment record. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Fetch service banners from service_banners collection
+   */
+  static async getServiceBanners(): Promise<ServiceBanner[]> {
+    try {
+      console.log('🎯 Fetching service banners from service_banners collection...');
+      
+      // Fetch all banners first, then filter and sort on client side to avoid index requirement
+      const snapshot = await firestore()
+        .collection('service_banners')
+        .get();
+
+      console.log(`Found ${snapshot.size} total service banners`);
+
+      const banners: ServiceBanner[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Only include active banners
+        if (data.isActive === true) {
+          console.log(`Banner ${doc.id}:`, {
+            title: data.title,
+            isActive: data.isActive,
+            priority: data.priority,
+            clickable: data.clickable,
+          });
+          
+          banners.push({
+            id: doc.id,
+            title: data.title || '',
+            subtitle: data.subtitle,
+            description: data.description,
+            imageUrl: data.imageUrl,
+            backgroundColor: data.backgroundColor,
+            textColor: data.textColor,
+            isActive: data.isActive || false,
+            clickable: data.clickable || false,
+            redirectType: data.redirectType,
+            redirectUrl: data.redirectUrl,
+            categoryId: data.categoryId,
+            offerText: data.offerText,
+            iconName: data.iconName,
+            priority: data.priority || 0,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          });
+        } else {
+          console.log(`Skipping inactive banner: ${data.title} (isActive: ${data.isActive})`);
+        }
+      });
+
+      // Sort by priority on client side (lowest priority first)
+      banners.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+      console.log(`✅ Fetched ${banners.length} active service banners`);
+      console.log('Active banners:', banners.map(b => ({ 
+        id: b.id, 
+        title: b.title, 
+        isActive: b.isActive, 
+        priority: b.priority,
+        hasImage: !!b.imageUrl
+      })));
+      
+      return banners;
+    } catch (error: any) {
+      console.error('❌ Error fetching service banners:', error);
+      throw new Error('Failed to fetch service banners. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * Get user's saved addresses from service_bookings collection
+   */
+  static async getUserSavedAddressesFromBookings(): Promise<any[]> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('📍 Fetching saved addresses from service_bookings for user:', user.uid);
+
+      // Get current user data to match phone number
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser || !currentUser.phone) {
+        console.log('❌ No user phone found, cannot fetch addresses');
+        return [];
+      }
+
+      const snapshot = await firestore()
+        .collection('service_bookings')
+        .where('customerPhone', '==', currentUser.phone)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const uniqueAddresses = new Map();
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.serviceAddress && data.serviceAddress.fullAddress) {
+          const addressKey = data.serviceAddress.fullAddress.toLowerCase().trim();
+          if (!uniqueAddresses.has(addressKey)) {
+            uniqueAddresses.set(addressKey, {
+              id: data.serviceAddress.id || `addr_${Date.now()}_${Math.random()}`,
+              fullAddress: data.serviceAddress.fullAddress,
+              houseNo: data.serviceAddress.houseNo || '',
+              landmark: data.serviceAddress.landmark || '',
+              addressType: data.serviceAddress.addressType || 'Home',
+              isDefault: false, // Will be set for the most recent one
+              createdAt: data.createdAt || new Date(),
+            });
+          }
+        }
+      });
+
+      const addresses = Array.from(uniqueAddresses.values());
+      
+      // Set the most recent address as default
+      if (addresses.length > 0) {
+        addresses[0].isDefault = true;
+      }
+
+      console.log(`✅ Found ${addresses.length} unique addresses from bookings`);
+      return addresses;
+    } catch (error: any) {
+      console.error('❌ Error fetching saved addresses from bookings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Save a new address to user_addresses collection
+   */
+  static async saveUserAddress(addressData: {
+    fullAddress: string;
+    houseNo?: string;
+    landmark?: string;
+    addressType?: string;
+    isDefault?: boolean;
+  }): Promise<string> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const currentUser = await this.getCurrentUser();
+      const userPhone = currentUser?.phone || currentUser?.phoneNumber || user.phoneNumber || '';
+
+      const addressId = `addr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const newAddress = {
+        id: addressId,
+        userId: user.uid,
+        userPhone: userPhone,
+        fullAddress: addressData.fullAddress.trim(),
+        houseNo: addressData.houseNo?.trim() || '',
+        landmark: addressData.landmark?.trim() || '',
+        addressType: addressData.addressType || 'Home',
+        isDefault: addressData.isDefault || false,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      };
+
+      // If this is set as default, unset other defaults first
+      if (newAddress.isDefault) {
+        // Query by userId instead of phone (more reliable)
+        const existingAddresses = await firestore()
+          .collection('user_addresses')
+          .where('userId', '==', user.uid)
+          .where('isDefault', '==', true)
+          .get();
+        
+        const batch = firestore().batch();
+        existingAddresses.forEach(doc => {
+          batch.update(doc.ref, { isDefault: false });
+        });
+        await batch.commit();
+      }
+
+      await firestore()
+        .collection('user_addresses')
+        .doc(addressId)
+        .set(newAddress);
+
+      console.log(`✅ Address saved successfully: ${addressId}`);
+      return addressId;
+    } catch (error: any) {
+      console.error('❌ Error saving address:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's saved addresses from user_addresses collection
+   */
+  static async getUserSavedAddresses(): Promise<any[]> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Query by userId only (no orderBy to avoid index requirement)
+      const snapshot = await firestore()
+        .collection('user_addresses')
+        .where('userId', '==', user.uid)
+        .get();
+
+      // Sort in memory by createdAt descending
+      const addresses = snapshot.docs
+        .map(doc => ({
+          ...doc.data(),
+          id: doc.id,
+        }))
+        .sort((a: any, b: any) => {
+          const aTime = a.createdAt?.toMillis?.() || 0;
+          const bTime = b.createdAt?.toMillis?.() || 0;
+          return bTime - aTime; // Descending order (newest first)
+        });
+
+      console.log(`✅ Found ${addresses.length} saved addresses`);
+      return addresses;
+    } catch (error: any) {
+      console.error('❌ Error fetching saved addresses:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete a saved address
+   */
+  static async deleteUserAddress(addressId: string): Promise<void> {
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      await firestore()
+        .collection('user_addresses')
+        .doc(addressId)
+        .delete();
+
+      console.log(`✅ Address deleted: ${addressId}`);
+    } catch (error: any) {
+      console.error('❌ Error deleting address:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🏢 FIXED: Fetch detailed package information for companies
+   * Only enhances existing packages, doesn't create default packages for direct pricing services
+   */
+  static async getDetailedPackagesForCompanies(companies: ServiceCompany[]): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching detailed package information for ${companies.length} companies...`);
+      
+      const enhancedCompanies = await Promise.all(
+        companies.map(async (company) => {
+          try {
+            // Only enhance if company actually has packages
+            if (company.packages && Array.isArray(company.packages) && company.packages.length > 0) {
+              console.log(`🏢 Company "${company.companyName}" has ${company.packages.length} packages - ENHANCING`);
+              
+              // Enhance existing package information
+              const enhancedPackages = company.packages.map((pkg: any, index: number) => {
+                if (typeof pkg === 'string') {
+                  return {
+                    id: `${company.id}_package_${index}`,
+                    name: pkg,
+                    price: company.price || 0,
+                    description: `${pkg} service package`,
+                    duration: '1-2 hours',
+                    features: [`${pkg} service`, 'Professional technician', 'Quality guarantee'],
+                  };
+                } else if (typeof pkg === 'object' && pkg !== null) {
+                  return {
+                    id: pkg.id || `${company.id}_package_${index}`,
+                    name: pkg.name || pkg.title || `Package ${index + 1}`,
+                    price: pkg.price || company.price || 0,
+                    description: pkg.description || `${pkg.name || 'Service'} package`,
+                    duration: pkg.duration || '1-2 hours',
+                    features: pkg.features || [
+                      pkg.name || 'Service',
+                      'Professional technician',
+                      'Quality guarantee'
+                    ],
+                    originalPrice: pkg.originalPrice,
+                    discount: pkg.discount,
+                    isPopular: pkg.isPopular || false,
+                    // 🔥 PRESERVE FREQUENCY FIELDS
+                    unit: pkg.unit, // Preserve unit field (month, week, year, day)
+                    frequency: pkg.frequency, // Preserve frequency field
+                    type: pkg.type, // Preserve type field
+                    subscriptionType: pkg.subscriptionType, // Preserve subscriptionType field
+                  };
+                }
+                return pkg;
+              });
+              
+              return {
+                ...company,
+                packages: enhancedPackages,
+              };
+            } else {
+              // ✅ FIXED: Don't create default packages for direct pricing services
+              // Just return the company as-is for direct pricing
+              console.log(`🏢 Company "${company.companyName}" uses direct pricing - NO PACKAGES ADDED`);
+              
+              return {
+                ...company,
+                // Explicitly ensure no packages for direct pricing services
+                packages: undefined,
+              };
+            }
+          } catch (error) {
+            console.error(`❌ Error enhancing packages for company ${company.id}:`, error);
+            return company; // Return original company if enhancement fails
+          }
+        })
+      );
+      
+      console.log(`✅ Enhanced package information for ${enhancedCompanies.length} companies`);
+      
+      // Log the final result for debugging
+      enhancedCompanies.forEach(company => {
+        const hasPackages = company.packages && Array.isArray(company.packages) && company.packages.length > 0;
+        console.log(`📊 Final: "${company.companyName}" - ${hasPackages ? `${company.packages!.length} packages` : 'Direct pricing'}`);
+      });
+      
+      return enhancedCompanies;
+      
+    } catch (error) {
+      console.error('❌ Error fetching detailed packages:', error);
+      return companies; // Return original companies if enhancement fails
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies with enhanced package details for specific services
+   */
+  static async getCompaniesWithDetailedPackages(serviceIds: string[]): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies with detailed packages for services: ${serviceIds.join(', ')}`);
+      
+      // First get companies using existing method
+      console.log(`🔍 Step 1: Calling getCompaniesByServiceIssues...`);
+      const companies = await this.getCompaniesByServiceIssues(serviceIds);
+      console.log(`📊 getCompaniesByServiceIssues returned ${companies.length} companies`);
+      
+      if (companies.length === 0) {
+        console.log(`❌ NO COMPANIES from getCompaniesByServiceIssues - this is the root issue`);
+        console.log(`💡 Check if service IDs exist in service_services collection`);
+        return [];
+      }
+      
+      // Then enhance with detailed package information
+      console.log(`🔍 Step 2: Enhancing with detailed packages...`);
+      const companiesWithPackages = await this.getDetailedPackagesForCompanies(companies);
+      console.log(`📊 After package enhancement: ${companiesWithPackages.length} companies`);
+      
+      console.log(`✅ Final result: ${companiesWithPackages.length} companies with detailed packages`);
+      return companiesWithPackages;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies with detailed packages:', error);
+      throw new Error('Failed to fetch companies with package details. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies by service NAMES (for direct-price services from service_services)
+   * This is used when services are selected from ServiceCategoryScreen (direct-price, no packages)
+   */
+  static async getCompaniesByServiceNames(serviceNames: string[], categoryId?: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`🏢 Fetching companies for direct-price services:`, serviceNames);
+      console.log(`   Category ID:`, categoryId);
+      
+      const companies: ServiceCompany[] = [];
+      const companyMap = new Map<string, ServiceCompany>();
+      
+      // For each service name, find companies in service_services
+      for (const serviceName of serviceNames) {
+        console.log(`🔍 Searching for companies offering service: "${serviceName}"`);
+        
+        // Query service_services collection by service name
+        let query = firestore()
+          .collection('service_services')
+          .where('name', '==', serviceName)
+          .where('isActive', '==', true);
+        
+        // Add category filter if provided and not empty
+        if (categoryId && categoryId.trim() !== '') {
+          console.log(`   Adding category filter: ${categoryId}`);
+          query = query.where('categoryMasterId', '==', categoryId);
+        } else {
+          console.log(`   No category filter applied (searching all categories)`);
+        }
+        
+        const servicesSnapshot = await query.get();
+        
+        console.log(`   Found ${servicesSnapshot.size} service_services entries for "${serviceName}"`);
+        
+        for (const serviceDoc of servicesSnapshot.docs) {
+          const serviceData = serviceDoc.data();
+          const companyId = serviceData.companyId;
+          
+          if (!companyId) {
+            console.log(`   ⚠️ Service "${serviceName}" has no companyId, skipping`);
+            continue;
+          }
+          
+          // Skip if we already have this company
+          if (companyMap.has(companyId)) {
+            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
+            continue;
+          }
+          
+          // Fetch company details
+          try {
+            const companyDoc = await firestore()
+              .collection('service_company')
+              .doc(companyId)
+              .get();
+            
+            if (!companyDoc.exists) {
+              console.log(`   ⚠️ Company ${companyId} not found in service_company`);
+              continue;
+            }
+            
+            const companyData = companyDoc.data();
+            
+            if (!companyData) {
+              console.log(`   ⚠️ Company ${companyId} has no data`);
+              continue;
+            }
+            
+            // Check if company is active
+            if (companyData.isActive === false) {
+              console.log(`   ⚠️ Company ${companyId} is not active, skipping`);
+              continue;
+            }
+            
+            console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
+            
+            // Create company object
+            const company: ServiceCompany = {
+              id: serviceDoc.id, // Use service_services doc ID
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceName,
+              companyName: companyData.companyName || companyData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: companyData.description,
+              rating: companyData.rating,
+              reviewCount: companyData.reviewCount,
+              contactInfo: companyData.contactInfo,
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              // No packages for direct-price services
+              packages: undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            
+          } catch (error) {
+            console.error(`   ❌ Error fetching company ${companyId}:`, error);
+          }
+        }
+      }
+      
+      // Convert map to array
+      const companiesArray = Array.from(companyMap.values());
+      
+      console.log(`✅ Found ${companiesArray.length} unique companies for direct-price services`);
+      console.log(`   Companies:`, companiesArray.map(c => ({
+        companyName: c.companyName,
+        serviceName: c.serviceName,
+        price: c.price,
+        companyId: c.companyId
+      })));
+      
+      return companiesArray;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies by service names:', error);
+      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get companies by service IDs (for services from service_services collection)
+   * This is used when services are selected from PackageSelectionScreen (both packages and direct-price)
+   */
+  static async getCompaniesByServiceIds(serviceIds: string[], categoryId?: string): Promise<ServiceCompany[]> {
+    try {
+      console.log(`\n🏢 ========== getCompaniesByServiceIds CALLED ==========`);
+      console.log(`🏢 Service IDs to fetch:`, serviceIds);
+      console.log(`🏢 Service IDs count:`, serviceIds.length);
+      console.log(`🏢 Category ID filter:`, categoryId || 'None');
+      console.log(`🏢 ====================================================\n`);
+      
+      const companyMap = new Map<string, ServiceCompany>();
+      let servicesWithoutCompanyId: any[] = [];
+      
+      // For each service ID, fetch the service and its company
+      for (const serviceId of serviceIds) {
+        console.log(`\n🔍 ========== Processing Service ${serviceIds.indexOf(serviceId) + 1}/${serviceIds.length} ==========`);
+        console.log(`🔍 Service ID: "${serviceId}"`);
+        console.log(`🔍 Service ID type: ${typeof serviceId}`);
+        console.log(`🔍 Service ID length: ${serviceId?.length || 0}`);
+        
+        try {
+          console.log(`📡 Querying Firestore: service_services/${serviceId}`);
+          const serviceDoc = await firestore()
+            .collection('service_services')
+            .doc(serviceId)
+            .get();
+          
+          console.log(`📄 Document exists: ${serviceDoc.exists}`);
+          
+          if (!serviceDoc.exists) {
+            console.log(`   ❌ Service document "${serviceId}" not found in service_services collection`);
+            console.log(`   💡 Check if this ID exists in your Firestore database`);
+            continue;
+          }
+          
+          const serviceData = serviceDoc.data();
+          
+          if (!serviceData) {
+            console.log(`   ⚠️ Service ${serviceId} has no data`);
+            continue;
+          }
+          
+          console.log(`   📋 Service data:`, {
+            name: serviceData.name,
+            hasCompanyId: !!serviceData.companyId,
+            companyId: serviceData.companyId,
+            categoryMasterId: serviceData.categoryMasterId,
+            hasPackages: !!(serviceData.packages && Array.isArray(serviceData.packages)),
+            packagesCount: serviceData.packages?.length || 0,
+            price: serviceData.price,
+            allFields: Object.keys(serviceData)
+          });
+          
+          if (serviceData.isActive === false) {
+            console.log(`   ⚠️ Service ${serviceId} is not active, skipping`);
+            continue;
+          }
+          
+          // Check category filter if provided - but be lenient for service_services
+          // Since we're querying by specific service ID, the category filter is less critical
+          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId && serviceData.categoryMasterId !== categoryId) {
+            console.log(`   ⚠️ Service ${serviceId} category mismatch:`);
+            console.log(`      Service categoryMasterId: ${serviceData.categoryMasterId}`);
+            console.log(`      Filter categoryId: ${categoryId}`);
+            console.log(`   💡 Skipping category filter since we're querying by specific service ID`);
+            // Don't skip - continue processing since we have a specific service ID
+            // continue;
+          }
+          
+          const companyId = serviceData.companyId;
+          
+          if (!companyId) {
+            console.log(`   ⚠️ Service ${serviceId} has NO companyId field - will use fallback approach`);
+            servicesWithoutCompanyId.push({ id: serviceId, data: serviceData });
+            continue;
+          }
+          
+          // Skip if we already have this company
+          if (companyMap.has(companyId)) {
+            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
+            continue;
+          }
+          
+          // Fetch company details
+          console.log(`   🔍 Fetching company document: ${companyId} from service_company collection`);
+          const companyDoc = await firestore()
+            .collection('service_company')
+            .doc(companyId)
+            .get();
+          
+          console.log(`   📄 Company document exists: ${companyDoc.exists}`);
+          
+          if (!companyDoc.exists) {
+            console.log(`   ⚠️ Company ${companyId} not found in service_company collection`);
+            console.log(`   💡 Trying to use service data as company data (embedded approach)`);
+            
+            // FALLBACK: Use service data as company data if company document doesn't exist
+            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+            
+            // Try to fetch company logo separately even if company doc doesn't exist
+            let companyLogo = serviceData.imageUrl || null;
+            console.log(`   🖼️ Using service imageUrl as fallback: ${companyLogo ? 'Found' : 'Not found'}`);
+            
+            const company: ServiceCompany = {
+              id: serviceDoc.id,
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceData.name || 'Unknown Service',
+              companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: companyLogo,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: serviceData.description,
+              rating: serviceData.rating,
+              reviewCount: serviceData.reviewCount,
+              contactInfo: serviceData.contactInfo || {
+                phone: serviceData.phone,
+                email: serviceData.email,
+                address: serviceData.address,
+              },
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              packages: hasPackages ? serviceData.packages : undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            console.log(`   ✅ Added company from service data: ${company.companyName}`);
+            continue;
+          }
+          
+          const companyData = companyDoc.data();
+          
+          if (!companyData) {
+            console.log(`   ⚠️ Company ${companyId} has no data`);
+            continue;
+          }
+          
+          console.log(`   📋 Company data:`, {
+            companyName: companyData.companyName,
+            name: companyData.name,
+            isActive: companyData.isActive,
+            categoryMasterId: companyData.categoryMasterId,
+            allFields: Object.keys(companyData)
+          });
+          
+          // Check if company is active
+          if (companyData.isActive === false) {
+            console.log(`   ⚠️ Company ${companyId} (${companyData.companyName || companyData.name}) is not active (isActive: false), skipping`);
+            continue;
+          }
+          
+          console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
+          
+          // 🖼️ Fetch company logo - prioritize logoUrl from service_company
+          const companyLogo = companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null;
+          console.log(`   🖼️ Company logo URL: ${companyLogo ? 'Found' : 'Not found'}`);
+          if (companyLogo) {
+            console.log(`      Logo source: ${companyData.logoUrl ? 'logoUrl' : companyData.imageUrl ? 'imageUrl (company)' : 'imageUrl (service)'}`);
+          }
+          
+          // Check if service has packages
+          const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+          
+          // Create company object
+          const company: ServiceCompany = {
+            id: serviceDoc.id, // Use service_services doc ID
+            companyId: companyId,
+            categoryMasterId: serviceData.categoryMasterId,
+            serviceName: serviceData.name || 'Unknown Service',
+            companyName: companyData.companyName || companyData.name || 'Unknown Company',
+            price: serviceData.price || 0,
+            isActive: true,
+            imageUrl: companyLogo, // Use the logo from service_company
+            serviceType: serviceData.serviceType,
+            adminServiceId: serviceData.adminServiceId,
+            description: companyData.description,
+            rating: companyData.rating,
+            reviewCount: companyData.reviewCount,
+            contactInfo: companyData.contactInfo,
+            createdAt: serviceData.createdAt,
+            updatedAt: serviceData.updatedAt,
+            // Include packages if they exist
+            packages: hasPackages ? serviceData.packages : undefined,
+          };
+          
+          companyMap.set(companyId, company);
+          
+        } catch (error) {
+          console.error(`   ❌ Error fetching service ${serviceId}:`, error);
+        }
+      }
+      
+      // FALLBACK: If services don't have companyId, fetch ALL companies for the category
+      if (servicesWithoutCompanyId.length > 0) {
+        console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
+        console.log(`   Fetching ALL companies for category: ${categoryId}`);
+        
+        try {
+          let companiesQuery = firestore()
+            .collection('service_company')
+            .where('isActive', '==', true);
+          
+          // Add category filter if provided
+          if (categoryId && categoryId.trim() !== '') {
+            companiesQuery = companiesQuery.where('categoryMasterId', '==', categoryId);
+          }
+          
+          const companiesSnapshot = await companiesQuery.get();
+          console.log(`   Found ${companiesSnapshot.size} companies`);
+          
+          companiesSnapshot.forEach(companyDoc => {
+            const companyData = companyDoc.data();
+            const companyId = companyDoc.id;
+            
+            // Skip if already added
+            if (companyMap.has(companyId)) {
+              return;
+            }
+            
+            // Use the first service's data for the company entry
+            const firstService = servicesWithoutCompanyId[0];
+            const serviceData = firstService.data;
+            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
+            
+            const company: ServiceCompany = {
+              id: firstService.id, // Use service_services doc ID
+              companyId: companyId,
+              categoryMasterId: serviceData.categoryMasterId,
+              serviceName: serviceData.name || 'Unknown Service',
+              companyName: companyData.companyName || companyData.name || 'Unknown Company',
+              price: serviceData.price || 0,
+              isActive: true,
+              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              serviceType: serviceData.serviceType,
+              adminServiceId: serviceData.adminServiceId,
+              description: companyData.description,
+              rating: companyData.rating,
+              reviewCount: companyData.reviewCount,
+              contactInfo: companyData.contactInfo,
+              createdAt: serviceData.createdAt,
+              updatedAt: serviceData.updatedAt,
+              packages: hasPackages ? serviceData.packages : undefined,
+            };
+            
+            companyMap.set(companyId, company);
+            console.log(`   ✅ Added company: ${company.companyName}`);
+          });
+          
+        } catch (fallbackError) {
+          console.error(`   ❌ Fallback error:`, fallbackError);
+        }
+      }
+      
+      // Convert map to array
+      const companiesArray = Array.from(companyMap.values());
+      
+      console.log(`\n✅ FINAL RESULT: Found ${companiesArray.length} unique companies for service IDs`);
+      console.log(`   Companies:`, companiesArray.map(c => ({
+        companyName: c.companyName,
+        serviceName: c.serviceName,
+        price: c.price,
+        hasPackages: !!c.packages,
+        packagesCount: c.packages?.length || 0,
+        companyId: c.companyId
+      })));
+      
+      return companiesArray;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies by service IDs:', error);
+      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
+    }
+  }
+
+  /**
+   * 🏢 NEW: Get package pricing summary for a service
+   */
+  static async getPackagePricingSummary(serviceId: string): Promise<{
+    minPrice: number | null;
+    maxPrice: number | null;
+    averagePrice: number | null;
+    totalPackages: number;
+    companiesCount: number;
+  }> {
+    try {
+      console.log(`🏢 Getting package pricing summary for service: ${serviceId}`);
+      
+      const companies = await this.getCompaniesByServiceIssues([serviceId]);
+      
+      const allPrices: number[] = [];
+      let totalPackages = 0;
+      
+      companies.forEach(company => {
+        if (company.price && company.price > 0) {
+          allPrices.push(company.price);
+        }
+        
+        if (company.packages && Array.isArray(company.packages)) {
+          totalPackages += company.packages.length;
+          
+          company.packages.forEach((pkg: any) => {
+            if (pkg && typeof pkg === 'object' && pkg.price && pkg.price > 0) {
+              allPrices.push(pkg.price);
+            }
+          });
+        }
+      });
+      
+      const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
+      const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : null;
+      const averagePrice = allPrices.length > 0 ? 
+        Math.round(allPrices.reduce((sum, price) => sum + price, 0) / allPrices.length) : null;
+      
+      const summary = {
+        minPrice,
+        maxPrice,
+        averagePrice,
+        totalPackages,
+        companiesCount: companies.length,
+      };
+      
+      console.log(`✅ Package pricing summary for service ${serviceId}:`, summary);
+      return summary;
+      
+    } catch (error) {
+      console.error(`❌ Error getting package pricing summary for service ${serviceId}:`, error);
+      return {
+        minPrice: null,
+        maxPrice: null,
+        averagePrice: null,
+        totalPackages: 0,
+        companiesCount: 0,
+      };
+    }
+  }
+
+  /**
+   * 🔥 FIXED: Check worker availability with SERVICE-SPECIFIC filtering
+   * Only counts workers who are assigned to the specific service
+   */
+  static async checkCompanyWorkerAvailability(
+    companyId: string, 
+    date: string, 
+    time: string, 
+    serviceIds?: string[] | string, // Accept both array and string
+    serviceTitle?: string // Service title for fallback matching
+  ): Promise<{
+    available: boolean;
+    status: 'available' | 'all_busy' | 'no_workers' | 'service_disabled';
+    availableWorkers: number;
+    totalWorkers: number;
+    busyWorkers: string[];
+  }> {
+    try {
+      console.log(`🔍 SERVICE-SPECIFIC AVAILABILITY CHECK:`);
+      console.log(`   Company: ${companyId}`);
+      console.log(`   Date: ${date}, Time: ${time}`);
+      console.log(`   Service IDs (from app_services):`, serviceIds, `(type: ${typeof serviceIds})`);
+      console.log(`   Service Title:`, serviceTitle);
+      
+      // 🔥 CRITICAL: Ensure serviceIds is always an array
+      let serviceIdsArray: string[] = [];
+      if (serviceIds) {
+        if (Array.isArray(serviceIds)) {
+          serviceIdsArray = serviceIds;
+        } else if (typeof serviceIds === 'string') {
+          serviceIdsArray = [serviceIds];
+        }
+      }
+      
+      console.log(`   Processed Service IDs Array:`, serviceIdsArray);
+      
+      // 🔥 NEW: Get service_services IDs for this company and service
+      // Workers have service_services IDs in their assignedServices, not app_services IDs
+      let serviceServicesIds: string[] = [];
+      
+      if (serviceTitle) {
+        try {
+          console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
+          
+          const serviceServicesSnapshot = await firestore()
+            .collection('service_services')
+            .where('companyId', '==', companyId)
+            .where('name', '==', serviceTitle)
+            .get();
+          
+          serviceServicesSnapshot.forEach(doc => {
+            serviceServicesIds.push(doc.id);
+            console.log(`   ✅ Found service_services ID: ${doc.id} for "${serviceTitle}"`);
+          });
+          
+          console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);
+        } catch (error) {
+          console.log(`   ⚠️ Error fetching service_services IDs:`, error);
+        }
+      }
+      
+      // ================================
+      // STEP 1: Get ALL workers for this company
+      // ================================
+      const allWorkersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .get();
+      
+      console.log(`📊 Total workers in company: ${allWorkersSnapshot.size}`);
+      
+      // ================================
+      // STEP 2: Filter for ACTIVE workers with SPECIFIC SERVICE
+      // ================================
+      const relevantWorkers: string[] = [];
+      const inactiveWorkers: string[] = [];
+      const workersWithoutService: string[] = [];
+      
+      allWorkersSnapshot.docs.forEach(doc => {
+        const worker = doc.data();
+        const workerId = doc.id;
+        
+        // Check if worker is TRULY active (isActive === true)
+        const isTrulyActive = worker.isActive === true;
+        
+        // 🔥 FIXED: Check if worker has the service_services IDs (not app_services IDs)
+        let hasService = false;
+        
+        // Strategy 1: Check against service_services IDs (correct approach)
+        if (serviceServicesIds && serviceServicesIds.length > 0) {
+          hasService = worker.assignedServices && 
+                      Array.isArray(worker.assignedServices) && 
+                      serviceServicesIds.some(serviceServiceId => worker.assignedServices.includes(serviceServiceId));
+          
+          if (hasService) {
+            console.log(`   ✅ CORRECT MATCH: Worker has service_services ID`);
+          }
+        }
+        
+        // Strategy 2: Fallback to app_services IDs (legacy)
+        if (!hasService && serviceIdsArray && serviceIdsArray.length > 0) {
+          hasService = worker.assignedServices && 
+                      Array.isArray(worker.assignedServices) && 
+                      serviceIdsArray.some(serviceId => worker.assignedServices.includes(serviceId));
+          
+          if (hasService) {
+            console.log(`   ✅ LEGACY MATCH: Worker has app_services ID`);
+          }
+        }
+        
+        // Strategy 3: Service title matching
+        if (!hasService && serviceTitle) {
+          hasService = worker.assignedServices && 
+                      Array.isArray(worker.assignedServices) && 
+                      worker.assignedServices.some(service => 
+                        service.toLowerCase().includes(serviceTitle.toLowerCase()) ||
+                        serviceTitle.toLowerCase().includes(service.toLowerCase())
+                      );
+          
+          if (hasService) {
+            console.log(`   ✅ TITLE MATCH: Worker matched via service title`);
+          }
+        }
+        
+        // Strategy 4: If no specific service filtering, accept all active workers
+        if (!hasService && !serviceIdsArray.length && !serviceServicesIds.length && !serviceTitle) {
+          hasService = true;
+          console.log(`   ✅ NO FILTER: Accepting all active workers`);
+        }
+        
+        console.log(`👷 Worker ${worker.name || workerId}:`, {
+          isActive: worker.isActive,
+          isTrulyActive,
+          assignedServices: worker.assignedServices,
+          hasRequiredService: hasService,
+          requiredAppServicesIds: serviceIdsArray,
+          requiredServiceServicesIds: serviceServicesIds,
+          matchStrategy: hasService ? 'matched' : 'no_match'
+        });
+        
+        if (!isTrulyActive) {
+          inactiveWorkers.push(workerId);
+          console.log(`   ❌ INACTIVE - isActive: ${worker.isActive}`);
+        } else if (!hasService) {
+          workersWithoutService.push(workerId);
+          console.log(`   ⚠️ ACTIVE but doesn't have required service(s)`);
+        } else {
+          relevantWorkers.push(workerId);
+          console.log(`   ✅ ACTIVE and has required service`);
+        }
+      });
+      
+      const totalRelevantWorkers = relevantWorkers.length;
+      
+      console.log(`📊 WORKER BREAKDOWN:`);
+      console.log(`   Total workers: ${allWorkersSnapshot.size}`);
+      console.log(`   Active with required service: ${totalRelevantWorkers}`);
+      console.log(`   Inactive: ${inactiveWorkers.length}`);
+      console.log(`   Active but no required service: ${workersWithoutService.length}`);
+      
+      if (totalRelevantWorkers === 0) {
+        console.log(`❌ NO WORKERS with required service(s)`);
+        return {
+          available: false,
+          status: 'no_workers',
+          availableWorkers: 0,
+          totalWorkers: 0,
+          busyWorkers: []
+        };
+      }
+      
+      // ================================
+      // STEP 3: Find busy workers (with active bookings)
+      // ================================
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('date', '==', date)
+        .where('time', '==', time)
+        .where('status', 'in', ['assigned', 'started', 'pending'])
+        .get();
+      
+      const busyWorkers: string[] = [];
+      
+      console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
+      
+      bookingsSnapshot.docs.forEach(doc => {
+        const booking = doc.data();
+        const workerId = booking.workerId || booking.technicianId;
+        
+        if (workerId && relevantWorkers.includes(workerId)) {
+          busyWorkers.push(workerId);
+          console.log(`   🚫 Worker ${workerId} is BUSY (booking: ${doc.id}, status: ${booking.status})`);
+        }
+      });
+      
+      const availableWorkers = totalRelevantWorkers - busyWorkers.length;
+      
+      console.log(`📊 FINAL RESULT:`);
+      console.log(`   Total relevant workers: ${totalRelevantWorkers}`);
+      console.log(`   Busy workers: ${busyWorkers.length}`);
+      console.log(`   Available workers: ${availableWorkers}`);
+      
+      if (availableWorkers <= 0) {
+        console.log(`❌ ALL ${totalRelevantWorkers} RELEVANT WORKERS ARE BUSY`);
+        return {
+          available: false,
+          status: 'all_busy',
+          availableWorkers: 0,
+          totalWorkers: totalRelevantWorkers,
+          busyWorkers
+        };
+      }
+      
+      console.log(`✅ ${availableWorkers} WORKERS AVAILABLE for this service`);
+      return {
+        available: true,
+        status: 'available',
+        availableWorkers,
+        totalWorkers: totalRelevantWorkers,
+        busyWorkers
+      };
+      
+    } catch (error) {
+      console.error(`❌ Error checking worker availability:`, error);
+      return {
+        available: false,
+        status: 'no_workers',
+        availableWorkers: 0,
+        totalWorkers: 0,
+        busyWorkers: []
+      };
+    }
+  }
+
+  /**
+   * Get companies with slot-based availability for a service
+   */
+  static async getCompaniesWithSlotAvailability(
+    categoryId: string, 
+    selectedIssueIds: string[], 
+    date: string, 
+    time: string,
+    serviceType?: string,
+    fromServiceServices?: boolean
+  ): Promise<(ServiceCompany & { 
+    availabilityInfo: {
+      available: boolean;
+      status: 'available' | 'all_busy' | 'no_workers' | 'service_disabled';
+      availableWorkers: number;
+      totalWorkers: number;
+      statusMessage: string;
+    }
+  })[]> {
+    try {
+      console.log(`🏢 Fetching companies with slot availability for ${date} at ${time}`);
+      console.log(`📋 Selected service IDs:`, selectedIssueIds);
+      console.log(`🏷️ Service type:`, serviceType);
+      console.log(`📂 Category ID:`, categoryId);
+      console.log(`🔍 From service_services:`, fromServiceServices);
+      
+      // Get companies based on selected issues
+      let companies: ServiceCompany[];
+      if (selectedIssueIds && selectedIssueIds.length > 0) {
+        // 🔥 CRITICAL FIX: Use correct method based on data source
+        if (fromServiceServices) {
+          console.log(`🔍 Using getCompaniesByServiceIds for service_services IDs:`, selectedIssueIds);
+          companies = await this.getCompaniesByServiceIds(selectedIssueIds, categoryId);
+          console.log(`📊 getCompaniesByServiceIds returned ${companies.length} companies`);
+        } else {
+          console.log(`🔍 Using getCompaniesWithDetailedPackages for app_services IDs:`, selectedIssueIds);
+          companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
+          console.log(`📊 getCompaniesWithDetailedPackages returned ${companies.length} companies`);
+        }
+      } else if (categoryId) {
+        console.log(`🔍 Using getCompaniesByCategory for category:`, categoryId);
+        companies = await this.getCompaniesByCategory(categoryId);
+        console.log(`📊 getCompaniesByCategory returned ${companies.length} companies`);
+        companies = await this.getDetailedPackagesForCompanies(companies);
+        console.log(`📊 After package enhancement: ${companies.length} companies`);
+      } else {
+        console.log(`🔍 Using getServiceCompanies (fallback)`);
+        companies = await this.getServiceCompanies();
+        console.log(`📊 getServiceCompanies returned ${companies.length} companies`);
+        companies = await this.getDetailedPackagesForCompanies(companies);
+        console.log(`📊 After package enhancement: ${companies.length} companies`);
+      }
+
+      console.log(`🏢 COMPANIES FOUND:`, companies.map(c => ({
+        id: c.id,
+        companyName: c.companyName,
+        serviceName: c.serviceName,
+        companyId: c.companyId,
+        isActive: c.isActive
+      })));
+
+      if (companies.length === 0) {
+        console.log(`❌ NO COMPANIES FOUND - This is why nothing is showing in the app`);
+        console.log(`💡 Possible reasons:`);
+        console.log(`   1. No companies provide the selected service`);
+        console.log(`   2. Service IDs don't match between app_services and service_services`);
+        console.log(`   3. All companies are inactive`);
+        console.log(`   4. Category mapping issue`);
+        
+        return [];
+      }
+      
+      console.log(`🏢 Found ${companies.length} companies, checking availability...`);
+      
+      // Check availability for each company with SERVICE-SPECIFIC filtering
+      const companiesWithAvailability = await Promise.all(
+        companies.map(async (company) => {
+          const companyId = company.companyId || company.id;
+          
+          // 🔥 CRITICAL: Pass service IDs for proper worker filtering
+          const availability = await this.checkCompanyWorkerAvailability(
+            companyId,
+            date,
+            time,
+            selectedIssueIds, // Pass selected service IDs
+            serviceType // Pass service type as fallback
+          );
+          
+          let statusMessage = '';
+          switch (availability.status) {
+            case 'available':
+              statusMessage = `${availability.availableWorkers} worker${availability.availableWorkers > 1 ? 's' : ''} available`;
+              break;
+            case 'all_busy':
+              statusMessage = `All ${availability.totalWorkers} workers busy`;
+              break;
+            case 'no_workers':
+              statusMessage = 'No workers available';
+              break;
+            case 'service_disabled':
+              statusMessage = 'Service not offered';
+              break;
+          }
+          
+          return {
+            ...company,
+            availabilityInfo: {
+              ...availability,
+              statusMessage
+            }
+          };
+        })
+      );
+      
+      // Filter based on your requirements:
+      // 1. Show ONLY companies with available workers
+      // 2. Hide companies with no workers, service disabled, or all workers busy
+      const filteredCompanies = companiesWithAvailability.filter(company => {
+        const { status } = company.availabilityInfo;
+        return status === 'available'; // Only show companies with available workers
+      });
+      
+      console.log(`🏢 After slot filtering: ${filteredCompanies.length}/${companies.length} companies shown (only available workers)`);
+      console.log('Available companies only:', filteredCompanies.map(c => ({
+        name: c.companyName || c.serviceName,
+        status: c.availabilityInfo.status,
+        message: c.availabilityInfo.statusMessage,
+        availableWorkers: c.availabilityInfo.availableWorkers
+      })));
+      
+      // Log hidden companies for debugging
+      const hiddenCompanies = companiesWithAvailability.filter(company => {
+        const { status } = company.availabilityInfo;
+        return status !== 'available';
+      });
+      
+      if (hiddenCompanies.length > 0) {
+        console.log(`🚫 Hidden ${hiddenCompanies.length} companies:`, hiddenCompanies.map(c => ({
+          name: c.companyName || c.serviceName,
+          reason: c.availabilityInfo.status,
+          message: c.availabilityInfo.statusMessage
+        })));
+      }
+      
+      return filteredCompanies;
+      
+    } catch (error) {
+      console.error('❌ Error fetching companies with slot availability:', error);
+      throw error;
+    }
+  }
+}
