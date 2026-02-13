@@ -9,7 +9,7 @@ import {
   Linking,
   ActivityIndicator,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute, useNavigation, CommonActions } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../services/firestoreService";
 import firestore from "@react-native-firebase/firestore";
@@ -30,6 +30,35 @@ export default function BookingConfirmationScreen() {
   const [categoryId, setCategoryId] = useState<string>("");
   const [addOnServices, setAddOnServices] = useState<any[]>([]);
   const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
+
+  // Set custom header with back button
+  useEffect(() => {
+    navigation.setOptions({
+      headerShown: true,
+      headerTitle: "Booking Details",
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => {
+            // Navigate to ServicesHome when back button is pressed
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [
+                  {
+                    name: "ServicesTab",
+                    state: { routes: [{ name: "ServicesHome" }] },
+                  },
+                ],
+              })
+            );
+          }}
+          style={{ marginLeft: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   // Set up real-time listener for booking data instead of manual fetch
   useEffect(() => {
@@ -377,7 +406,11 @@ export default function BookingConfirmationScreen() {
               <Text style={styles.detailLabel}>Service:</Text>
               <Text style={styles.detailValue}>{displayData.serviceName || "-"}</Text>
               {displayData.workName && displayData.workName !== displayData.serviceName && (
-                <Text style={styles.workNameText}>Work: {displayData.workName}</Text>
+                <Text style={styles.workNameText}>
+                  Work: {typeof displayData.workName === 'object' 
+                    ? (displayData.workName?.name || displayData.workName?.title || JSON.stringify(displayData.workName))
+                    : displayData.workName}
+                </Text>
               )}
             </View>
           </View>

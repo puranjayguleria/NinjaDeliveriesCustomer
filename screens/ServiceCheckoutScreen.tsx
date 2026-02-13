@@ -408,7 +408,9 @@ export default function ServiceCheckoutScreen() {
         // Ensure all required fields have valid values
         const bookingData = {
           serviceName: service.serviceTitle || "Service",
-          workName: (service.issues && service.issues.length > 0) ? service.issues.join(', ') : (service.serviceTitle || "Service"),
+          workName: (service.issues && service.issues.length > 0) 
+            ? service.issues.map((issue: any) => typeof issue === 'object' ? (issue.name || issue.title || issue) : issue).join(', ')
+            : (service.serviceTitle || "Service"),
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
