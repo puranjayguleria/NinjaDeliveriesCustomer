@@ -433,17 +433,27 @@ export default function CompanySelectionScreen() {
       packageInfo = selectedPackage;
     }
 
-    const issueTotalPrice = Array.isArray(selectedIssues)
-      ? selectedIssues.reduce((s: number, it: any) => s + (typeof it.price === 'number' ? it.price : 0), 0)
-      : 0;
+    // 🔧 FIX: Store issues with their individual prices and quantities
+    const issuesWithPrices = Array.isArray(selectedIssues) && selectedIssues.length > 0
+      ? selectedIssues.map((issue: any) => ({
+          name: issue.name || issue,
+          price: typeof issue.price === 'number' ? issue.price : 0,
+          quantity: 1, // Initialize with quantity 1
+        }))
+      : (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map((issue: any) => ({
+          name: typeof issue === 'string' ? issue : issue.name || issue,
+          price: typeof issue === 'object' && typeof issue.price === 'number' ? issue.price : (selectedCompany?.price || 0),
+          quantity: 1, // Initialize with quantity 1
+        }));
 
+    const issueTotalPrice = issuesWithPrices.reduce((sum: number, issue: any) => sum + issue.price, 0);
     const computedPrice = packageInfo?.price ?? (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
 
     // Add service to cart (include package info when available)
     addService({
       serviceTitle,
       categoryId, // Add categoryId for add-on services filtering
-      issues: Array.isArray(issues) ? issues : [issues].filter(Boolean),
+      issues: issuesWithPrices, // Store issues with prices
       company: {
         id: selectedCompany.id,
         companyId: selectedCompany.companyId || selectedCompany.id,
@@ -719,18 +729,11 @@ export default function CompanySelectionScreen() {
                 )}
 
                 {/* Additional Info */}
-                {(item.rating || (item as any).totalWorkerCount) && (
+                {item.rating && (
                   <View style={styles.metaRow}>
-                    {item.rating && (
-                      <View style={styles.ratingBadge}>
-                        <Text style={styles.ratingBadgeText}>⭐ {item.rating.toFixed(1)}</Text>
-                      </View>
-                    )}
-                    {(item as any).totalWorkerCount && (
-                      <Text style={styles.workerInfo}>
-                        {(item as any).availableWorkerCount || 0}/{(item as any).totalWorkerCount} available
-                      </Text>
-                    )}
+                    <View style={styles.ratingBadge}>
+                      <Text style={styles.ratingBadgeText}>⭐ {item.rating.toFixed(1)}</Text>
+                    </View>
                   </View>
                 )}
 

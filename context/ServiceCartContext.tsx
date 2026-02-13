@@ -12,7 +12,7 @@ export type ServiceCartItem = {
   id: string;
   serviceTitle: string;
   categoryId?: string; // Add categoryId for add-on services filtering
-  issues: string[];
+  issues: Array<string | { name: string; price: number; quantity?: number }>; // Support both string and object formats
   company: {
     id: string;
     companyId?: string; // Add companyId field for compatibility

@@ -27,6 +27,86 @@ export default function ServiceCartScreen() {
     );
   };
 
+  const handleUpdateIssueQuantity = (serviceId: string, issueIndex: number, newQuantity: number) => {
+    const service = state.items[serviceId];
+    if (!service) return;
+    
+    // Create a copy of issues with updated quantity
+    const updatedIssues = [...service.issues].map((issue, idx) => {
+      if (idx === issueIndex) {
+        // Convert to object format if it's a string
+        const issueObj = typeof issue === 'object' 
+          ? { ...issue } 
+          : { name: issue, price: service.unitPrice, quantity: 1 };
+        
+        return {
+          ...issueObj,
+          quantity: Math.max(1, newQuantity), // Minimum quantity is 1
+        };
+      }
+      // Ensure all issues have quantity field
+      if (typeof issue === 'object') {
+        return { ...issue, quantity: issue.quantity || 1 };
+      }
+      return { name: issue, price: service.unitPrice, quantity: 1 };
+    });
+    
+    // Calculate new total price based on all issues
+    const newTotalPrice = updatedIssues.reduce((sum, issue) => {
+      const issueObj = typeof issue === 'object' ? issue : { name: issue, price: service.unitPrice, quantity: 1 };
+      const issuePrice = issueObj.price || 0;
+      const issueQty = issueObj.quantity || 1;
+      return sum + (issuePrice * issueQty);
+    }, 0);
+    
+    // Update service with new issues and total price
+    updateService(serviceId, {
+      issues: updatedIssues,
+      totalPrice: newTotalPrice,
+    });
+  };
+
+  const handleRemoveIssue = (serviceId: string, issueIndex: number) => {
+    const service = state.items[serviceId];
+    if (!service) return;
+    
+    // If only one issue left, remove the entire service
+    if (service.issues.length <= 1) {
+      handleRemoveService(serviceId);
+      return;
+    }
+    
+    Alert.alert(
+      "Remove Issue",
+      "Are you sure you want to remove this issue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Remove", 
+          style: "destructive", 
+          onPress: () => {
+            const updatedIssues = service.issues.filter((_, idx) => idx !== issueIndex);
+            
+            // Calculate new total price
+            const newTotalPrice = updatedIssues.reduce((sum, issue) => {
+              const issueObj = typeof issue === 'object' 
+                ? issue 
+                : { name: issue, price: service.unitPrice, quantity: 1 };
+              const issuePrice = issueObj.price || 0;
+              const issueQty = issueObj.quantity || 1;
+              return sum + (issuePrice * issueQty);
+            }, 0);
+            
+            updateService(serviceId, {
+              issues: updatedIssues,
+              totalPrice: newTotalPrice,
+            });
+          }
+        },
+      ]
+    );
+  };
+
   const handleClearCart = () => {
     Alert.alert(
       "Clear Cart",
@@ -69,11 +149,55 @@ export default function ServiceCartScreen() {
       <View style={styles.serviceDetails}>
         <Text style={styles.detailsTitle}>Selected Issues:</Text>
         <View style={styles.issuesContainer}>
-          {(item.issues || []).map((issue, index) => (
-            <View key={index} style={styles.issueTag}>
-              <Text style={styles.issueText}>{issue}</Text>
-            </View>
-          ))}
+          {(item.issues || []).map((issue, index) => {
+            // Handle both string and object formats
+            const issueObj = typeof issue === 'object' ? issue : { name: issue, price: item.unitPrice, quantity: 1 };
+            const issueName = typeof issueObj.name === 'string' ? issueObj.name : (typeof issue === 'string' ? issue : 'Service');
+            const issuePrice = typeof issueObj.price === 'number' ? issueObj.price : item.unitPrice;
+            const issueQuantity = typeof issueObj.quantity === 'number' ? issueObj.quantity : 1;
+            const issueTotal = issuePrice * issueQuantity;
+            
+            return (
+              <View key={index} style={styles.issueRow}>
+                <View style={styles.issueInfo}>
+                  <View style={styles.issueNamePrice}>
+                    <Text style={styles.issueText}>{issueName}</Text>
+                    <Text style={styles.issuePrice}>₹{issuePrice} × {issueQuantity}</Text>
+                  </View>
+                  <Text style={styles.issueTotalPrice}>₹{issueTotal}</Text>
+                </View>
+                <View style={styles.issueActions}>
+                  <View style={styles.quantityControls}>
+                    <TouchableOpacity
+                      style={styles.quantityButton}
+                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity - 1)}
+                    >
+                      <Ionicons name="remove" size={16} color="#666" />
+                    </TouchableOpacity>
+                    <Text style={styles.quantityText}>{issueQuantity}</Text>
+                    <TouchableOpacity
+                      style={styles.quantityButton}
+                      onPress={() => handleUpdateIssueQuantity(item.id, index, issueQuantity + 1)}
+                    >
+                      <Ionicons name="add" size={16} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.removeIssueButton}
+                    onPress={() => handleRemoveIssue(item.id, index)}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+        
+        {/* Subtotal for this service */}
+        <View style={styles.subtotalRow}>
+          <Text style={styles.subtotalLabel}>Subtotal:</Text>
+          <Text style={styles.subtotalAmount}>₹{item.totalPrice}</Text>
         </View>
         
         {/* 🔧 NEW: Show package information if available */}
@@ -120,21 +244,6 @@ export default function ServiceCartScreen() {
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#666" />
           <Text style={styles.detailText}>{item.selectedTime}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Ionicons name="pricetag-outline" size={16} color="#666" />
-          <Text style={styles.priceText}>₹{item.totalPrice}</Text>
-        </View>
-      </View>
-
-      <View style={styles.specialtiesContainer}>
-        <Text style={styles.specialtiesTitle}>Specialties:</Text>
-        <View style={styles.specialtiesList}>
-          {(item.company?.specialties || []).map((specialty, index) => (
-            <Text key={index} style={styles.specialtyText}>
-              {specialty}
-            </Text>
-          ))}
         </View>
       </View>
     </View>
@@ -320,8 +429,30 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   issuesContainer: {
+    gap: 8,
+  },
+  issueRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8f9fa",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  issueInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  issueNamePrice: {
+    marginBottom: 4,
+  },
+  issueActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   issueTag: {
     backgroundColor: "#f0f0f0",
@@ -332,8 +463,61 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   issueText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  issuePrice: {
     fontSize: 12,
-    color: "#666",
+    color: "#6c757d",
+    fontWeight: "500",
+  },
+  issueTotalPrice: {
+    fontSize: 15,
+    color: "#4CAF50",
+    fontWeight: "700",
+  },
+  quantityControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#dee2e6",
+  },
+  quantityButton: {
+    padding: 6,
+    paddingHorizontal: 10,
+  },
+  quantityText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    minWidth: 24,
+    textAlign: "center",
+  },
+  removeIssueButton: {
+    padding: 4,
+  },
+  subtotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e9ecef",
+  },
+  subtotalLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#495057",
+  },
+  subtotalAmount: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#4CAF50",
   },
   bookingDetails: {
     flexDirection: "row",
@@ -354,21 +538,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#4CAF50",
     marginLeft: 4,
-  },
-  specialtiesContainer: {
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
-    paddingTop: 12,
-  },
-  specialtiesTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
-    marginBottom: 6,
-  },
-  specialtiesList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
   },
   specialtyText: {
     fontSize: 12,
