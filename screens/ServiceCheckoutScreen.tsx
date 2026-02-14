@@ -23,6 +23,8 @@ import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { openRazorpayNative } from "../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
+import auth from "@react-native-firebase/auth";
+import axios from "axios";
 
 const LOG_PREFIX = "🧾[SvcPay]";
 const log = (...args: any[]) => {
@@ -41,16 +43,16 @@ export default function ServiceCheckoutScreen() {
   const { clearCart } = useServiceCart();
   const { location } = useLocationContext();
   
-  const { services, totalAmount } = route.params;
+  const { services } = route.params;
   // Ensure displayed total comes from the actual services (preserve package/company prices)
   const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [loading, setLoading] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  // When paying online, we create bookings first as `pending` so that if the app is killed
-  // after payment succeeds (before callbacks run), the user still has a booking to recover.
-  const [pendingBookingIds, setPendingBookingIds] = useState<string[] | null>(null);
+  // const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Legacy state (kept to avoid risky refactors). Online flow now uses a server-side intent
+  // so we do NOT create pending bookings before payment.
+  // const [pendingBookingIds, setPendingBookingIds] = useState<string[] | null>(null);
 
   // Persist the last service Razorpay attempt so we can reconcile after app restart.
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
@@ -88,15 +90,12 @@ export default function ServiceCheckoutScreen() {
 
   log("recovery_found", { razorpayOrderId, recovery });
 
-        const auth = require("@react-native-firebase/auth").default;
-        const axios = require("axios").default;
-
         const api = axios.create({
           timeout: 20000,
           headers: { "Content-Type": "application/json" },
         });
 
-        const user = auth().currentUser;
+  const user = auth().currentUser;
         if (!user) return;
 
         const token = await user.getIdToken(true);
@@ -107,14 +106,16 @@ export default function ServiceCheckoutScreen() {
 
         const { data } = await api.post(
           RECOVER_URL,
-          { razorpayOrderId },
+          { orderIds: [razorpayOrderId] },
           { headers }
         );
 
   log("recovery_response", data);
 
-        if (data?.ok && (data?.updatedBookings > 0 || data?.alreadyFinalized)) {
+        const createdBookings = Number(data?.createdBookings || 0);
+        if (data?.ok && (createdBookings > 0 || data?.updatedBookings > 0 || data?.alreadyFinalized || data?.finalizedIntents > 0)) {
           log("recovery_finalized_clear_cart", {
+            createdBookings,
             updatedBookings: data?.updatedBookings,
             alreadyFinalized: data?.alreadyFinalized,
           });
@@ -283,24 +284,88 @@ export default function ServiceCheckoutScreen() {
     log("razorpay_start", { computedTotalAmount, servicesCount: services?.length ?? 0 });
     setLoading(true);
     try {
-      // Import auth and axios here to avoid issues
-      const auth = require("@react-native-firebase/auth").default;
-      const axios = require("axios").default;
-
       // API Configuration for Razorpay
       const api = axios.create({
         timeout: 20000,
         headers: { "Content-Type": "application/json" },
       });
 
-      const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
-      const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
+  const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+  // Some functions might still be deployed to the default region.
+  const CLOUD_FUNCTIONS_BASE_URL_USC1 = "https://us-central1-ninjadeliveries-91007.cloudfunctions.net";
 
-      const getAuthHeaders = async () => {
+  const callableUrl = (fnName: string, baseUrl = CLOUD_FUNCTIONS_BASE_URL) => `${baseUrl}/${fnName}:call`;
+  const httpUrl = (fnName: string, baseUrl = CLOUD_FUNCTIONS_BASE_URL) => `${baseUrl}/${fnName}`;
+
+      const postWith404Fallback = async (fnName: string, body: any, headers: any) => {
+        try {
+          // Prefer plain HTTP endpoint first
+          if (__DEV__) {
+            log("fn_post_attempt", { fnName, url: httpUrl(fnName), mode: "http" });
+          }
+          return await api.post(httpUrl(fnName), body, { headers });
+        } catch (e: any) {
+          const status = e?.response?.status;
+
+          // Explicitly one of our HTTPS-only functions (not callable).
+          const httpsOnly = fnName === "servicePaymentsCreateIntent" || fnName === "createRazorpayOrder" || fnName === "servicePaymentsReconcile" || fnName === "servicePaymentsVerifyAndFinalize";
+
+          // Region mismatch fallback: try us-central1 if the asia-south1 URL 404s.
+          if (status === 404) {
+            if (__DEV__) {
+              log("fn_post_attempt", { fnName, url: httpUrl(fnName, CLOUD_FUNCTIONS_BASE_URL_USC1), mode: "http_us_central1" });
+            }
+            return await api.post(httpUrl(fnName, CLOUD_FUNCTIONS_BASE_URL_USC1), body, { headers });
+          }
+
+          // Some deployments might expose callable endpoints, or enforce auth via callable middleware.
+          // Only retry callable for functions that are NOT known HTTPS-only.
+          if (!httpsOnly && (status === 401 || status === 403)) {
+            if (__DEV__) {
+              log("fn_post_attempt", { fnName, url: callableUrl(fnName), mode: "callable" });
+            }
+
+            // Callable endpoints expect { data: ... } and respond with { result: ... }.
+            const resp = await api.post(callableUrl(fnName), { data: body }, { headers });
+            const unwrapped = resp?.data?.result ?? resp?.data;
+            return { ...resp, data: unwrapped };
+          }
+
+          throw e;
+        }
+      };
+
+      const CREATE_RZP_ORDER_URL = httpUrl('createRazorpayOrder');
+
+      const getAuthHeaders = async (opts?: { forceRefresh?: boolean }) => {
         const user = auth().currentUser;
         if (!user) throw new Error("Not logged in");
-        const token = await user.getIdToken(true);
-        return { Authorization: `Bearer ${token}` };
+        const token = await user.getIdToken(!!opts?.forceRefresh);
+        return {
+          Authorization: `Bearer ${token}`,
+          // Some backends/middleware read auth from "__session" (common in Firebase Hosting + Functions setups).
+          // Sending it here is harmless and fixes 401s when Authorization isn't being read.
+          __session: token,
+          "Content-Type": "application/json",
+        };
+      };
+
+      // Remove undefined recursively so backend Firestore writes never fail.
+      const stripUndefinedDeep = (value: any): any => {
+        if (Array.isArray(value)) {
+          return value
+            .map(stripUndefinedDeep)
+            .filter((v) => v !== undefined);
+        }
+        if (value && typeof value === "object") {
+          const out: any = {};
+          Object.keys(value).forEach((k) => {
+            const v = stripUndefinedDeep(value[k]);
+            if (v !== undefined) out[k] = v;
+          });
+          return out;
+        }
+        return value === undefined ? undefined : value;
       };
 
       const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
@@ -335,14 +400,106 @@ export default function ServiceCheckoutScreen() {
 
   log("rzp_order_created", { orderId: data.orderId, keyId: data.keyId, currency: data.currency });
 
+      // Create server-side payment intent (stores booking draft) so app-kill can still finalize.
+      // IMPORTANT: This does NOT create bookings yet.
+      let intentCreated = false;
+      try {
+        const selectedAddress = getSelectedAddress();
 
-      // We only persist the razorpayOrderId for crash-safe verification.
-      // Bookings are created only after verification.
+        const draftRaw = {
+          // Keep as plain JSON (no functions / class instances)
+          customerId: user.uid,
+          customerName: selectedAddress?.userName || undefined,
+          customerPhone: selectedAddress?.userPhone || user.phoneNumber || undefined,
+          customerAddress: selectedAddress?.fullAddress || location.address || "",
+          // Store cart snapshot for server-side booking creation
+          services: (services || []).map((service: any) => ({
+            serviceId: service?.id,
+            serviceName: service?.serviceTitle,
+            workName: Array.isArray(service?.issues) && service.issues.length
+              ? service.issues.join(", ")
+              : service?.serviceTitle,
+            totalPrice: service?.totalPrice ?? 0,
+            addOns: service?.addOns ?? [],
+            selectedDate: service?.selectedDate,
+            selectedTime: service?.selectedTime,
+            companyId: service?.company?.companyId || service?.company?.id,
+            companyName: service?.company?.name,
+            bookingType: service?.bookingType,
+            additionalInfo: service?.additionalInfo,
+          })),
+          // location data (optional)
+          location: {
+            lat: location.lat ?? null,
+            lng: location.lng ?? null,
+            address: selectedAddress?.fullAddress || location.address || "",
+            houseNo: selectedAddress?.houseNo || "",
+            placeLabel: selectedAddress?.addressType || "Home",
+          },
+          serviceAddress: {
+            id: selectedAddress?.id || "",
+            fullAddress: selectedAddress?.fullAddress || "",
+            houseNo: selectedAddress?.houseNo || "",
+            landmark: selectedAddress?.landmark || "",
+            addressType: selectedAddress?.addressType || "Home",
+            lat: location.lat ?? null,
+            lng: location.lng ?? null,
+          },
+          notes: notes || "",
+          // convenience
+          totalAmount: computedTotalAmount,
+          // Helpful for backend writes
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        const draft = stripUndefinedDeep(draftRaw);
+
+  // Force refresh here because 401s usually mean the ID token is stale/expired.
+  const intentHeaders = await getAuthHeaders({ forceRefresh: true });
+        if (__DEV__) {
+          log("intent_headers_debug", {
+            hasAuthorization: !!intentHeaders?.Authorization,
+            authorizationPrefix: String(intentHeaders?.Authorization || "").slice(0, 12),
+          });
+        }
+        log("intent_create_start", {
+          orderId: String(data.orderId),
+          amountPaise,
+          currency: String(data.currency ?? "INR"),
+          servicesCount: (services || []).length,
+        });
+        const { data: intentResp } = await postWith404Fallback(
+          "servicePaymentsCreateIntent",
+          {
+            orderId: String(data.orderId),
+            amountPaise,
+            currency: String(data.currency ?? "INR"),
+            draft,
+          },
+          intentHeaders
+        );
+
+        intentCreated = !!intentResp?.ok;
+        log("intent_create_done", { ok: intentResp?.ok, orderId: String(data.orderId) });
+
+        if (!intentCreated) {
+          throw new Error(intentResp?.error || "Intent creation failed");
+        }
+      } catch (intentErr: any) {
+        // If intent can't be created, we lose crash-safe finalization.
+        // Fail fast so we don't take payment without ability to finalize later.
+        warn("intent_create_failed", intentErr);
+        throw new Error(intentErr?.message || "Failed to initialize payment intent");
+      }
+
+      // Persist recovery info for crash-safe verification/reconcile.
       await AsyncStorage.setItem(
         SERVICE_PAYMENT_RECOVERY_KEY,
         JSON.stringify({
           razorpayOrderId: String(data.orderId),
           createdAt: Date.now(),
+          intentCreated,
         })
       );
 
@@ -372,15 +529,14 @@ export default function ServiceCheckoutScreen() {
         log("native_checkout_success", nativeResult);
 
           // Verify payment + finalize bookings on server (crash-safe)
-          const VERIFY_FINALIZE_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsVerifyAndFinalize`;
           const verifyHeaders = await getAuthHeaders();
           log("verify_and_finalize_start", {
             razorpayOrderId: nativeResult?.razorpay_order_id,
           });
-          const { data: verifyData } = await api.post(
-            VERIFY_FINALIZE_URL,
+          const { data: verifyData } = await postWith404Fallback(
+            'servicePaymentsVerifyAndFinalize',
             { ...nativeResult },
-            { headers: verifyHeaders }
+            verifyHeaders
           );
 
           log("verify_and_finalize_response", verifyData);
@@ -428,15 +584,14 @@ export default function ServiceCheckoutScreen() {
         log("webview_success_callback", response);
         
         // Verify payment + finalize bookings on server (crash-safe)
-        const VERIFY_FINALIZE_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsVerifyAndFinalize`;
         const verifyHeaders = await getAuthHeaders();
         log("verify_and_finalize_start", {
           razorpayOrderId: response?.razorpay_order_id,
         });
-        const { data: verifyData } = await api.post(
-          VERIFY_FINALIZE_URL,
+        const { data: verifyData } = await postWith404Fallback(
+          'servicePaymentsVerifyAndFinalize',
           { ...response },
-          { headers: verifyHeaders }
+          verifyHeaders
         );
 
         log("verify_and_finalize_response", verifyData);
@@ -534,10 +689,12 @@ export default function ServiceCheckoutScreen() {
   const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any): Promise<string[]> => {
     setLoading(true);
     try {
-      console.log(`🔍 Starting booking creation process...`);
-      console.log(`📍 Current location data:`, JSON.stringify(location, null, 2));
-      console.log(`💳 Payment status: ${paymentStatus}, method: ${paymentMethod}`);
-      console.log(`🛒 Services to book: ${services.length}`);
+      if (__DEV__) {
+        console.log(`🔍 Starting booking creation process...`);
+        console.log(`📍 Current location data:`, JSON.stringify(location, null, 2));
+        console.log(`💳 Payment status: ${paymentStatus}, method: ${paymentMethod}`);
+        console.log(`🛒 Services to book: ${services.length}`);
+      }
       
       // Validate services array first
       if (!services || services.length === 0) {
@@ -545,22 +702,24 @@ export default function ServiceCheckoutScreen() {
       }
       
       // Log each service for debugging
-      services.forEach((service: ServiceCartItem, index: number) => {
-        console.log(`🔧 Service ${index + 1}:`, {
-          id: service.id,
-          title: service.serviceTitle,
-          issues: service.issues,
-          company: {
-            id: service.company?.id,
-            companyId: service.company?.companyId,
-            name: service.company?.name
-          },
-          date: service.selectedDate,
-          time: service.selectedTime,
-          price: service.totalPrice,
-          addOns: service.addOns
+      if (__DEV__) {
+        services.forEach((service: ServiceCartItem, index: number) => {
+          console.log(`🔧 Service ${index + 1}:`, {
+            id: service.id,
+            title: service.serviceTitle,
+            issues: service.issues,
+            company: {
+              id: service.company?.id,
+              companyId: service.company?.companyId,
+              name: service.company?.name
+            },
+            date: service.selectedDate,
+            time: service.selectedTime,
+            price: service.totalPrice,
+            addOns: service.addOns
+          });
         });
-      });
+      }
       
       // Get actual customer information from Firebase
       let customerData = {
@@ -578,8 +737,10 @@ export default function ServiceCheckoutScreen() {
             address: location.address || currentUser.address || currentUser.location || currentUser.fullAddress || ""
           };
         }
-        console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
-        console.log(`📍 Using service address: ${customerData.address}`);
+        if (__DEV__) {
+          console.log(`📱 Retrieved customer data: ${customerData.name}, ${customerData.phone}`);
+          console.log(`📍 Using service address: ${customerData.address}`);
+        }
       } catch (userError) {
         console.error("Error fetching user data:", userError);
         // Continue with location address from context
@@ -587,8 +748,10 @@ export default function ServiceCheckoutScreen() {
       }
 
       // Create bookings in Firebase service_bookings collection
-      const bookingPromises = services.map(async (service: ServiceCartItem, index: number) => {
-        console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
+      const bookingPromises = services.flatMap((service: ServiceCartItem, index: number) => {
+        if (__DEV__) {
+          console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
+        }
         
         // Debug: Log service additionalInfo to check package data
         console.log('📦 Service additionalInfo:', JSON.stringify(service.additionalInfo, null, 2));
@@ -604,10 +767,30 @@ export default function ServiceCheckoutScreen() {
         }
         
         const selectedAddress = getSelectedAddress();
-        console.log(`📍 Selected address for service ${index + 1}:`, selectedAddress);
-        
-        // Ensure all required fields have valid values
-        const bookingData = {
+        if (__DEV__) {
+          console.log(`📍 Selected address for service ${index + 1}:`, selectedAddress);
+        }
+
+        const currentAuthUser = auth().currentUser;
+        const customerId = String(currentAuthUser?.uid || "");
+
+        const occurrences: { date: string; time: string }[] = Array.isArray((service as any)?.additionalInfo?.occurrences)
+          ? (service as any).additionalInfo.occurrences
+          : [];
+
+        const expandedOccurrences = (occurrences.length > 0)
+          ? occurrences
+          : [{ date: service.selectedDate || new Date().toISOString().split('T')[0], time: service.selectedTime || "10:00 AM" }];
+
+        if (__DEV__ && occurrences.length > 0) {
+          console.log(`📅 Plan booking detected for ${service.serviceTitle}. Creating ${expandedOccurrences.length} bookings (one per occurrence).`);
+        }
+
+        return expandedOccurrences.map(async (occ, occIndex) => {
+          // Ensure all required fields have valid values
+          const bookingData = {
+          // Ownership field used by BookingHistory queries
+          customerId,
           serviceName: service.serviceTitle || "Service",
           workName: (service.issues && service.issues.length > 0) 
             ? service.issues.map((issue: any) => typeof issue === 'object' ? issue.name : issue).join(', ') 
@@ -615,8 +798,8 @@ export default function ServiceCheckoutScreen() {
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
-          date: service.selectedDate || new Date().toISOString().split('T')[0],
-          time: service.selectedTime || "10:00 AM",
+          date: occ.date || service.selectedDate || new Date().toISOString().split('T')[0],
+          time: occ.time || service.selectedTime || "10:00 AM",
           status: 'pending' as const,
           companyId: service.company?.companyId || service.company?.id || "",
           companyName: service.company?.name || "Service Provider", // Add company name for website
@@ -672,60 +855,64 @@ export default function ServiceCheckoutScreen() {
             : "",
         };
 
-        console.log(`📋 About to create booking ${index + 1} with data:`, JSON.stringify(bookingData, null, 2));
-        console.log(`🌐 WEBSITE COMPATIBILITY CHECK:`);
-        console.log(`   Has location field: ${!!bookingData.location}`);
-        console.log(`   Location address: "${bookingData.location?.address}"`);
-        console.log(`   Location coordinates: lat=${bookingData.location?.lat}, lng=${bookingData.location?.lng}`);
-        console.log(`   This booking SHOULD appear on website for worker assignment`);
-        console.log(`📦 PACKAGE INFORMATION CHECK:`);
-        console.log(`   Is package booking: ${!!(bookingData as any).isPackage}`);
-        if ((bookingData as any).isPackage) {
-          console.log(`   Package name: ${(bookingData as any).packageName}`);
-          console.log(`   Package type: ${(bookingData as any).packageType}`);
-          console.log(`   Package price: ${(bookingData as any).packagePrice}`);
-        }
-        try {
-          const bookingId = await FirestoreService.createServiceBooking(bookingData);
-          console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
-          console.log(`🌐 Booking ${bookingId} should now be visible on website with location data`);
-          
-          // Create payment record in service_payments collection
-          if (!bookingId) {
-            throw new Error('Failed to create booking - no booking ID returned');
+          if (__DEV__) {
+            console.log(`📋 About to create booking ${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''} with data:`, JSON.stringify(bookingData, null, 2));
+          console.log(`🌐 WEBSITE COMPATIBILITY CHECK:`);
+          console.log(`   Has location field: ${!!bookingData.location}`);
+          console.log(`   Location address: "${bookingData.location?.address}"`);
+          console.log(`   Location coordinates: lat=${bookingData.location?.lat}, lng=${bookingData.location?.lng}`);
+          console.log(`   This booking SHOULD appear on website for worker assignment`);
+          console.log(`📦 PACKAGE INFORMATION CHECK:`);
+          console.log(`   Is package booking: ${!!(bookingData as any).isPackage}`);
           }
+          if ((bookingData as any).isPackage) {
+            console.log(`   Package name: ${(bookingData as any).packageName}`);
+            console.log(`   Package type: ${(bookingData as any).packageType}`);
+            console.log(`   Package price: ${(bookingData as any).packagePrice}`);
+          }
+          try {
+            const bookingId = await FirestoreService.createServiceBooking(bookingData);
+            console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
+            console.log(`🌐 Booking ${bookingId} should now be visible on website with location data`);
           
-          const paymentData = {
-            bookingId,
-            amount: service.totalPrice || 0,
-            paymentMethod: paymentMethod as 'cash' | 'online',
-            paymentStatus: paymentStatus as 'pending' | 'paid',
-            serviceName: service.serviceTitle || 'Service',
-            companyName: service.company?.name || 'Service Provider',
-            companyId: service.company?.companyId || service.company?.id || '',
-            paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
-            // Add Razorpay details if payment was successful
-            ...(razorpayResponse && paymentStatus === 'paid' && {
-              transactionId: razorpayResponse.razorpay_payment_id || '',
-              razorpayOrderId: razorpayResponse.razorpay_order_id || '',
-              razorpaySignature: razorpayResponse.razorpay_signature || '',
-            }),
-          };
+            // Create payment record in service_payments collection
+            if (!bookingId) {
+              throw new Error('Failed to create booking - no booking ID returned');
+            }
+          
+            const paymentData = {
+              bookingId,
+              amount: service.totalPrice || 0,
+              paymentMethod: paymentMethod as 'cash' | 'online',
+              paymentStatus: paymentStatus as 'pending' | 'paid',
+              serviceName: service.serviceTitle || 'Service',
+              companyName: service.company?.name || 'Service Provider',
+              companyId: service.company?.companyId || service.company?.id || '',
+              paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
+              // Add Razorpay details if payment was successful
+              ...(razorpayResponse && paymentStatus === 'paid' && {
+                transactionId: razorpayResponse.razorpay_payment_id || '',
+                razorpayOrderId: razorpayResponse.razorpay_order_id || '',
+                razorpaySignature: razorpayResponse.razorpay_signature || '',
+              }),
+            };
 
-          console.log(`💳 Creating payment record ${index + 1} with data:`, paymentData);
-          const paymentId = await FirestoreService.createServicePayment(paymentData);
-          console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
-          
-          return bookingId;
-        } catch (serviceError: any) {
-          console.error(`❌ Error creating booking ${index + 1} for service ${service.serviceTitle}:`, serviceError);
-          throw serviceError;
-        }
+            console.log(`💳 Creating payment record ${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''} with data:`, paymentData);
+            const paymentId = await FirestoreService.createServicePayment(paymentData);
+            console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
+            
+            return bookingId;
+          } catch (serviceError: any) {
+            console.error(`❌ Error creating booking ${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''} for service ${service.serviceTitle}:`, serviceError);
+            throw serviceError;
+          }
+        });
       });
 
-      console.log(`\n🔄 Creating ${bookingPromises.length} bookings simultaneously...`);
-      const bookingIds = await Promise.all(bookingPromises);
-      console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
+  const allPromises = bookingPromises.flat();
+  console.log(`\n🔄 Creating ${allPromises.length} bookings simultaneously...`);
+  const bookingIds = await Promise.all(allPromises);
+  console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
       
       return bookingIds;
 

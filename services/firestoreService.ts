@@ -3487,8 +3487,10 @@ export class FirestoreService {
       if (!userId) {
         throw new Error('Please log in to view your bookings');
       }
-      
-      console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
+
+      if (__DEV__) {
+        console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
+      }
       
       // Direct query to service_bookings collection
       const snapshot = await firestore()
@@ -3496,21 +3498,25 @@ export class FirestoreService {
         .where('customerId', '==', userId)
         .get();
 
-      console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+      if (__DEV__) {
+        console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+      }
 
       const bookings: ServiceBooking[] = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
         
-        console.log(`📋 Processing booking ${doc.id}:`, {
-          serviceName: data.serviceName,
-          customerName: data.customerName,
-          status: data.status,
-          date: data.date,
-          time: data.time,
-          customerId: data.customerId
-        });
+        if (__DEV__) {
+          console.log(`📋 Processing booking ${doc.id}:`, {
+            serviceName: data.serviceName,
+            customerName: data.customerName,
+            status: data.status,
+            date: data.date,
+            time: data.time,
+            customerId: data.customerId
+          });
+        }
         
         // Add ALL bookings for this user (no filtering)
         bookings.push({
@@ -4036,6 +4042,10 @@ export class FirestoreService {
    */
   static async debugBookingStatuses(): Promise<void> {
     try {
+      if (!__DEV__) {
+        return;
+      }
+
       const userId = this.getCurrentUserId();
       
       if (!userId) {
@@ -4043,14 +4053,14 @@ export class FirestoreService {
         return;
       }
       
-      console.log(`🔍 Checking all booking statuses for user: ${userId}`);
+  console.log(`🔍 Checking all booking statuses for user: ${userId}`);
       
       const snapshot = await firestore()
         .collection('service_bookings')
         .where('customerId', '==', userId)
         .get();
 
-      console.log(`📊 Found ${snapshot.size} bookings:`);
+  console.log(`📊 Found ${snapshot.size} bookings:`);
       
       const statusCounts: Record<string, number> = {};
       const statusExamples: Record<string, string[]> = {};
@@ -6139,11 +6149,13 @@ export class FirestoreService {
     busyWorkers: string[];
   }> {
     try {
-      console.log(`🔍 SERVICE-SPECIFIC AVAILABILITY CHECK:`);
-      console.log(`   Company: ${companyId}`);
-      console.log(`   Date: ${date}, Time: ${time}`);
-      console.log(`   Service IDs (from app_services):`, serviceIds, `(type: ${typeof serviceIds})`);
-      console.log(`   Service Title:`, serviceTitle);
+      if (__DEV__) {
+        console.log(`🔍 SERVICE-SPECIFIC AVAILABILITY CHECK:`);
+        console.log(`   Company: ${companyId}`);
+        console.log(`   Date: ${date}, Time: ${time}`);
+        console.log(`   Service IDs (from app_services):`, serviceIds, `(type: ${typeof serviceIds})`);
+        console.log(`   Service Title:`, serviceTitle);
+      }
       
       // 🔥 CRITICAL: Ensure serviceIds is always an array
       let serviceIdsArray: string[] = [];
@@ -6155,7 +6167,9 @@ export class FirestoreService {
         }
       }
       
-      console.log(`   Processed Service IDs Array:`, serviceIdsArray);
+      if (__DEV__) {
+        console.log(`   Processed Service IDs Array:`, serviceIdsArray);
+      }
       
       // 🔥 NEW: Get service_services IDs for this company and service
       // Workers have service_services IDs in their assignedServices, not app_services IDs
@@ -6163,7 +6177,9 @@ export class FirestoreService {
       
       if (serviceTitle) {
         try {
-          console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
+          if (__DEV__) {
+            console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
+          }
           
           const serviceServicesSnapshot = await firestore()
             .collection('service_services')
@@ -6173,12 +6189,18 @@ export class FirestoreService {
           
           serviceServicesSnapshot.forEach(doc => {
             serviceServicesIds.push(doc.id);
-            console.log(`   ✅ Found service_services ID: ${doc.id} for "${serviceTitle}"`);
+            if (__DEV__) {
+              console.log(`   ✅ Found service_services ID: ${doc.id} for "${serviceTitle}"`);
+            }
           });
-          
-          console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);
+
+          if (__DEV__) {
+            console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);
+          }
         } catch (error) {
-          console.log(`   ⚠️ Error fetching service_services IDs:`, error);
+          if (__DEV__) {
+            console.log(`   ⚠️ Error fetching service_services IDs:`, error);
+          }
         }
       }
       
@@ -6190,7 +6212,9 @@ export class FirestoreService {
         .where('companyId', '==', companyId)
         .get();
       
-      console.log(`📊 Total workers in company: ${allWorkersSnapshot.size}`);
+      if (__DEV__) {
+        console.log(`📊 Total workers in company: ${allWorkersSnapshot.size}`);
+      }
       
       // ================================
       // STEP 2: Filter for ACTIVE workers with SPECIFIC SERVICE
@@ -6216,7 +6240,9 @@ export class FirestoreService {
                       serviceServicesIds.some(serviceServiceId => worker.assignedServices.includes(serviceServiceId));
           
           if (hasService) {
-            console.log(`   ✅ CORRECT MATCH: Worker has service_services ID`);
+            if (__DEV__) {
+              console.log(`   ✅ CORRECT MATCH: Worker has service_services ID`);
+            }
           }
         }
         
@@ -6227,7 +6253,9 @@ export class FirestoreService {
                       serviceIdsArray.some(serviceId => worker.assignedServices.includes(serviceId));
           
           if (hasService) {
-            console.log(`   ✅ LEGACY MATCH: Worker has app_services ID`);
+            if (__DEV__) {
+              console.log(`   ✅ LEGACY MATCH: Worker has app_services ID`);
+            }
           }
         }
         
@@ -6241,48 +6269,64 @@ export class FirestoreService {
                       );
           
           if (hasService) {
-            console.log(`   ✅ TITLE MATCH: Worker matched via service title`);
+            if (__DEV__) {
+              console.log(`   ✅ TITLE MATCH: Worker matched via service title`);
+            }
           }
         }
         
         // Strategy 4: If no specific service filtering, accept all active workers
         if (!hasService && !serviceIdsArray.length && !serviceServicesIds.length && !serviceTitle) {
           hasService = true;
-          console.log(`   ✅ NO FILTER: Accepting all active workers`);
+          if (__DEV__) {
+            console.log(`   ✅ NO FILTER: Accepting all active workers`);
+          }
         }
-        
-        console.log(`👷 Worker ${worker.name || workerId}:`, {
-          isActive: worker.isActive,
-          isTrulyActive,
-          assignedServices: worker.assignedServices,
-          hasRequiredService: hasService,
-          requiredAppServicesIds: serviceIdsArray,
-          requiredServiceServicesIds: serviceServicesIds,
-          matchStrategy: hasService ? 'matched' : 'no_match'
-        });
+
+        if (__DEV__) {
+          console.log(`👷 Worker ${worker.name || workerId}:`, {
+            isActive: worker.isActive,
+            isTrulyActive,
+            assignedServices: worker.assignedServices,
+            hasRequiredService: hasService,
+            requiredAppServicesIds: serviceIdsArray,
+            requiredServiceServicesIds: serviceServicesIds,
+            matchStrategy: hasService ? 'matched' : 'no_match'
+          });
+        }
         
         if (!isTrulyActive) {
           inactiveWorkers.push(workerId);
-          console.log(`   ❌ INACTIVE - isActive: ${worker.isActive}`);
+          if (__DEV__) {
+            console.log(`   ❌ INACTIVE - isActive: ${worker.isActive}`);
+          }
         } else if (!hasService) {
           workersWithoutService.push(workerId);
-          console.log(`   ⚠️ ACTIVE but doesn't have required service(s)`);
+          if (__DEV__) {
+            console.log(`   ⚠️ ACTIVE but doesn't have required service(s)`);
+          }
         } else {
           relevantWorkers.push(workerId);
-          console.log(`   ✅ ACTIVE and has required service`);
+          if (__DEV__) {
+            console.log(`   ✅ ACTIVE and has required service`);
+          }
         }
       });
       
       const totalRelevantWorkers = relevantWorkers.length;
       
-      console.log(`📊 WORKER BREAKDOWN:`);
-      console.log(`   Total workers: ${allWorkersSnapshot.size}`);
-      console.log(`   Active with required service: ${totalRelevantWorkers}`);
-      console.log(`   Inactive: ${inactiveWorkers.length}`);
-      console.log(`   Active but no required service: ${workersWithoutService.length}`);
+      if (__DEV__) {
+        console.log(`📊 WORKER BREAKDOWN:`);
+        console.log(`   Total workers: ${allWorkersSnapshot.size}`);
+        console.log(`   Active with required service: ${totalRelevantWorkers}`);
+        console.log(`   Inactive: ${inactiveWorkers.length}`);
+        console.log(`   Active but no required service: ${workersWithoutService.length}`);
+      }
       
       if (totalRelevantWorkers === 0) {
-        console.log(`❌ NO WORKERS with required service(s)`);
+        if (__DEV__) {
+          console.log(`❌ NO WORKERS with required service(s)`);
+        }
         return {
           available: false,
           status: 'no_workers',
@@ -6304,7 +6348,9 @@ export class FirestoreService {
       
       const busyWorkers: string[] = [];
       
-      console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
+      if (__DEV__) {
+        console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
+      }
       
       bookingsSnapshot.docs.forEach(doc => {
         const booking = doc.data();
@@ -6312,7 +6358,9 @@ export class FirestoreService {
         
         if (workerId && relevantWorkers.includes(workerId)) {
           busyWorkers.push(workerId);
-          console.log(`   🚫 Worker ${workerId} is BUSY (booking: ${doc.id}, status: ${booking.status})`);
+          if (__DEV__) {
+            console.log(`   🚫 Worker ${workerId} is BUSY (booking: ${doc.id}, status: ${booking.status})`);
+          }
         }
       });
       

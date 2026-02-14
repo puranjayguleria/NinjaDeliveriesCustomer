@@ -14,6 +14,13 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 import { firestore } from "../firebase.native";
 
+type CompanyPackageGroup = {
+  id: string;
+  company: any;
+  services: ServiceIssue[];
+  packages: Array<any & { __serviceId?: string; __serviceName?: string }>;
+};
+
 interface Package {
   id?: string;
   name: string;
@@ -41,6 +48,10 @@ export default function PackageSelectionScreen() {
   const [showPackagesModal, setShowPackagesModal] = useState(false);
   const [showServicesModal, setShowServicesModal] = useState(false);
 
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [companyGroups, setCompanyGroups] = useState<CompanyPackageGroup[]>([]);
+  const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyPackageGroup | null>(null);
+
   useEffect(() => {
     // If serviceId is provided, fetch only that service's packages
     if (serviceId && serviceName) {
@@ -50,6 +61,138 @@ export default function PackageSelectionScreen() {
       fetchAllServices();
     }
   }, [categoryId, serviceId]);
+
+  // Build company -> packages groups so if multiple package-services belong to the same company,
+  // we show one company row and merge all package options across those services.
+  useEffect(() => {
+    const run = async () => {
+      try {
+        // Only needed when this category has package-based services.
+        if (!Array.isArray(packageBasedServices) || packageBasedServices.length === 0) {
+          setCompanyGroups([]);
+          setSelectedCompanyGroup(null);
+          return;
+        }
+
+        setCompaniesLoading(true);
+
+        // Group services by companyId (fallback to service doc id if companyId missing).
+        const byCompany = new Map<string, ServiceIssue[]>();
+        for (const svc of packageBasedServices) {
+          const cid = String((svc as any)?.companyId || svc.id || 'any');
+          const list = byCompany.get(cid) || [];
+          list.push(svc);
+          byCompany.set(cid, list);
+        }
+
+        // Fetch company docs (in parallel) for display.
+        const companyIds = Array.from(byCompany.keys());
+        const companyDocs = await Promise.all(
+          companyIds.map(async (cid) => {
+            if (!cid || cid === 'any') return { id: cid, data: null };
+            try {
+              const doc = await firestore().collection('service_company').doc(cid).get();
+              return { id: cid, data: doc.exists ? doc.data() : null };
+            } catch {
+              return { id: cid, data: null };
+            }
+          })
+        );
+
+        const companyDataMap = new Map<string, any>();
+        companyDocs.forEach((d) => companyDataMap.set(String(d.id), d.data));
+
+        const groups: CompanyPackageGroup[] = companyIds.map((cid) => {
+          const services = byCompany.get(cid) || [];
+          const companyData = companyDataMap.get(cid);
+          const company = companyData
+            ? { id: cid, ...companyData }
+            : { id: cid, companyName: 'Available Providers', serviceName: 'Available Providers' };
+
+          // Merge packages across all services, but keep the originating service context.
+          const mergedPackages: Array<any & { __serviceId?: string; __serviceName?: string }> = [];
+          for (const svc of services) {
+            const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
+            pkgs.forEach((p: any) => {
+              mergedPackages.push({
+                ...p,
+                __serviceId: svc.id,
+                __serviceName: svc.name,
+              });
+            });
+          }
+
+          return {
+            id: String(cid),
+            company,
+            services,
+            packages: mergedPackages,
+          };
+        });
+
+        setCompanyGroups(groups);
+        if (!selectedCompanyGroup && groups.length > 0) {
+          setSelectedCompanyGroup(groups[0]);
+        }
+      } catch (e) {
+        console.log('⚠️ Failed to load companies for package selection:', e);
+        // Fallback: group everything under a single provider.
+        const services = Array.isArray(packageBasedServices) ? packageBasedServices : [];
+        const mergedPackages: Array<any & { __serviceId?: string; __serviceName?: string }> = [];
+        services.forEach((svc) => {
+          const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
+          pkgs.forEach((p: any) => mergedPackages.push({ ...p, __serviceId: svc.id, __serviceName: svc.name }));
+        });
+
+        const anyCompany = { id: 'any', companyName: 'Available Providers', serviceName: 'Available Providers' };
+        const group: CompanyPackageGroup = {
+          id: 'any',
+          company: anyCompany,
+          services,
+          packages: mergedPackages,
+        };
+        setCompanyGroups([group]);
+        setSelectedCompanyGroup(group);
+      } finally {
+        setCompaniesLoading(false);
+      }
+    };
+
+    run();
+  }, [packageBasedServices, categoryId]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('🧩 PackageSelection debug snapshot:', {
+      categoryId,
+      serviceId,
+      serviceName,
+      packageBasedServicesCount: packageBasedServices.length,
+      directPriceServicesCount: directPriceServices.length,
+      selectedServiceId: selectedService?.id,
+      selectedServiceName: selectedService?.name,
+      selectedServicePackagesCount: Array.isArray(selectedService?.packages) ? selectedService?.packages.length : null,
+      companyGroupsCount: companyGroups.length,
+      selectedCompanyGroupId: selectedCompanyGroup?.id,
+      selectedCompanyName: selectedCompanyGroup?.company?.companyName || selectedCompanyGroup?.company?.serviceName,
+      selectedCompanyPackagesCount: selectedCompanyGroup?.packages?.length,
+      companiesLoading,
+      selectedPackage,
+    });
+  }, [
+    categoryId,
+    serviceId,
+    serviceName,
+    packageBasedServices.length,
+    directPriceServices.length,
+    selectedService?.id,
+    (selectedService as any)?.packages?.length,
+    companyGroups.length,
+    selectedCompanyGroup?.id,
+    selectedCompanyGroup?.packages?.length,
+    companiesLoading,
+    selectedPackage,
+  ]);
 
   const fetchSingleServicePackages = async () => {
     try {
@@ -83,6 +226,7 @@ export default function PackageSelectionScreen() {
         id: serviceDoc.id,
         name: data.name || serviceName,
         masterCategoryId: data.categoryMasterId,
+        companyId: data.companyId,
         isActive: data.isActive || false,
         imageUrl: data.imageUrl || null,
         packages: data.packages,
@@ -149,6 +293,7 @@ export default function PackageSelectionScreen() {
           id: doc.id,
           name: data.name || '',
           masterCategoryId: searchCategoryId,
+          companyId: data.companyId,
           isActive: data.isActive || false,
           imageUrl: data.imageUrl || null,
           packages: data.packages,
@@ -184,14 +329,15 @@ export default function PackageSelectionScreen() {
     }
   };
 
-  const handlePackageSelect = (service: ServiceIssue, pkg: any) => {
+  const handlePackageSelect = (service: ServiceIssue, pkg: any, optionId?: string) => {
     console.log('✅ Package selected:', {
       service: service.name,
       package: pkg.name,
       price: pkg.price
     });
     setSelectedService(service);
-    setSelectedPackage(pkg.id || pkg.name || JSON.stringify(pkg));
+    // If we have a merged option id, use that. Otherwise fall back to legacy package id.
+    setSelectedPackage(optionId || pkg.id || pkg.name || JSON.stringify(pkg));
     setSelectedDirectService(null); // Clear direct service selection
   };
 
@@ -206,6 +352,31 @@ export default function PackageSelectionScreen() {
   };
 
   const handleContinue = () => {
+    // New flow: user selected a company (selectedCompanyGroup) and then a package.
+    if (selectedService && selectedPackage && selectedCompanyGroup) {
+      const chosenPkg = (selectedCompanyGroup.packages || []).find((p: any) => {
+        const id = p?.id || p?.name || JSON.stringify(p);
+        return String(id) === String(selectedPackage);
+      });
+
+      if (chosenPkg) {
+        navigation.navigate("SelectDateTime", {
+          serviceTitle,
+          categoryId,
+          issues: [selectedService.name],
+          selectedIssueIds: [selectedService.id],
+          selectedIssues: [selectedService],
+          selectedPackage: chosenPkg,
+          selectedCompanyId: selectedCompanyGroup.company?.id,
+          selectedCompany: selectedCompanyGroup.company,
+          isPackageBooking: true,
+          allCategories,
+          fromServiceServices: true,
+        });
+        return;
+      }
+    }
+
     // Check if package is selected
     if (selectedService && selectedPackage) {
       const selectedPkg = selectedService.packages?.find(
@@ -525,35 +696,54 @@ export default function PackageSelectionScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{serviceTitle}</Text>
-        <Text style={styles.headerSubtitle}>Choose a package or service</Text>
+        <Text style={styles.headerSubtitle}>Choose a company, then a package</Text>
       </View>
 
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Packages Section Button */}
-        {packageBasedServices.length > 0 && (
-          <TouchableOpacity 
-            style={[styles.sectionButton, styles.packagesSectionButton]}
-            onPress={() => {
-              console.log('📦 Opening Packages Modal');
-              console.log('Package-based services:', packageBasedServices.length);
-              setShowPackagesModal(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <View style={styles.sectionButtonContent}>
-              <Text style={styles.sectionButtonIcon}>📦</Text>
-              <View style={styles.sectionButtonTextContainer}>
-                <Text style={[styles.sectionButtonTitle, styles.packagesSectionTitle]}>Packages</Text>
-                <Text style={styles.sectionButtonSubtitle}>
-                  {packageBasedServices.length} package{packageBasedServices.length > 1 ? 's' : ''} available
-                </Text>
-              </View>
-              <Text style={styles.sectionButtonArrow}>›</Text>
-            </View>
-          </TouchableOpacity>
+        {/* Company Selection (for package-based services) */}
+        {packageBasedServices.length > 0 && companyGroups.length > 0 && (
+          <View style={{ marginBottom: 12 }}>
+            <Text style={[styles.sectionButtonTitle, { marginBottom: 8 }]}>Choose a company</Text>
+            {companyGroups.map((g) => {
+              const isSelected = selectedCompanyGroup?.id === g.id;
+              const companyName = g.company?.companyName || g.company?.serviceName || 'Company';
+              // Packages are merged across all package-services for this company.
+              const pkgCount = Array.isArray(g.packages) ? g.packages.length : 0;
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[
+                    styles.sectionButton,
+                    isSelected && { borderColor: '#2563eb', borderWidth: 2 },
+                  ]}
+                  onPress={() => {
+                    setSelectedCompanyGroup(g);
+                    // Provide a default service context for navigation; package taps can still override this.
+                    if (!selectedService) {
+                      setSelectedService((g.services && g.services.length > 0 ? g.services[0] : null) as any);
+                    }
+                    setSelectedPackage(null);
+                    setShowPackagesModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.sectionButtonContent}>
+                    <Text style={styles.sectionButtonIcon}>🏢</Text>
+                    <View style={styles.sectionButtonTextContainer}>
+                      <Text style={styles.sectionButtonTitle}>{companyName}</Text>
+                      <Text style={styles.sectionButtonSubtitle}>
+                        {pkgCount} package{pkgCount === 1 ? '' : 's'} available
+                      </Text>
+                    </View>
+                    <Text style={styles.sectionButtonArrow}>›</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
 
         {/* Services Section Button */}
@@ -621,17 +811,64 @@ export default function PackageSelectionScreen() {
 
             {/* Modal Content */}
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-              {packageBasedServices.length > 0 ? (
-                packageBasedServices.map((service) => (
-                  <View key={service.id} style={styles.serviceSection}>
-                    <Text style={styles.serviceName}>{service.name}</Text>
-                    <View style={styles.packagesGrid}>
-                      {service.packages?.map((pkg: any, index: number) => 
-                        renderPackageCard(pkg, service, index)
-                      )}
-                    </View>
+              {companiesLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#2563eb" />
+                  <Text style={styles.loadingText}>Loading companies...</Text>
+                </View>
+              ) : !selectedCompanyGroup ? (
+                <View style={styles.emptyModalContent}>
+                  <Text style={styles.emptyModalText}>Select a company to view packages</Text>
+                </View>
+              ) : selectedCompanyGroup?.packages && Array.isArray(selectedCompanyGroup.packages) && selectedCompanyGroup.packages.length > 0 ? (
+                <View style={styles.serviceSection}>
+                  <Text style={styles.serviceName}>
+                    {(selectedCompanyGroup.company?.companyName || selectedCompanyGroup.company?.serviceName || 'Company')}
+                  </Text>
+                  <View style={styles.packagesGrid}>
+                    {selectedCompanyGroup.packages.map((pkg: any, index: number) => {
+                      const pkgId = pkg?.id || pkg?.name || JSON.stringify(pkg);
+                      const isSelected = String(selectedPackage) === String(pkgId);
+                      const svcLabel = String((pkg as any)?.__serviceName || '').trim();
+                      const baseName = String(pkg?.name || pkg?.packageName || '').trim();
+                      // Prefer real names from Firestore. If missing, do NOT show numbered fallbacks like
+                      // "Package 1/2"; instead show the originating service name.
+                      const pkgName = baseName || svcLabel || 'Package';
+                      const pkgPrice = pkg?.price ?? 0;
+
+                      return (
+                        <TouchableOpacity
+                          key={`${selectedCompanyGroup.id}::${String(pkgId)}`}
+                          style={[styles.packageCard, isSelected && styles.packageCardSelected]}
+                          onPress={() => {
+                            const svcId = (pkg as any)?.__serviceId;
+                            const serviceForPkg = selectedCompanyGroup.services.find((s: any) => String(s.id) === String(svcId))
+                              || selectedCompanyGroup.services[0];
+                            handlePackageSelect(
+                              serviceForPkg,
+                              { ...pkg, id: pkgId, name: pkgName, price: pkgPrice },
+                              String(pkgId)
+                            );
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.packageName}>{pkgName}</Text>
+                          <View style={styles.priceContainer}>
+                            <Text style={styles.priceSymbol}>₹</Text>
+                            <Text style={styles.priceAmount}>{pkgPrice}</Text>
+                            <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                              {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                            </View>
+                          </View>
+
+                          <Text style={styles.packageDescription} numberOfLines={2}>
+                            {String(pkg?.description || '').trim() ? String(pkg.description) : ' '}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                ))
+                </View>
               ) : (
                 <View style={styles.emptyModalContent}>
                   <Text style={styles.emptyModalText}>No packages available</Text>
@@ -1265,5 +1502,30 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#4CAF50",
+  },
+
+  // Reusable option row styles (used by the 'Select Service' modal)
+  serviceOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  serviceOptionName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  serviceOptionPrice: {
+    fontSize: 13,
+    color: "#64748b",
+  },
+  serviceOptionArrow: {
+    fontSize: 20,
+    color: "#94a3b8",
+    marginLeft: 12,
   },
 });

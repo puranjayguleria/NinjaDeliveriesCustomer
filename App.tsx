@@ -103,6 +103,7 @@ import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
 import { Linking } from "react-native";
 import  firebase  from "@react-native-firebase/app";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
@@ -112,6 +113,93 @@ import OrdersScreen from "./screens/OrdersScreen";
 import OrderSummaryScreen from "./screens/OrderSummaryScreen";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
+
+const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
+const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
+
+type ServiceConfirmedBannerPayload = {
+  razorpayOrderId: string;
+  createdAt: number;
+};
+
+const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolean }> = ({
+  user,
+  firebaseReady,
+}) => {
+  const { clearCart: clearServiceCart } = useServiceCart();
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    let cancelled = false;
+    const runServicePaymentRecovery = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SERVICE_PAYMENT_RECOVERY_KEY);
+        if (!raw) return;
+
+        const recovery = JSON.parse(raw);
+        const razorpayOrderId = String(recovery?.razorpayOrderId || "");
+        if (!razorpayOrderId) return;
+
+        // Small delay gives auth state time to settle and avoids race with other startup work.
+        await new Promise((r) => setTimeout(r, 500));
+        if (cancelled) return;
+
+        const axios = require("axios").default;
+        const api = axios.create({
+          timeout: 20000,
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const token = await user.getIdToken(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+        const url = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsReconcile`;
+
+        const resp = await api.post(url, { orderIds: [razorpayOrderId] }, { headers });
+        const data = resp?.data;
+
+        const finalizedOrderIds: string[] = Array.isArray(data?.finalizedOrderIds)
+          ? data.finalizedOrderIds.map((x: any) => String(x))
+          : [];
+        const isFinalizedForThisOrder = finalizedOrderIds.includes(razorpayOrderId);
+
+        const shouldClear =
+          (data?.ok && isFinalizedForThisOrder) ||
+          (data?.ok &&
+            (Number(data?.createdBookings || 0) > 0 ||
+              Number(data?.updatedBookings || 0) > 0 ||
+              !!data?.alreadyFinalized ||
+              Number(data?.finalizedIntents || 0) > 0));
+
+        if (!shouldClear) return;
+
+        clearServiceCart();
+
+        const bannerPayload: ServiceConfirmedBannerPayload = {
+          razorpayOrderId,
+          createdAt: Date.now(),
+        };
+        await AsyncStorage.setItem(
+          SERVICE_CONFIRMED_BANNER_KEY,
+          JSON.stringify(bannerPayload)
+        );
+
+        await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
+      } catch (e) {
+        if (__DEV__) console.warn("🧾[SvcPay] app_start_recovery_failed_nonfatal", e);
+      }
+    };
+
+    runServicePaymentRecovery();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, firebaseReady, clearServiceCart]);
+
+  return null;
+};
 
 // NinjaEats screens (fallback mappings)
 // Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
@@ -1159,6 +1247,7 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [user, firebaseReady]);
 
+
   if (!firebaseReady || loadingAuth || checkingOta) {
     return (
       <View style={styles.loadingContainer}>
@@ -1184,6 +1273,7 @@ const App: React.FC = () => {
         <CartProvider>
           <RestaurantCartProvider>
             <ServiceCartProvider>
+              <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>

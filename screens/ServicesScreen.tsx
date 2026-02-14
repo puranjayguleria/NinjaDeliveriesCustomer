@@ -21,6 +21,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory, ServiceBanner } from '../services/firestoreService';
 import { firestore } from '../firebase.native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get('window');
 
@@ -222,11 +223,57 @@ export default function ServicesScreen() {
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
+  const bannerAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const currentBookingIndex = React.useRef(0);
   const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
+
+  // One-time banner shown after backend/webhook finalized a service payment.
+  const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
+  const [serviceConfirmedBanner, setServiceConfirmedBanner] = useState<
+    null | { razorpayOrderId: string; createdAt: number }
+  >(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBanner = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SERVICE_CONFIRMED_BANNER_KEY);
+        if (!raw) return;
+
+        const payload = JSON.parse(raw);
+        const razorpayOrderId = String(payload?.razorpayOrderId || "");
+        const createdAt = Number(payload?.createdAt || 0);
+
+        if (!razorpayOrderId || !Number.isFinite(createdAt)) {
+          await AsyncStorage.removeItem(SERVICE_CONFIRMED_BANNER_KEY);
+          return;
+        }
+
+        // Auto-expire after 1 hour to avoid stale banners.
+        if (Date.now() - createdAt > 60 * 60 * 1000) {
+          await AsyncStorage.removeItem(SERVICE_CONFIRMED_BANNER_KEY);
+          return;
+        }
+
+        if (mounted) setServiceConfirmedBanner({ razorpayOrderId, createdAt });
+      } catch {
+        // ignore
+      }
+    };
+
+    loadBanner();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const dismissServiceConfirmedBanner = useCallback(async () => {
+    setServiceConfirmedBanner(null);
+    await AsyncStorage.removeItem(SERVICE_CONFIRMED_BANNER_KEY);
+  }, []);
 
   // Manual refresh function
   const onRefresh = useCallback(async () => {
@@ -243,6 +290,12 @@ export default function ServicesScreen() {
       console.log('📱 ServicesScreen focused - real-time listeners active');
       return () => {
         console.log('📱 ServicesScreen unfocused');
+
+        // Stop banner auto-scroll when leaving the screen.
+        if (bannerAutoScrollIntervalRef.current) {
+          clearInterval(bannerAutoScrollIntervalRef.current);
+          bannerAutoScrollIntervalRef.current = null;
+        }
       };
     }, [])
   );
@@ -438,10 +491,18 @@ export default function ServicesScreen() {
 
     const bannerWidth = width - 32;
 
+    // Defensive: clear any previous interval (can happen if banner count changes)
+    if (bannerAutoScrollIntervalRef.current) {
+      clearInterval(bannerAutoScrollIntervalRef.current);
+      bannerAutoScrollIntervalRef.current = null;
+    }
+
     const interval = setInterval(() => {
       currentBannerIndex.current = (currentBannerIndex.current + 1) % serviceBanners.length;
-      
-      console.log('🔄 Banner auto-scroll - changing to index:', currentBannerIndex.current);
+
+      // Keep logs quiet; this runs frequently.
+      // If you ever need it again, wrap it in __DEV__.
+      // if (__DEV__) console.log('🔄 Banner auto-scroll - changing to index:', currentBannerIndex.current);
       
       // Update state immediately before scrolling
       setActiveBannerIndex(currentBannerIndex.current);
@@ -454,7 +515,14 @@ export default function ServicesScreen() {
       }
     }, 4000);
 
-    return () => clearInterval(interval);
+    bannerAutoScrollIntervalRef.current = interval;
+
+    return () => {
+      clearInterval(interval);
+      if (bannerAutoScrollIntervalRef.current === interval) {
+        bannerAutoScrollIntervalRef.current = null;
+      }
+    };
   }, [serviceBanners.length]);
 
   // Auto-scroll live bookings with smooth continuous marquee effect
@@ -1071,6 +1139,22 @@ export default function ServicesScreen() {
 
   return (
     <View style={styles.container}>
+      {serviceConfirmedBanner && (
+        <View style={styles.serviceConfirmedBanner}>
+          <View style={styles.serviceConfirmedBannerLeft}>
+            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+            <Text style={styles.serviceConfirmedBannerText}>
+              Service booking confirmed
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={dismissServiceConfirmedBanner}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={18} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      )}
       {tapLoading.visible && (
         <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
           <TouchableOpacity
@@ -1150,6 +1234,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fdfdfd",
+  },
+
+  serviceConfirmedBanner: {
+    position: "absolute",
+    top: Platform.OS === "android" ? 44 : 54,
+    left: 12,
+    right: 12,
+    zIndex: 1200,
+    elevation: 1200,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#0d9488",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+  },
+  serviceConfirmedBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    paddingRight: 10,
+  },
+  serviceConfirmedBannerText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   tapLoadingOverlay: {

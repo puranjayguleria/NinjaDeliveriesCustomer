@@ -74,15 +74,49 @@ export default function BookingHistoryScreen() {
       const headers = { Authorization: `Bearer ${token}` };
 
       const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
-      const RECOVER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsReconcile`;
+  const callableUrl = (fnName: string) => `${CLOUD_FUNCTIONS_BASE_URL}/${fnName}:call`;
+  const httpUrl = (fnName: string) => `${CLOUD_FUNCTIONS_BASE_URL}/${fnName}`;
 
-      const { data } = await api.post(RECOVER_URL, { razorpayOrderId }, { headers });
+      // New API expects { orderIds: [...] }. Keep compatibility on server by only sending new shape.
+      let data: any;
+      try {
+        if (__DEV__) {
+          log("fn_post_attempt", { fnName: 'servicePaymentsReconcile', url: httpUrl('servicePaymentsReconcile'), mode: 'http' });
+        }
+        ({ data } = await api.post(httpUrl('servicePaymentsReconcile'), { orderIds: [razorpayOrderId] }, { headers }));
+      } catch (e: any) {
+        const status = e?.response?.status;
+        if (status === 404) {
+          if (__DEV__) {
+            log("fn_post_attempt", { fnName: 'servicePaymentsReconcile', url: callableUrl('servicePaymentsReconcile'), mode: 'callable' });
+          }
+          const resp = await api.post(callableUrl('servicePaymentsReconcile'), { data: { orderIds: [razorpayOrderId] } }, { headers });
+          data = resp?.data?.result ?? resp?.data;
+        } else {
+          throw e;
+        }
+      }
       log("reconcile_response", data);
 
-      if (data?.ok && (data?.updatedBookings > 0 || data?.alreadyFinalized)) {
+      const finalizedOrderIds: string[] = Array.isArray(data?.finalizedOrderIds)
+        ? data.finalizedOrderIds.map((x: any) => String(x))
+        : [];
+      const isFinalizedForThisOrder = finalizedOrderIds.includes(razorpayOrderId);
+
+      // New backend returns: { ok, finalizedIntents, finalizedOrderIds, createdBookings, createdBookingIdsByOrder }
+      // Older backend returned: { ok, updatedBookings, alreadyFinalized }
+      const shouldClearRecovery =
+        (data?.ok && isFinalizedForThisOrder) ||
+        (data?.ok && (Number(data?.updatedBookings || 0) > 0 || !!data?.alreadyFinalized)) ||
+        (data?.ok && Number(data?.createdBookings || 0) > 0);
+
+      if (shouldClearRecovery) {
         log("reconcile_finalized_remove_recovery", {
+          razorpayOrderId,
           updatedBookings: data?.updatedBookings,
           alreadyFinalized: data?.alreadyFinalized,
+          finalizedOrderIds,
+          createdBookings: data?.createdBookings,
         });
         await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
       }
@@ -107,13 +141,15 @@ export default function BookingHistoryScreen() {
         return;
       }
 
-      // DEBUG: Check current user first
-      console.log('👤 DEBUG: Checking current user...');
-      await FirestoreService.debugCurrentUser();
-      
-      // DEBUG: Show all user bookings
-      console.log('🔍 DEBUG: Checking all bookings for current user...');
-      await FirestoreService.debugAllUserBookings();
+      if (__DEV__) {
+        // DEBUG: Check current user first
+        console.log('👤 DEBUG: Checking current user...');
+        await FirestoreService.debugCurrentUser();
+
+        // DEBUG: Show all user bookings
+        console.log('🔍 DEBUG: Checking all bookings for current user...');
+        await FirestoreService.debugAllUserBookings();
+      }
       
       // First, get ALL user bookings for count calculation
       console.log('📊 Getting all user bookings for count calculation...');

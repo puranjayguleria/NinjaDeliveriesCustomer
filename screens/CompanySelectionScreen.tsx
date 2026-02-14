@@ -38,10 +38,41 @@ export default function CompanySelectionScreen() {
     selectedDateFull,
     fromServiceServices,
     isPackageBooking,
-    selectedPackage: routeSelectedPackage
+    selectedPackage: routeSelectedPackage,
+    selectedCompanyId: routeSelectedCompanyId,
+    serviceQuantities,
+    selectedSlots,
+    startSlot,
   } = route.params || {};
 
   const effectiveSelectedPackage = selectedPackage || routeSelectedPackage;
+
+  // When coming back from SelectDateTime in package flow, preselect the chosen company
+  // so user doesn't have to tap it again.
+  useEffect(() => {
+    if (isPackageBooking === true && typeof routeSelectedCompanyId === 'string' && routeSelectedCompanyId) {
+      setSelectedCompanyId(routeSelectedCompanyId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPackageBooking, routeSelectedCompanyId]);
+
+  // Package flow UX: show a single list of (company + package + price) options,
+  // so user doesn't have to pick a company in a separate step.
+  type PackageOption = { id: string; company: ServiceCompany; pkg: any };
+  const packageOptions: PackageOption[] = (isPackageBooking === true)
+    ? companies.flatMap((company) => {
+        const pkgs = (company as any).packages;
+        if (!Array.isArray(pkgs) || pkgs.length === 0) return [];
+        return pkgs.map((pkg: any) => {
+          const pkgId = String(pkg?.id ?? pkg?.name ?? 'pkg');
+          return {
+            id: `${company.id}::${pkgId}`,
+            company,
+            pkg,
+          };
+        });
+      })
+    : [];
 
   useEffect(() => {
     let isActive = true;
@@ -236,25 +267,73 @@ export default function CompanySelectionScreen() {
       
       return availableCompanies;
     }
+
+    // For predefined/direct-price services, SelectDateTime now sends an auto-generated contiguous
+    // block of slots (based on accumulated duration/quantity). We validate the company is
+    // available for ALL of them.
+    const multiSlotPairs: Array<{ date: string; time: string }> =
+      (isPackageBooking === true)
+        ? []
+        : (Array.isArray(selectedSlots) ? selectedSlots : []);
     
     // Use new slot-based availability system
-    console.log(`🎯 Using slot-based availability for ${selectedDate} at ${selectedTime}`);
-    console.log(`🔍 Service filtering details:`, {
-      serviceTitle,
-      selectedIssues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name || s) : selectedIssues,
-      issues: Array.isArray(issues) ? issues : [issues],
-      selectedIssueIds,
-      routeParams: { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues }
-    });
+    if (__DEV__) {
+      console.log(`🎯 Using slot-based availability for ${selectedDate} at ${selectedTime}`);
+      console.log(`🔍 Service filtering details:`, {
+        serviceTitle,
+        selectedIssues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name || s) : selectedIssues,
+        issues: Array.isArray(issues) ? issues : [issues],
+        selectedIssueIds,
+        routeParams: { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues }
+      });
+    }
     
     // Determine the exact service name to use for worker filtering
     const exactServiceName = (Array.isArray(selectedIssues) && selectedIssues.length > 0 && selectedIssues[0].name) 
       ? selectedIssues[0].name 
       : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
     
-    console.log(`🎯 Using exact service name for worker filtering: "${exactServiceName}"`);
+    if (__DEV__) {
+      console.log(`🎯 Using exact service name for worker filtering: "${exactServiceName}"`);
+    }
     
     try {
+      // If a slot-block is present (predefined services), we require a company to be available for ALL.
+      // The existing helper `getCompaniesWithSlotAvailability` only supports a single (date,time), so we bypass it.
+      if (multiSlotPairs.length > 0) {
+        const availableCompanies: ServiceCompany[] = [];
+        const requiredPairs = multiSlotPairs;
+
+        for (const company of companies) {
+          const companyId = company.companyId || company.id;
+          const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+          if (!hasActiveWorkers) continue;
+
+          let okForAll = true;
+          for (const pair of requiredPairs) {
+            const ok = await checkRealTimeAvailability(
+              companyId,
+              pair.date,
+              pair.time,
+              selectedIssueIds
+            );
+            if (!ok) {
+              okForAll = false;
+              break;
+            }
+          }
+
+          if (okForAll) {
+            availableCompanies.push({
+              ...company,
+              availability: `Available for ${requiredPairs.length} slot block`,
+            });
+          }
+        }
+
+        return availableCompanies;
+      }
+
       const companiesWithSlotAvailability = await FirestoreService.getCompaniesWithSlotAvailability(
         categoryId,
         selectedIssueIds,
@@ -263,7 +342,7 @@ export default function CompanySelectionScreen() {
         exactServiceName, // Pass the exact service name for precise worker filtering
         fromServiceServices // Pass the data source flag
       );
-      
+
       // Transform to match expected format
       return companiesWithSlotAvailability.map(company => ({
         ...company,
@@ -273,7 +352,7 @@ export default function CompanySelectionScreen() {
         availableWorkerCount: company.availabilityInfo.availableWorkers,
         totalWorkerCount: company.availabilityInfo.totalWorkers
       }));
-      
+
     } catch (error) {
       console.error('❌ Error using slot-based availability, falling back to basic check:', error);
       
@@ -292,9 +371,25 @@ export default function CompanySelectionScreen() {
               ? selectedIssues[0].name 
               : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
             
-            console.log(`🔍 Fallback check using service name: "${exactServiceName}"`);
+            if (__DEV__) {
+              console.log(`🔍 Fallback check using service name: "${exactServiceName}"`);
+            }
             
-            const isAvailableAtTime = await checkRealTimeAvailability(companyId, selectedDate, selectedTime, exactServiceName);
+            // If multi-slot flow, require all selected pairs; else just the single selectedDate/selectedTime.
+            const requiredPairs = (multiSlotPairs.length > 0)
+              ? multiSlotPairs
+              : [{ date: selectedDate, time: selectedTime }];
+
+            let okForAll = true;
+            for (const pair of requiredPairs) {
+              const ok = await checkRealTimeAvailability(companyId, pair.date, pair.time, selectedIssueIds);
+              if (!ok) {
+                okForAll = false;
+                break;
+              }
+            }
+
+            const isAvailableAtTime = okForAll;
             if (isAvailableAtTime) {
               availableCompanies.push({
                 ...company,
@@ -481,7 +576,10 @@ export default function CompanySelectionScreen() {
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
   const selectCompany = () => {
-    if (!selectedCompany) return;
+    // In the new package flow we rely on selectedCompanyId + selectedPackage.
+    // Resolve selectedCompany from the id so this works even if selectedCompany isn't derived yet.
+    const resolvedCompany = selectedCompany || companies.find(c => c.id === selectedCompanyId);
+    if (!resolvedCompany) return;
     
     // Determine booking type based on service title
     let bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash' = 'electrician';
@@ -509,12 +607,12 @@ export default function CompanySelectionScreen() {
           // so the cart never shows ₹0 incorrectly.
           price: typeof issue.price === 'number'
             ? issue.price
-            : (typeof selectedCompany?.price === 'number' ? selectedCompany.price : 0),
+            : (typeof resolvedCompany?.price === 'number' ? resolvedCompany.price : 0),
           quantity: 1, // Initialize with quantity 1
         }))
       : (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map((issue: any) => ({
           name: typeof issue === 'string' ? issue : issue.name || issue,
-          price: typeof issue === 'object' && typeof issue.price === 'number' ? issue.price : (selectedCompany?.price || 0),
+          price: typeof issue === 'object' && typeof issue.price === 'number' ? issue.price : (resolvedCompany?.price || 0),
           quantity: 1, // Initialize with quantity 1
         }));
 
@@ -526,7 +624,7 @@ export default function CompanySelectionScreen() {
     const packagePrice = Number((packageInfo as any)?.price);
     const computedPrice = (isPackageBooking && Number.isFinite(packagePrice) && packagePrice > 0)
       ? packagePrice
-      : (issueTotalPrice > 0 ? issueTotalPrice : (selectedCompany?.price || 0));
+  : (issueTotalPrice > 0 ? issueTotalPrice : (resolvedCompany?.price || 0));
 
     // Add service to cart (include package info when available)
     addService({
@@ -536,35 +634,44 @@ export default function CompanySelectionScreen() {
       categoryId, // Add categoryId for add-on services filtering
       issues: issuesWithPrices, // Store issues with prices
       company: {
-        id: selectedCompany.id,
-        companyId: selectedCompany.companyId || selectedCompany.id,
-        name: selectedCompany.companyName || selectedCompany.serviceName,
-        price: selectedCompany.price,
-        rating: selectedCompany.rating,
-        verified: selectedCompany.isActive,
+        id: resolvedCompany.id,
+        companyId: resolvedCompany.companyId || resolvedCompany.id,
+        name: resolvedCompany.companyName || resolvedCompany.serviceName,
+        price: resolvedCompany.price,
+        rating: resolvedCompany.rating,
+        verified: resolvedCompany.isActive,
       },
       selectedDate: selectedDate,
       selectedTime: selectedTime,
       bookingType,
       unitPrice: computedPrice,
       totalPrice: computedPrice,
-      additionalInfo: packageInfo ? {
-        isPackageService: true,
-        packageName: (packageInfo as any)?.name,
-        packageType: (packageInfo as any)?.type,
-        packageDuration: (packageInfo as any)?.duration,
-        packageFeatures: (packageInfo as any)?.features,
-        package: {
-          id: (packageInfo as any)?.id,
-          name: (packageInfo as any)?.name,
-          price: (packageInfo as any)?.price,
-          description: (packageInfo as any)?.description,
-          duration: (packageInfo as any)?.duration,
-          unit: (packageInfo as any)?.unit,
-          frequency: (packageInfo as any)?.frequency,
-          type: (packageInfo as any)?.type,
-        }
-      } : undefined,
+      additionalInfo: {
+        ...(packageInfo ? {
+          isPackageService: true,
+          packageName: (packageInfo as any)?.name,
+          packageType: (packageInfo as any)?.type,
+          packageDuration: (packageInfo as any)?.duration,
+          packageFeatures: (packageInfo as any)?.features,
+          package: {
+            id: (packageInfo as any)?.id,
+            name: (packageInfo as any)?.name,
+            price: (packageInfo as any)?.price,
+            description: (packageInfo as any)?.description,
+            duration: (packageInfo as any)?.duration,
+            unit: (packageInfo as any)?.unit,
+            frequency: (packageInfo as any)?.frequency,
+            type: (packageInfo as any)?.type,
+          },
+        } : {}),
+
+        // Service-flow accumulated block (used for quantity/duration scheduling)
+        ...(isPackageBooking ? {} : {
+          serviceQuantities: serviceQuantities || null,
+          startSlot: startSlot || null,
+          selectedSlots: Array.isArray(selectedSlots) ? selectedSlots : null,
+        }),
+      },
     });
 
     // Show success modal instead of Alert
@@ -617,6 +724,88 @@ export default function CompanySelectionScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+          ) : isPackageBooking === true ? (
+            <FlatList
+              data={packageOptions}
+              keyExtractor={(opt) => opt.id}
+              renderItem={({ item: opt }) => {
+                const company = opt.company;
+                const pkgObj = opt.pkg;
+                const isSelected = selectedCompanyId === company.id && (
+                  (effectiveSelectedPackage as any)?.id === pkgObj?.id ||
+                  (effectiveSelectedPackage as any)?.name === pkgObj?.name
+                );
+                const isBusy = (company as any).isBusy === true;
+
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.providerCard,
+                      isSelected && styles.providerCardSelected,
+                      isBusy && styles.providerCardBusy,
+                    ]}
+                    activeOpacity={isBusy ? 0.3 : 0.7}
+                    disabled={isBusy}
+                    onPress={() => {
+                      if (isBusy) return;
+                      setSelectedCompanyId(company.id);
+                      setSelectedPackage(pkgObj);
+                      // Ensure company details render on the slot screen.
+                      // (We already have company data here; pass it through.)
+                      navigation.navigate("SelectDateTime", {
+                        serviceTitle,
+                        categoryId,
+                        issues,
+                        selectedIssueIds,
+                        selectedIssues,
+                        fromServiceServices,
+                        isPackageBooking: true,
+                        selectedPackage: pkgObj,
+                        selectedCompanyId: company.id,
+                        selectedCompany: company,
+                      });
+                    }}
+                  >
+                    <View style={styles.providerHeader}>
+                      <View style={styles.providerTitleRow}>
+                        {company.imageUrl ? (
+                          <Image
+                            source={{ uri: company.imageUrl }}
+                            style={styles.companyLogo}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.companyLogoPlaceholder}>
+                            <Text style={styles.companyLogoText}>
+                              {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.providerName}>{company.companyName || company.serviceName}</Text>
+                          <Text style={styles.packageOptionName} numberOfLines={1}>
+                            {pkgObj?.name ?? 'Package'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.priceSection}>
+                      <Text style={styles.priceLabel}>Package Price</Text>
+                      <Text style={styles.priceValue}>₹{pkgObj?.price ?? company.price}</Text>
+                    </View>
+
+                    {pkgObj?.description ? (
+                      <Text style={styles.packageOptionDesc} numberOfLines={2}>
+                        {pkgObj.description}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }}
+              contentContainerStyle={{ paddingBottom: 120 }}
+              showsVerticalScrollIndicator={false}
+            />
           ) : (
             <FlatList
               data={companies}
@@ -675,6 +864,146 @@ export default function CompanySelectionScreen() {
                   </Text>
                 </View>
 
+                {/* Package or Price Display */}
+                {hasPackages ? (
+                  <View style={styles.packageSection}>
+                    <Text style={styles.packageLabel}>
+                       {item.packages?.length || 0} Package{(item.packages?.length || 0) > 1 ? 's' : ''} Available
+                    </Text>
+                    
+                    {isSelected && (
+                      <View style={styles.packageGrid}>
+                        {item.packages?.map((pkg: any, idx: number) => {
+                          const pkgObj = typeof pkg === 'string' 
+                            ? { id: `${item.id}_pkg_${idx}`, name: pkg, price: item.price || 0 } 
+                            : pkg;
+                          const isPkgSelected = selectedPackage && selectedPackage.id === pkgObj.id;
+                          
+                          // 🔍 DEBUG: Log package data to verify unit field
+                          console.log(`📦 Package ${idx} data:`, {
+                            name: pkgObj.name,
+                            price: pkgObj.price,
+                            unit: pkgObj.unit,
+                            frequency: pkgObj.frequency,
+                            type: pkgObj.type,
+                            fullObject: pkgObj
+                          });
+                          
+                          // Determine frequency type from package data
+                          // Priority: 1. unit field, 2. frequency field, 3. type field, 4. name parsing
+                          let frequencyBadge = null;
+                          let frequencyColor = '#64748b';
+                          
+                          // Check if package has explicit unit, frequency or type field
+                          const explicitFrequency = pkgObj.unit || pkgObj.frequency || pkgObj.type || pkgObj.subscriptionType;
+                          const duration = pkgObj.duration; // Get duration (e.g., 2, 3, 6, 12)
+                          
+                          console.log(`🔍 Frequency detection for "${pkgObj.name}":`, {
+                            explicitFrequency,
+                            duration,
+                            unit: pkgObj.unit,
+                            frequency: pkgObj.frequency,
+                            type: pkgObj.type
+                          });
+                          
+                          if (explicitFrequency) {
+                            const freqLower = explicitFrequency.toLowerCase();
+                            if (freqLower.includes('month')) {
+                              // Show duration if available (e.g., "3 Months")
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Month' : `${duration} Months`;
+                              } else {
+                                frequencyBadge = 'Monthly';
+                              }
+                              frequencyColor = '#8b5cf6';
+                            } else if (freqLower.includes('week')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Week' : `${duration} Weeks`;
+                              } else {
+                                frequencyBadge = 'Weekly';
+                              }
+                              frequencyColor = '#3b82f6';
+                            } else if (freqLower.includes('day')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Day' : `${duration} Days`;
+                              } else {
+                                frequencyBadge = 'Daily';
+                              }
+                              frequencyColor = '#10b981';
+                            } else if (freqLower.includes('year') || freqLower.includes('annual')) {
+                              if (duration && typeof duration === 'number' && duration > 0) {
+                                frequencyBadge = duration === 1 ? '1 Year' : `${duration} Years`;
+                              } else {
+                                frequencyBadge = 'Yearly';
+                              }
+                              frequencyColor = '#f59e0b';
+                            }
+                          } else {
+                            // Fallback: parse from package name
+                            const pkgName = (pkgObj.name || '').toLowerCase();
+                            if (pkgName.includes('monthly') || pkgName.includes('month')) {
+                              frequencyBadge = 'Monthly';
+                              frequencyColor = '#8b5cf6';
+                            } else if (pkgName.includes('weekly') || pkgName.includes('week')) {
+                              frequencyBadge = 'Weekly';
+                              frequencyColor = '#3b82f6';
+                            } else if (pkgName.includes('daily') || pkgName.includes('day')) {
+                              frequencyBadge = 'Daily';
+                              frequencyColor = '#10b981';
+                            } else if (pkgName.includes('yearly') || pkgName.includes('year') || pkgName.includes('annual')) {
+                              frequencyBadge = 'Yearly';
+                              frequencyColor = '#f59e0b';
+                            }
+                          }
+                          
+                          if (__DEV__) {
+                            console.log(`✅ Final badge for "${pkgObj.name}": ${frequencyBadge || 'None'}`);
+                          }
+                          
+                          return (
+                            <TouchableOpacity
+                              key={pkgObj.id}
+                              style={[
+                                styles.packageOption,
+                                isPkgSelected && styles.packageOptionSelected
+                              ]}
+                              onPress={() => setSelectedPackage(pkgObj)}
+                            >
+                              <View style={styles.packageOptionHeader}>
+                                <View style={styles.packageNameRow}>
+                                  <Text style={styles.packageOptionName}>{pkgObj.name}</Text>
+                                  {frequencyBadge && (
+                                    <View style={[styles.frequencyBadge, { backgroundColor: frequencyColor }]}>
+                                      <Text style={styles.frequencyBadgeText}>{frequencyBadge}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {isPkgSelected && (
+                                  <View style={styles.packageCheckmark}>
+                                    <Text style={styles.packageCheckmarkText}>✓</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.packageOptionPrice}>₹{pkgObj.price}</Text>
+                              {pkgObj.description && (
+                                <Text style={styles.packageOptionDesc} numberOfLines={2}>
+                                  {pkgObj.description}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  item.price && (
+                    <View style={styles.priceSection}>
+                      <Text style={styles.priceLabel}>Service Price</Text>
+                      <Text style={styles.priceValue}>₹{item.price}</Text>
+                    </View>
+                  )
+                )}
                 {/* Additional Info */}
                 {item.rating && (
                   <View style={styles.metaRow}>
@@ -717,7 +1046,27 @@ export default function CompanySelectionScreen() {
         </View>
 
       {/* Modern Bottom Action Bar */}
-      {selectedCompany && (
+      {isPackageBooking === true ? (
+        effectiveSelectedPackage && selectedCompanyId ? (
+          <View style={styles.bottomActionBar}>
+            <View style={styles.selectedSummary}>
+              <Text style={styles.selectedLabel}>Selected Package</Text>
+              <Text style={styles.selectedProviderName} numberOfLines={1}>
+                {(effectiveSelectedPackage as any)?.name ?? 'Package'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.addToCartButton}
+              activeOpacity={0.7}
+              onPress={selectCompany}
+            >
+              <Text style={styles.addToCartButtonText}>Add to Cart</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null
+      ) : (
+        selectedCompany && (
         <View style={styles.bottomActionBar}>
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedLabel}>Selected Provider</Text>
@@ -737,6 +1086,7 @@ export default function CompanySelectionScreen() {
             <Text style={styles.addToCartButtonText}>Add to Cart</Text>
           </TouchableOpacity>
         </View>
+        )
       )}
 
       {/* Success Modal */}
