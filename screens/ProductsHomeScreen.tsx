@@ -33,6 +33,7 @@ import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 
@@ -45,6 +46,8 @@ import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 import { Colors } from "@/constants/colors";
+import ShivratriImageBanner from "@/components/ShivratriImageBanner";
+import { SkeletonItem } from "@/components/Skeleton";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
 // migrate to the modular API, you can remove this. See:
@@ -66,6 +69,7 @@ const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blu
 
 const { width } = Dimensions.get("window");
 const H = 16;
+const CARD_INNER_H = 12;
 const G = 20;
 const MOSAIC_W = width * 0.35;
 const MOSAIC_W_GAME = width * 0.5;
@@ -75,6 +79,51 @@ const SEARCH_PH = ["atta", "dal", "eggs", "biscuits", "coffee"];
 const GRID_ROWS = 2;
 const GRID_COLUMNS = 4;
 const PAGE_SIZE = 5;
+const RECO_CARD_W = 150;
+const RECO_GAP = 12;
+
+const RECOMMENDED_ITEMS = [
+  {
+    id: "rec-ganga-jal",
+    title: "Ganga Jal 1L",
+    price: 119,
+    mrp: 150,
+    imageUrl:
+      "https://images.unsplash.com/photo-1621624666560-71dc7cc1d7c9?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "rec-rudraksha",
+    title: "Rudraksha Mala",
+    price: 225,
+    mrp: 300,
+    imageUrl:
+      "https://images.unsplash.com/photo-1600112045783-d3d686b8a0b2?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "rec-puja-thali",
+    title: "Puja Thali Set",
+    price: 349,
+    mrp: 455,
+    imageUrl:
+      "https://images.unsplash.com/photo-1605640840605-14ac1855827b?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "rec-incense",
+    title: "Sandalwood Incense",
+    price: 85,
+    mrp: 110,
+    imageUrl:
+      "https://images.unsplash.com/photo-1618213837799-25d98f0b89b7?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "rec-diya",
+    title: "Clay Diyas (Pack)",
+    price: 79,
+    mrp: 99,
+    imageUrl:
+      "https://images.unsplash.com/photo-1605460375648-278bcbd579a6?auto=format&fit=crop&w=800&q=80",
+  },
+];
 const ROW_LIMIT = GRID_ROWS * GRID_COLUMNS;
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -246,6 +295,38 @@ const Header = memo(() => {
   const { location } = useLocationContext();
   const { isBadWeather } = useWeather();
   const nav = useNavigation<any>();
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(900),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmer]);
+
+  const shimmerOpacity = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.75, 1],
+  });
+  const shimmerScale = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.06],
+  });
 
   return (
     <Pressable
@@ -254,7 +335,17 @@ const Header = memo(() => {
     >
       <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
         <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+        <Animated.Text
+          style={{
+            color: Colors.white,
+            fontWeight: "bold",
+            fontSize: 13,
+            opacity: shimmerOpacity,
+            transform: [{ scale: shimmerScale }],
+          }}
+        >
+           30 Minutes
+        </Animated.Text>
       </View>
       <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
       <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
@@ -356,15 +447,24 @@ const MemoIntroCard = React.memo(
 
 /* ------------------------------------------------------------------ chips row */
 
-const ChipsRow: React.FC<{ subs: any[]; onPress: (s: any) => void }> = ({
+const ChipsRow: React.FC<{
+  subs: any[];
+  onPress: (s: any) => void;
+  contentPaddingLeft?: number;
+}> = ({
   subs,
   onPress,
+  contentPaddingLeft = H,
 }) =>
   subs.length ? (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingLeft: H, paddingVertical: 6 }}
+      contentContainerStyle={{
+        paddingLeft: contentPaddingLeft,
+        paddingRight: contentPaddingLeft,
+        paddingVertical: 6,
+      }}
     >
       {subs.map((s) => (
         <Pressable key={s.id} style={styles.chip} onPress={() => onPress(s)}>
@@ -476,6 +576,409 @@ const StableSearchBar = () => {
   return <SearchBar ph={SEARCH_PH[phIdx]} />;
 };
 
+const RecommendedCard = ({
+  item,
+  onPress,
+  onAdd,
+}: {
+  item: { id: string; title: string; price: number; mrp?: number; imageUrl: string };
+  onPress: () => void;
+  onAdd: () => void;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () =>
+    Animated.spring(scale, {
+      toValue: 1.02,
+      friction: 7,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+
+  const onPressOut = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 7,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[styles.recoPressable, { width: RECO_CARD_W * 0.9, height: 155 }]} // Reduced width, fixed increased height
+    >
+      <Animated.View style={[styles.recoCard, { transform: [{ scale }], width: "100%", height: "100%" }]}>
+        {/* Same-Day Delivery Badge Removed */}
+        {/* <View style={styles.recoBadge}>
+          <Text style={styles.recoBadgeText}>Same-Day Delivery</Text>
+        </View> */}
+
+        <View style={[styles.recoImgWrap, { height: 100 }]}>
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={styles.recoImg}
+            contentFit="cover"
+            transition={180}
+            placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+          />
+        </View>
+
+        <Text style={styles.recoTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+
+        <View style={styles.recoPriceRow}>
+          <Text style={styles.recoPrice}>₹{item.price}</Text>
+          {typeof item.mrp === "number" && item.mrp > item.price ? (
+            <Text style={styles.recoMrp}>₹{item.mrp}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.recoAddRow}>
+          <Pressable onPress={onAdd} style={styles.recoAddLeft}>
+            <Text style={styles.recoAddText}>ADD</Text>
+          </Pressable>
+          <Pressable onPress={onAdd} style={styles.recoAddRight}>
+            <Text style={styles.recoPlus}>+</Text>
+          </Pressable>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+const RecommendedSlider = ({ onAdd }: { onAdd?: (id: string) => void }) => {
+  const nav = useNavigation<any>();
+  const handleAdd = (id: string) => {
+    if (onAdd) onAdd(id);
+    else Alert.alert("Coming soon", "You can add products here later.");
+  };
+
+  return (
+    <View style={styles.recoSection}>
+      <View style={styles.recoHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <MaterialIcons name="local-shipping" size={18} color="#111827" />
+          <Text style={styles.recoHeaderTitle}>Recommended for You</Text>
+        </View>
+        <Text style={styles.recoHeaderSub}>Trusted by local temples</Text>
+      </View>
+
+      <FlatList
+        data={RECOMMENDED_ITEMS}
+        keyExtractor={(i) => i.id}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.recoList}
+        snapToInterval={(RECO_CARD_W * 0.9) + RECO_GAP} // Adjusted snap interval
+        decelerationRate="fast"
+        renderItem={({ item }) => (
+          <RecommendedCard
+            item={item}
+            onPress={() => {
+              nav.navigate("FeaturedTab");
+            }}
+            onAdd={() => handleAdd(item.id)}
+          />
+        )}
+      />
+    </View>
+  );
+};
+
+/* ------------------------------------------------------------------ Buy Again Card Component */
+const BuyAgainCard = ({ item }: { item: any }) => {
+  const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
+  // We need to fetch the current quantity from the cart for this specific item
+  // Since we can't use the hook inside a callback, we'll assume the parent passes the logic or we use the hook here.
+  // However, useCartQty is a hook and must be used at the top level of the component.
+  // Let's try to import useCartQty from CartContext if available, or derive it.
+  
+  // Assuming useCartQty is available based on QuickTile implementation
+  // We need to import it first. 
+  // Since I cannot see imports, I will assume I need to add it or use a different approach.
+  // Let's use a safe approach: The card itself is a component, so I can use hooks here.
+  
+  // Note: I'll need to make sure useCartQty is imported. 
+  // If not, I'll use a direct subscription pattern or context selector if possible, 
+  // but for now let's assume I can use the hook if I import it.
+  // Wait, I can't easily change imports without seeing the top of the file.
+  // I will check if useCartQty is imported in the file. 
+  // Based on previous reads, it seems only useCart is imported.
+  
+  // Let's implement a local version of the add logic that doesn't rely on the reactive quantity 
+  // for the *first* add, but for full functionality (inc/dec) we really need the quantity.
+  
+  // For "Buy Again", usually we just want to quickly add to cart. 
+  // If the user wants to manage quantity, they might do it in the cart or I can implement the counter.
+  // The requested UI shows just an "ADD" button initially.
+  
+  // Let's try to implement the full QuickTile-like logic but styled for BuyAgain.
+  
+  // I will assume I can't easily import `useCartQty` without potentially breaking things if I can't see imports.
+  // I'll use a simplified version: Just an ADD button that adds 1 to cart. 
+  // If the user wants to add more, they click again? No, usually it toggles to a counter.
+  
+  // To properly support the "ADD" -> "Qty Counter" transition, I need the current cart quantity.
+  // I will try to use the `cart` object from `useCart` if available.
+  
+  const { cart, addToCart: ctxAddToCart, increaseQuantity: ctxInc, decreaseQuantity: ctxDec } = useCart();
+  
+  // Derive qty from cart
+  // const qty = useMemo(() => {
+  //   if (!cart || !cart.items) return 0;
+  //   const found = cart.items.find((i: any) => i.id === item.id);
+  //   return found ? found.quantity : 0;
+  // }, [cart, item.id]);
+
+  // Using simple lookup since `cart` is now likely a Record<string, number> based on CartContext definition found in search results
+  // The context definition showed: type Cart = { [productId: string]: number };
+  const qty = cart ? (cart[item.id] || 0) : 0;
+
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = () =>
+    Animated.spring(scale, { toValue: 1.02, useNativeDriver: true }).start();
+  const onPressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+  const handleAdd = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const available = item.availableQuantity ?? item.quantity ?? 999;
+    ctxAddToCart(item.id, available);
+  };
+
+  const handleInc = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const available = item.availableQuantity ?? item.quantity ?? 999;
+    ctxInc(item.id, available);
+  };
+
+  const handleDec = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    ctxDec(item.id);
+  };
+
+  return (
+    <Pressable
+      onPress={() => {}} 
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[styles.recoPressable, { width: RECO_CARD_W * 0.54, height: 145 }]}
+    >
+      <Animated.View style={[styles.recoCard, { transform: [{ scale }], width: "100%", height: "100%" }]}>
+        <View style={[styles.recoImgWrap, { height: 70 }]}>
+          <Image
+            source={{ uri: item.imageUrl || item.image }}
+            style={styles.recoImg}
+            contentFit="cover"
+            transition={180}
+            placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+          />
+        </View>
+
+        <Text style={[styles.recoTitle, {fontSize: 10, minHeight: 24}]} numberOfLines={2}>
+          {item.name || item.title}
+        </Text>
+
+        <View style={styles.recoPriceRow}>
+          <Text style={[styles.recoPrice, {fontSize: 11}]}>₹{item.price}</Text>
+          {typeof item.mrp === "number" && item.mrp > item.price ? (
+            <Text style={[styles.recoMrp, {fontSize: 9}]}>₹{item.mrp}</Text>
+          ) : null}
+        </View>
+
+        <View style={[styles.recoAddRow, {display: 'flex', marginTop: 4}]}>
+          {qty === 0 ? (
+            <Pressable onPress={handleAdd} style={[styles.recoAddLeft, {paddingVertical: 4}]}>
+              <Text style={[styles.recoAddText, {fontSize: 10}]}>ADD</Text>
+            </Pressable>
+          ) : (
+            <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1, paddingHorizontal: 2}}>
+               <Pressable onPress={handleDec} hitSlop={10} style={{padding: 2}}>
+                 <MaterialIcons name="remove" size={12} color="#111827" />
+               </Pressable>
+               <Text style={{fontSize: 10, fontWeight: '700', color: '#111827'}}>{qty}</Text>
+               <Pressable onPress={handleInc} hitSlop={10} style={{padding: 2}}>
+                 <MaterialIcons name="add" size={12} color="#111827" />
+               </Pressable>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+/* ------------------------------------------------------------------ Buy Again Carousal */
+
+const BuyAgainSlider = ({
+  items,
+  onAdd,
+}: {
+  items: any[];
+  onAdd: (id: string) => void;
+}) => {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <View style={styles.recoSection}>
+      <View style={styles.recoHeader}>
+        <Text style={[styles.recoHeaderTitle, { color: "#5D4037" }]}>Buy Again</Text>
+      </View>
+
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.recoList}
+        snapToInterval={(RECO_CARD_W * 0.54) + RECO_GAP}
+        decelerationRate="fast"
+        renderItem={({ item }) => <BuyAgainCard item={item} onAdd={onAdd} />}
+      />
+    </View>
+  );
+};
+
+/* ------------------------------------------------------------------ Fresh Arrivals Carousal */
+
+const FreshArrivalsSlider = ({
+  freshGroups,
+  onCategoryPress,
+}: {
+  freshGroups: { cat: any; products: any[] }[];
+  onCategoryPress: (cat: any) => void;
+}) => {
+  if (!freshGroups || freshGroups.length === 0) return null;
+
+  return (
+    <View style={styles.recoSection}>
+      <View style={styles.recoHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <MaterialIcons name="auto-awesome" size={18} color="#D2B48C" />
+          <Text style={[styles.recoHeaderTitle, { color: "#5D4037" }]}>Fresh Arrivals</Text>
+        </View>
+        <Text style={[styles.recoHeaderSub, { color: "#8D6E63" }]}>Just in stock</Text>
+      </View>
+
+      <FlatList
+        data={freshGroups}
+        keyExtractor={(item) => item.cat.id}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.recoList}
+        snapToInterval={RECO_CARD_W + RECO_GAP}
+        decelerationRate="fast"
+        renderItem={({ item }) => {
+          const product = item.products[0]; // Show the first new product in this category
+          if (!product) return null;
+          
+          return (
+            <Pressable
+              onPress={() => onCategoryPress(item.cat)}
+              style={styles.recoPressable}
+            >
+              <View style={[styles.recoCard, { backgroundColor: "#FDF5E6" }]}>
+                <View style={[styles.recoBadge, { backgroundColor: "#D2B48C" }]}>
+                  <Text style={[styles.recoBadgeText, { color: "#fff" }]}>JUST IN</Text>
+                </View>
+
+                <View style={styles.recoImgWrap}>
+                  <Image
+                    source={{ uri: product.image || product.imageUrl }}
+                    style={styles.recoImg}
+                    contentFit="cover"
+                    transition={180}
+                    placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+                  />
+                </View>
+
+                <View style={{marginTop: 8}}>
+                    <Text style={[styles.recoTitle, {color: "#5D4037"}]} numberOfLines={2}>
+                    {item.cat.name}
+                    </Text>
+                </View>
+              </View>
+            </Pressable>
+          );
+        }}
+      />
+    </View>
+  );
+};
+
+const ShortcutTile = ({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const name = String(item?.name || "").toLowerCase();
+
+  const iconName =
+    name.includes("pooja") || name.includes("puja")
+      ? ("flower" as const)
+      : name.includes("fruit")
+      ? ("food-apple" as const)
+      : name.includes("dairy") || name.includes("milk")
+      ? ("cow" as const)
+      : name.includes("fasting")
+      ? ("food-variant" as const)
+      : name.includes("snack")
+      ? ("popcorn" as const)
+      : null;
+
+  const pressIn = () =>
+    Animated.spring(scale, {
+      toValue: 1.06,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+
+  const pressOut = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 7,
+      tension: 70,
+      useNativeDriver: true,
+    }).start();
+
+  const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
+      style={styles.shortcutPressable}
+    >
+      <Animated.View style={[styles.shortcutTile, { transform: [{ scale }] }]}>
+        <Image
+          source={source}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={200}
+          placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+        />
+        {iconName ? (
+          <View style={styles.shortcutIconPill}>
+            <MaterialCommunityIcons name={iconName} size={16} color="#111827" />
+          </View>
+        ) : null}
+      </Animated.View>
+      <Text style={styles.shortcutLabel} numberOfLines={2}>
+        {item.name}
+      </Text>
+    </Pressable>
+  );
+};
+
 /* ------------------------------------------------------------------ See all button (animated) */
 
 const SeeAllButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
@@ -541,9 +1044,9 @@ const SeeAllButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
       style={{ transform: [{ scale }] }}
     >
       <View style={styles.seeAllRow}>
-        <Text style={styles.seeAllTxt}>See all</Text>
+        <Text style={[styles.seeAllTxt, { color: "#D2B48C" }]}>See all</Text>
         <Animated.View style={{ transform: [{ rotate: rotateDeg }] }}>
-          <MaterialIcons name="arrow-forward-ios" size={14} color={Colors.primary} />
+          <MaterialIcons name="arrow-forward-ios" size={14} color="#D2B48C" />
         </Animated.View>
       </View>
     </AnimatedPressable>
@@ -574,7 +1077,45 @@ const MultiRowProductGrid: React.FC<{
   products: any[];
   isPanProd: (p: any) => boolean;
   maybeGate: (cb: () => void, isPan: boolean) => void;
-}> = ({ products, isPanProd, maybeGate }) => {
+  contentPaddingLeft?: number;
+  loading?: boolean;
+}> = ({ products, isPanProd, maybeGate, contentPaddingLeft = H, loading }) => {
+  if (loading) {
+    const skCount = 5;
+    const tileW = 120;
+    const tileH = 210;
+    const gap = 8;
+    return (
+      <View>
+        {[0, 1].map((rowIdx) => (
+          <ScrollView
+            key={`sk-${rowIdx}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingLeft: contentPaddingLeft,
+              paddingRight: contentPaddingLeft,
+              marginTop: rowIdx === 0 ? 0 : 8,
+            }}
+            directionalLockEnabled
+            alwaysBounceVertical={false}
+          >
+            {Array.from({ length: skCount }).map((_, idx) => (
+              <View key={`sk-${rowIdx}-${idx}`} style={{ marginRight: gap }}>
+                <View style={styles.quickTileSkeleton}>
+                  <SkeletonItem width={tileW - 12} height={tileW - 12} borderRadius={12} />
+                  <SkeletonItem width={tileW - 26} height={12} borderRadius={6} style={{ marginTop: 10 }} />
+                  <SkeletonItem width={tileW - 50} height={12} borderRadius={6} style={{ marginTop: 8 }} />
+                  <SkeletonItem width={tileW - 12} height={28} borderRadius={14} style={{ marginTop: 12 }} />
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        ))}
+      </View>
+    );
+  }
+
   const groupMap: Record<string, { items: any[]; total: number }> = {};
 
   products.forEach((p) => {
@@ -671,7 +1212,8 @@ const MultiRowProductGrid: React.FC<{
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{
-            paddingLeft: H,
+            paddingLeft: contentPaddingLeft,
+            paddingRight: contentPaddingLeft,
             marginTop: rowIdx === 0 ? 0 : 8,
           }}
           directionalLockEnabled
@@ -875,7 +1417,7 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
-    ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+    ["#60A5FA", "#DBEAFE", "#FFFFFF"]
   ); // fallback defaults
 
   const [activeVerticalMode, setActiveVerticalMode] =
@@ -902,10 +1444,36 @@ export default function ProductsHomeScreen() {
   const [isOrderAcceptancePaused, setIsOrderAcceptancePaused] = useState(false);
 
   // state for category shortcuts from Firebase
+  // Static category shortcuts (not connected to Firebase, always appended)
+  const staticCategoryShortcuts = [
+    {
+      id: 'pooja-essentials',
+      name: 'Pooja Essentials',
+      imageUrl: { uri: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15' },
+    },
+    {
+      id: 'fruits',
+      name: 'Fruits',
+      imageUrl: { uri: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1760369103039_ImageForArticle_14459_1718253799749257.webp?alt=media&token=4c164d31-ad65-4c8d-972f-cfc8d0a28bb8' },
+    },
+    {
+      id: 'dairy',
+      name: 'Dairy, Bread & Eggs',
+      imageUrl: { uri: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af' },
+    },
+    {
+      id: 'fasting-food',
+      name: 'Fasting Food',
+      imageUrl: { uri: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1771045606151_2nzvgKz0pQ_1ROVMDnM1oOnynrFBPWRbEnX8vZA4VohKUI_Kqt1XsLB-tKITPLUKhLutg7pJJS8-VwNAApgHV_EhW-zuvqsKXCb56y82b3c.jpg?alt=media&token=472592ca-dbed-4507-a1bb-4961c6a46d96' },
+    },
+    {
+      id: 'snacks',
+      name: 'Snacks',
+      imageUrl: { uri: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/shivratri%2Fshivrarti%20products%2Fsnacks.jpeg?alt=media&token=96235c64-919b-4507-a13b-1ffda18f2a9f' },
+    },
+  ];
+  // categoryShortcuts will be a combination of Firebase and static shortcuts
   const [categoryShortcuts, setCategoryShortcuts] = useState<any[]>([]);
-
-  // state to toggle Valentine UI features (shortcuts, banners, nearby favorites, etc.)
-  const [enableValentineUI, setEnableValentineUI] = useState(false);
 
   // Build a local message object for when the store is not accepting orders.
   // This object will be passed into HomeMessageBar and is inspired by quick‑commerce
@@ -1066,7 +1634,6 @@ export default function ProductsHomeScreen() {
               id: doc.id,
               ...doc.data(),
             }))
-            // Sort on the client to avoid composite index requirements.
             .sort(
               (a: any, b: any) =>
                 Number(a?.priority ?? Number.MAX_SAFE_INTEGER) -
@@ -1082,32 +1649,6 @@ export default function ProductsHomeScreen() {
 
     return unsub;
   }, [location.storeId]);
-
-  // Fetch UI configuration to toggle Valentine features (shortcuts, banners, nearby, etc.)
-  useEffect(() => {
-    // Fetch UI configuration to toggle Valentine features globally
-    const unsub = firestore()
-      .collection("ui_config")
-      .doc("valentine_ui")
-      .onSnapshot(
-        (snap) => {
-          if (snap.exists) {
-            const data = snap.data() as any;
-            console.log("UI Config loaded:", data);
-            setEnableValentineUI(data?.enabled === true);
-          } else {
-            console.log("valentine_ui document not found");
-            setEnableValentineUI(false);
-          }
-        },
-        (error) => {
-          console.warn("Error fetching UI config:", error);
-          setEnableValentineUI(false);
-        }
-      );
-
-    return unsub;
-  }, []);
 
   useEffect(() => {
     const currentUser = auth().currentUser;
@@ -1659,6 +2200,20 @@ export default function ProductsHomeScreen() {
   }, [cats, page]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
+  const listFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (cats.length === 0) {
+      listFade.setValue(0);
+      return;
+    }
+    Animated.timing(listFade, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [cats.length, listFade]);
 
   const videoHeight = scrollY.interpolate({
     inputRange: [0, 100],
@@ -1744,8 +2299,57 @@ export default function ProductsHomeScreen() {
 
   // Handle category shortcut press
   const handleCategoryShortcut = useCallback(async (name: string) => {
+    if (name === "Pooja Essentials") {
+      // Find category named "Pooja Essentials"
+      const cat = cats.find(c => c.name.toLowerCase() === "pooja essentials");
+      if (cat) {
+        maybeNavigateCat(cat);
+        return;
+      }
+      
+      // Fallback
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Pooja Essentials",
+        searchQuery: "pooja essentials",
+      });
+      return;
+    }
+
     if (name === "Offers") {
       nav.navigate("AllDiscountedProducts");
+      return;
+    }
+
+    if (name === "Fruits") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          // Try to find the "Fruits" subcategory under "Fresh Greens"
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("categoryId", "==", "Fresh Greens")
+            .where("name", "==", "Fruits")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            nav.navigate("ProductListingFromHome", {
+              categoryId: "Fresh Greens",
+              categoryName: "Fruits",
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+      
+      // Fallback if subcategory not found
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Fruits",
+        searchQuery: "fruits",
+      });
       return;
     }
 
@@ -1812,24 +2416,54 @@ export default function ProductsHomeScreen() {
       return;
     }
 
-    // Valentine should navigate to Gift Shop category
-    if (name === "Valentine") {
-      const giftShop = cats.find(c => 
-        c.name.toLowerCase().includes("gift") || 
-        c.name.toLowerCase() === "gift shop"
-      );
-      if (giftShop) {
-        maybeNavigateCat(giftShop);
+    if (name === "Dairy, Bread & Eggs") {
+      const cat = cats.find(c => c.name.toLowerCase() === "dairy, bread & eggs");
+      if (cat) {
+        maybeNavigateCat(cat);
         return;
       }
-      // Fallback: search for gift items
+      
+      // Fallback
       nav.navigate("ProductListingFromHome", {
-        categoryName: "Valentine",
-        searchQuery: "gift teddy rose flower chocolate perfume greeting card",
+        categoryName: "Dairy, Bread & Eggs",
+        searchQuery: "dairy bread eggs",
       });
       return;
     }
-    
+
+    if (name === "Fasting Food") {
+      const storeId = location.storeId;
+      if (storeId) {
+        try {
+          // Try to find the "Fasting Food" subcategory under "Pooja Essentials"
+          const snap = await firestore()
+            .collection("subcategories")
+            .where("storeId", "==", storeId)
+            .where("categoryId", "==", "Pooja Essentials")
+            .where("name", "==", "Fasting Food")
+            .limit(1)
+            .get();
+
+          if (!snap.empty) {
+            const doc = snap.docs[0];
+            nav.navigate("ProductListingFromHome", {
+              categoryId: "Pooja Essentials",
+              categoryName: "Fasting Food",
+              subcategoryId: doc.id,
+            });
+            return;
+          }
+        } catch {}
+      }
+      
+      // Fallback
+      nav.navigate("ProductListingFromHome", {
+        categoryName: "Fasting Food",
+        searchQuery: "fasting food",
+      });
+      return;
+    }
+
     // Define keyword mappings for shortcuts that may not match category names exactly
     const keywordMappings: Record<string, string[]> = {
       "Chocolates": ["chocolate", "chocolates", "choco"],
@@ -1868,245 +2502,140 @@ export default function ProductsHomeScreen() {
     }
   }, [cats, nav, maybeNavigateCat, location.storeId]);
 
-  // Build the list header for the SectionList
-  const listHeader = (
-    <>
-      {/* Category Shortcuts - Show only when enableValentineUI is true */}
-      {enableValentineUI && (
-        <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
-            {(categoryShortcuts && categoryShortcuts.length > 0
-              ? categoryShortcuts
-              : [
-                       ]
-            ).map((item) => {
-              const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={{
-                    alignItems: "center",
-                    marginRight: 4,
-                    width: 68,
-                  }}
-                  onPress={() => {
-                    void handleCategoryShortcut(item.name);
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 20,
-                      backgroundColor: item.bgColor || item.bcColor || item.bg || "#963556ff",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      marginBottom: 6,
-                      shadowColor: "#000",
-                      shadowOpacity: 0.1,
-                      shadowRadius: 4,
-                      shadowOffset: { width: 0, height: 2 },
-                      overflow: "hidden"
-                    }}
-                  >
-                    <Image
-                      source={source}
-                      style={{ width: "100%", height: "100%" }}
-                      contentFit="cover"
-                      transition={200}
-                      placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
-                    />
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
-                    {item.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+  // Shivratri Feature Toggle
+  const [isShivratriActive, setIsShivratriActive] = useState(false);
 
-      {/* Promotional banners - Pass flag to control Valentine sections only */}
-      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
-      {/* Last order → Repeat order card */}
-      {/* Buy again section using existing QuickTile cards */}
-      {buyAgainResolved.length > 0 && (
-        <View>
-          <Text style={styles.buyAgainTitle}>Buy Again</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingLeft: H,
-              paddingBottom: 16,
-              paddingRight: H,
-            }}
-          >
-            {buyAgainResolved.map((p: any) => {
-              const id = p?.id || p?.productId;
-              if (!id) return null;
-              const isPan = isPanProd(p);
-              return (
-                <View key={id} style={{ marginRight: 8 }}>
-                  <QuickTile p={p} isPan={isPan} guard={maybeGate} />
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
+  useEffect(() => {
+    const unsub = firestore()
+      .collection('shivratri_config')
+      .doc('settings')
+      .onSnapshot(doc => {
+        setIsShivratriActive(doc?.data()?.isVisible ?? false);
+      }, (err) => {
+        console.log("Shivratri config error", err);
+        setIsShivratriActive(false);
+      });
+    return () => unsub();
+  }, []);
+
+  // Build the list header for the SectionList
+  const visibleShortcuts = isShivratriActive 
+    ? staticCategoryShortcuts 
+    : staticCategoryShortcuts.filter(item => 
+        !['pooja-essentials', 'fruits', 'dairy', 'fasting-food', 'snacks'].includes(item.id)
+      );
+
+  const listHeader = (
+    <View>
+      <View style={styles.shortcutsCard}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shortcutsScroll}
+        >
+          {visibleShortcuts.map((item) => (
+            <ShortcutTile
+              key={item.id}
+              item={item}
+              onPress={() => {
+                void handleCategoryShortcut(item.name);
+              }}
+            />
+          ))}
+        </ScrollView>
+      </View>
+      {isShivratriActive && (
+        <ShivratriImageBanner
+          source={require("../assets/shivratri banner.jpeg")}
+          title="Shivratri Specials"
+          subtitle="Pooja samagri • Fasting food"
+          onPress={() =>
+            nav.navigate("ShivratriSpecial")
+          }
+        />
       )}
-    </>
+      <BuyAgainSlider 
+        items={buyAgainResolved} 
+        onAdd={(id) => Alert.alert("Coming soon", "Quick add logic")} 
+      />
+      <FreshArrivalsSlider 
+        freshGroups={freshHeader} 
+        onCategoryPress={maybeNavigateCat} 
+      />
+    </View>
   );
 
-  const renderSectionHeader = useCallback(() => {
-    return (
-      <>
-        {bestHeader.length > 0 && (
-          <>
-            <Text style={styles.laneTitle}>Best sellers❤️</Text>
-            <FlatList
-              horizontal
-              data={bestHeader}
-              keyExtractor={(_, i) => `best${i}`}
-              renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}              
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingLeft: H }}
-            />
-          </>
-        )}
-        {freshHeader.length > 0 && (
-          <>
-            <Text style={styles.laneTitle}>Fresh arrivals✨</Text>
-            <FlatList
-              horizontal
-              data={freshHeader}
-              keyExtractor={(_, i) => `fresh${i}`}
-              renderItem={({ item }) => (
-                <MosaicCard {...item} badge="JUST IN" color="#ff7043" />
-              )}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingLeft: H }}
-            />
-          </>
-        )}
-      </>
-    );
-  }, [bestHeader, freshHeader]);
+  // Shivratri Background Toggle
+  const [isShivratriBgActive, setIsShivratriBgActive] = useState(false);
+  // Shivratri Header Color Toggle
+  const [isShivratriHeaderActive, setIsShivratriHeaderActive] = useState(false);
 
-  if (hasPerm === null) {
-    return (
-      <View style={[styles.center, { flex: 1 }]}>        
-        <Loader />
-      </View>
-    );
-  }
-  /**
-   * NOTE: We intentionally do not call useNavigation() here because doing so
-   * after the early return above would create an inconsistent hook order
-   * between renders. The component already obtains the navigation instance
-   * at the top of the function (`const nav = useNavigation()`), so use that
-   * instance instead of creating a new one. See the Rules of Hooks for
-   * details on why hooks must always be called in the same order.
-   */
-  // const navigation = useNavigation<any>();
-
-  const handleModeChange = (mode: "grocery" | "restaurants") => {
-    if (mode === "restaurants") {
-      requestAnimationFrame(() => {
-        // Use the top-level navigation instance (nav) to avoid creating
-        // a new navigation hook inside this component. This ensures
-        // consistent hook ordering across renders.
-        nav.replace("NinjaEatsTabs");
+  useEffect(() => {
+    const unsub = firestore()
+      .collection('shivratri_config')
+      .doc('settings')
+      .onSnapshot(doc => {
+        const data = doc?.data();
+        setIsShivratriBgActive(data?.isBackgroundVisible ?? false);
+        setIsShivratriHeaderActive(data?.isHeaderVisible ?? false);
+      }, (err) => {
+        console.log("Shivratri BG config error", err);
+        setIsShivratriBgActive(false);
+        setIsShivratriHeaderActive(false);
       });
-    }
-    // grocery → already on ProductsHome
-  };
+    return () => unsub();
+  }, []);
+
+  const renderSectionHeader = useCallback(() => null, []);
 
   return (
     <>
-      <View
-        style={{
-          flex: 1,
-          position: "relative",
-          backgroundColor: pageBg ? "transparent" : "#fdfdfd",
-        }}
-      >
-        {/* UNDERLAY: page background */}
-        {pageBg ? (
+      <View style={{ flex: 1 }}>
+        {/* Shivratri Special Background */}
+        {isShivratriBgActive && (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            {pageBg.imageUrl ? (
-              <Image
-                source={{ uri: pageBg.imageUrl }}
-                style={StyleSheet.absoluteFill}
-                contentFit={pageBg.resizeMode || "cover"}
-                placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
-                cachePolicy="disk"
-                transition={200}
-              />
-            ) : null}
+            <Image
+              source={{ uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/shivratri%2Fhome%20bg.jpeg?alt=media&token=bfeea1be-d942-4852-9886-ee73ef269c0f" }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+          </View>
+        )}
 
-            {pageBg.overlayGradient && pageBg.overlayGradient.length > 0 ? (
-              <View
+        {/* Existing Page Background (Fallback if Shivratri is not active, or overlay) */}
+        {!isShivratriBgActive && pageBg?.imageUrl ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Image
+              source={{ uri: String(pageBg.imageUrl).replace(/`/g, "").trim() }}
+              style={StyleSheet.absoluteFill}
+              contentFit={pageBg.resizeMode === "contain" ? "contain" : "cover"}
+            />
+            {Array.isArray(pageBg.overlayGradient) && pageBg.overlayGradient.length ? (
+              <LinearGradient
+                colors={pageBg.overlayGradient}
                 style={[
                   StyleSheet.absoluteFill,
-                  { opacity: pageBg.overlayOpacity ?? 1 },
+                  { opacity: typeof pageBg.overlayOpacity === "number" ? pageBg.overlayOpacity : 1 },
                 ]}
-              >
-                <LinearGradient
-                  colors={pageBg.overlayGradient}
-                  style={StyleSheet.absoluteFill}
-                />
-              </View>
+              />
             ) : null}
           </View>
         ) : null}
-
-        {/* Valentine Background - Starts below search bar */}
-        
 
         {/* Collapsing header + background video */}
         <Animated.View
           pointerEvents="box-none"
           style={[styles.headerWrapper, { paddingTop: topPadding }]}>
-          {/* Background video */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                top: -35,
-                width: "100%",
-                left: "0%",
-              },
-              { height: videoHeight, opacity: videoOpacity },
-            ]}
-          >
-            <Video
-              source={
-                enableValentineUI
-                  ? require("../assets/deliveryBackground11.mp4")
-                  : require("../assets/deliveryBackground.mp4")
-              }
-              style={StyleSheet.absoluteFill}
-              muted
-              repeat
-              resizeMode="cover"
-              rate={1.0}
-              ignoreSilentSwitch="obey"
-            />
-          </Animated.View>
-
           {/* Gradient overlay */}
-          <Animated.View
+          <View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
+            style={StyleSheet.absoluteFill}
           >
             <LinearGradient
-              colors={headerGradientColors}
+              colors={isShivratriHeaderActive ? ["#A0522D", "#D2B48C", "#FFFFFF"] : headerGradientColors}
               style={StyleSheet.absoluteFill}
             />
-          </Animated.View>
+          </View>
 
           <View style={styles.topBg}>
             <Header />
@@ -2123,8 +2652,8 @@ export default function ProductsHomeScreen() {
   >
     <Svg height="48" width="48" viewBox="0 0 24 24">
       <Defs>
-        <ClipPath id="heart_clip">
-          <Path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        <ClipPath id="circle_clip">
+          <Path d="M12 2a10 10 0 1 0 0.00001 20A10 10 0 1 0 12 2z" />
         </ClipPath>
       </Defs>
       <SvgImage
@@ -2132,7 +2661,7 @@ export default function ProductsHomeScreen() {
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid slice"
-        clipPath="url(#heart_clip)"
+        clipPath="url(#circle_clip)"
       />
     </Svg>
   </Pressable>
@@ -2222,6 +2751,7 @@ export default function ProductsHomeScreen() {
           <AnimatedSectionList
             showsVerticalScrollIndicator={false}
             stickySectionHeadersEnabled={false}
+            style={{ opacity: listFade }}
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { y: scrollY } } }],
               { useNativeDriver: false }
@@ -2236,16 +2766,18 @@ export default function ProductsHomeScreen() {
             renderItem={({ item }) => {
               if (!item?.id || !item?.name) return null;
 
+              const hasEntry = Object.prototype.hasOwnProperty.call(prodMap, item.id);
               const data = prodMap[item.id]?.rows || [];
               return (
-                <View style={{ marginTop: 36}}>
-                  <View style={styles.rowHeader}>
-                    <Text style={styles.rowTitle}>{item.name}</Text>
+                <View style={styles.sectionCard}>
+                  <View style={styles.rowHeaderCard}>
+                    <Text style={[styles.rowTitle, { color: "#5D4037" }]}>{item.name}</Text>
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
                   </View>
 
                     <ChipsRow
                       subs={subMap[item.id] || []}
+                      contentPaddingLeft={CARD_INNER_H}
                       onPress={(s) => {
                         const doNav = async () => {
                           const catId = String(item.id || "").trim();
@@ -2273,6 +2805,8 @@ export default function ProductsHomeScreen() {
                     products={data}
                     isPanProd={isPanProd}
                     maybeGate={maybeGate}
+                    contentPaddingLeft={CARD_INNER_H}
+                    loading={!hasEntry}
                   />
                 </View>
               );
@@ -2396,7 +2930,7 @@ labelActive: { color: '#fff' },
   },
   topBg: {
     paddingHorizontal: H,
-    paddingBottom: 4,
+    paddingBottom: 0, // Reduced from 4
     position: "relative",
     zIndex: 1,
     backgroundColor: "transparent",
@@ -2433,19 +2967,35 @@ labelActive: { color: '#fff' },
   color: "#fff",
 },
   searchWrapper: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#ffffff",
-  borderRadius: 26,              // ⬅ rounder pill
-  paddingVertical: 10,
-  paddingHorizontal: 16,
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
-},
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderRadius: 26,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
 searchTxt: { color: "#555", fontSize: 14 },
+  quickTileSkeleton: {
+    width: 120,
+    height: 210,
+    borderRadius: 14,
+    padding: 10,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
   quizCard: {
     margin: H,
     borderRadius: 12,
@@ -2485,20 +3035,237 @@ searchTxt: { color: "#555", fontSize: 14 },
     marginTop: 10,
     marginBottom: 8,
   },
+  sectionCard: {
+    marginTop: 14,
+    marginHorizontal: H,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  rowHeaderCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: CARD_INNER_H,
+    marginBottom: 8,
+  },
   rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
-  seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
+  seeAllTxt: { fontSize: 13, color: "#0EA5E9", fontWeight: "700" },
+  shortcutsCard: {
+    marginTop: -28, // Even more negative margin
+    marginHorizontal: H,
+    paddingTop: 0,
+    paddingBottom: 4,
+    borderRadius: 18,
+    // backgroundColor: "#fff", // Removed white background
+    // shadowColor: "#000",     // Removed shadow
+    // shadowOpacity: 0.06,
+    // shadowRadius: 10,
+    // shadowOffset: { width: 0, height: 3 },
+    // elevation: 3,
+  },
+  shortcutsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: CARD_INNER_H,
+    paddingBottom: 8,
+  },
+  shortcutsTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#333",
+  },
+  shortcutsSeeAll: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0EA5E9",
+  },
+  shortcutsScroll: {
+    paddingHorizontal: CARD_INNER_H,
+  },
+  recoSection: {
+    marginTop: 12,
+  },
+  recoHeader: {
+    marginHorizontal: H,
+    marginBottom: 8,
+  },
+  recoHeaderTitle: {
+    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  recoHeaderSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  recoList: {
+    paddingHorizontal: H,
+  },
+  recoPressable: {
+    marginRight: RECO_GAP,
+  },
+  recoCard: {
+    width: RECO_CARD_W * 0.60, // Scale down width
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+    padding: 8, // Reduced padding
+  },
+  recoBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(17,24,39,0.08)",
+    marginBottom: 8,
+  },
+  recoBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  recoImgWrap: {
+    width: "100%",
+    height: 40, // Reduced from 92
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    marginBottom: 8,
+  },
+  recoImg: {
+    width: "100%",
+    height: "100%",
+  },
+  recoTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#111827",
+    minHeight: 34,
+  },
+  recoPriceRow: {
+    display: "none", // Hide price row
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  recoPrice: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#111827",
+    marginRight: 8,
+  },
+  recoMrp: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#94A3B8",
+    textDecorationLine: "line-through",
+  },
+  recoAddRow: {
+    // display: "none", // Allow overrides to show it
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    backgroundColor: "#fff",
+  },
+  recoAddLeft: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recoAddRight: {
+    width: 44,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(0,0,0,0.08)",
+    backgroundColor: "rgba(17,24,39,0.04)",
+  },
+  recoAddText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#111827",
+    letterSpacing: 0.3,
+  },
+  recoPlus: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+    lineHeight: 18,
+  },
+  shortcutPressable: {
+    width: 64, // Reduced from 72 to match tile reduction
+    alignItems: "center",
+    marginRight: 0, // Reduced from 10 to reduce gap
+  },
+  shortcutTile: {
+    width: 56,  // Reduced from 64
+    height: 56, // Reduced from 64
+    borderRadius: 16,
+    overflow: "hidden",
+    // backgroundColor: "#fff", // Removed white background
+    // borderWidth: 1,         // Removed border
+    // borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,      // Increased shadow opacity for better separation
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    marginBottom: 8,
+  },
+  shortcutIconPill: {
+    display: "none", // Hide the small icon inside
+    position: "absolute",
+    right: 6,
+    bottom: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  shortcutLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+  },
   chip: {
-  backgroundColor: "#FFE6F0",   // soft pink
-  borderRadius: 18,
-  paddingHorizontal: 12,
-  paddingVertical: 6,
-  marginRight: 8,
-},
-chipTxt: {
-  fontSize: 12,
-  color: "#C2185B",
-  fontWeight: "700",
-},
+    backgroundColor: "#FDF5E6",   // Old Lace (Light Brown)
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+  },
+  chipTxt: {
+    fontSize: 12,
+    color: "#5D4037", // Dark Brown
+    fontWeight: "700",
+  },
   tile: {
    marginRight: 8,
    backgroundColor: "#fff",
@@ -2601,7 +3368,7 @@ chipTxt: {
   bottom: 0,
   left: 0,
   right: 0,
-  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
+  backgroundColor: "rgba(14, 165, 233, 0.85)", // 🎀 festive blue
   flexDirection: "row",
   alignItems: "center",
   padding: 6,

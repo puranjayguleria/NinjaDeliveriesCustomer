@@ -179,18 +179,6 @@ const ProductListingScreen: React.FC<Props> = () => {
     setSelectedSubcategory((prev) => (prev === id ? null : id));
 
   const handleSubcategoryPress = async (sub: Subcategory) => {
-    const catId = String(categoryId || "").trim();
-    const subName = String(sub?.name || "").trim().toLowerCase();
-    const storeId = location.storeId;
-
-    if (catId === "Gift Shop" && subName === "perfume" && storeId) {
-      (navigation as any).navigate((route as any).name, {
-        categoryId: "Perfume",
-        categoryName: "Perfume",
-      });
-      return;
-    }
-
     selectSubcategory(sub.id);
   };
 
@@ -239,72 +227,84 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* ---------- Side nav ---------- */}
-      <View style={styles.sideNav}>
-        <FlatList
-          data={subcategories}
-          keyExtractor={(i) => i.id}
-          renderItem={renderSubcategoryItem}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptySubcategoryContainer}>
-              <Text style={styles.emptySubcategoryText}>No sub-categories</Text>
-            </View>
-          }
-        />
+      {/* ---------- Header (Back Button + Title) ---------- */}
+      <View style={styles.headerRow}>
+         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+           <MaterialIcons name="arrow-back" size={24} color="#333" />
+         </TouchableOpacity>
+         <Text style={styles.headerTitle} numberOfLines={1}>
+           {(route.params?.categoryName || "Products").replace(/`/g, "")}
+         </Text>
       </View>
 
-      {/* ---------- Main content ---------- */}
-      <View style={styles.mainContent}>
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <MaterialIcons
-            name="search"
-            size={24}
-            color="#555"
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchBar}
-            placeholder="Search for products…"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor="#999"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearchQuery("")}
-              style={styles.clearIcon}
-            >
-              <MaterialIcons name="clear" size={24} color="#555" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* List --- */}
-        {loading ? (
-          <View style={styles.loaderContainer}>
-            <Loader />
-          </View>
-        ) : (
+      <View style={{flex: 1, flexDirection: 'row'}}>
+        {/* ---------- Side nav ---------- */}
+        <View style={styles.sideNav}>
           <FlatList
-            data={filteredProducts}
+            data={subcategories}
             keyExtractor={(i) => i.id}
-            renderItem={renderProductItem}
-            numColumns={2}
-            columnWrapperStyle={styles.columnWrapper}
-            contentContainerStyle={styles.productList}
+            renderItem={renderSubcategoryItem}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No products found.</Text>
+              <View style={styles.emptySubcategoryContainer}>
+                <Text style={styles.emptySubcategoryText}>No sub-categories</Text>
               </View>
             }
           />
-        )}
+        </View>
+
+        {/* ---------- Main content ---------- */}
+        <View style={styles.mainContent}>
+          {/* Search */}
+          <View style={styles.searchContainer}>
+            <MaterialIcons
+              name="search"
+              size={24}
+              color="#555"
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={styles.searchBar}
+              placeholder="Search for products…"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#999"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery("")}
+                style={styles.clearIcon}
+              >
+                <MaterialIcons name="clear" size={24} color="#555" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* List --- */}
+          {loading ? (
+            <View style={styles.loaderContainer}>
+              <Loader />
+            </View>
+          ) : (
+            <FlatList
+              data={filteredProducts}
+              keyExtractor={(i) => i.id}
+              renderItem={renderProductItem}
+              numColumns={2}
+              columnWrapperStyle={styles.columnWrapper}
+              contentContainerStyle={styles.productList}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No products found.</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
       </View>
 
       {/* Error modal & toast */}
@@ -324,8 +324,27 @@ export default ProductListingScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: "row",
+    flexDirection: "column", // Changed to column to stack header
     backgroundColor: "#FAFAFA",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  backButton: {
+    marginRight: 16,
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    flex: 1,
   },
 
   /* side nav */

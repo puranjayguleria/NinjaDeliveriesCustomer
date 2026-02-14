@@ -615,7 +615,15 @@ export default function RatingScreen() {
           {/* BILL CARD */}
           <View style={styles.card}>
             <View style={styles.headerRow}>
-              <Text style={styles.headerTitle}>Order Bill</Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <TouchableOpacity
+                  onPress={() => navigation.goBack()}
+                  style={{ marginRight: 8 }}
+                >
+                  <Ionicons name="arrow-back" size={24} color={PRIMARY_TEXT} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Order Bill</Text>
+              </View>
               {orderDetails.status === "tripEnded" && (
                 <Ionicons
                   name="checkmark-circle"

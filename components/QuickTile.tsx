@@ -96,19 +96,51 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
     decreaseQuantity(p.id);
   }, [decreaseQuantity, p.id, qty]);
 
+  // Dynamic style for cart bar
+  const cartBarStyle = useMemo(() => {
+    const isOutOfStock = stock <= 0;
+    if (isOutOfStock) {
+      return {
+        ...styles.cartBar,
+        backgroundColor: "#eee",
+        borderColor: "#ddd",
+        bottom: CART_BAR_MARGIN,
+        height: CART_BAR_H,
+      };
+    }
+    if (qty > 0) {
+      return {
+        ...styles.cartBar,
+        backgroundColor: "#fff",
+        borderColor: "#5D4037", // Dark Brown Border
+        bottom: CART_BAR_MARGIN,
+        height: CART_BAR_H,
+        flexDirection: "row" as const,
+        justifyContent: "space-between",
+        paddingHorizontal: 8,
+      };
+    }
+    return {
+      ...styles.cartBar,
+      backgroundColor: "#fff",
+      borderColor: "#D2B48C", // Tan Border
+      bottom: CART_BAR_MARGIN,
+      height: CART_BAR_H,
+    };
+  }, [stock, qty]);
+
   return (
-    <Pressable>
+    <Pressable style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.98 : 1 }] })}>
       <View
         style={[
           styles.tile,
           {
             width: TILE_W,
             height: TILE_H,
-            backgroundColor: theme.productCardBg,
-            borderColor: (theme as any).productBorder ?? "#e0e0e0",
+            backgroundColor: "#FDF5E6", // Old Lace Background
+            borderColor: "#D2B48C", // Tan Border
             borderWidth: 1,
             padding: 6,
-            paddingBottom: RESERVED_BOTTOM,
           },
         ]}
       >
@@ -117,7 +149,7 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
           style={[styles.imageContainer, { backgroundColor: theme.productImageBg }]}
         >
           {discountPercent > 0 && (
-            <View style={[styles.discountTag, { backgroundColor: theme.discountTagBg }]}>
+            <View style={[styles.discountTag, { backgroundColor: "#8D6E63" }]}>
               <Text style={styles.discountTagTxt}>{discountPercent}% OFF</Text>
             </View>
           )}
@@ -133,9 +165,9 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
         </View>
 
         {/* Content */}
-        <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
+        <Text style={[styles.tileName, { color: "#3E2723" }]} numberOfLines={2}>{name}</Text>
 
-        <View style={[styles.ribbon, { backgroundColor: ribbonColor || theme.priceOverlayBg }]}>
+        <View style={[styles.ribbon, { backgroundColor: "#5D4037" }]}>
           <Text style={styles.priceNow}>₹{price}</Text>
           {discountPercent > 0 && <Text style={styles.priceMRP}>₹{mrp}</Text>}
         </View>
@@ -146,8 +178,8 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
             style={[
               styles.cartBar,
               {
-                backgroundColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
-                borderColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
+                backgroundColor: "#fff",
+                borderColor: stock > 0 ? "#D2B48C" : "#bdbdbd",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
               },
@@ -155,32 +187,36 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
             onPress={handleAdd}
             disabled={stock <= 0}
           >
-            <Text style={styles.cartBarAdd}>{stock > 0 ? "ADD" : "OUT OF STOCK"}</Text>
+            <Text style={[styles.cartBarAdd, { color: stock > 0 ? "#5D4037" : "#fff" }]}>
+              {stock > 0 ? "ADD" : "OUT OF STOCK"}
+            </Text>
           </Pressable>
         ) : (
           <View
             style={[
               styles.cartBar,
               {
-                backgroundColor: theme.qtyBarBg,
-                borderColor: (ribbonColor || theme.qtyBtnBorder),
+                backgroundColor: "#fff",
+                borderColor: "#5D4037",
                 flexDirection: "row",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
+                justifyContent: "space-between",
+                paddingHorizontal: 8,
               },
             ]}
           >
             <Pressable onPress={handleDec} hitSlop={12}>
-              <MaterialIcons name="remove" size={18} color={ribbonColor || theme.qtyBtnBg} />
+              <MaterialIcons name="remove" size={18} color="#5D4037" />
             </Pressable>
 
-            <Text style={[styles.qtyNum, { color: ribbonColor || theme.qtyBtnBg }]}>{qty}</Text>
+            <Text style={[styles.qtyNum, { color: "#3E2723" }]}>{qty}</Text>
 
             <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock}>
               <MaterialIcons
                 name="add"
                 size={18}
-                color={qty >= stock ? "#bdbdbd" : (ribbonColor || theme.qtyBtnBg)}
+                color={qty >= stock ? "#bdbdbd" : "#5D4037"}
               />
             </Pressable>
           </View>
@@ -247,6 +283,7 @@ const styles = StyleSheet.create({
     left: 6,
     borderRadius: 4,
     paddingHorizontal: 5,
+    backgroundColor: "#8D6E63", // Dark Brown
     paddingVertical: 1,
     zIndex: 2,
   },
@@ -263,7 +300,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#004d40",
+    backgroundColor: "#5D4037", // Changed to Dark Brown
     borderRadius: 4,
     alignSelf: "flex-start",
     paddingHorizontal: 6,
@@ -277,15 +314,19 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   cartBar: {
-    position: "absolute",
-    left: 6,
-    right: 6,
-    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    zIndex: 3,
+    position: "absolute",
+    left: 8,
+    right: 8,
+    bottom: CART_BAR_MARGIN,
+    height: CART_BAR_H,
+    borderColor: "#D2B48C", // Tan Border
   },
-  cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  qtyNum: { fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+  cartBarAdd: { color: "#5D4037", fontWeight: "700", fontSize: 12 },
+  qtyNum: { fontWeight: "700", fontSize: 14, marginHorizontal: 10, color: "#3E2723" },
 });

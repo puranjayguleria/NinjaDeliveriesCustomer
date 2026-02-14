@@ -9,8 +9,9 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Easing,
   Animated,
+  Easing,
+  Keyboard,
   Vibration,
   ScrollView,
   FlatList,
@@ -28,10 +29,14 @@ import { Button, TextInput } from "react-native-paper";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
 import Loader from "@/components/VideoLoader";
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from "expo-linear-gradient";
 
 const pastelGreen = "#e7f8f6";
 const primaryTextColor = "#333";
+const H = 16;
+const R = 18;
+const BG = "#F6F7FB";
+const ACCENT = "#FF8A00";
 
 /** Order interface for your reference */
 interface Order {
@@ -63,12 +68,14 @@ interface Order {
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const currentUser = auth().currentUser;
+  const currentUserId = (currentUser as any)?.uid as string | undefined;
 
   // Profile UI state
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [userName, setUserName] = useState<string>("");
   const [dob, setDob] = useState<Date | null>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>([]);
@@ -92,6 +99,156 @@ const ProfileScreen: React.FC = () => {
   const [reauthOTP, setReauthOTP] = useState("");
   const [reauthConfirm, setReauthConfirm] = useState<any>(null);
   const [reauthLoading, setReauthLoading] = useState(false);
+  const [showAllOrders, setShowAllOrders] = useState(false);
+  const [detailsY, setDetailsY] = useState(0);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const nameInputRef = useRef<any>(null);
+  const logoutConfirmShownRef = useRef(false);
+  const screenFade = useRef(new Animated.Value(0)).current;
+  const rewardsPulse = useRef(new Animated.Value(0)).current;
+  const emptyCtaScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(screenFade, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [screenFade]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(rewardsPulse, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rewardsPulse, {
+          toValue: 0,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(600),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [rewardsPulse]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (ordersLoading || orders.length !== 0) return;
+    emptyCtaScale.setValue(1);
+    Animated.sequence([
+      Animated.timing(emptyCtaScale, {
+        toValue: 1.04,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(emptyCtaScale, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [currentUserId, emptyCtaScale, orders.length, ordersLoading]);
+
+  const vibrateTap = useCallback((ms = 12) => {
+    try {
+      Vibration.vibrate(ms);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const TileButton = ({
+    icon,
+    iconColor,
+    title,
+    subtitle,
+    onPress,
+    danger,
+    iconAnimated,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    iconColor: string;
+    title: string;
+    subtitle?: string;
+    onPress: () => void;
+    danger?: boolean;
+    iconAnimated?: { scale: any; opacity: any };
+  }) => {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    const onPressIn = () => {
+      Animated.spring(scale, {
+        toValue: 1.03,
+        friction: 6,
+        tension: 120,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const onPressOut = () => {
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 6,
+        tension: 120,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+      >
+        <Animated.View
+          style={[
+            styles.optionTile,
+            danger ? styles.dangerTile : null,
+            { transform: [{ scale }] },
+          ]}
+        >
+          {iconAnimated ? (
+            <Animated.View
+              style={[
+                styles.optionIcon,
+                danger ? styles.dangerIcon : null,
+                {
+                  transform: [{ scale: iconAnimated.scale }],
+                  opacity: iconAnimated.opacity,
+                },
+              ]}
+            >
+              <Ionicons name={icon} size={18} color={iconColor} />
+            </Animated.View>
+          ) : (
+            <View style={[styles.optionIcon, danger ? styles.dangerIcon : null]}>
+              <Ionicons name={icon} size={18} color={iconColor} />
+            </View>
+          )}
+
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.optionTitle, danger ? styles.dangerText : null]}>
+              {title}
+            </Text>
+            {!!subtitle && <Text style={styles.optionSub}>{subtitle}</Text>}
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
 
   useEffect(() => {
     console.log("[ProfileScreen] currentUser:", currentUser?.uid);
@@ -210,8 +367,8 @@ const ProfileScreen: React.FC = () => {
   }, [currentUser]);
 
   /** Save user changes */
-  const handleSave = async () => {
-    if (!currentUser) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!currentUser) return false;
     try {
       setSaving(true);
       const dobStr = dob ? dob.toISOString().split("T")[0] : "";
@@ -220,8 +377,10 @@ const ProfileScreen: React.FC = () => {
         dob: dobStr,
       });
       Alert.alert("Saved", "Profile updated successfully!");
+      return true;
     } catch (error) {
       Alert.alert("Error", "Failed to save profile info.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -371,56 +530,9 @@ const ProfileScreen: React.FC = () => {
       ]
     );
   };
-  /**Reward section */
-  const scaleValue = new Animated.Value(1);
-  const rotateValue = new Animated.Value(0);
-
-  useEffect(() => {
-    // Continuous subtle animation
-    Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.spring(scaleValue, {
-            toValue: 1.05,
-            friction: 3,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleValue, {
-            toValue: 1,
-            friction: 5,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.timing(rotateValue, {
-          toValue: 1,
-          duration: 10000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Initial pop effect
-    scaleValue.setValue(0.5);
-    Animated.spring(scaleValue, {
-      toValue: 1,
-      friction: 6,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const rotateInterpolate = rotateValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["-3deg", "3deg"],
-  });
-
-  const handlePress = () => {
-    Vibration.vibrate(50);
-    navigation.navigate("RewardScreen");
-  };
   /** For date picking */
   const openDatePicker = () => {
+    vibrateTap(8);
     if (Platform.OS === "ios") {
       setShowIosModal(true);
     } else {
@@ -514,48 +626,70 @@ const ProfileScreen: React.FC = () => {
       : new Date(item.createdAt);
     const dateString = format(dateObj, "dd MMM, yyyy");
     const timeString = format(dateObj, "hh:mm a");
+    const total = typeof item.finalTotal === "number" ? item.finalTotal : 0;
+
+    const statusRaw = String(item.status || "unknown").toLowerCase();
+    const statusText = statusRaw === "tripended" ? "Completed" : statusRaw;
+    const statusTheme =
+      statusRaw === "cancelled"
+        ? { bg: "#FEE2E2", fg: "#991B1B" }
+        : statusRaw === "pending"
+        ? { bg: "#FEF3C7", fg: "#92400E" }
+        : statusRaw === "tripended"
+        ? { bg: "#DCFCE7", fg: "#166534" }
+        : { bg: "#E5E7EB", fg: "#374151" };
 
     return (
       <View style={styles.orderCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.orderId}>Order ID: {item.id}</Text>
-          <Text style={styles.orderDate}>
-            {dateString} at {timeString}
-          </Text>
-          <View style={styles.orderStatusContainer}>
-            <Text style={styles.orderStatusLabel}>Status: </Text>
-            <Text style={styles.orderStatusValue}>
-              {item.status.toUpperCase()}
+        <View style={styles.orderTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderDate}>
+              {dateString} • {timeString}
+            </Text>
+            <Text style={styles.orderId} numberOfLines={1}>
+              Order #{item.id}
             </Text>
           </View>
-          <View style={styles.orderActionRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#3498db" }]}
-              onPress={() => navigateToOrderScreen(item)}
-            >
-              <Text style={styles.actionButtonText}>Go To Order</Text>
-              <Ionicons
-                name="arrow-forward"
-                size={16}
-                color="#fff"
-                style={{ marginLeft: 4 }}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#95a5a6" }]}
-              onPress={() => openDetailsModal(item)}
-            >
-              <Text style={styles.actionButtonText}>View Details</Text>
-              <Ionicons
-                name="list"
-                size={16}
-                color="#fff"
-                style={{ marginLeft: 4 }}
-              />
-            </TouchableOpacity>
+
+          <View style={[styles.statusPill, { backgroundColor: statusTheme.bg }]}>
+            <Text style={[styles.statusPillText, { color: statusTheme.fg }]}>
+              {statusText.toUpperCase()}
+            </Text>
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#666" />
+
+        <View style={styles.orderMetaRow}>
+          <Text style={styles.orderMetaText}>
+            Total{" "}
+            <Text style={styles.orderMetaStrong}>₹{Number(total).toFixed(2)}</Text>
+          </Text>
+        </View>
+
+        <View style={styles.orderActionRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionPrimary]}
+            onPress={() => {
+              vibrateTap();
+              navigateToOrderScreen(item);
+            }}
+          >
+            <Text style={styles.actionButtonText}>Track</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionSecondary]}
+            onPress={() => {
+              vibrateTap();
+              openDetailsModal(item);
+            }}
+          >
+            <Text style={[styles.actionButtonText, { color: "#111827" }]}>
+              Details
+            </Text>
+            <Ionicons name="list" size={16} color="#111827" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -597,65 +731,133 @@ const ProfileScreen: React.FC = () => {
     );
   }
 
+  const displayName =
+    String(userName || "").trim() ||
+    String((currentUser as any)?.displayName || "").trim() ||
+    "Ninja Customer";
+  const contactLine =
+    String((currentUser as any)?.phoneNumber || "").trim() ||
+    String((currentUser as any)?.email || "").trim();
+  const ordersToRender = showAllOrders ? orders : orders.slice(0, 3);
+  const dobText = dob ? format(dob, "dd MMM yyyy") : "Not set";
+
+  const rewardsScale = rewardsPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.06],
+  });
+  const rewardsOpacity = rewardsPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1],
+  });
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
+        ref={scrollRef}
         style={styles.container}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <View style={styles.headerBlock}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={() => (navigation as any).goBack?.()}
-              style={styles.backBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Ionicons name="arrow-back" size={22} color={primaryTextColor} />
-            </TouchableOpacity>
-            <Text style={styles.mainTitle}>My Profile</Text>
-          </View>
-
-          {/* <TouchableOpacity
-            style={styles.iconContainer}
-            onPress={() => navigation.navigate("RewardScreen")}
+        <Animated.View style={{ opacity: screenFade }}>
+          <LinearGradient
+            colors={[pastelGreen, "#FFFFFF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
           >
-            <Image
-              source={require("../assets/rewards.png")}
-              style={styles.icon}
-              resizeMode="contain"
-            />
-            <Text style={styles.reward}>Rewards</Text>
-          </TouchableOpacity> */}
-        </View>
+            <View style={styles.heroTopRow}>
+              <TouchableOpacity
+                onPress={() => (navigation as any).goBack?.()}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
+                <Ionicons name="arrow-back" size={22} color={primaryTextColor} />
+              </TouchableOpacity>
+              <Text style={styles.heroTitle}>Profile</Text>
+              <View style={{ width: 34 }} />
+            </View>
 
-        <View style={styles.profileCard}>
-          <Image
-            source={require("../assets/ninja-logo.jpg")}
-            style={styles.profileImage}
-          />
+            <View style={styles.heroCard}>
+              <View style={styles.avatarWrap}>
+                <Image
+                  source={require("../assets/ninja-logo.jpg")}
+                  style={styles.avatarImage}
+                />
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.heroName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                {!!contactLine && (
+                  <Text style={styles.heroSub} numberOfLines={1}>
+                    {contactLine}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                disabled={isEditing}
+                style={[styles.editPill, isEditing ? { opacity: 0.7 } : null]}
+                onPress={() => {
+                  vibrateTap();
+                  setIsEditing(true);
+                  scrollRef.current?.scrollTo({ y: detailsY, animated: true });
+                  setTimeout(() => nameInputRef.current?.focus?.(), 200);
+                }}
+              >
+                <Text style={styles.editPillText}>{isEditing ? "Editing" : "Edit"}</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
 
-          {/* Section header for user details */}
-          <Text style={styles.sectionHeader}>User Details</Text>
+          <View
+            style={styles.card}
+            onLayout={(e) => setDetailsY(e.nativeEvent.layout.y)}
+          >
+            <Text style={styles.cardTitle}>Personal details</Text>
 
-          {/* Name Input (Paper's label used) */}
-          <TextInput
-            label="Name"
-            value={userName}
-            onChangeText={setUserName}
-            mode="outlined"
-            style={styles.input}
-          />
+            {!isEditing ? (
+              <View style={styles.detailsBlock}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>👤 Name</Text>
+                  <Text style={styles.detailValue} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                </View>
+                <View style={styles.detailDivider} />
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>🎂 Date of Birth</Text>
+                  <Text style={styles.detailValue} numberOfLines={1}>
+                    {dobText}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  ref={nameInputRef}
+                  label="👤 Name"
+                  value={userName}
+                  onChangeText={setUserName}
+                  mode="outlined"
+                  style={styles.input}
+                  editable
+                />
 
-          <Text style={styles.label}>Date of Birth</Text>
-          <TouchableOpacity onPress={openDatePicker} style={styles.dobSelect}>
-            <Text style={{ color: dob ? "#333" : "#999" }}>
-              {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
-            </Text>
-            <MaterialIcons name="calendar-today" size={16} color="#555" />
-          </TouchableOpacity>
+                <Text style={styles.label}>🎂 Date of Birth</Text>
+                <TouchableOpacity onPress={openDatePicker} style={styles.dobSelect}>
+                  <Text
+                    style={{
+                      color: dob ? "#111827" : "#9CA3AF",
+                      fontWeight: "700",
+                    }}
+                  >
+                    {dob ? format(dob, "dd MMM yyyy") : "Select Date of Birth"}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color="#6B7280" />
+                </TouchableOpacity>
+              </>
+            )}
 
-          {/* Android Date Picker */}
           {showDatePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={dob || new Date()}
@@ -666,7 +868,6 @@ const ProfileScreen: React.FC = () => {
             />
           )}
 
-          {/* iOS Date Picker in Modal */}
           {Platform.OS === "ios" && (
             <Modal
               visible={showIosModal}
@@ -676,7 +877,6 @@ const ProfileScreen: React.FC = () => {
             >
               <View style={styles.modalOverlayDate}>
                 <View style={styles.modalContainerDate}>
-                  {/* iOS Done button */}
                   <View style={styles.iosPickerHeader}>
                     <TouchableOpacity onPress={() => setShowIosModal(false)}>
                       <Text style={styles.doneButtonText}>Done</Text>
@@ -696,146 +896,132 @@ const ProfileScreen: React.FC = () => {
             </Modal>
           )}
 
-          {/* Full-width "Save Changes" with icon */}
-          <Button
-            icon={() => <Ionicons name="save" size={18} color="#fff" />}
-            mode="contained"
-            onPress={handleSave}
-            loading={saving}
-            style={styles.fullWidthButton}
-            labelStyle={{ color: "#fff" }}
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </Button>
-
-          {/* Full-width "Logout" with icon */}
-          <Button
-            icon={() => (
-              <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
-            )}
-            mode="outlined"
-            onPress={handleLogout}
-            style={styles.fullWidthButton}
-            labelStyle={{ color: "#e74c3c" }}
-          >
-            Logout
-          </Button>
-
-          {/* Full-width "Delete Account" with icon */}
-          <TouchableOpacity
-            style={[
-              styles.fullWidthButtonTouchable,
-              { backgroundColor: "#e74c3c" },
-            ]}
-            onPress={handleDeleteAccount}
-          >
-            <Ionicons
-              name="trash"
-              size={16}
-              color="#fff"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Premium Reward Section */}
-        <View style={styles.rewardSectionContainer}>
-          <Animated.View
-            style={[
-              styles.rewardButtonContainer,
-              {
-                transform: [
-                  { scale: scaleValue },
-                  { rotate: rotateInterpolate },
-                ],
-              },
-            ]}
-          >
-            <TouchableOpacity
-              onPress={handlePress}
-              activeOpacity={0.7}
-              style={styles.rewardTouchable}
+          {isEditing ? (
+            <Button
+              icon={() => <Ionicons name="save" size={18} color="#fff" />}
+              mode="contained"
+              onPress={async () => {
+                vibrateTap();
+                const ok = await handleSave();
+                if (ok) {
+                  setIsEditing(false);
+                  Keyboard.dismiss();
+                }
+              }}
+              loading={saving}
+              style={styles.primaryButton}
+              labelStyle={{ color: "#fff" }}
             >
-              <Image
-                source={require("../assets/rewards.png")}
-                style={styles.rewardIconPremium}
-              />
-            </TouchableOpacity>
-          </Animated.View>
-          <Text style={styles.rewardText}>Rewards</Text>
-        </View>
-
-        {/* Contact Us Section */}
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.contactSection}
-        >
-          <View style={styles.contactOverlay}>
-            <Text style={styles.contactSectionTitle}>Need Help?</Text>
-            <Text style={styles.contactSectionSubtitle}>
-              Our dedicated support team is available to assist you with any inquiries or concerns you may have.
-            </Text>
-            
-            <View style={styles.contactButtonsContainer}>
-              <TouchableOpacity 
-                style={styles.contactButton}
-                onPress={() => Linking.openURL('tel:8219105753')}
-              >
-                <LinearGradient
-                  colors={['#00C853', '#00A843']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.contactButtonGradient}
-                >
-                  <Ionicons name="call" size={20} color="#fff" />
-                  <Text style={styles.contactButtonText}>Call Us</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.contactButton}
-                onPress={() => Linking.openURL('mailto:admin@ninjadeliveries.com')}
-              >
-                <LinearGradient
-                  colors={['#FF6B6B', '#FF5252']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.contactButtonGradient}
-                >
-                  <Ionicons name="mail" size={20} color="#fff" />
-                  <Text style={styles.contactButtonText}>Email Us</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          ) : null}
           </View>
-        </LinearGradient>
-        {/* My Orders Header */}
-        <View style={styles.myOrdersHeader}>
-          <Text style={styles.myOrdersTitle}>My Orders</Text>
-          {ordersLoading && <Loader />}
-        </View>
 
-        {orders.length === 0 && !ordersLoading ? (
-          <View style={styles.noOrdersContainer}>
-            <Text style={styles.noOrdersText}>You have no orders yet.</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Account options</Text>
+
+            <TileButton
+              icon="receipt-outline"
+              iconColor="#2563EB"
+              title="📦 Your Orders"
+              subtitle="Track & manage orders"
+              onPress={() => {
+                vibrateTap();
+                (navigation as any).navigate("YourOrders");
+              }}
+            />
+
+            <TileButton
+              icon="gift-outline"
+              iconColor={ACCENT}
+              title="⭐ Rewards"
+              subtitle="Unlock more savings"
+              iconAnimated={{ scale: rewardsScale, opacity: rewardsOpacity }}
+              onPress={() => {
+                vibrateTap();
+                (navigation as any).navigate("RewardScreen");
+              }}
+            />
+
+            <TileButton
+              icon="help-circle-outline"
+              iconColor={ACCENT}
+              title="❓ Help"
+              subtitle="Get support fast"
+              onPress={() => {
+                vibrateTap();
+                (navigation as any).navigate("ContactUs");
+              }}
+            />
+
+            <TileButton
+              icon="document-text-outline"
+              iconColor={ACCENT}
+              title="📜 Terms"
+              subtitle="Policies & conditions"
+              onPress={() => {
+                vibrateTap();
+                (navigation as any).navigate("TermsAndConditions");
+              }}
+            />
           </View>
-        ) : (
-          <FlatList
-            data={orders}
-            keyExtractor={(item) => item.id}
-            renderItem={renderOrderItem}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: 10,
-              flexGrow: 1,
-            }}
-            scrollEnabled={false}
-            style={{ marginTop: 10 }}
-          />
-        )}
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Security</Text>
+
+            <TileButton
+              icon="log-out-outline"
+              iconColor="#EF4444"
+              title="Logout"
+              subtitle="Sign out from this device"
+              danger
+              onPress={() => {
+                vibrateTap();
+                if (logoutConfirmShownRef.current) return;
+                logoutConfirmShownRef.current = true;
+                Alert.alert(
+                  "Logout",
+                  "Are you sure you want to logout?",
+                  [
+                    {
+                      text: "Cancel",
+                      style: "cancel",
+                      onPress: () => {
+                        logoutConfirmShownRef.current = false;
+                      },
+                    },
+                    {
+                      text: "Logout",
+                      style: "destructive",
+                      onPress: () => {
+                        logoutConfirmShownRef.current = false;
+                        void handleLogout();
+                      },
+                    },
+                  ],
+                  {
+                    cancelable: true,
+                    onDismiss: () => {
+                      logoutConfirmShownRef.current = false;
+                    },
+                  }
+                );
+              }}
+            />
+
+            <TileButton
+              icon="trash-outline"
+              iconColor="#EF4444"
+              title="Delete account"
+              subtitle="This action cannot be undone"
+              danger
+              onPress={() => {
+                vibrateTap();
+                handleDeleteAccount();
+              }}
+            />
+          </View>
+        </Animated.View>
 
         {/* Bottom Sheet Modal for Order Details */}
         <Modal
@@ -1061,11 +1247,11 @@ export default ProfileScreen;
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f2f2f2",
+    backgroundColor: BG,
   },
   container: {
     flex: 1,
-    backgroundColor: "#fefefe",
+    backgroundColor: BG,
   },
   loaderContainer: {
     flex: 1,
@@ -1092,77 +1278,115 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 16,
   },
-  headerBlock: {
-    backgroundColor: pastelGreen,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    borderBottomRightRadius: 24,
-    borderBottomLeftRadius: 24,
-    marginBottom: 15,
-    flexDirection: "row", // 👈 Arrange in a row
-    justifyContent: "space-between", // 👈 Push items to edges
-    alignItems: "center", // 👈 Align vertically
+  hero: {
+    paddingBottom: 18,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    paddingHorizontal: H,
+    paddingTop: 8,
   },
-  headerLeft: {
+  heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 6,
+    paddingBottom: 10,
   },
   backBtn: {
     padding: 6,
-    marginRight: 8,
   },
-  mainTitle: {
+  heroTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "800",
     color: primaryTextColor,
   },
-  iconContainer: {
-    padding: 5,
-  },
-  icon: {
-    width: 32,
-    height: 32,
-  },
-  reward: {
-    fontSize: 10,
-    fontWeight: "bold",
-    color: primaryTextColor,
-  },
-  subTitle: {
-    fontSize: 13,
-    color: "#666",
-  },
-  profileCard: {
+  heroCard: {
     backgroundColor: "#fff",
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginTop: -30,
-    padding: 16,
-    elevation: 2,
+    borderRadius: R,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  avatarWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  heroName: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  heroSub: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  editPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: ACCENT,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  editPillText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: R,
+    marginHorizontal: H,
+    marginTop: 12,
+    padding: 14,
     shadowColor: "#000",
     shadowOpacity: 0.05,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#f9f9f9",
-    alignSelf: "center",
-    marginBottom: 16,
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#333",
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
     marginBottom: 10,
-    textAlign: "left",
+  },
+  seeAllLink: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: ACCENT,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
     marginBottom: 6,
   },
   input: {
@@ -1172,96 +1396,184 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    marginBottom: 16,
+    borderColor: "rgba(0,0,0,0.08)",
+    borderRadius: 14,
+    marginBottom: 14,
   },
-
-  fullWidthButton: {
+  primaryButton: {
     width: "100%",
-    marginVertical: 6,
+    marginTop: 4,
+    backgroundColor: ACCENT,
+    borderRadius: 12,
   },
-  fullWidthButtonTouchable: {
-    width: "100%",
-    marginVertical: 6,
-    borderRadius: 6,
+  detailsBlock: {
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  detailRow: {
+    paddingHorizontal: 12,
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
   },
-  deleteAccountButtonText: {
-    color: "#fff",
-    fontWeight: "600",
+  detailDivider: {
+    height: 1,
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    marginRight: 10,
+  },
+  detailValue: {
+    flex: 1,
+    textAlign: "right",
     fontSize: 14,
+    fontWeight: "900",
+    color: "#111827",
   },
-
-  myOrdersHeader: {
+  optionTile: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 20,
-    paddingHorizontal: 16,
-    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    marginBottom: 10,
   },
-  myOrdersTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-  },
-  noOrdersContainer: {
-    marginTop: 20,
+  optionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.04)",
     alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
-  noOrdersText: {
+  optionTitle: {
     fontSize: 14,
-    color: "#999",
+    fontWeight: "900",
+    color: "#111827",
+  },
+  optionSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  dangerTile: {
+    backgroundColor: "#fff",
+  },
+  dangerIcon: {
+    backgroundColor: "rgba(239,68,68,0.08)",
+  },
+  dangerText: {
+    color: "#B91C1C",
+  },
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  settingsIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  settingsText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  deleteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  deleteRowText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#EF4444",
   },
   orderCard: {
     backgroundColor: "#fff",
+    borderRadius: 16,
     padding: 12,
-    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "rgba(0,0,0,0.06)",
     marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    elevation: 1,
   },
   orderId: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#111827",
   },
   orderDate: {
     fontSize: 12,
-    color: "#666",
-    marginTop: 4,
+    fontWeight: "700",
+    color: "#6B7280",
   },
-  orderStatusContainer: {
+  orderTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 6,
+    justifyContent: "space-between",
   },
-  orderStatusLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#555",
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  orderStatusValue: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#27ae60",
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  orderMetaRow: {
+    marginTop: 8,
+  },
+  orderMetaText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  orderMetaStrong: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#111827",
   },
   orderActionRow: {
     flexDirection: "row",
     marginTop: 8,
   },
   actionButton: {
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 10,
     marginRight: 8,
     flexDirection: "row",
     alignItems: "center",
@@ -1269,7 +1581,98 @@ const styles = StyleSheet.create({
   actionButtonText: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "800",
+  },
+  actionPrimary: {
+    backgroundColor: "#111827",
+  },
+  actionSecondary: {
+    backgroundColor: "#F3F4F6",
+  },
+  ordersLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  ordersLoadingText: {
+    marginLeft: 10,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  emptyOrders: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  emptyArt: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  emptyOrdersTitle: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  emptyOrdersSub: {
+    marginTop: 6,
+    marginBottom: 12,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  supportCard: {
+    backgroundColor: "#fff",
+    borderRadius: R,
+    marginHorizontal: H,
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  supportTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  supportSub: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  supportButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  supportBtn: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  supportBtnBg: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 8,
+  },
+  supportBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "900",
   },
 
   modalOverlay: {

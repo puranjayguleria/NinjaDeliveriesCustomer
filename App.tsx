@@ -74,9 +74,6 @@ import ContactUsScreen from "./screens/ContactUsScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
-import RoseBouquetScreen from "./screens/RoseBouquetScreen";
-import ValentineSpecialsScreen from "./screens/ValentineSpecialsScreen";
-import MakeBouquetScreen from "./screens/MakeBouquetScreen";
 import ProductDetailsScreen from "./screens/ProductDetailsScreen";
 import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
@@ -100,6 +97,7 @@ import { RestaurantCartProvider } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
 import OrdersScreen from "./screens/OrdersScreen";
 import OrderSummaryScreen from "./screens/OrderSummaryScreen";
+import YourOrdersScreen from "./screens/YourOrdersScreen";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -323,21 +321,7 @@ function HomeStack() {
         component={SearchScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="ValentineSpecials"
-        component={ValentineSpecialsScreen}
-        options={{ title: "Valentine Specials", headerShown: true }}
-      />
-      <Stack.Screen
-        name="RoseBouquetScreen"
-        component={RoseBouquetScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MakeBouquetScreen"
-        component={MakeBouquetScreen}
-        options={{ headerShown: false }}
-      />
+
       <Stack.Screen
         name="ProductDetails"
         component={ProductDetailsScreen}
@@ -348,8 +332,13 @@ function HomeStack() {
         component={ProductListingScreen as any}
         options={({ route }) => ({
           title: (route.params as any)?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
+      />
+      <Stack.Screen
+        name="ShivratriSpecial"
+        component={require("./screens/ShivratriSpecialScreen").default}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="AllDiscountedProducts"
@@ -417,7 +406,7 @@ function CategoriesStack() {
         component={ProductListingScreen as any}
         options={({ route }) => ({
           title: (route.params as any)?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
       />
       <Stack.Screen
@@ -438,7 +427,7 @@ function FeaturedStack() {
         component={ProductListingScreen as any}
         options={({ route }) => ({
           title: (route.params as any)?.categoryName || "Products",
-          headerShown: true,
+          headerShown: false,
         })}
       />
     </Stack.Navigator>
@@ -466,6 +455,11 @@ const ProfileStack = () => (
       component={HiddenCouponCard}
       options={{ title: "Reward Screen", headerShown: false }}
     />
+    <Stack.Screen
+      name="YourOrders"
+      component={YourOrdersScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -478,9 +472,23 @@ function AppTabs() {
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  const cartBadgeScale = useRef(new Animated.Value(1)).current;
+  const prevCartItemsRef = useRef(totalItems);
 
   const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
   useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
+
+  useEffect(() => {
+    const prev = prevCartItemsRef.current;
+    prevCartItemsRef.current = totalItems;
+    if (totalItems <= 0) return;
+    if (prev === totalItems) return;
+    cartBadgeScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(cartBadgeScale, { toValue: 1.25, useNativeDriver: true, friction: 5 }),
+      Animated.spring(cartBadgeScale, { toValue: 1, useNativeDriver: true, friction: 6 }),
+    ]).start();
+  }, [cartBadgeScale, totalItems]);
 
   const inProgress = activeOrders.filter(
     (o) => o.status === "pending" || o.status === "active"
@@ -518,8 +526,8 @@ function AppTabs() {
           };
           return {
             headerShown: false,
-            tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "gray",
+            tabBarActiveTintColor: "#111827",
+            tabBarInactiveTintColor: "#94A3B8",
             tabBarStyle: {
               backgroundColor: "#ffffff",
               borderTopWidth: 1,
@@ -528,17 +536,24 @@ function AppTabs() {
               paddingBottom: Platform.OS === "android" ? 10 : 30,
               elevation: 8,
             },
-            tabBarIcon: ({ color, size }) => (
-              <View style={{ width: size, height: size }}>
-                <Ionicons
-                  name={iconMap[route.name]}
-                  size={size}
-                  color={color}
-                />
+            tabBarIcon: ({ color, size, focused }) => (
+              <View style={styles.tabIconWrap}>
+                <Animated.View style={focused ? { transform: [{ scale: 1.1 }] } : undefined}>
+                  <Ionicons
+                    name={focused ? iconMap[route.name].replace("-outline", "") as any : iconMap[route.name]}
+                    size={size + 2}
+                    color={focused ? "#111827" : "#9CA3AF"}
+                  />
+                </Animated.View>
                 {route.name === "CartFlow" && totalItems > 0 && (
-                  <View style={styles.badgeContainer}>
+                  <Animated.View
+                    style={[
+                      styles.badgeContainer,
+                      { transform: [{ scale: cartBadgeScale }] },
+                    ]}
+                  >
                     <Text style={styles.badgeText}>{totalItems}</Text>
-                  </View>
+                  </Animated.View>
                 )}
               </View>
             ),
@@ -807,11 +822,7 @@ const App: React.FC = () => {
                       name="TermsAndConditions"
                       component={TermsAndConditionsScreen}
                     />
-                    <RootStack.Screen
-                      name="MakeBouquetScreen"
-                      component={MakeBouquetScreen}
-                      options={{ headerShown: false }}
-                    />
+
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
                       <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
                     <RootStack.Screen
@@ -822,7 +833,7 @@ const App: React.FC = () => {
                     <RootStack.Screen
                       name="ContactUs"
                       component={ContactUsScreen}
-                      options={{ title: "Contact Us", headerShown: true }}
+                      options={{ title: "Contact Us", headerShown: false }}
                     />
                     <RootStack.Screen name="Profile" component={ProfileStack} />
                     <RootStack.Screen
@@ -890,6 +901,17 @@ const App: React.FC = () => {
    ========================================================== */
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  tabIconWrap: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    // borderRadius: 22, // Removed
+  },
+  // tabIconWrapFocused: { ... }, // Removed
+  // tabActiveIndicator: { ... }, // No longer used
+  // tabActiveSpacer: { ... }, // No longer used
 
   badgeContainer: {
     position: "absolute",

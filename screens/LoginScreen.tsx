@@ -27,6 +27,8 @@ const LoginScreen: React.FC = () => {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isConfirmingOtp, setIsConfirmingOtp] = useState(false);
+  const [otpCooldownUntil, setOtpCooldownUntil] = useState<number>(0);
+  const [otpCooldownSeconds, setOtpCooldownSeconds] = useState<number>(0);
 
   const { setCustomerId } = useCustomer();
   const otpInputRef = useRef<TextInput>(null);
@@ -43,6 +45,20 @@ const LoginScreen: React.FC = () => {
   const closeErrorModal = () => {
     setErrorModalVisible(false);
   };
+
+  useEffect(() => {
+    if (!otpCooldownUntil) {
+      setOtpCooldownSeconds(0);
+      return;
+    }
+    const tick = () => {
+      const remainingMs = Math.max(0, otpCooldownUntil - Date.now());
+      setOtpCooldownSeconds(Math.ceil(remainingMs / 1000));
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [otpCooldownUntil]);
 
   // Format phone number with +91 prefix and ensure E.164 compliance
   const formatPhoneNumber = (number: string) => {
@@ -107,6 +123,10 @@ const LoginScreen: React.FC = () => {
   // Function to send OTP
  const sendOtp = async () => {
   console.log("sendOtp called with phoneNumber:", phoneNumber);
+  if (otpCooldownSeconds > 0) {
+    showErrorModal(`Please wait ${otpCooldownSeconds}s before requesting a new OTP.`);
+    return;
+  }
   if (!phoneNumber || phoneNumber.replace(/\D/g, "").length < 10) {
     showErrorModal("Please enter a valid phone number.");
     return;
@@ -128,16 +148,25 @@ if (__DEV__ && Platform.OS === "ios") {
     const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
     console.log("[OTP] signInWithPhoneNumber resolved. Keys:", Object.keys(confirmationResult || {}));
     setConfirmation(confirmationResult);
+    setOtpCooldownUntil(Date.now() + 30_000);
 
     setTimeout(() => otpInputRef.current?.focus(), 300);
   } catch (error: any) {
-    console.error("[OTP] send failed:", {
-      name: error?.name,
-      code: error?.code,
-      message: error?.message,
-      stack: error?.stack,
-    });
-    showErrorModal("Something went wrong while sending OTP. Please try again.");
+    const code = String(error?.code || "");
+    const message = String(error?.message || "");
+    if (code === "auth/too-many-requests") {
+      setOtpCooldownUntil(Date.now() + 5 * 60_000);
+      showErrorModal(
+        "Too many OTP requests from this device. Please wait a few minutes and try again."
+      );
+    } else if (code === "auth/invalid-phone-number") {
+      showErrorModal("Invalid phone number. Please check and try again.");
+    } else if (code === "auth/network-request-failed") {
+      showErrorModal("Network error. Please check your internet and try again.");
+    } else {
+      console.log("[OTP] send failed:", { code, message });
+      showErrorModal("Something went wrong while sending OTP. Please try again.");
+    }
   } finally {
     setIsSendingOtp(false);
   }
@@ -284,10 +313,12 @@ if (__DEV__ && Platform.OS === "ios") {
               />
             ) : (
               <Button
-                title="Send OTP"
+                title={
+                  otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : "Send OTP"
+                }
                 onPress={sendOtp}
                 color="#00C853"
-                disabled={isSendingOtp}
+                disabled={isSendingOtp || otpCooldownSeconds > 0}
               />
             )}
 

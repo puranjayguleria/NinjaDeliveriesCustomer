@@ -9,16 +9,19 @@ import {
   FlatList,
   Modal,
   ActivityIndicator,
+  TouchableOpacity,
 } from "react-native";
-import { Feather, FontAwesome, MaterialIcons } from "@expo/vector-icons";
+import { Feather, FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RFValue } from "react-native-responsive-fontsize";
 import Loader from "@/components/VideoLoader";
+import { useNavigation } from "@react-navigation/native";
 
 export default function HiddenCouponCard() {
+  const navigation = useNavigation();
   const [userId, setUserId] = useState(null);
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -109,6 +112,12 @@ export default function HiddenCouponCard() {
   return (
     <SafeAreaView>
       <View style={styles.headerContainer}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
         <Text style={styles.header}>Rewards</Text>
       </View>
       <View style={{ height: "85%" }}>
@@ -464,11 +473,22 @@ export default function HiddenCouponCard() {
 }
 
 const styles = StyleSheet.create({
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: "5%",
+    marginBottom: "3%",
+    position: "relative",
+  },
   header: {
     fontSize: RFValue(23),
     alignSelf: "center",
-    marginTop: "5%",
-    marginBottom: "3%",
+  },
+  backButton: {
+    position: "absolute",
+    left: RFValue(16),
+    padding: 8,
   },
   card: {
     backgroundColor: "rgba(192, 217, 228, 0.28)",
@@ -595,10 +615,5 @@ const styles = StyleSheet.create({
     fontSize: RFValue(16),
     color: "#1E293B",
     fontWeight: "500",
-  },
-  headerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

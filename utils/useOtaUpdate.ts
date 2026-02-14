@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Updates from "expo-updates";
 import { Alert, AppState, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
 
 export function useOtaUpdate() {
   const [checking, setChecking] = useState(true);
+  const disabledRef = useRef(false);
+  const inFlightRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
 
   const openStoreListing = async () => {
     // NOTE: Android supports market:// deep link. iOS needs the App Store app-id URL.
@@ -38,21 +41,59 @@ export function useOtaUpdate() {
     // to miss critical updates.
 
     try {
+      if (disabledRef.current) {
+        setChecking(false);
+        return;
+      }
+
+      const isDevelopmentJs = typeof __DEV__ !== "undefined" && __DEV__ === true;
+      const updateId = (Updates as any)?.updateId;
+      const isUpdatesRuntimeAvailable = Updates.isEnabled && updateId != null;
+
+      if (isDevelopmentJs || !isUpdatesRuntimeAvailable) {
+        setChecking(false);
+        return;
+      }
+
       // Special case: users on the old runtime (1.0.3) should be forced to move to the
       // latest store build. We can't force-install a store build via OTA, but we can
       // block the app and instruct users clearly.
-  const runtimeVersion = (Updates as any)?.runtimeVersion;
+      const runtimeVersion = (Updates as any)?.runtimeVersion;
       const isRuntime103 = String(runtimeVersion || "").trim() === "1.0.3";
+
+      // Updates.isEnabled is already checked via isUpdatesRuntimeAvailable above.
+
+      const now = Date.now();
+      if (inFlightRef.current) return;
+      if (now - lastCheckAtRef.current < 30_000) return;
+      lastCheckAtRef.current = now;
+      inFlightRef.current = true;
 
       const { isAvailable } = await Updates.checkForUpdateAsync();
 
-      // If we have an OTA available, fetch it and reload immediately.
-      // For runtime 1.0.3 this is especially important so users get the "update required"
-      // messaging without needing to press anything.
+      // If we have an OTA available, fetch it. Avoid auto-reloading in normal flows
+      // because it can feel like the app "crashed" (sudden restart).
       if (isAvailable) {
         await Updates.fetchUpdateAsync();
-        // Auto-reload to apply the update right away.
-        await Updates.reloadAsync();
+        if (isRuntime103) {
+          await Updates.reloadAsync();
+          return;
+        }
+
+        disabledRef.current = true;
+        Alert.alert(
+          "Update available",
+          "A new update is ready. Restart the app to apply it now?",
+          [
+            { text: "Later", style: "cancel" },
+            {
+              text: "Restart now",
+              onPress: () => {
+                void Updates.reloadAsync();
+              },
+            },
+          ]
+        );
         return;
       }
 
@@ -71,8 +112,20 @@ export function useOtaUpdate() {
         return;
       }
     } catch (e) {
+      const msg = String((e as any)?.message || e || "");
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes("not supported in development builds") ||
+        lower.includes("expo-updates is not enabled") ||
+        lower.includes("updates is not enabled")
+      ) {
+        disabledRef.current = true;
+        setChecking(false);
+        return;
+      }
       console.log("[OTA] Update check failed:", e);
     } finally {
+      inFlightRef.current = false;
       setChecking(false);
     }
   }

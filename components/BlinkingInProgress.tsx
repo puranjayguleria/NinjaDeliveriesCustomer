@@ -33,11 +33,13 @@ const BlinkingInProgressBar: React.FC<BlinkingInProgressBarProps> = ({
     (order) => order.status === "pending" || order.status === "active"
   ).length;
 
-  // Do not render if there are no in-progress orders or if on the Profile screen
-  if (inProgressCount === 0 || currentRouteName === "Profile") return null;
-
   // Start pulsing animation
   useEffect(() => {
+    const shouldRender = inProgressCount > 0 && currentRouteName !== "Profile";
+    if (!shouldRender) {
+      fadeAnim.setValue(1);
+      return;
+    }
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(fadeAnim, {
@@ -54,7 +56,9 @@ const BlinkingInProgressBar: React.FC<BlinkingInProgressBarProps> = ({
     );
     animation.start();
     return () => animation.stop();
-  }, [fadeAnim]);
+  }, [currentRouteName, fadeAnim, inProgressCount]);
+
+  if (inProgressCount === 0 || currentRouteName === "Profile") return null;
 
   const handlePress = () => {
     console.log("[BlinkingInProgressBar] Bar tapped");

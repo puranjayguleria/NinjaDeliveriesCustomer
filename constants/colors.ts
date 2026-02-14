@@ -22,12 +22,6 @@ export const Colors = {
     400: '#bdc3c7',
     500: '#7f8c8d',
   },
-  valentine: {
-    primary: '#b22222',
-    dark: '#8b0000',
-    gradientStart: '#ffe6e9',
-    gradientEnd: '#ffccd5',
-  },
   skeleton: '#E1E9EE',
   overlay: 'rgba(0,0,0,0.6)',
   transparent: 'transparent',

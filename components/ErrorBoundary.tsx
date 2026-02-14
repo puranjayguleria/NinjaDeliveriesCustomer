@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
   handleRestart = async () => {
     try {
       await Updates.reloadAsync();
-    } catch (e) {
+    } catch {
       // If reload fails (e.g. in dev mode sometimes), we can just clear state
       this.setState({ hasError: false, error: null, errorInfo: null });
     }
@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Text style={styles.title}>Oops! Something went wrong.</Text>
             
             <Text style={styles.subtitle}>
-              We're sorry, but the application has encountered an unexpected error.
+              We&apos;re sorry, but the application has encountered an unexpected error.
             </Text>
 
             <View style={styles.errorBox}>

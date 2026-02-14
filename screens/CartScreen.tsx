@@ -43,7 +43,6 @@ import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
 import { useWeather } from "../context/WeatherContext";
-import { VALENTINE_PRODUCTS, SPECIAL_OFFERS } from "@/constants/ValentineProducts";
 
 
 
@@ -596,13 +595,6 @@ const CartScreen: React.FC = () => {
             }
           }
         });
-      });
-
-      // Merge local Valentine products if they are in the cart
-      [...VALENTINE_PRODUCTS, ...SPECIAL_OFFERS].forEach((item) => {
-        if (cart[item.id] && !productsData.some((p) => p.id === item.id)) {
-          productsData.push(item as any);
-        }
       });
 
       // Filter to only items with quantity > 0 in cart
