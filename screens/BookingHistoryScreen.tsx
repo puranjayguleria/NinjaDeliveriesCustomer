@@ -19,6 +19,8 @@ import { FirestoreServiceExtensions } from "../services/firestoreServiceExtensio
 import { BookingUtils } from "../utils/bookingUtils";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import auth from "@react-native-firebase/auth";
+import axios from "axios";
 
 const LOG_PREFIX = "📚[SvcPay]";
 const log = (...args: any[]) => {
@@ -42,6 +44,9 @@ export default function BookingHistoryScreen() {
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<{id: string, serviceName: string, totalPrice?: number} | null>(null);
 
+  // Expand/collapse grouped rows (plan group or time slot group)
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
   // If user killed the app during Razorpay verification, we keep a local recovery token.
   // On booking history open, reconcile once so pending bookings become confirmed/paid.
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
@@ -58,9 +63,6 @@ export default function BookingHistoryScreen() {
       if (!razorpayOrderId) return;
 
   log("reconcile_start", { razorpayOrderId, recovery });
-
-      const auth = require("@react-native-firebase/auth").default;
-      const axios = require("axios").default;
 
       const api = axios.create({
         timeout: 20000,
@@ -269,96 +271,7 @@ export default function BookingHistoryScreen() {
     }
   };
 
-  const renderFilterTabs = () => {
-    const counts = getFilterCounts();
-    const filters: { key: FilterStatus; label: string; count: number; icon: string; color: string; gradient: string[] }[] = [
-      { key: 'all', label: 'All', count: counts.all, icon: 'apps', color: '#6366F1', gradient: ['#6366F1', '#8B5CF6'] },
-      { key: 'active', label: 'Active', count: counts.active, icon: 'pulse', color: '#10B981', gradient: ['#10B981', '#059669'] },
-      { key: 'pending', label: 'Pending', count: counts.pending, icon: 'time', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
-      { key: 'completed', label: 'Done', count: counts.completed, icon: 'checkmark-circle', color: '#059669', gradient: ['#059669', '#047857'] },
-      { key: 'rejected', label: 'Reject', count: counts.reject, icon: 'close-circle', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
-      { key: 'cancelled', label: 'Cancel', count: counts.cancelled, icon: 'remove-circle', color: '#F97316', gradient: ['#F97316', '#EA580C'] },
-    ];
-
-    return (
-      <View style={styles.filterContainer}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabScrollContainer}
-          decelerationRate="fast"
-          snapToInterval={112} // Approximate tab width + gap
-          snapToAlignment="start"
-        >
-          {filters.map((filter, index) => {
-            const isActive = activeFilter === filter.key;
-            const animatedScale = tabAnimation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1, 0.95],
-            });
-
-            return (
-              <Animated.View
-                key={filter.key}
-                style={[
-                  { transform: [{ scale: isActive ? animatedScale : 1 }] }
-                ]}
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.filterTab,
-                    isActive && styles.activeFilterTab,
-                    isActive && { 
-                      backgroundColor: filter.color,
-                      shadowColor: filter.color,
-                    }
-                  ]}
-                  onPress={() => handleFilterChange(filter.key)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.tabContent}>
-                    <View style={[
-                      styles.tabIconContainer,
-                      isActive && styles.activeTabIconContainer
-                    ]}>
-                      <Ionicons 
-                        name={filter.icon as any} 
-                        size={16} 
-                        color={isActive ? '#FFFFFF' : filter.color} 
-                      />
-                    </View>
-                    
-                    <View style={styles.tabTextContainer}>
-                      <Text style={[
-                        styles.filterText,
-                        isActive && styles.activeFilterText
-                      ]}>
-                        {filter.label}
-                      </Text>
-                      
-                      {filter.count > 0 && (
-                        <View style={[
-                          styles.countBadge,
-                          isActive && styles.activeCountBadge
-                        ]}>
-                          <Text style={[
-                            styles.countText,
-                            isActive && styles.activeCountText
-                          ]}>
-                            {filter.count}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
-        </ScrollView>
-      </View>
-    );
-  };
+  // NOTE: legacy horizontal tabs UI existed earlier; this screen currently uses the left sidebar filters.
 
   const handleRejectBooking = async (bookingId: string, serviceName: string, totalPrice?: number) => {
     setBookingToCancel({ id: bookingId, serviceName, totalPrice });
@@ -391,115 +304,276 @@ export default function BookingHistoryScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: ServiceBooking }) => {
-    const isActive = BookingUtils.isActiveBooking(item.status);
-    const statusColor = BookingUtils.getStatusColor(item.status);
-    const statusText = BookingUtils.getStatusText(item.status);
-    const formattedDate = BookingUtils.formatBookingDate(item.date);
-    const formattedTime = BookingUtils.formatBookingTime(item.time);
-    const canReject = ['pending', 'assigned'].includes(item.status);
+  // Legacy per-booking card renderer removed in favor of grouped UI.
+
+  type BookingGroup =
+    | {
+        id: string;
+        kind: 'plan';
+        companyId: string;
+        companyName: string;
+        time: string;
+        unit: 'day' | 'week' | 'month' | 'unknown';
+        packageName: string;
+        totalVisits: number;
+        nextUpcomingDate?: string;
+        bookings: ServiceBooking[];
+      }
+    | {
+        id: string;
+        kind: 'slot';
+        companyId: string;
+        companyName: string;
+        date: string;
+        time: string;
+        bookings: ServiceBooking[];
+      };
+
+  const normalizeUnit = (u: any): 'day' | 'week' | 'month' | 'unknown' => {
+    const s = String(u || '').trim().toLowerCase();
+    if (s === 'day' || s === 'daily') return 'day';
+    if (s === 'week' || s === 'weekly') return 'week';
+    if (s === 'month' || s === 'monthly') return 'month';
+    return 'unknown';
+  };
+
+  const getCompanyKey = (b: ServiceBooking) => String(b.companyId || b.companyName || 'company');
+  const getCompanyName = (b: ServiceBooking) => String(b.companyName || 'Service Provider');
+  const getTimeLabel = (b: ServiceBooking) => String((b as any)?.time || '');
+  const getDateISO = (b: ServiceBooking) => String((b as any)?.date || '');
+
+  const getPackageInfoFromBooking = (b: ServiceBooking) => {
+    const selectedPackage: any = (b as any)?.selectedPackage;
+    const unit = normalizeUnit(
+      (b as any)?.packageType ||
+        selectedPackage?.unit ||
+        selectedPackage?.type ||
+        selectedPackage?.frequency
+    );
+    const packageName = String(
+      (b as any)?.packageName || selectedPackage?.name || (b as any)?.selectedPackageName || ''
+    ).trim();
+    const packageId = String(
+      (b as any)?.packageId || selectedPackage?.id || selectedPackage?.packageId || ''
+    ).trim();
+    const isPackage = (b as any)?.isPackage === true || (b as any)?.isPackageBooking === true;
+    return { isPackage, unit, packageName, packageId };
+  };
+
+  const groupBookingsForUI = (list: ServiceBooking[]): BookingGroup[] => {
+    const planGroups: Record<string, ServiceBooking[]> = {};
+    const slotGroups: Record<string, ServiceBooking[]> = {};
+
+    for (const b of list) {
+      const companyKey = getCompanyKey(b);
+      const time = getTimeLabel(b);
+      const date = getDateISO(b);
+      const { isPackage, unit, packageName, packageId } = getPackageInfoFromBooking(b);
+
+      if (isPackage && unit !== 'unknown') {
+        // Consumer UX: collapse all occurrences of the same plan into one group
+        // Keyed by company + package + time.
+        const planKey = `${companyKey}|${packageId || packageName || unit}|${time}`;
+        const arr = planGroups[planKey] || [];
+        arr.push(b);
+        planGroups[planKey] = arr;
+      } else {
+        // Normal services grouped by company + date + time
+        const slotKey = `${companyKey}|${date}|${time}`;
+        const arr = slotGroups[slotKey] || [];
+        arr.push(b);
+        slotGroups[slotKey] = arr;
+      }
+    }
+
+    const today = new Date();
+    const todayISO = today.toISOString().split('T')[0];
+
+    const out: BookingGroup[] = [];
+
+    for (const key of Object.keys(planGroups)) {
+      const arr = planGroups[key];
+      const sorted = [...arr].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      const sample = sorted[0];
+      const { unit, packageName } = getPackageInfoFromBooking(sample);
+      const companyName = getCompanyName(sample);
+      const companyId = String(sample.companyId || getCompanyKey(sample));
+      const time = getTimeLabel(sample);
+
+      // next upcoming date (>= todayISO)
+      const nextUpcoming = sorted.find((x) => String(x.date || '') >= todayISO)?.date;
+
+      out.push({
+        id: `plan:${key}`,
+        kind: 'plan',
+        companyId,
+        companyName,
+        time,
+        unit,
+        packageName: packageName || (unit === 'month' ? 'Monthly plan' : unit === 'week' ? 'Weekly plan' : 'Plan'),
+        totalVisits: sorted.length,
+        nextUpcomingDate: nextUpcoming ? String(nextUpcoming) : undefined,
+        bookings: sorted,
+      });
+    }
+
+    for (const key of Object.keys(slotGroups)) {
+      const arr = slotGroups[key];
+      const sorted = [...arr].sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+      const sample = sorted[0];
+      const companyName = getCompanyName(sample);
+      const companyId = String(sample.companyId || getCompanyKey(sample));
+      const time = getTimeLabel(sample);
+      const date = getDateISO(sample);
+      out.push({
+        id: `slot:${key}`,
+        kind: 'slot',
+        companyId,
+        companyName,
+        date,
+        time,
+        bookings: sorted,
+      });
+    }
+
+    // Sort: upcoming first by nextUpcomingDate/date
+    out.sort((a, b) => {
+      const aDate = a.kind === 'plan' ? (a.nextUpcomingDate || a.bookings?.[0]?.date || '') : a.date;
+      const bDate = b.kind === 'plan' ? (b.nextUpcomingDate || b.bookings?.[0]?.date || '') : b.date;
+      if (aDate !== bDate) return String(aDate).localeCompare(String(bDate));
+
+      const aTime = a.kind === 'plan' ? a.time : a.time;
+      const bTime = b.kind === 'plan' ? b.time : b.time;
+      return String(aTime).localeCompare(String(bTime));
+    });
+
+    return out;
+  };
+
+  const groupedBookings = groupBookingsForUI(bookings);
+
+  const toggleGroupExpansion = (groupId: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  const renderGroup = ({ item }: { item: BookingGroup }) => {
+    const isExpanded = expandedGroups[item.id] === true;
+
+    if (item.kind === 'plan') {
+      const unitLabel = item.unit === 'month' ? 'Monthly plan' : item.unit === 'week' ? 'Weekly plan' : item.unit === 'day' ? 'Daily plan' : 'Plan';
+      const title = `${unitLabel} – ${item.totalVisits} visits @ ${item.time}`;
+      const nextDateLabel = item.nextUpcomingDate
+        ? new Date(item.nextUpcomingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '—';
+
+      return (
+        <View style={styles.groupCardWrap}>
+          <TouchableOpacity
+            style={styles.groupCard}
+            activeOpacity={0.85}
+            onPress={() => toggleGroupExpansion(item.id)}
+          >
+            <View style={styles.groupHeaderRow}>
+              <View style={styles.groupIcon}>
+                <Ionicons name="calendar" size={18} color="#2563EB" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.groupTitle} numberOfLines={2}>{title}</Text>
+                <Text style={styles.groupSubtitle} numberOfLines={1}>{item.companyName} • Next: {nextDateLabel}</Text>
+              </View>
+              <View style={styles.groupRight}>
+                <View style={styles.groupCountPill}>
+                  <Text style={styles.groupCountPillText}>{item.totalVisits}</Text>
+                </View>
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {isExpanded && (
+            <View style={styles.groupChildren}>
+              {item.bookings.map((b) => (
+                <React.Fragment key={b.id}>
+                  <View style={styles.groupChildRow}>
+                    <View style={styles.groupChildDot} />
+                    <Text style={styles.groupChildText}>
+                      {new Date(b.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {b.time}
+                    </Text>
+                    <Text style={styles.groupChildStatus}>
+                      {BookingUtils.getStatusText(b.status)}
+                    </Text>
+                  </View>
+                </React.Fragment>
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    // slot group
+    const dateLabel = new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const title = `${item.companyName} – ${dateLabel} @ ${item.time}`;
+    const count = item.bookings.length;
 
     return (
-      <TouchableOpacity 
-        style={styles.card}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate("TrackBooking", {
-          bookingId: item.id,
-          serviceTitle: item.serviceName,
-          selectedDate: formattedDate,
-          selectedTime: formattedTime,
-          company: { name: item.technicianName || "Service Provider" },
-          issues: [item.workName],
-          totalPrice: item.totalPrice || 0,
-          bookingType: "service",
-          paymentMethod: "cash",
-          notes: item.workName,
-        })}
-      >
-        <View style={styles.cardContent}>
-          {/* Service Icon */}
-          <View style={[styles.iconContainer, { backgroundColor: statusColor + '15' }]}>
-            <Ionicons 
-              name="construct" 
-              size={24} 
-              color={statusColor} 
-            />
-          </View>
-          
-          <View style={styles.details}>
-            {/* Service name - Full width */}
-            <Text style={styles.service} numberOfLines={2}>{item.serviceName}</Text>
-            
-            {/* Status badge below service name */}
-            <View style={[styles.statusBadge, { backgroundColor: statusColor, alignSelf: 'flex-start', marginBottom: 8 }]}>
-              <Text style={styles.statusText}>{statusText}</Text>
+      <View style={styles.groupCardWrap}>
+        <TouchableOpacity
+          style={styles.groupCard}
+          activeOpacity={0.85}
+          onPress={() => toggleGroupExpansion(item.id)}
+        >
+          <View style={styles.groupHeaderRow}>
+            <View style={styles.groupIcon}>
+              <Ionicons name="business" size={18} color="#0F766E" />
             </View>
-            
-            {/* Work description */}
-            <Text style={styles.issue} numberOfLines={2}>{item.workName}</Text>
-            
-            {/* Customer info */}
-            <View style={styles.customerRow}>
-              <Ionicons name="person-outline" size={14} color="#6B7280" />
-              <Text style={styles.customer}>{item.customerName}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.groupTitle} numberOfLines={2}>{title}</Text>
+              <Text style={styles.groupSubtitle} numberOfLines={1}>{count} booking{count === 1 ? '' : 's'}</Text>
             </View>
-            
-            {/* Date and time */}
-            <View style={styles.timeInfo}>
-              <View style={styles.dateTimeItem}>
-                <Ionicons name="calendar-outline" size={14} color="#6B7280" />
-                <Text style={styles.dateTime}>{new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+            <View style={styles.groupRight}>
+              <View style={styles.groupCountPill}>
+                <Text style={styles.groupCountPillText}>{count}</Text>
               </View>
-              <View style={styles.dateTimeItem}>
-                <Ionicons name="time-outline" size={14} color="#6B7280" />
-                <Text style={styles.dateTime}>{item.time}</Text>
-              </View>
-            </View>
-
-            {/* Show completion OTP for started services */}
-            {item.status === 'started' && (item.completionOtp || item.startOtp) && (
-              <View style={styles.otpContainer}>
-                <Ionicons name="key" size={12} color="#3B82F6" />
-                <Text style={styles.otpText}>
-                  OTP: {item.completionOtp || item.startOtp}
-                </Text>
-              </View>
-            )}
-
-            {/* Action buttons for cancellable bookings */}
-            {canReject && (
-              <View style={styles.actionButtonsContainer}>
-                <TouchableOpacity
-                  style={styles.rejectButton}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleRejectBooking(item.id, item.serviceName, item.totalPrice);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.rejectButtonContent}>
-                    <Ionicons name="close-outline" size={14} color="#FF4757" />
-                    <Text style={styles.rejectButtonText}>Cancel</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Bottom row with booking ID and price */}
-            <View style={styles.bottomRow}>
-              <Text style={styles.bookingId} numberOfLines={1}>#{item.id?.substring(0, 8) || 'N/A'}</Text>
-              {item.totalPrice && (
-                <Text style={styles.price}>₹{item.totalPrice}</Text>
-              )}
+              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
             </View>
           </View>
+        </TouchableOpacity>
 
-          {/* Arrow indicator */}
-          <View style={styles.arrowContainer}>
-            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+        {isExpanded && (
+          <View style={styles.groupChildren}>
+            {item.bookings.map((b) => (
+              <TouchableOpacity
+                key={b.id}
+                style={styles.groupChildTouchable}
+                activeOpacity={0.8}
+                onPress={() => {
+                  const formattedDate = BookingUtils.formatBookingDate(b.date);
+                  const formattedTime = BookingUtils.formatBookingTime(b.time);
+                  navigation.navigate("TrackBooking", {
+                    bookingId: b.id,
+                    serviceTitle: b.serviceName,
+                    selectedDate: formattedDate,
+                    selectedTime: formattedTime,
+                    company: { name: b.technicianName || "Service Provider" },
+                    issues: [b.workName],
+                    totalPrice: b.totalPrice || 0,
+                    bookingType: "service",
+                    paymentMethod: "cash",
+                    notes: b.workName,
+                  });
+                }}
+              >
+                <View style={styles.groupChildRow}>
+                  <View style={styles.groupChildDot} />
+                  <Text style={styles.groupChildText} numberOfLines={1}>{b.serviceName}</Text>
+                  <Text style={styles.groupChildStatus}>{BookingUtils.getStatusText(b.status)}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
-        </View>
-      </TouchableOpacity>
+        )}
+      </View>
     );
   };
   return (
@@ -616,9 +690,9 @@ export default function BookingHistoryScreen() {
           ) : (
             <FlatList
               style={{ flex: 1 }}
-              data={bookings}
-              keyExtractor={(item) => item.id || ''}
-              renderItem={renderItem}
+              data={groupedBookings}
+              keyExtractor={(item) => item.id}
+              renderItem={renderGroup}
               contentContainerStyle={{ paddingBottom: 5, paddingTop: 18, paddingHorizontal: 8 }}
               refreshControl={
                 <RefreshControl
@@ -687,6 +761,93 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
     flexDirection: "row",
+  },
+
+  // Grouped list UI
+  groupCardWrap: {
+    marginBottom: 10,
+  },
+  groupCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  groupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  groupIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+  },
+  groupTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  groupSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#64748B',
+  },
+  groupRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  groupCountPill: {
+    minWidth: 34,
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupCountPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3730A3',
+  },
+  groupChildren: {
+    marginTop: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 8,
+  },
+  groupChildTouchable: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  groupChildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupChildDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#94A3B8',
+    marginRight: 10,
+  },
+  groupChildText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  groupChildStatus: {
+    fontSize: 12,
+    color: '#64748B',
+    marginLeft: 10,
   },
 
   // Left Sidebar - Filter Tabs
