@@ -810,14 +810,38 @@ export default function ServiceCheckoutScreen() {
         }
 
         return expandedOccurrences.map(async (occ, occIndex) => {
+          const normalizeWorkName = (raw: any, fallback: string) => {
+            if (raw == null) return fallback;
+            if (typeof raw === 'string') {
+              const s = raw.trim();
+              return s.length > 0 ? s : fallback;
+            }
+            if (Array.isArray(raw)) {
+              const parts = raw
+                .map((x) => {
+                  if (typeof x === 'string') return x;
+                  if (x && typeof x === 'object') return (x as any).name || (x as any).title || '';
+                  return '';
+                })
+                .filter(Boolean);
+              return parts.length > 0 ? parts.join(', ') : fallback;
+            }
+            if (typeof raw === 'object') {
+              const n = (raw as any).name || (raw as any).title;
+              if (typeof n === 'string' && n.trim().length > 0) return n.trim();
+            }
+            return fallback;
+          };
+
           // Ensure all required fields have valid values
           const bookingData = {
           // Ownership field used by BookingHistory queries
           customerId,
           serviceName: service.serviceTitle || "Service",
-          workName: (service.issues && service.issues.length > 0) 
-            ? service.issues.map((issue: any) => typeof issue === 'object' ? issue.name : issue).join(', ') 
-            : (service.serviceTitle || "Service"),
+          workName: normalizeWorkName(
+            (service as any)?.issues,
+            String(service.serviceTitle || 'Service')
+          ),
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
