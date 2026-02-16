@@ -146,6 +146,22 @@ export default function BookingConfirmationScreen() {
     return `${date} at ${time || 'Time TBD'}`;
   };
 
+  // Helper: format an estimated duration that might be stored as hours (number)
+  // or minutes (number). We keep this defensive because some older records can be missing it.
+  const formatEstimatedDuration = (raw: any): string | null => {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+
+    // Heuristic: if value is large, it's probably minutes (e.g. 120). Otherwise hours (e.g. 2).
+    const minutes = n >= 12 ? Math.round(n) : Math.round(n * 60);
+    if (minutes < 60) return `${minutes} min`;
+
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (m === 0) return `${h} hour${h !== 1 ? 's' : ''}`;
+    return `${h}h ${m}m`;
+  };
+
   // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
     try {
@@ -411,9 +427,9 @@ export default function BookingConfirmationScreen() {
               <Text style={styles.detailValue}>
                 {formatDateTime(displayData.selectedDate, displayData.selectedTime)}
               </Text>
-              {displayData.estimatedDuration && (
+              {!!formatEstimatedDuration(displayData.estimatedDuration) && (
                 <Text style={styles.durationText}>
-                  Duration: {displayData.estimatedDuration} hour{displayData.estimatedDuration > 1 ? 's' : ''}
+                  Duration: {formatEstimatedDuration(displayData.estimatedDuration)}
                 </Text>
               )}
             </View>
