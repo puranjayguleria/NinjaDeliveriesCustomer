@@ -782,8 +782,25 @@ export default function ServiceCheckoutScreen() {
           ? (service as any).additionalInfo.occurrences
           : [];
 
-        const expandedOccurrences = (occurrences.length > 0)
-          ? occurrences
+        // Safety guard:
+        // Day-unit packages in our UX are single-day bookings (pick exactly 1 day within next 7 days).
+        // If an old/stale cart item still contains an expanded occurrences array (e.g. 28 days),
+        // collapse it here so we never create month-long bookings by mistake.
+        const rawUnitForGuard = String(
+          service?.additionalInfo?.package?.unit ||
+          service?.additionalInfo?.package?.frequency ||
+          service?.additionalInfo?.package?.type ||
+          ''
+        ).toLowerCase().trim();
+        const isDayUnitPackage = rawUnitForGuard === 'day' || rawUnitForGuard === 'daily';
+        const normalizedOccurrences = isDayUnitPackage
+          ? (occurrences.length > 0
+              ? [occurrences[0]]
+              : [{ date: service.selectedDate || new Date().toISOString().split('T')[0], time: service.selectedTime || '10:00 AM' }])
+          : occurrences;
+
+        const expandedOccurrences = (normalizedOccurrences.length > 0)
+          ? normalizedOccurrences
           : [{ date: service.selectedDate || new Date().toISOString().split('T')[0], time: service.selectedTime || "10:00 AM" }];
 
         // If the client is creating recurrence bookings, we must stamp a stable planGroupId

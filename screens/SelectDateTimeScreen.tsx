@@ -100,7 +100,10 @@ export default function SelectDateTimeScreen() {
 
   const selectedPackageUnit = String((selectedPackage as any)?.unit || '').toLowerCase();
   const isMonthlyPackage = isPackageBooking === true && selectedPackageUnit === 'month';
-  const isRecurringPackage = isPackageBooking === true && ['day', 'daily', 'week', 'weekly', 'month', 'monthly'].includes(selectedPackageUnit);
+  // IMPORTANT:
+  // “Day” packages are *single-day* bookings in our UX (pick exactly 1 day within next 7 days).
+  // Only week/month should generate multiple occurrences.
+  const isRecurringPackage = isPackageBooking === true && ['week', 'weekly', 'month', 'monthly'].includes(selectedPackageUnit);
   const needsDayConfirmation = isRecurringPackage && (isMonthlyPackage || selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
   const isDailyPackage = isPackageBooking === true && (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily');
 
@@ -200,11 +203,10 @@ export default function SelectDateTimeScreen() {
     if (Number.isNaN(anchor.getTime())) return out;
 
     if (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily') {
-      // Fixed window: 4 weeks from the selected start date (inclusive).
-      for (let i = 0; i < 28; i++) {
-        const dISO = addDaysISO(anchorDateISO, i);
-        out.push({ date: dISO, time: timeSlotLabel });
-      }
+      // Day-unit packages are single-day bookings.
+      // The UI already enforces “pick exactly 1 day within next 7 days”, so
+      // we should only create ONE occurrence here.
+      out.push({ date: anchorDateISO, time: timeSlotLabel });
       return out;
     }
 
