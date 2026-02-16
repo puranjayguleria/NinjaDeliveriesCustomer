@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
+  computeQuantityOfferPricing,
+  getBestActiveQuantityOffer,
+} from "../utils/serviceQuantityOffers";
+import {
   View,
   Text,
   TouchableOpacity,
@@ -8,6 +12,7 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
@@ -20,7 +25,32 @@ export default function CompanySelectionScreen() {
   const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
+  const [offerCelebrationText, setOfferCelebrationText] = useState<string | null>(null);
   const navInFlightRef = useRef(false);
+
+  const getOfferPreviewText = (quantityOffers: any, qty: unknown, baseUnitPrice: unknown) => {
+    if (!Array.isArray(quantityOffers) || quantityOffers.length === 0) return null;
+    const q = Number(qty);
+    const unitPrice = Number(baseUnitPrice);
+    const safeQty = Number.isFinite(q) && q > 0 ? q : 1;
+    const safeUnitPrice = Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : 0;
+
+    const best = getBestActiveQuantityOffer(quantityOffers, safeQty);
+    if (!best) return null;
+
+    const msg = String((best as any)?.message || '').trim();
+    if (msg) return msg;
+
+    const pricing = computeQuantityOfferPricing({
+      quantity: safeQty,
+      baseUnitPrice: safeUnitPrice,
+      offers: quantityOffers,
+    });
+
+    const savings = pricing?.savings;
+    // Fallback if message isn't provided by Firestore.
+    return Number.isFinite(savings) && savings > 0 ? `Offer unlocked • Save ₹${Math.round(savings)}` : `Offer available`;
+  };
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -214,6 +244,62 @@ export default function CompanySelectionScreen() {
     }
   }, [selectedIssueIds, serviceTitle]);
 
+  // --- Performance helpers (bounded concurrency + per-selection caching) ---
+  const pLimit = <T,>(concurrency: number) => {
+    let activeCount = 0;
+    const queue: (() => void)[] = [];
+
+    const next = () => {
+      activeCount--;
+      const run = queue.shift();
+      if (run) run();
+    };
+
+    return (fn: () => Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const run = () => {
+          activeCount++;
+          fn()
+            .then(resolve)
+            .catch(reject)
+            .finally(next);
+        };
+
+        if (activeCount < concurrency) run();
+        else queue.push(run);
+      });
+  };
+
+  const selectionKey = `${selectedDate || ''}|${selectedTime || ''}|${(selectedIssueIds || []).join(',')}|${serviceTitle || ''}`;
+  const activeWorkersCacheRef = useRef(new Map<string, boolean>());
+  const availabilityCacheRef = useRef(new Map<string, boolean>());
+
+  useEffect(() => {
+    activeWorkersCacheRef.current.clear();
+    availabilityCacheRef.current.clear();
+  }, [selectionKey]);
+
+  const checkCompanyHasActiveWorkersCached = useCallback(async (companyId: string): Promise<boolean> => {
+    const cached = activeWorkersCacheRef.current.get(companyId);
+    if (typeof cached === 'boolean') return cached;
+    const has = await checkCompanyHasActiveWorkers(companyId);
+    activeWorkersCacheRef.current.set(companyId, has);
+    return has;
+  }, []);
+
+  const checkRealTimeAvailabilityCached = useCallback(
+    async (companyId: string, date: string, time: string, serviceIds?: string[]): Promise<boolean> => {
+      const idsKey = (serviceIds || selectedIssueIds || []).join(',');
+      const key = `${companyId}|${date}|${time}|${idsKey}`;
+      const cached = availabilityCacheRef.current.get(key);
+      if (typeof cached === 'boolean') return cached;
+      const ok = await checkRealTimeAvailability(companyId, date, time, serviceIds);
+      availabilityCacheRef.current.set(key, ok);
+      return ok;
+    },
+    [checkRealTimeAvailability, selectedIssueIds]
+  );
+
   // Filter companies that have active workers and are available for the selected time
   const filterCompaniesWithAvailability = useCallback(async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
     if (!checkTimeSlot || !selectedDate || !selectedTime) {
@@ -224,7 +310,7 @@ export default function CompanySelectionScreen() {
         const companyId = company.companyId || company.id;
         
         // Check if company has any active workers
-        const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+        const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
         if (!hasActiveWorkers) {
           console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
           continue;
@@ -272,37 +358,36 @@ export default function CompanySelectionScreen() {
       // If a slot-block is present (predefined services), we require a company to be available for ALL.
       // The existing helper `getCompaniesWithSlotAvailability` only supports a single (date,time), so we bypass it.
       if (multiSlotPairs.length > 0) {
-        const availableCompanies: ServiceCompany[] = [];
         const requiredPairs = multiSlotPairs;
 
-        for (const company of companies) {
-          const companyId = company.companyId || company.id;
-          const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
-          if (!hasActiveWorkers) continue;
+        const limit = pLimit(6);
+        const results = await Promise.all(
+          companies.map(company =>
+            limit(async () => {
+              const companyId = company.companyId || company.id;
+              const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
+              if (!hasActiveWorkers) return null;
 
-          let okForAll = true;
-          for (const pair of requiredPairs) {
-            const ok = await checkRealTimeAvailability(
-              companyId,
-              pair.date,
-              pair.time,
-              selectedIssueIds
-            );
-            if (!ok) {
-              okForAll = false;
-              break;
-            }
-          }
+              const slotLimit = pLimit(4);
+              const checks = await Promise.all(
+                requiredPairs.map(pair =>
+                  slotLimit(() =>
+                    checkRealTimeAvailabilityCached(companyId, pair.date, pair.time, selectedIssueIds)
+                  )
+                )
+              );
 
-          if (okForAll) {
-            availableCompanies.push({
-              ...company,
-              availability: `Available for ${requiredPairs.length} slot block`,
-            });
-          }
-        }
+              if (!checks.every(Boolean)) return null;
 
-        return availableCompanies;
+              return {
+                ...company,
+                availability: `Available for ${requiredPairs.length} slot block`,
+              } as ServiceCompany;
+            })
+          )
+        );
+
+        return results.filter(Boolean) as ServiceCompany[];
       }
 
       const companiesWithSlotAvailability = await FirestoreService.getCompaniesWithSlotAvailability(
@@ -332,7 +417,7 @@ export default function CompanySelectionScreen() {
       
       for (const company of companies) {
         const companyId = company.companyId || company.id;
-        const hasActiveWorkers = await checkCompanyHasActiveWorkers(companyId);
+        const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
         
         // Only show companies that have active workers (no busy workers shown)
         if (hasActiveWorkers) {
@@ -353,7 +438,7 @@ export default function CompanySelectionScreen() {
 
             let okForAll = true;
             for (const pair of requiredPairs) {
-              const ok = await checkRealTimeAvailability(companyId, pair.date, pair.time, selectedIssueIds);
+              const ok = await checkRealTimeAvailabilityCached(companyId, pair.date, pair.time, selectedIssueIds);
               if (!ok) {
                 okForAll = false;
                 break;
@@ -380,7 +465,7 @@ export default function CompanySelectionScreen() {
       
       return availableCompanies;
     }
-  }, [categoryId, checkRealTimeAvailability, fromServiceServices, isPackageBooking, issues, selectedDate, selectedIssueIds, selectedIssues, selectedSlots, selectedTime, serviceTitle]);
+  }, [categoryId, checkCompanyHasActiveWorkersCached, checkRealTimeAvailabilityCached, fromServiceServices, isPackageBooking, issues, selectedDate, selectedIssueIds, selectedIssues, selectedSlots, selectedTime, serviceTitle]);
 
   const fetchServiceCompanies = useCallback(async () => {
     try {
@@ -621,11 +706,27 @@ export default function CompanySelectionScreen() {
     );
 
     const packagePrice = Number((packageInfo as any)?.price);
+    // For non-package services, offers are typically applied per-unit on the *base service price*.
+    // `issueTotalPrice` can represent a one-time aggregate across selected issues, which would make
+    // per-unit discounts look like they aren't being deducted correctly.
+    const baseServiceUnitPrice = typeof resolvedCompany?.price === 'number' ? resolvedCompany.price : 0;
     const computedPrice = (isPackageBooking && Number.isFinite(packagePrice) && packagePrice > 0)
       ? packagePrice
-  : (issueTotalPrice > 0 ? issueTotalPrice : (resolvedCompany?.price || 0));
+      : (baseServiceUnitPrice > 0 ? baseServiceUnitPrice : (issueTotalPrice > 0 ? issueTotalPrice : 0));
 
     // Add service to cart (include package info when available)
+    const rawQuantityOffers = (packageInfo as any)?.quantityOffers || (resolvedCompany as any)?.quantityOffers || null;
+    const bestOffer = rawQuantityOffers
+      ? getBestActiveQuantityOffer(rawQuantityOffers, Number(serviceQuantities ?? 1))
+      : null;
+
+    const selectedQty = Math.max(
+      1,
+      Number(
+        (serviceQuantities as any)?.[(Array.isArray(selectedIssueIds) && selectedIssueIds[0]) ? selectedIssueIds[0] : resolvedCompany.id]
+      ) || 1
+    );
+
     addService({
       // For package bookings, serviceTitle is the category (e.g. "Home GYM"). Keep it for display,
       // but make sure the actual package price is included below.
@@ -645,6 +746,7 @@ export default function CompanySelectionScreen() {
       bookingType,
       unitPrice: computedPrice,
       totalPrice: computedPrice,
+  quantity: selectedQty,
       additionalInfo: {
         ...(packageInfo ? {
           isPackageService: true,
@@ -670,10 +772,22 @@ export default function CompanySelectionScreen() {
           startSlot: startSlot || null,
           selectedSlots: Array.isArray(selectedSlots) ? selectedSlots : null,
         }),
+
+        // Quantity offers (stored on service_services documents).
+        // We keep the raw offers so the cart can compute the best eligible offer when quantity changes.
+        // Also persist the chosen base unit so offer calculations can't drift if other totals change.
+        baseOfferUnitPrice: computedPrice,
+        quantityOffers: rawQuantityOffers,
       },
     });
 
     // Show success modal instead of Alert
+    if (bestOffer) {
+      const msg = String((bestOffer as any)?.message || '').trim();
+      setOfferCelebrationText(msg || 'Offer applied!');
+    } else {
+      setOfferCelebrationText(null);
+    }
     setShowSuccessModal(true);
     // Reset package selection after adding
     setSelectedPackage(null);
@@ -986,6 +1100,27 @@ export default function CompanySelectionScreen() {
                                 )}
                               </View>
                               <Text style={styles.packageOptionPrice}>₹{pkgObj.price}</Text>
+                              {(() => {
+                                const offerText = getOfferPreviewText(
+                                  (pkgObj as any)?.quantityOffers,
+                                  // serviceQuantities is a map keyed by serviceId in non-package flow; for package cards
+                                  // we fall back to the selectedIssueIds first (or 1) to decide eligibility.
+                                  (Array.isArray(selectedIssueIds) && selectedIssueIds[0])
+                                    ? (serviceQuantities as any)?.[selectedIssueIds[0]]
+                                    : 1,
+                                  (pkgObj as any)?.price
+                                );
+                                return offerText ? (
+                                  <View style={styles.offerPillRow}>
+                                    <View style={styles.offerPill}>
+                                      <Ionicons name="pricetag" size={14} color="#0e7490" />
+                                      <Text style={styles.offerPillText} numberOfLines={2}>
+                                        {offerText}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                ) : null;
+                              })()}
                               {pkgObj.description && (
                                 <Text style={styles.packageOptionDesc} numberOfLines={2}>
                                   {pkgObj.description}
@@ -1005,6 +1140,24 @@ export default function CompanySelectionScreen() {
                     </View>
                   )
                 )}
+
+                {(() => {
+                  const offerText = getOfferPreviewText(
+                    (item as any)?.quantityOffers,
+                    (serviceQuantities as any)?.[item.id],
+                    (item as any)?.price
+                  );
+                  return offerText ? (
+                    <View style={styles.offerPillRow}>
+                      <View style={styles.offerPill}>
+                        <Ionicons name="flash" size={14} color="#0e7490" />
+                        <Text style={styles.offerPillText} numberOfLines={2}>
+                          {offerText}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null;
+                })()}
                 {/* Additional Info */}
                 {item.rating && (
                   <View style={styles.metaRow}>
@@ -1097,6 +1250,7 @@ export default function CompanySelectionScreen() {
         serviceTitle={serviceTitle}
         selectedDate={selectedDateFull || selectedDate}
         selectedTime={selectedTime}
+  offerText={offerCelebrationText}
         onContinueServices={() => {
           setShowSuccessModal(false);
           navigation.navigate("ServicesHome");
@@ -1387,6 +1541,41 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     marginBottom: 4,
+  },
+
+  offerRow: {
+    marginTop: 2,
+    marginBottom: 6,
+  },
+
+  offerText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0e7490",
+  },
+
+  offerPillRow: {
+    marginTop: 6,
+    marginBottom: 6,
+  },
+
+  offerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+    backgroundColor: "#ecfeff",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#06b6d4",
+  },
+
+  offerPillText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0e7490",
   },
 
   packageOptionDesc: {

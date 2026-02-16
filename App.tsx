@@ -857,8 +857,13 @@ function AppTabs() {
                 return;
               }
 
-              // Non-restricted location: let React Navigation handle the tab switch normally.
-              // (We intentionally do NOT preventDefault / do NOT reset the nested stack; that caused unmount loops.)
+              // Non-restricted location:
+              // Always bring the user back to ServicesHome when they tap the Services tab,
+              // even if they're currently deep in the Services stack (e.g. ServiceCart).
+              // This fixes the "tap Services tab does nothing" symptom caused by being already on ServicesTab
+              // with a nested route that doesn't reset.
+              e.preventDefault();
+              navigation.navigate("ServicesTab", { screen: "ServicesHome" });
             },
           })}
         />

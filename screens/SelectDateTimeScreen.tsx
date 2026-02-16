@@ -319,7 +319,7 @@ export default function SelectDateTimeScreen() {
   // selected service(s) `duration` + `durationUnit`, multiplied by quantity.
   type DurationUnit = 'minute' | 'minutes' | 'min' | 'hour' | 'hours' | 'hr' | 'day' | 'days' | 'week' | 'weeks' | 'month' | 'months';
 
-  const normalizeDurationUnit = (u: any): DurationUnit | null => {
+  const normalizeDurationUnit = useCallback((u: any): DurationUnit | null => {
     if (!u) return null;
     const s = String(u).trim().toLowerCase();
     if (
@@ -330,7 +330,7 @@ export default function SelectDateTimeScreen() {
       s === 'month' || s === 'months'
     ) return s as DurationUnit;
     return null;
-  };
+  }, []);
 
   const parseSlotHours = (label: string): number => {
     // Expected label format: "9:00 AM - 11:00 AM".
@@ -363,7 +363,7 @@ export default function SelectDateTimeScreen() {
 
   const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
-  const durationToMinutes = (duration: any, unitRaw: any): number | null => {
+  const durationToMinutes = useCallback((duration: any, unitRaw: any): number | null => {
     const d = Number(duration);
     if (!Number.isFinite(d) || d <= 0) return null;
     const unit = normalizeDurationUnit(unitRaw);
@@ -388,7 +388,7 @@ export default function SelectDateTimeScreen() {
       case 'months':
         return d * 30 * 24 * 60;
     }
-  };
+  }, [normalizeDurationUnit]);
 
   const formatTime12h = (totalMinutes: number) => {
     const m = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
@@ -399,19 +399,77 @@ export default function SelectDateTimeScreen() {
     return `${hh12}:${String(mm).padStart(2, '0')} ${ampm}`;
   };
 
-  const buildSlotsForIntervalMinutes = useCallback((intervalMinutes: number): string[] => {
-    // Service slots are an in-day selection grid. We generate time windows for a business day.
-    // Current defaults cover 9 AM - 9 PM (12 hours). We'll keep the same day bounds.
+  // Legacy helper (kept for reference); service flow now generates duration-based start times.
+  // const buildSlotsForIntervalMinutes = useCallback((intervalMinutes: number): string[] => {
+  //   const dayStartM = 9 * 60;
+  //   const dayEndM = 21 * 60;
+  //   const step = Math.round(intervalMinutes);
+  //   if (!Number.isFinite(step) || step <= 0) return [];
+  //   const out: string[] = [];
+  //   for (let start = dayStartM; start + step <= dayEndM; start += step) {
+  //     const end = start + step;
+  //     out.push(`${formatTime12h(start)} - ${formatTime12h(end)}`);
+  //   }
+  //   return out;
+  // }, []);
+
+  const buildStartTimesForDurationMinutes = useCallback((durationMinutes: number, stepMinutes: number): string[] => {
+    // Generate start-time labels (single time like "9:00 AM") for a business day.
+    // The chosen start time represents a continuous block of `durationMinutes`.
     const dayStartM = 9 * 60;
     const dayEndM = 21 * 60;
 
-    const step = Math.round(intervalMinutes);
+    const dur = Math.round(Number(durationMinutes));
+    const step = Math.round(Number(stepMinutes));
+    if (!Number.isFinite(dur) || dur <= 0) return [];
     if (!Number.isFinite(step) || step <= 0) return [];
 
     const out: string[] = [];
-    for (let start = dayStartM; start + step <= dayEndM; start += step) {
-      const end = start + step;
-      out.push(`${formatTime12h(start)} - ${formatTime12h(end)}`);
+    for (let start = dayStartM; start + dur <= dayEndM; start += step) {
+      out.push(formatTime12h(start));
+    }
+    return out;
+  }, []);
+
+  const parseTimeToMinutes = (t: string): number | null => {
+    // Accept "9:00 AM". (We intentionally do NOT accept time ranges here.)
+    const m = String(t).trim().match(/^\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*$/i);
+    if (!m) return null;
+    let hh = Number(m[1]);
+    const mm = Number(m[2]);
+    const ap = m[3].toUpperCase();
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    if (hh < 1 || hh > 12 || mm < 0 || mm > 59) return null;
+    if (ap === 'PM' && hh !== 12) hh += 12;
+    if (ap === 'AM' && hh === 12) hh = 0;
+    return hh * 60 + mm;
+  };
+
+  const formatDurationWindowLabel = useCallback((startLabel: string, durationMinutes: number): string => {
+    const startM = parseTimeToMinutes(startLabel);
+    const dur = Math.round(Number(durationMinutes));
+    if (startM == null || !Number.isFinite(dur) || dur <= 0) return startLabel;
+    const endM = startM + dur;
+    return `${formatTime12h(startM)} - ${formatTime12h(endM)}`;
+  }, []);
+
+  // NOTE: We compute the final required duration *after* duration hydration state is declared.
+
+  const buildAtomicIntervalsForDuration = useCallback((startLabel: string, durationMinutes: number, atomicMinutes: number): string[] => {
+    // Convert a chosen start time (e.g. "9:00 AM") into an array of atomic time windows
+    // (e.g. "9:00 AM - 9:30 AM", "9:30 AM - 10:00 AM" ...) whose availability we validate.
+    const startM = parseTimeToMinutes(startLabel);
+    const dur = Math.round(Number(durationMinutes));
+    const step = Math.round(Number(atomicMinutes));
+    if (startM == null || !Number.isFinite(dur) || dur <= 0) return [];
+    if (!Number.isFinite(step) || step <= 0) return [];
+
+    const out: string[] = [];
+    const pieces = Math.ceil(dur / step);
+    for (let i = 0; i < pieces; i++) {
+      const a = startM + i * step;
+      const b = Math.min(startM + (i + 1) * step, startM + dur);
+      out.push(`${formatTime12h(a)} - ${formatTime12h(b)}`);
     }
     return out;
   }, []);
@@ -473,6 +531,143 @@ export default function SelectDateTimeScreen() {
     const minMins = Math.min(...candidates);
     return clamp(minMins, 15, 12 * 60);
   })();
+
+  // For dynamic service booking slots, we need a required continuous duration.
+  // Requirement: reserve total time = SUM(duration(service) * quantity(service)) for all selected services.
+  const requiredDurationMinutes = useMemo(() => {
+    if (!isServiceFlow) return 0;
+
+    const resolveQtyForService = (svc: any, idx: number): number => {
+      // Best signal: selectedIssues already carries quantity (if upstream attached it)
+      // e.g. ServiceCategoryScreen builds { id, quantity, service } and passes objects through.
+      const embeddedQty = Number((svc as any)?.quantity);
+      if (Number.isFinite(embeddedQty) && embeddedQty > 0) return Math.round(embeddedQty);
+
+      // Quantities can be keyed by different id fields depending on upstream screen.
+      // Prefer a direct match on the service object's id, then fall back to selectedIssueIds[idx].
+      const serviceIdRaw = svc?.id ?? svc?._id ?? svc?.issueId;
+      const idCandidates = [
+        serviceIdRaw != null ? String(serviceIdRaw) : null,
+        (Array.isArray(selectedIssueIds) && selectedIssueIds[idx] != null) ? String(selectedIssueIds[idx]) : null,
+      ].filter(Boolean) as string[];
+
+      for (const key of idCandidates) {
+        const v = (serviceQuantities as any)?.[key];
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) return Math.round(n);
+      }
+      return 1;
+    };
+
+    const services = Array.isArray(selectedIssues) ? selectedIssues : [];
+
+    // Build a quick lookup of hydrated duration data keyed by service id.
+    const hydratedById = new Map<string, { duration?: any; durationUnit?: any }>();
+    (Array.isArray(hydratedServiceMeta) ? hydratedServiceMeta : []).forEach((m: any) => {
+      const id = String(m?.id ?? '');
+      if (!id) return;
+      hydratedById.set(id, { duration: m?.duration, durationUnit: m?.durationUnit });
+    });
+
+    const fromRoute = services
+      .map((svc: any, idx: number) => {
+        const qty = Math.max(1, resolveQtyForService(svc, idx));
+
+        // Route objects sometimes only carry {id, quantity}. If duration is missing, use hydrated values.
+        const svcId = String(svc?.id ?? svc?._id ?? svc?.issueId ?? (Array.isArray(selectedIssueIds) ? selectedIssueIds[idx] : '') ?? '');
+        const hydrated = svcId ? hydratedById.get(svcId) : undefined;
+
+        const mins = durationToMinutes(
+          svc?.duration ?? hydrated?.duration,
+          svc?.durationUnit ?? hydrated?.durationUnit,
+        );
+
+        return mins && mins > 0 ? mins * qty : 0;
+      })
+      .filter((v: number) => Number.isFinite(v) && v > 0);
+
+    const fromHydrated = (Array.isArray(hydratedServiceMeta) ? hydratedServiceMeta : [])
+      .map((svc: any) => {
+        const mins = durationToMinutes(svc?.duration, svc?.durationUnit);
+        return mins && mins > 0 ? mins : 0;
+      })
+      .filter((v: number) => Number.isFinite(v) && v > 0);
+
+    // Prefer route objects because they carry quantities; hydrated is a fallback when duration isn't present in route.
+    if (fromRoute.length > 0) {
+      const total = fromRoute.reduce((acc: number, v: number) => acc + v, 0);
+
+      // If upstream quantities are provided but we didn't apply them (common id mismatch),
+      // and the selected services look like the same service repeated with quantity,
+      // prefer totalQty × baseDuration.
+      const totalQty = (serviceQuantities && typeof serviceQuantities === 'object')
+        ? Object.values(serviceQuantities).reduce((acc: number, v: any) => acc + Math.max(0, Number(v) || 0), 0)
+        : 0;
+      if (totalQty > 1) {
+        const durations = services
+          .map((svc: any) => durationToMinutes(svc?.duration, svc?.durationUnit))
+          .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0) as number[];
+        const uniq = Array.from(new Set(durations));
+        const base = uniq.length === 1 ? uniq[0] : null;
+        if (base) {
+          const fallback = base * Math.round(totalQty);
+          if (fallback > total) return fallback;
+        }
+      }
+
+      return total;
+    }
+
+    // If route services exist but we failed to map quantities (id mismatch), try a safe fallback:
+    // If ALL selected services share the same duration unit/value, multiply that duration by TOTAL quantity.
+    // This matches the common UX where a user increases quantity of the same service (e.g., 30 min × 3).
+    if (services.length > 0) {
+      const durations = services
+        .map((svc: any) => durationToMinutes(svc?.duration, svc?.durationUnit))
+        .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0) as number[];
+      const uniq = Array.from(new Set(durations));
+      const base = uniq.length === 1 ? uniq[0] : null;
+      const totalQty = (serviceQuantities && typeof serviceQuantities === 'object')
+        ? Object.values(serviceQuantities).reduce((acc: number, v: any) => acc + Math.max(0, Number(v) || 0), 0)
+        : 0;
+      if (base && totalQty > 1) {
+        return base * Math.round(totalQty);
+      }
+    }
+
+    if (fromHydrated.length > 0) {
+      // If we only have hydrated durations, we can't reliably apply per-service quantities.
+      // Fall back to summing durations (still better than 0) and treat quantity as 1 each.
+      return fromHydrated.reduce((acc: number, v: number) => acc + v, 0);
+    }
+
+    return 0;
+  }, [durationToMinutes, hydratedServiceMeta, isServiceFlow, selectedIssueIds, selectedIssues, serviceQuantities]);
+
+  useEffect(() => {
+    if (!__DEV__ || !isServiceFlow) return;
+    const services = Array.isArray(selectedIssues) ? selectedIssues : [];
+    const qtys = services.map((s: any) => ({
+      id: String(s?.id ?? s?._id ?? s?.issueId ?? ''),
+      quantity: s?.quantity,
+      duration: s?.duration,
+      durationUnit: s?.durationUnit,
+    }));
+    console.log('🧩 ServiceFlow duration debug', {
+      selectedIssueIds,
+      serviceQuantities,
+      services: qtys,
+      requiredDurationMinutes,
+    });
+  }, [isServiceFlow, requiredDurationMinutes, selectedIssueIds, selectedIssues, serviceQuantities]);
+
+  // Choose a base atomic interval for availability validation.
+  // If service duration is known to be smaller, we can validate with that granularity
+  // (clamped to 15 minutes minimum).
+  const atomicIntervalMinutes = useMemo(() => {
+    if (!isServiceFlow) return null;
+    return effectiveServiceIntervalMinutes ? clamp(effectiveServiceIntervalMinutes, 15, 120) : 30;
+  }, [effectiveServiceIntervalMinutes, isServiceFlow]);
 
   const computeSlotsForService = (service: any): number => {
     // In ServiceCategoryScreen, quantities are keyed by `item.id`.
@@ -682,7 +877,18 @@ export default function SelectDateTimeScreen() {
       const next: Record<string, boolean> = { ...slotAvailability };
       // Recompute for this date every time to avoid stale cache when bookings change.
       // (Otherwise a day might remain "all booked" even after cancellations, or vice versa.)
-      const toCompute = slotsForDay.map((t) => ({ t, key: `${dateISO}|${t}` }));
+      //
+      // IMPORTANT (service-flow + dynamic duration):
+      // We render `slotsForDay` as START labels (e.g. "9:00 AM") but we disable a start by checking
+      // the availability of its *atomic windows* (e.g. "9:00 AM - 9:30 AM").
+      // Therefore, for service flow we must compute availability for those atomic window keys.
+      const dur = requiredDurationMinutes;
+      const atomic = atomicIntervalMinutes ?? 30;
+      const toCompute = (isServiceFlow && dur > 0)
+        ? slotsForDay
+            .flatMap((startLabel) => buildAtomicIntervalsForDuration(startLabel, dur, atomic))
+            .map((t) => ({ t, key: `${dateISO}|${t}` }))
+        : slotsForDay.map((t) => ({ t, key: `${dateISO}|${t}` }));
 
       if (availabilityReqIdRef.current === reqId) {
         setAvailabilityStatusText(`Checking ${toCompute.length} time slots…`);
@@ -1038,15 +1244,20 @@ export default function SelectDateTimeScreen() {
             setTime((prev) => (prev && defaultSlots.includes(prev) ? prev : defaultSlots[2]));
           }
         } else {
-          // For services: use predefined slots
-          console.log('💰 SERVICE BOOKING (NOT PACKAGE) - Using predefined slots');
-          const serviceSlots = effectiveServiceIntervalMinutes ? buildSlotsForIntervalMinutes(effectiveServiceIntervalMinutes) : [];
-          const resolvedSlots = serviceSlots.length > 0 ? serviceSlots : defaultSlots;
+          // For services: generate truly dynamic start times based on required duration.
+          console.log('💰 SERVICE BOOKING (NOT PACKAGE) - Using duration-based dynamic slots');
+          const dur = requiredDurationMinutes;
+          const atomic = atomicIntervalMinutes ?? 30;
+          // UX requirement: the next start time should equal the previous end time.
+          // Availability is still validated at atomic granularity; this only controls the *displayed* start options.
+          const step = dur > 0 ? dur : Math.max(15, atomic);
 
-          // If we had to fall back (because interval is too fine/invalid), keep the old middle-slot default.
-          const defaultIndex = resolvedSlots === defaultSlots ? 2 : 0;
-          const fallbackIndex = Math.min(defaultIndex, Math.max(0, resolvedSlots.length - 1));
-          const defaultTime = resolvedSlots[fallbackIndex];
+          // If we can't compute duration yet, fall back to legacy windows.
+          const startTimes = dur > 0 ? buildStartTimesForDurationMinutes(dur, step) : [];
+          const resolvedSlots = startTimes.length > 0 ? startTimes : defaultSlots;
+
+          // Default to first start time for the day.
+          const defaultTime = resolvedSlots[0] || '';
 
           setSlots(resolvedSlots);
           setTime((prev) => (prev && resolvedSlots.includes(prev) ? prev : defaultTime));
@@ -1055,8 +1266,16 @@ export default function SelectDateTimeScreen() {
           if (isServiceFlow) {
             const start = { date: selectedDate, time: defaultTime };
             setStartSlot(start);
-            const block = buildSlotBlock(start, resolvedSlots);
-            setSelectedSlots(block.slots);
+            // When using dynamic start times, selectedSlots is built from atomic intervals.
+            // This keeps downstream validation (CompanySelection) working by validating each atomic interval.
+            if (startTimes.length > 0 && dur > 0) {
+              const atomicWindows = buildAtomicIntervalsForDuration(defaultTime, dur, atomic);
+              // No spill: the start times list only includes starts that fully fit in-day.
+              setSelectedSlots(atomicWindows.map((w) => ({ date: selectedDate, time: w })));
+            } else {
+              const block = buildSlotBlock(start, resolvedSlots);
+              setSelectedSlots(block.slots);
+            }
           }
         }
       } catch (error) {
@@ -1282,11 +1501,26 @@ export default function SelectDateTimeScreen() {
 
     let cancelled = false;
     const run = async () => {
-      for (const iso of dayUnitWindowISOs) {
-        if (cancelled) return;
-        if (isDayComputed(iso)) continue;
-        await computeAvailabilityForDate(iso, slots);
-      }
+      // Prefetch next-7-day availability in parallel (bounded) so the UI doesn't stay
+      // in "Verifying" for too long on slower networks/devices.
+      const pending = dayUnitWindowISOs.filter((iso) => !isDayComputed(iso));
+      if (pending.length === 0) return;
+
+      const CONCURRENCY = 3;
+      let idx = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, async () => {
+        while (!cancelled && idx < pending.length) {
+          const iso = pending[idx++];
+          try {
+            await computeAvailabilityForDate(iso, slots);
+          } catch (e) {
+            // Availability failures should not break the rest of the prefetch.
+            if (__DEV__) console.log('⚠️ Day-unit prefetch failed', { iso, e });
+          }
+        }
+      });
+
+      await Promise.all(workers);
     };
     run();
     return () => {
@@ -1425,17 +1659,49 @@ export default function SelectDateTimeScreen() {
       return;
     }
 
-    const start = { date, time: slot };
-    setStartSlot(start);
-    const block = buildSlotBlock(start, slots);
-    setSelectedSlots(block.slots);
-    if (!block.ok) {
-      setBlockError(
-        "Not enough continuous availability from this start time. Please pick another start slot or choose a different date."
-      );
-    } else {
-      setBlockError(null);
+    // Service-flow dynamic slots:
+    // `slot` is a start time label like "9:00 AM".
+    // We convert it into atomic windows and validate the full block.
+    const dur = requiredDurationMinutes;
+    const atomic = atomicIntervalMinutes ?? 30;
+
+    setSelectedDate(date);
+    setTime(slot);
+    setStartSlot({ date, time: slot });
+
+    if (!dur || dur <= 0) {
+      // Fallback to legacy behavior if duration isn't ready.
+      const start = { date, time: slot };
+      const block = buildSlotBlock(start, slots);
+      setSelectedSlots(block.slots);
+      setBlockError(block.ok ? null : "Not enough continuous availability from this start time. Please pick another start slot or choose a different date.");
+      return;
     }
+
+    const atomicWindows = buildAtomicIntervalsForDuration(slot, dur, atomic);
+    if (!atomicWindows || atomicWindows.length === 0) {
+      setSelectedSlots([]);
+      setBlockError('Could not build time block for this duration.');
+      return;
+    }
+
+    if (__DEV__) {
+      console.log('🕒 pick start slot => atomic block', {
+        date,
+        start: slot,
+        dur,
+        atomic,
+        atomicCount: atomicWindows.length,
+        first: atomicWindows[0],
+        last: atomicWindows[atomicWindows.length - 1],
+      });
+    }
+
+    // No spill: we only generate start times that fit in-day.
+    // So the full block must be within the same day.
+    const blockSlots = atomicWindows.map((w) => ({ date, time: w }));
+    setSelectedSlots(blockSlots);
+    setBlockError(null);
   };
 
   // If the selected date changes, clear any previous block error.
@@ -1443,21 +1709,49 @@ export default function SelectDateTimeScreen() {
     setBlockError(null);
   }, [selectedDate]);
 
+  // If the required duration changes (e.g., user changes quantity), rebuild the selected atomic block
+  // for the currently chosen start time so UI + Continue stay consistent.
+  useEffect(() => {
+    if (!isServiceFlow) return;
+    if (!startSlot?.date || !startSlot?.time) return;
+    const dur = requiredDurationMinutes;
+    const atomic = atomicIntervalMinutes ?? 30;
+    if (!dur || dur <= 0) return;
+    const atomicWindows = buildAtomicIntervalsForDuration(startSlot.time, dur, atomic);
+    if (!atomicWindows || atomicWindows.length === 0) return;
+    setSelectedSlots(atomicWindows.map((w) => ({ date: startSlot.date, time: w })));
+  }, [atomicIntervalMinutes, buildAtomicIntervalsForDuration, isServiceFlow, requiredDurationMinutes, startSlot?.date, startSlot?.time]);
+
   const isSlotSelected = (date: string, slot: string) => {
     if (!isServiceFlow) return time === slot;
-    // In service flow, highlight the entire accumulated block.
-    return selectedSlots.some((x) => x.date === date && x.time === slot);
+    // In service flow (dynamic duration), show selection on the chosen START time.
+    // (The full atomic block is tracked in selectedSlots, but it isn't rendered as individual chips.)
+    return startSlot?.date === date && startSlot?.time === slot;
   };
 
   const isSlotBooked = (date: string, slot: string) => {
     if (!isServiceFlow) return false;
+    // In service-flow (dynamic duration), `slot` is a START label like "9:00 AM".
+    // A start time is only usable if *all* atomic windows in its duration block are available.
+    const dur = requiredDurationMinutes;
+    const atomic = atomicIntervalMinutes ?? 30;
     // If we're still verifying, don't claim a slot is available.
     // Treat as "booked/disabled" to prevent wrong "slots available" messaging and premature continuation.
     if (loadingAvailability) return true;
     // If we haven't completed verification for this date yet, keep slots disabled.
     if (availabilityFreshByDate?.[date] !== true) return true;
     if (!slotAvailability || Object.keys(slotAvailability).length === 0) return false;
-    return slotAvailability[`${date}|${slot}`] === false;
+
+    if (!dur || dur <= 0) {
+      // Legacy fallback: treat the provided label as a single slot key.
+      return slotAvailability[`${date}|${slot}`] === false;
+    }
+
+    const atomicWindows = buildAtomicIntervalsForDuration(slot, dur, atomic);
+    if (!atomicWindows || atomicWindows.length === 0) return true;
+
+    // Unknown/uncomputed should be treated as unavailable (conservative) to avoid false positives.
+    return atomicWindows.some((w) => slotAvailability[`${date}|${w}`] !== true);
   };
 
   const isAvailabilityFreshForSelectedDate = !isServiceFlow
@@ -1468,7 +1762,18 @@ export default function SelectDateTimeScreen() {
     if (loadingSlots) return false;
     if (isServiceFlow && loadingAvailability) return false;
     if (!isServiceFlow && isRecurringPackage && loadingSeriesAvailability) return false;
-    if (isServiceFlow && (!!blockError || selectedSlots.length !== requiredSlots)) return false;
+    if (isServiceFlow) {
+      if (!!blockError) return false;
+      // For dynamic duration slots, selection should represent the full atomic block for the duration.
+      if (requiredDurationMinutes > 0) {
+        const atomic = atomicIntervalMinutes ?? 30;
+        const expected = Math.ceil(requiredDurationMinutes / Math.max(1, atomic));
+        if (selectedSlots.length !== expected) return false;
+      } else {
+        // Fallback to legacy count-based blocking when duration isn't known.
+        if (selectedSlots.length !== requiredSlots) return false;
+      }
+    }
     // For one-off services, block Continue until the current date's availability verification has completed.
     if (isServiceFlow && availabilityFreshByDate?.[selectedDate] !== true) return false;
 
@@ -2026,14 +2331,16 @@ export default function SelectDateTimeScreen() {
             </Text>
             {isServiceFlow && (
               <Text style={styles.slotCountText}>
-                Time required: {requiredSlots} slots
+                {requiredDurationMinutes > 0
+                  ? `Time required: ${requiredDurationMinutes} mins (${selectedSlots.length} slot${selectedSlots.length === 1 ? '' : 's'} reserved)`
+                  : `Time required: ${requiredSlots} slots`}
               </Text>
             )}
           </View>
 
           {isServiceFlow && (
             <Text style={styles.slotHelpText}>
-              We’ll auto-reserve a continuous block. If today doesn’t have enough, it continues into the next day.
+              We’ll auto-reserve a continuous block within the same day.
             </Text>
           )}
 
@@ -2055,7 +2362,7 @@ export default function SelectDateTimeScreen() {
             <Text style={[styles.slotHelpText, { color: '#b45309' }]}>{availabilityError}</Text>
           )}
 
-          {/* All Slots - Vertical Layout */}
+          {/* All Slots - Pill / Chip Layout */}
           <View style={styles.slotsVerticalContainer}>
             {isServiceFlow && !canInteractWithSlots && (
               <View style={styles.slotsBlockingOverlay} pointerEvents="none">
@@ -2112,6 +2419,8 @@ export default function SelectDateTimeScreen() {
                   key={slot}
                   style={[
                     styles.slotChip,
+                    isServiceFlow && requiredDurationMinutes > 0 && styles.slotChipService,
+                    !isServiceFlow && styles.slotChipPackage,
                     disabled && styles.slotChipBooked,
                     isSelected && styles.slotChipSelected,
                   ]}
@@ -2126,11 +2435,17 @@ export default function SelectDateTimeScreen() {
                     <Text
                       style={[
                         styles.slotChipText,
+                        isServiceFlow && requiredDurationMinutes > 0 && styles.slotChipTextService,
+                        !isServiceFlow && styles.slotChipTextPackage,
                         booked && styles.slotChipTextBooked,
                         isSelected && styles.slotChipTextSelected,
                       ]}
                     >
-                      {slot}
+                      {isServiceFlow
+                        ? (requiredDurationMinutes > 0
+                          ? formatDurationWindowLabel(slot, requiredDurationMinutes)
+                          : slot)
+                        : slot}
                     </Text>
 
                     {booked ? (
@@ -2159,6 +2474,18 @@ export default function SelectDateTimeScreen() {
                       </View>
                     )}
                   </View>
+
+                  {isServiceFlow && requiredDurationMinutes > 0 && (
+                    <Text
+                      style={[
+                        styles.slotChipDurationText,
+                        isSelected && styles.slotChipDurationTextSelected,
+                        booked && styles.slotChipDurationTextBooked,
+                      ]}
+                    >
+                      {`${requiredDurationMinutes} min`}
+                    </Text>
+                  )}
 
                   {isServiceFlow && isSelected && startSlot?.date === selectedDate && startSlot?.time === slot && (
                     <Text style={styles.slotChipSubText}>Start</Text>
@@ -2690,10 +3017,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
-  // Slots - Vertical Layout
+  // Slots container: wrap chips across rows (pills)
   slotsVerticalContainer: {
     marginTop: 12,
     marginBottom: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
 
   slotsBlockingOverlay: {
@@ -2724,85 +3054,131 @@ const styles = StyleSheet.create({
   },
 
   slotChip: {
-    backgroundColor: "white",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 12,
+    backgroundColor: 'white',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: '#e2e8f0',
+    minHeight: 44,
+    // Grid-style: aim for 3 columns with consistent widths.
+    flexBasis: '31%',
+    maxWidth: '31%',
+  },
+  // Service-flow dynamic duration slots: larger 2-column cards
+  slotChipService: {
+    flexBasis: '48%',
+    maxWidth: '48%',
+    borderRadius: 14,
+    minHeight: 62,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  // Package (including weekly/monthly) slots: rectangular tiles (avoid pill distortion)
+  slotChipPackage: {
+    borderRadius: 12,
+    flexBasis: '48%',
+    maxWidth: '48%',
+    minHeight: 52,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   slotChipSelected: {
-    backgroundColor: "#0f8e35ff",
-    borderColor: "#0f8e35ff",
+    backgroundColor: '#0f8e35ff',
+    borderColor: '#0f8e35ff',
   },
   slotChipBooked: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e2e8f0",
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
     opacity: 0.85,
   },
   slotChipTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
   },
   slotChipText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0f172a",
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
     flexShrink: 1,
+    // Keep text inside fixed-width grid chips
+    flexGrow: 1,
+    minWidth: 0,
+  },
+  slotChipTextService: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  slotChipTextPackage: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   slotChipTextSelected: {
-    color: "#ffffff",
+    color: '#ffffff',
   },
   slotChipTextBooked: {
-    color: "#94a3b8",
+    color: '#94a3b8',
   },
   slotChipSubText: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#ffffff",
+    marginTop: 4,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ffffff',
     opacity: 0.9,
+  },
+
+  slotChipDurationText: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  slotChipDurationTextSelected: {
+    color: '#ffffff',
+    opacity: 0.95,
+  },
+  slotChipDurationTextBooked: {
+    color: '#94a3b8',
   },
   badgeAvailable: {
     backgroundColor: "#eff6ff",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#bfdbfe",
   },
   badgeAvailableText: {
     color: "#1d4ed8",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "800",
   },
   badgeSelected: {
     backgroundColor: "rgba(255,255,255,0.18)",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.35)",
   },
   badgeSelectedText: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "900",
   },
   badgeBooked: {
     backgroundColor: "#fee2e2",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#fecaca",
   },
   badgeBookedText: {
     color: "#b91c1c",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "900",
   },
 

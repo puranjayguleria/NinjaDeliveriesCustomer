@@ -247,6 +247,33 @@ const CartScreen: React.FC = () => {
   const [fareData, setFareData] = useState<FareData | null>(null);
 
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
+  const lastOfferKeyRef = useRef<Record<string, string | null>>({});
+
+  // Confetti when a quantity offer becomes applied (transition from none -> some).
+  useEffect(() => {
+    const items = (serviceCart as any)?.state?.items || {};
+    const nextMap: Record<string, string | null> = { ...lastOfferKeyRef.current };
+    let shouldCelebrate = false;
+
+    Object.entries(items).forEach(([serviceId, item]: any) => {
+      const offer = item?.additionalInfo?.appliedQuantityOffer;
+      const offerKey = offer
+        ? `${offer.discountType || ''}|${offer.minQuantity || ''}|${offer.newPricePerUnit || offer.discountValue || ''}`
+        : null;
+
+      const prevKey = lastOfferKeyRef.current?.[serviceId] ?? null;
+      nextMap[serviceId] = offerKey;
+      if (!prevKey && offerKey) {
+        shouldCelebrate = true;
+      }
+    });
+
+    lastOfferKeyRef.current = nextMap;
+
+    if (shouldCelebrate) {
+      setShowConfetti(true);
+    }
+  }, [serviceCart, serviceCart?.state?.items]);
   const unseenChangeId = useRef<number | null>(null);
   const lastSeenChangeId = useRef<number>(0);
 

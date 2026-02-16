@@ -41,7 +41,7 @@ type ServiceCartState = {
 
 type ServiceCartContextType = {
   state: ServiceCartState;
-  addService: (service: Omit<ServiceCartItem, "quantity" | "id">) => void;
+  addService: (service: Omit<ServiceCartItem, "quantity" | "id"> & { quantity?: number }) => void;
   removeService: (serviceId: string) => void;
   updateService: (serviceId: string, updates: Partial<ServiceCartItem>) => void;
   clearCart: () => void;
@@ -105,7 +105,7 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [state, isLoaded]);
 
-  const addService = (service: Omit<ServiceCartItem, "quantity" | "id"> & { unitPrice?: number; totalPrice?: number }) => {
+  const addService = (service: Omit<ServiceCartItem, "quantity" | "id"> & { unitPrice?: number; totalPrice?: number; quantity?: number }) => {
     // Generate unique ID for this service booking
     const serviceId = `${service.bookingType}_${service.company.id}_${Date.now()}`;
 
@@ -132,9 +132,17 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
     // Priority (best -> fallback): explicit total > 0, explicit unit > 0, derivedTotal > 0, company.price > 0, else 0.
     const companyPrice = typeof service.company?.price === 'number' ? service.company.price : 0;
 
-    const unitPrice = (explicitUnit && explicitUnit > 0)
-      ? explicitUnit
-      : (derivedTotal > 0 ? derivedTotal : companyPrice);
+    // When quantity offers exist, treat the pricing input as per-unit.
+    // Some flows compute `derivedTotal` as the sum of selected issues, which is not a per-unit base.
+    const hasQuantityOffers = Array.isArray((service as any)?.additionalInfo?.quantityOffers)
+      && (service as any)?.additionalInfo?.quantityOffers.length > 0;
+    const forcedOfferBaseUnit = Number((service as any)?.additionalInfo?.baseOfferUnitPrice);
+
+    const unitPrice = (hasQuantityOffers && Number.isFinite(forcedOfferBaseUnit) && forcedOfferBaseUnit > 0)
+      ? forcedOfferBaseUnit
+      : ((explicitUnit && explicitUnit > 0)
+        ? explicitUnit
+        : (derivedTotal > 0 ? derivedTotal : companyPrice));
 
     const totalPrice = (explicitTotal && explicitTotal > 0)
       ? explicitTotal
@@ -152,13 +160,33 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
       issuesSample: Array.isArray((service as any)?.issues) ? (service as any).issues.slice(0, 2) : (service as any)?.issues,
     });
 
+    const initialQty = Math.max(1, Number((service as any).quantity) || 1);
     const newService: ServiceCartItem = {
       ...service,
       id: serviceId,
-      quantity: 1,
+      quantity: initialQty,
       unitPrice,
-      totalPrice,
+      totalPrice: typeof explicitTotal === 'number' && explicitTotal > 0
+        ? explicitTotal
+        : (unitPrice * initialQty),
     } as ServiceCartItem;
+
+    // Apply quantity offers immediately if available so the next screen sees the discounted price.
+    const offers = (newService as any)?.additionalInfo?.quantityOffers;
+    if (Array.isArray(offers) && offers.length > 0) {
+      const pricing = computeQuantityOfferPricing({
+        baseUnitPrice: unitPrice,
+        quantity: initialQty,
+        offers,
+      });
+      newService.totalPrice = pricing.totalPrice;
+      (newService as any).additionalInfo = {
+        ...(newService as any).additionalInfo,
+        appliedQuantityOffer: pricing.appliedOffer || null,
+        effectiveUnitPrice: pricing.effectiveUnitPrice,
+        quantityOfferSavings: pricing.savings,
+      };
+    }
 
     // 🔥 SINGLE SERVICE RESTRICTION: Clear existing services before adding new one
     setState((prev) => ({
@@ -190,10 +218,16 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
         ...updates,
       };
 
-      // If an explicit totalPrice is provided in updates, use it. Otherwise recalculate from unitPrice/quantity/company.price.
+      // If an explicit totalPrice is provided in updates, use it. Otherwise recalculate.
+      // IMPORTANT: if this item has quantityOffers, always apply them when quantity/unit changes.
       if (updates.totalPrice !== undefined) {
         updatedService.totalPrice = updates.totalPrice as number;
-      } else if (updates.quantity !== undefined || updates.unitPrice !== undefined || updates.company?.price !== undefined) {
+      } else if (
+        updates.quantity !== undefined ||
+        updates.unitPrice !== undefined ||
+        updates.company?.price !== undefined ||
+        (updatedService as any)?.additionalInfo?.quantityOffers
+      ) {
         const unit = typeof updatedService.unitPrice === 'number'
           ? updatedService.unitPrice
           : (typeof updatedService.company?.price === 'number' ? updatedService.company.price : 0);

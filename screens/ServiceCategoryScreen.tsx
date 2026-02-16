@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,16 +6,12 @@ import {
   StyleSheet,
   FlatList,
   Image,
-  TextInput,
   Alert,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { FirestoreService, ServiceIssue, ServiceCategory } from "../services/firestoreService";
+import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
 import { firestore } from "../firebase.native";
-
-const { width } = Dimensions.get('window');
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
@@ -32,17 +28,10 @@ export default function ServiceCategoryScreen() {
   const [loading, setLoading] = useState(true);
   
   // 🆕 New states for category sidebar
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categoryId || "");
+  const [categories] = useState<ServiceCategory[]>([]);
+  const [selectedCategoryId] = useState<string>(categoryId || "");
 
-  // Fetch issues when category changes
-  useEffect(() => {
-    if (selectedCategoryId) {
-      fetchServiceIssues();
-    }
-  }, [selectedCategoryId]);
-
-  const fetchServiceIssues = async () => {
+  const fetchServiceIssues = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -130,7 +119,14 @@ export default function ServiceCategoryScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCategoryId]);
+
+  // Fetch issues when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      fetchServiceIssues();
+    }
+  }, [fetchServiceIssues, selectedCategoryId]);
 
   // ✅ Remove the old hardcoded issues logic and replace with dynamic data
   const displayedIssues = useMemo(() => {
@@ -223,14 +219,22 @@ export default function ServiceCategoryScreen() {
       console.log(`💰 Navigating to SelectDateTime with ${selectedIssueObjects.length} direct-price services`);
       const serviceNames = selectedIssueObjects.map(s => s.name);
       const selectedIds = selectedServices.map(s => s.id);
+
+      // Ensure SelectDateTime receives per-service quantities directly on each service object.
+      // This avoids ID-mismatch issues and makes duration×qty deterministic.
+      const selectedIssuesWithQty = selectedServices.map((s) => ({
+        ...(s.service as any),
+        id: s.id,
+        quantity: s.quantity,
+      }));
       
       navigation.navigate("SelectDateTime", {
         serviceTitle,
         categoryId: selectedCategoryId,
         issues: serviceNames, // Service names
         selectedIssueIds: selectedIds, // ✅ Pass actual Firestore document IDs
-        selectedIssues: selectedIssueObjects, // pass as array
-        serviceQuantities, // ✅ Pass quantities for each service
+        selectedIssues: selectedIssuesWithQty, // pass as array (with quantity)
+        serviceQuantities, // ✅ Pass quantities for each service (still useful as a fallback)
         allCategories: categories, // 🆕 Pass all categories for sidebar
         fromServiceServices: true,
         isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
@@ -240,13 +244,6 @@ export default function ServiceCategoryScreen() {
       Alert.alert("Error", "Failed to load service details. Please try again.");
     }
   };
-
-  const issueIcon =
-    serviceTitle?.toLowerCase() === "plumber"
-      ? require("../assets/images/icon_cleaning.png")
-      : require("../assets/images/icon_home_repair.png");
-
-
 
   const renderItem = ({ item }: any) => {
     const quantity = serviceQuantities[item.id] || 0;

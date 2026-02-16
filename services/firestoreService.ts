@@ -32,6 +32,7 @@ export interface ServiceCompany {
   serviceName: string; // Service name like "Yoga sessions (beginneradvanced)"
   companyName?: string; // Actual company name
   price?: number;
+  quantityOffers?: any[]; // Quantity-based offers from service_services
   isActive: boolean;
   imageUrl?: string | null;
   packages?: any[];
@@ -5909,6 +5910,7 @@ export class FirestoreService {
               serviceName: serviceData.name || 'Unknown Service',
               companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
               price: serviceData.price || 0,
+              quantityOffers: (serviceData as any).quantityOffers,
               isActive: true,
               imageUrl: companyLogo,
               serviceType: serviceData.serviceType,
@@ -5972,6 +5974,7 @@ export class FirestoreService {
             serviceName: serviceData.name || 'Unknown Service',
             companyName: companyData.companyName || companyData.name || 'Unknown Company',
             price: serviceData.price || 0,
+            quantityOffers: (serviceData as any).quantityOffers,
             isActive: true,
             imageUrl: companyLogo, // Use the logo from service_company
             serviceType: serviceData.serviceType,

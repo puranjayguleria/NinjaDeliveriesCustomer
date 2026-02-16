@@ -1,9 +1,12 @@
 export type QuantityOffer = {
-  discountType?: 'newPrice' | 'flat' | 'percent';
+  // NOTE: The backend/admin may send different strings (e.g. 'flat', 'percent', or
+  // simplified flags). We keep the type wide but handle variants in logic.
+  discountType?: 'newPrice' | 'flat' | 'percent' | string;
   discountValue?: number;
   isActive?: boolean;
   minQuantity?: number;
   newPricePerUnit?: number;
+  message?: string;
 };
 
 export type QuantityOfferPricing = {
@@ -66,14 +69,27 @@ export const computeQuantityOfferPricing = (params: {
 
     if (type === 'newprice') {
       const newPrice = asNumber((appliedOffer as any).newPricePerUnit);
-      if (newPrice != null && newPrice >= 0) effectiveUnitPrice = newPrice;
-    } else if (type === 'flat') {
+      if (newPrice != null && newPrice >= 0) {
+        // "newPrice" can mean the backend sends an explicit new unit price.
+        effectiveUnitPrice = newPrice;
+      } else {
+        // In the latest schema, many offers keep discountType="newPrice" but provide
+        // `discountValue` as a per-unit discount (and omit `newPricePerUnit`).
+        // Example: "Get ₹10 Off per installation" => discountValue: 10.
+        const v = asNumber(appliedOffer.discountValue);
+        if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - v);
+      }
+    } else if (type === 'flat' || type === 'flatperunit' || type === 'perunit' || type === 'discount') {
       const v = asNumber(appliedOffer.discountValue);
       // flat discountValue is assumed to be per-unit discount.
       if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - v);
     } else if (type === 'percent') {
       const v = asNumber(appliedOffer.discountValue);
       if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - (baseUnitPrice * v) / 100);
+    } else {
+      // If discountType is missing/unknown but discountValue exists, treat it as a per-unit flat discount.
+      const v = asNumber(appliedOffer.discountValue);
+      if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - v);
     }
   }
 

@@ -5,11 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  ScrollView,
   Alert,
-  SafeAreaView,
   StatusBar,
-  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,7 +14,28 @@ import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
-  const { state, removeService, updateService, clearCart, totalItems, totalAmount, hasServices } = useServiceCart();
+  const { state, removeService, updateService, clearCart, totalItems, hasServices } = useServiceCart();
+  
+  const getDisplayPricing = (item: ServiceCartItem) => {
+    const baseUnit = Number(item?.unitPrice) || Number(item?.company?.price) || 0;
+    const qty = Number(item?.quantity) || 1;
+    const effectiveUnit = Number((item as any)?.additionalInfo?.effectiveUnitPrice);
+    const hasOffer = Boolean((item as any)?.additionalInfo?.appliedQuantityOffer);
+    const savings = Number((item as any)?.additionalInfo?.quantityOfferSavings) || 0;
+  
+    const offeredTotal = Number(item?.totalPrice) || baseUnit * qty;
+    const originalTotal = baseUnit * qty;
+  
+    return {
+      baseUnit,
+      qty,
+      hasOffer,
+      effectiveUnit: Number.isFinite(effectiveUnit) ? effectiveUnit : baseUnit,
+      offeredTotal,
+      originalTotal,
+      savings,
+    };
+  };
 
   // Defensive total calculation: some older cart items may have totalPrice=0 even though
   // issues/package/unitPrice exist. This keeps the UI correct and prevents showing ₹0.
@@ -56,84 +74,22 @@ export default function ServiceCartScreen() {
     );
   };
 
-  const handleUpdateIssueQuantity = (serviceId: string, issueIndex: number, newQuantity: number) => {
+  const changeServiceQuantity = (serviceId: string, delta: number) => {
     const service = state.items[serviceId];
     if (!service) return;
-    
-    // Create a copy of issues with updated quantity
-    const updatedIssues = [...service.issues].map((issue, idx) => {
-      if (idx === issueIndex) {
-        // Convert to object format if it's a string
-        const issueObj = typeof issue === 'object' 
-          ? { ...issue } 
-          : { name: issue, price: service.unitPrice, quantity: 1 };
-        
-        return {
-          ...issueObj,
-          quantity: Math.max(1, newQuantity), // Minimum quantity is 1
-        };
-      }
-      // Ensure all issues have quantity field
-      if (typeof issue === 'object') {
-        return { ...issue, quantity: issue.quantity || 1 };
-      }
-      return { name: issue, price: service.unitPrice, quantity: 1 };
-    });
-    
-    // Calculate new total price based on all issues
-    const newTotalPrice = updatedIssues.reduce((sum, issue) => {
-      const issueObj = typeof issue === 'object' ? issue : { name: issue, price: service.unitPrice, quantity: 1 };
-      const issuePrice = issueObj.price || 0;
-      const issueQty = issueObj.quantity || 1;
-      return sum + (issuePrice * issueQty);
-    }, 0);
-    
-    // Update service with new issues and total price
-    updateService(serviceId, {
-      issues: updatedIssues,
-      totalPrice: newTotalPrice,
-    });
-  };
 
-  const handleRemoveIssue = (serviceId: string, issueIndex: number) => {
-    const service = state.items[serviceId];
-    if (!service) return;
-    
-    // If only one issue left, remove the entire service
-    if (service.issues.length <= 1) {
-      handleRemoveService(serviceId);
+    // Packages (daily/weekly/monthly) represent a plan-like booking; quantity shouldn't be adjustable.
+    // We treat any item carrying additionalInfo.package as a package item.
+    const hasPkg = Boolean((service as any)?.additionalInfo?.package);
+    const pkgUnit = String((service as any)?.additionalInfo?.package?.unit || '').toLowerCase();
+    const isAnyPackage = hasPkg || ['day', 'daily', 'week', 'weekly', 'month', 'monthly'].includes(pkgUnit);
+    if (isAnyPackage) {
+      if ((service.quantity || 1) !== 1) updateService(serviceId, { quantity: 1 });
       return;
     }
-    
-    Alert.alert(
-      "Remove Issue",
-      "Are you sure you want to remove this issue?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Remove", 
-          style: "destructive", 
-          onPress: () => {
-            const updatedIssues = service.issues.filter((_, idx) => idx !== issueIndex);
-            
-            // Calculate new total price
-            const newTotalPrice = updatedIssues.reduce((sum, issue) => {
-              const issueObj = typeof issue === 'object' 
-                ? issue 
-                : { name: issue, price: service.unitPrice, quantity: 1 };
-              const issuePrice = issueObj.price || 0;
-              const issueQty = issueObj.quantity || 1;
-              return sum + (issuePrice * issueQty);
-            }, 0);
-            
-            updateService(serviceId, {
-              issues: updatedIssues,
-              totalPrice: newTotalPrice,
-            });
-          }
-        },
-      ]
-    );
+
+    const nextQty = Math.max(1, (Number(service.quantity) || 1) + delta);
+    updateService(serviceId, { quantity: nextQty });
   };
 
   const handleClearCart = () => {
@@ -191,23 +147,149 @@ export default function ServiceCartScreen() {
             <Text style={styles.packageNameText}>{item.additionalInfo.packageName}</Text>
           )}
         </View>
-        <Text style={styles.packagePrice}>₹{item.totalPrice}</Text>
+        {(() => {
+          const p = getDisplayPricing(item);
+          return (
+            <View style={{ alignItems: 'flex-end' }}>
+              {p.hasOffer ? (
+                <Text style={styles.originalPrice}>₹{Math.round(p.originalTotal)}</Text>
+              ) : null}
+              <Text style={styles.packagePrice}>₹{Math.round(p.offeredTotal)}</Text>
+              {p.hasOffer && p.savings > 0 ? (
+                <View style={styles.savingsPill}>
+                  <Ionicons name="pricetag" size={14} color="#065f46" />
+                  <Text style={styles.savingsText}>Saved ₹{Math.round(p.savings)}</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })()}
       </View>
+  
+      {/* Quantity offer applied badge */}
+      {(() => {
+        const offer = (item as any)?.additionalInfo?.appliedQuantityOffer;
+        if (!offer) return null;
+        const msg = String((offer as any)?.message || '').trim();
+        const text = msg || 'Offer applied!';
+        return (
+          <View style={styles.offerBadge}>
+            <Text style={styles.offerBadgeText}>{text}</Text>
+          </View>
+        );
+      })()}
+  
+      {(() => {
+        const hasPkg = Boolean((item as any)?.additionalInfo?.package);
+        const pkgUnit = String((item as any)?.additionalInfo?.package?.unit || '').toLowerCase();
+        const isAnyPackage = hasPkg || ['day', 'daily', 'week', 'weekly', 'month', 'monthly'].includes(pkgUnit);
+        if (isAnyPackage) {
+          return (
+            <View style={styles.qtyRow}>
+              <Text style={styles.qtyLabel}>Quantity</Text>
+              <View style={styles.qtyStepper}>
+                <View style={[styles.qtyValueBox, { paddingHorizontal: 12 }]}>
+                  <Text style={styles.qtyValueText}>1</Text>
+                </View>
+              </View>
+            </View>
+          );
+        }
+
+        // Quantity stepper (this is where user actually avails the offer)
+        return (
+          <View style={styles.qtyRow}>
+            <Text style={styles.qtyLabel}>Quantity</Text>
+            <View style={styles.qtyStepper}>
+              <TouchableOpacity
+                style={styles.qtyBtn}
+                onPress={() => changeServiceQuantity(item.id, -1)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.qtyBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.qtyValueBox}>
+                <Text style={styles.qtyValueText}>{item.quantity || 1}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.qtyBtn}
+                onPress={() => changeServiceQuantity(item.id, +1)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.qtyBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      })()}
 
       <View style={styles.bookingDetails}>
         <View style={styles.detailRow}>
           <Ionicons name="calendar-outline" size={16} color="#666" />
           <Text style={styles.detailText}>
-            {new Date(item.selectedDate).toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })}
+            {(() => {
+              // item.selectedDate is stored as YYYY-MM-DD; `new Date('YYYY-MM-DD')` is parsed as UTC
+              // in JS, which can show the wrong day in some timezones. Parse as local instead.
+              const iso = String(item.selectedDate || '');
+              const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+              return d.toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              });
+            })()}
           </Text>
         </View>
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#666" />
-          <Text style={styles.detailText}>{item.selectedTime}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailText}>{item.selectedTime}</Text>
+
+            {(() => {
+              // Duration varies per service. We try a few common sources.
+              // Expected forms we handle:
+              // - number => minutes
+              // - string like "30", "30 mins", "1 hr", "1 hour"
+              const parseMinutes = (v: any): number | null => {
+                if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+                const s = String(v ?? '').trim().toLowerCase();
+                if (!s) return null;
+                // extract first number
+                const m = s.match(/(\d+(?:\.\d+)?)/);
+                if (!m) return null;
+                const n = Number(m[1]);
+                if (!Number.isFinite(n) || n <= 0) return null;
+                // if explicitly says hour/hr -> convert
+                if (s.includes('hour') || s.includes('hr')) return Math.round(n * 60);
+                return Math.round(n);
+              };
+
+              const perServiceMinutes =
+                parseMinutes((item as any)?.additionalInfo?.duration) ??
+                parseMinutes((item as any)?.additionalInfo?.serviceDuration) ??
+                parseMinutes((item as any)?.company?.time) ??
+                parseMinutes((item as any)?.company?.duration) ??
+                null;
+
+              if (!perServiceMinutes) return null;
+              const qty = Math.max(1, Number(item.quantity) || 1);
+              const totalMinutes = perServiceMinutes * qty;
+
+              const format = (mins: number) => {
+                if (mins < 60) return `${mins} min`;
+                const h = Math.floor(mins / 60);
+                const m2 = mins % 60;
+                return m2 ? `${h}h ${m2}m` : `${h}h`;
+              };
+
+              return (
+                <Text style={[styles.detailText, { marginTop: 2, color: '#475569', fontWeight: '700' }]}>
+                  Duration: {format(perServiceMinutes)} × {qty} = {format(totalMinutes)}
+                </Text>
+              );
+            })()}
+          </View>
         </View>
       </View>
     </View>
@@ -298,7 +380,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingLeft: 8,
+    paddingRight: 16,
     paddingVertical: 12,
     backgroundColor: "#fff",
     borderBottomWidth: 1,
@@ -306,6 +389,8 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    width: 44,
+    alignItems: 'flex-start',
   },
   headerTitle: {
     fontSize: 18,
@@ -317,6 +402,8 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 8,
+    width: 80,
+    alignItems: 'flex-end',
   },
   clearButtonText: {
     color: "#FF6B6B",
@@ -606,8 +693,114 @@ const styles = StyleSheet.create({
   packagePrice: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#4CAF50",
+    color: "#2563eb",
   },
+
+  originalPrice: {
+    fontSize: 12,
+    color: "#94a3b8",
+    textDecorationLine: "line-through",
+    marginBottom: 2,
+    fontWeight: "700",
+  },
+  
+  savingsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#d1fae5',
+    borderColor: '#10b981',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginTop: 6,
+  },
+  
+  savingsText: {
+    color: '#065f46',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  
+  offerBadge: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fb923c',
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginTop: 10,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  
+  offerBadgeText: {
+    color: '#9a3412',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  
+  qtyLabel: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '700',
+  },
+  
+  qtyStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  
+  qtyBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  
+  qtyBtnText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0f172a',
+    lineHeight: 18,
+  },
+  
+  qtyValueBox: {
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  
+  qtyValueText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+
 
   // 🔧 NEW: Package Information Styles
   packageInfoContainer: {

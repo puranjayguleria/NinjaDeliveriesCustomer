@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Animated,
 } from 'react-native';
 import LottieView from 'lottie-react-native';
 
@@ -18,6 +17,7 @@ interface ServiceAddedModalProps {
   serviceTitle: string;
   selectedDate: string;
   selectedTime: string;
+  offerText?: string | null;
   onContinueServices: () => void;
   onViewCart: () => void;
 }
@@ -28,6 +28,7 @@ export default function ServiceAddedModal({
   serviceTitle,
   selectedDate,
   selectedTime,
+  offerText,
   onContinueServices,
   onViewCart,
 }: ServiceAddedModalProps) {
@@ -59,6 +60,12 @@ export default function ServiceAddedModal({
 
           {/* Title */}
           <Text style={styles.title}>Service Added!</Text>
+
+          {offerText ? (
+            <View style={styles.offerPill}>
+              <Text style={styles.offerPillText}>{offerText}</Text>
+            </View>
+          ) : null}
 
           {/* Service Details Card */}
           <View style={styles.detailsCard}>
@@ -179,6 +186,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     letterSpacing: -0.5,
+  },
+
+  offerPill: {
+    alignSelf: 'center',
+    backgroundColor: '#fff7ed',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#fb923c',
+    marginBottom: 14,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+
+  offerPillText: {
+    color: '#9a3412',
+    fontWeight: '700',
+    fontSize: 15,
   },
 
   detailsCard: {
