@@ -1159,6 +1159,10 @@ export default function SelectDateTimeScreen() {
 
   const dates = getNext7Days();
 
+  // Day-unit packages should only use the calendar picker.
+  // The horizontal "Select Date" row is a legacy single-booking UX and becomes a duplicate prompt.
+  const isDayUnitPackage = !isServiceFlow && !isRecurringPackage && (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily');
+
   const isPlanCalendarPicker = !isServiceFlow && isRecurringPackage;
   const isWeeklyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
   const isMonthlyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'month' || selectedPackageUnit === 'monthly');
@@ -1789,7 +1793,7 @@ export default function SelectDateTimeScreen() {
           )}
 
           {/* Date Selection */}
-          {!isPlanCalendarPicker && (
+          {!isPlanCalendarPicker && !isDayUnitPackage && (
             <>
               <Text style={styles.sectionTitle}>Select Date</Text>
               <ScrollView 
