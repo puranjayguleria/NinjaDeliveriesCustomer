@@ -7,12 +7,13 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { computeQuantityOfferPricing } from "../utils/serviceQuantityOffers";
 
 export type ServiceCartItem = {
   id: string;
   serviceTitle: string;
   categoryId?: string; // Add categoryId for add-on services filtering
-  issues: Array<string | { name: string; price: number; quantity?: number }>; // Support both string and object formats
+  issues: (string | { name: string; price: number; quantity?: number })[]; // Support both string and object formats
   company: {
     id: string;
     companyId?: string; // Add companyId field for compatibility
@@ -196,7 +197,25 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
         const unit = typeof updatedService.unitPrice === 'number'
           ? updatedService.unitPrice
           : (typeof updatedService.company?.price === 'number' ? updatedService.company.price : 0);
-        updatedService.totalPrice = (updatedService.quantity || 0) * unit;
+
+        const offers = (updatedService as any)?.additionalInfo?.quantityOffers;
+        if (Array.isArray(offers) && offers.length > 0) {
+          const pricing = computeQuantityOfferPricing({
+            baseUnitPrice: unit,
+            quantity: Number(updatedService.quantity) || 0,
+            offers,
+          });
+          // Persist the computed total. (We keep unitPrice as the base price to avoid confusion elsewhere.)
+          updatedService.totalPrice = pricing.totalPrice;
+          (updatedService as any).additionalInfo = {
+            ...(updatedService as any).additionalInfo,
+            appliedQuantityOffer: pricing.appliedOffer || null,
+            effectiveUnitPrice: pricing.effectiveUnitPrice,
+            quantityOfferSavings: pricing.savings,
+          };
+        } else {
+          updatedService.totalPrice = (updatedService.quantity || 0) * unit;
+        }
       }
 
       return {
@@ -241,6 +260,10 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
       totalAmount,
       hasServices,
     }),
+    // Keep stable with the repo's existing pattern.
+    // Functions here close over setState/state and are recreated on render;
+    // depending only on state avoids dependency-churn lint rules.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [state]
   );
 

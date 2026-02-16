@@ -827,6 +827,12 @@ export default function ServiceCheckoutScreen() {
         }
 
         return expandedOccurrences.map(async (occ, occIndex) => {
+          const toLocalISODate = (dt: Date) => {
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const d = String(dt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          };
           const normalizeWorkName = (raw: any, fallback: string) => {
             if (raw == null) return fallback;
             if (typeof raw === 'string') {
@@ -862,7 +868,7 @@ export default function ServiceCheckoutScreen() {
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address
-          date: occ.date || service.selectedDate || new Date().toISOString().split('T')[0],
+          date: occ.date || service.selectedDate || toLocalISODate(new Date()),
           time: occ.time || service.selectedTime || "10:00 AM",
           status: 'pending' as const,
           companyId: service.company?.companyId || service.company?.id || "",

@@ -2236,7 +2236,7 @@ export class FirestoreService {
           technicianId: data.technicianId,
           totalPrice: data.totalPrice,
           addOns: data.addOns || [],
-          estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
+          estimatedDuration: data.estimatedDuration,
           startOtp: data.startOtp,
           completionOtp: data.completionOtp,
           otpVerified: data.otpVerified,

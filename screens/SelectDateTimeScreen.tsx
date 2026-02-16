@@ -178,7 +178,10 @@ export default function SelectDateTimeScreen() {
       if (Number.isNaN(dt.getTime())) return dateISO;
       dt.setDate(dt.getDate() + Number(days || 0));
       if (Number.isNaN(dt.getTime())) return dateISO;
-      return dt.toISOString().split('T')[0];
+      const yy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const dd = String(dt.getDate()).padStart(2, '0');
+      return `${yy}-${mm}-${dd}`;
     } catch {
       return dateISO;
     }
@@ -292,7 +295,11 @@ export default function SelectDateTimeScreen() {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split("T")[0];
+    // IMPORTANT: Use local date parts (not toISOString) to avoid UTC date shifting.
+    const y = tomorrow.getFullYear();
+    const m = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const d = String(tomorrow.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   });
 
   const isServiceFlow = isPackageBooking !== true;
@@ -541,20 +548,27 @@ export default function SelectDateTimeScreen() {
     return Math.min(30, Math.max(7, days + 1));
   }, [isServiceFlow, requiredSlots, slotsPerDay]);
 
+  const toLocalISODate = useCallback((dt: Date) => {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
   // In service flow, user picks ONE start slot and we auto-accumulate a contiguous block.
   const [startSlot, setStartSlot] = useState<SelectedSlot | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<SelectedSlot[]>([]);
 
-  const getNextNDays = (fromDateISO: string, n: number) => {
+  const getNextNDays = useCallback((fromDateISO: string, n: number) => {
     const res: string[] = [];
     const base = new Date(fromDateISO);
     for (let i = 0; i < n; i++) {
       const d = new Date(base);
       d.setDate(base.getDate() + i);
-      res.push(d.toISOString().split("T")[0]);
+      res.push(toLocalISODate(d));
     }
     return res;
-  };
+  }, [toLocalISODate]);
 
   const buildSlotBlock = useCallback((start: SelectedSlot, slotsForDay: string[]): SlotBlockResult => {
     // Accumulate across the visible dates that UI exposes.
@@ -593,7 +607,7 @@ export default function SelectDateTimeScreen() {
     }
 
     return { ok: true, slots: out };
-  }, [getVisibleDaysForServiceFlow, isServiceFlow, requiredSlots, slotAvailability]);
+  }, [getNextNDays, getVisibleDaysForServiceFlow, isServiceFlow, requiredSlots, slotAvailability]);
 
   const computeAvailabilityForDate = async (dateISO: string, slotsForDay: string[]) => {
     // Monthly packages are date-based subscriptions. We shouldn't hide slots based on
@@ -611,7 +625,7 @@ export default function SelectDateTimeScreen() {
     }
     if (!dateISO || !Array.isArray(slotsForDay) || slotsForDay.length === 0) return;
 
-  const reqId = ++availabilityReqIdRef.current;
+    const reqId = ++availabilityReqIdRef.current;
     setLoadingAvailability(true);
     setAvailabilityError(null);
   // Mark this date as not-yet-fresh so UI won't show stale "Available" badges.
@@ -666,9 +680,9 @@ export default function SelectDateTimeScreen() {
   // or whether the chosen company is available (package flow).
       // We do this with a small concurrency pool to speed it up without melting the device/Firestore.
       const next: Record<string, boolean> = { ...slotAvailability };
-      const toCompute = slotsForDay
-        .map((t) => ({ t, key: `${dateISO}|${t}` }))
-        .filter((x) => !(x.key in next));
+      // Recompute for this date every time to avoid stale cache when bookings change.
+      // (Otherwise a day might remain "all booked" even after cancellations, or vice versa.)
+      const toCompute = slotsForDay.map((t) => ({ t, key: `${dateISO}|${t}` }));
 
       if (availabilityReqIdRef.current === reqId) {
         setAvailabilityStatusText(`Checking ${toCompute.length} time slots…`);
@@ -697,13 +711,26 @@ export default function SelectDateTimeScreen() {
             }
           }
 
-          next[current.key] = anyAvailable;
+          // IMPORTANT:
+          // Our UI suffix logic treats `true` as "available" and `false` as "booked".
+          // If we ever fail to compute (undefined) we should be conservative and block,
+          // BUT here we always compute a boolean; so store it explicitly.
+          next[current.key] = anyAvailable === true;
         }
       };
 
       await Promise.all(Array.from({ length: Math.min(maxConcurrency, toCompute.length) }, () => worker()));
 
       if (availabilityReqIdRef.current === reqId) {
+        if (__DEV__) {
+          const keysForDate = Object.keys(next).filter((k) => k.startsWith(`${dateISO}|`));
+          const bookedCount = keysForDate.filter((k) => next[k] === false).length;
+          const availableCount = keysForDate.filter((k) => next[k] === true).length;
+          console.log(`📅 Availability map updated for ${dateISO}: available=${availableCount}, booked=${bookedCount}, total=${keysForDate.length}`);
+          // Print a small sample to validate time-key formatting matches UI slot labels.
+          console.log(`🧩 Sample keys for ${dateISO}:`, keysForDate.slice(0, 6));
+          console.log(`🧩 Sample booked keys for ${dateISO}:`, keysForDate.filter((k) => next[k] === false).slice(0, 6));
+        }
         setSlotAvailability({ ...next });
         setAvailabilityFreshByDate((prev) => ({ ...prev, [dateISO]: true }));
         setAvailabilityStatusText('');
@@ -724,6 +751,8 @@ export default function SelectDateTimeScreen() {
       }
     }
   };
+
+
 
   const computeSeriesAvailabilityForTimeSlot = async (anchorDateISO: string, slotLabel: string) => {
     if (!isRecurringPackage) return;
@@ -1079,9 +1108,20 @@ export default function SelectDateTimeScreen() {
     // In package flow, we need a chosen company to compute availability.
     if (!isServiceFlow && !selectedCompanyId) return;
 
-    // Reset cache when the user changes service selection.
-    setSlotAvailability({});
-  setAvailabilityFreshByDate((prev) => ({ ...prev, [selectedDate]: false }));
+    // IMPORTANT:
+    // Do NOT wipe the entire availability map on every date change.
+    // That erases previously-computed days and can make the UI look like "everything is booked"
+    // (or "everything is available") while a new request is in-flight.
+    // Instead, only mark the current date as stale and let the map act as a per-date cache.
+    setAvailabilityFreshByDate((prev) => ({ ...prev, [selectedDate]: false }));
+    if (__DEV__) {
+      console.log('📅 computeAvailabilityForDate triggered:', {
+        selectedDate,
+        isServiceFlow,
+        selectedCompanyId: selectedCompanyId || null,
+        slotsCount: slots.length,
+      });
+    }
     computeAvailabilityForDate(selectedDate, slots);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isServiceFlow, selectedDate, selectedCompanyId, JSON.stringify(selectedIssueIds), slots.join('|')]);
@@ -1140,7 +1180,9 @@ export default function SelectDateTimeScreen() {
       d.setDate(today.getDate() + i);
 
       days.push({
-        key: d.toISOString().split("T")[0],
+        // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid selecting the wrong day
+        // in timezones where toISOString() crosses a date boundary.
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
         label: {
           day: d.toLocaleDateString("en-US", { weekday: "short" }), // Mon, Tue
           date: d.toLocaleDateString("en-US", { day: "numeric", month: "short" }), // 22 Jan
@@ -1163,6 +1205,109 @@ export default function SelectDateTimeScreen() {
   // The horizontal "Select Date" row is a legacy single-booking UX and becomes a duplicate prompt.
   const isDayUnitPackage = !isServiceFlow && !isRecurringPackage && (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily');
 
+  // Day-unit package: ensure we always have a computed availability map for the currently selected day.
+  // The 7-day prefetch runs async and can be interrupted; without this, slots can remain stuck as "Verifying".
+  useEffect(() => {
+    if (!isDayUnitPackage) return;
+    if (!selectedDate) return;
+    if (!Array.isArray(slots) || slots.length === 0) return;
+    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+
+    const hasAnyKeyForDate = !!(
+      slotAvailability &&
+      Object.keys(slotAvailability).some((k) => k.startsWith(`${selectedDate}|`))
+    );
+
+    if (hasAnyKeyForDate) return;
+
+    if (__DEV__) {
+      console.log('📌 Day-unit: forcing availability compute for selectedDate', {
+        selectedDate,
+        slotsCount: slots.length,
+      });
+    }
+
+    computeAvailabilityForDate(selectedDate, slots);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDayUnitPackage, selectedCompanyId, selectedDate, slots.join('|')]);
+
+
+
+  // Day-unit packages: show availability in the *existing* calendar (no extra "Pick your day" section).
+  // We prefetch the next 7 days so the calendar can mark fully-booked days.
+  const dayUnitWindowISOs = useMemo(() => {
+    if (!isDayUnitPackage) return [] as string[];
+    return dates.map((d) => d.key);
+  }, [dates, isDayUnitPackage]);
+
+  // Day-unit packages should never keep a selectedDate outside the next-7-days window.
+  // If it happens (e.g., stale state coming in as 2026-02-17), snap to the first day in the window immediately.
+  // This prevents the slots list from showing perpetual "Verifying" for a date we aren't prefetching.
+  useEffect(() => {
+    if (!isDayUnitPackage) return;
+    if (!Array.isArray(dayUnitWindowISOs) || dayUnitWindowISOs.length === 0) return;
+    if (!selectedDate) return;
+    if (dayUnitWindowISOs.includes(selectedDate)) return;
+    setSelectedDate(dayUnitWindowISOs[0]);
+  }, [isDayUnitPackage, dayUnitWindowISOs, selectedDate]);
+
+  const getDaySlotKeys = useCallback((iso: string) => {
+    if (!iso || !Array.isArray(slots) || slots.length === 0) return [] as string[];
+    return slots.map((s) => `${iso}|${s}`);
+  }, [slots]);
+
+  const isDayComputed = useCallback((iso: string) => {
+    const keys = getDaySlotKeys(iso);
+    return keys.some((k) => slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, k));
+  }, [getDaySlotKeys, slotAvailability]);
+
+  const dayHasAnyAvailability = useCallback((iso: string) => {
+    const keys = getDaySlotKeys(iso);
+    const hasAnyKey = keys.some((k) => slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, k));
+    if (!hasAnyKey) return false;
+    return keys.some((k) => (slotAvailability as any)?.[k] === true);
+  }, [getDaySlotKeys, slotAvailability]);
+
+  const isDayFullyBooked = useCallback((iso: string) => {
+    const keys = getDaySlotKeys(iso);
+    const hasAnyKey = keys.some((k) => slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, k));
+    if (!hasAnyKey) return false; // unknown
+    return keys.every((k) => (slotAvailability as any)?.[k] === false);
+  }, [getDaySlotKeys, slotAvailability]);
+
+  useEffect(() => {
+    if (!isDayUnitPackage) return;
+    if (!Array.isArray(slots) || slots.length === 0) return;
+    if (!selectedCompanyId) return;
+
+    let cancelled = false;
+    const run = async () => {
+      for (const iso of dayUnitWindowISOs) {
+        if (cancelled) return;
+        if (isDayComputed(iso)) continue;
+        await computeAvailabilityForDate(iso, slots);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDayUnitPackage, selectedCompanyId, slots.join('|'), dayUnitWindowISOs.join('|')]);
+
+  // On entry, auto-select the earliest available day inside the next-7-day window.
+  // If we can't determine availability yet, fall back to the first day in the window.
+  useEffect(() => {
+    if (!isDayUnitPackage) return;
+    if (!Array.isArray(dayUnitWindowISOs) || dayUnitWindowISOs.length === 0) return;
+    const inWindow = dayUnitWindowISOs.includes(selectedDate);
+    if (inWindow) return;
+
+    const firstAvailable = dayUnitWindowISOs.find((iso) => dayHasAnyAvailability(iso));
+    if (firstAvailable) setSelectedDate(firstAvailable);
+    else setSelectedDate(dayUnitWindowISOs[0]);
+  }, [dayHasAnyAvailability, dayUnitWindowISOs, isDayUnitPackage, selectedDate]);
+
   const isPlanCalendarPicker = !isServiceFlow && isRecurringPackage;
   const isWeeklyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
   const isMonthlyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'month' || selectedPackageUnit === 'monthly');
@@ -1179,16 +1324,17 @@ export default function SelectDateTimeScreen() {
     const slotLabel = time;
     const conflictsForSlot = Array.isArray(seriesConflicts?.[slotLabel]) ? seriesConflicts[slotLabel] : [];
 
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 61);
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 61);
 
     // Count all days in this 60-day window that are not conflicted.
     let availableCount = 0;
     const cur = new Date(start);
     let guard = 0;
     while (cur.getTime() <= end.getTime() && guard < 70) {
-      const iso = cur.toISOString().split('T')[0];
+      // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
+      const iso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
       if (!conflictsForSlot.includes(iso)) availableCount += 1;
       if (availableCount >= 30) break;
       cur.setDate(cur.getDate() + 1);
@@ -1243,7 +1389,9 @@ export default function SelectDateTimeScreen() {
     // For weekly/monthly plans, the user selects the exact days on the calendar.
     // Seed a default window from the current anchor date (selectedDate).
     // If selectedDate isn't set, fall back to tomorrow.
-    const todayISO = new Date().toISOString().split('T')[0];
+    // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
+    const today = new Date();
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const fallbackStartISO = addDaysISO(todayISO, 1);
     const startISO = (typeof selectedDate === 'string' && selectedDate.trim().length > 0)
       ? selectedDate
@@ -1350,6 +1498,23 @@ export default function SelectDateTimeScreen() {
 
     return true;
   })();
+
+  // Package/day flow guard:
+  // We must not allow Continue until the selected slot's availability is computed for the selected day,
+  // and we must block if the chosen slot is booked.
+  const packageSlotKey = !isServiceFlow && !isRecurringPackage && selectedDate && time
+    ? `${selectedDate}|${time}`
+    : null;
+
+  const packageSlotHasComputed = !!(
+    packageSlotKey && slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, packageSlotKey)
+  );
+
+  const packageSlotIsBooked = !!(packageSlotKey && packageSlotHasComputed && slotAvailability[packageSlotKey] === false);
+
+  const packageSlotIsUnknown = !!(!isServiceFlow && !isRecurringPackage && (!time || !packageSlotHasComputed));
+
+  const canContinueFinal = canContinue && !packageSlotIsUnknown && !packageSlotIsBooked;
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -1500,20 +1665,22 @@ export default function SelectDateTimeScreen() {
             </View>
           </View>
 
-          {/* Plan calendar (single selector for weekly/monthly plans) */}
-          {!isServiceFlow && (needsDayConfirmation || isDailyPackage) && (
+          {/* Plan calendar (single selector for weekly/monthly plans and day-unit packages) */}
+          {!isServiceFlow && (needsDayConfirmation || isDailyPackage || isDayUnitPackage) && (
             <View style={styles.summaryCard}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryTitle}>
-                  {isDailyPackage ? 'Pick your day' : (isMonthlyPlan ? 'Monthly plan days' : 'Weekly plan days')}
+                  {(isDailyPackage || isDayUnitPackage) ? 'Pick your day' : (isMonthlyPlan ? 'Monthly plan days' : 'Weekly plan days')}
                 </Text>
                 <Text style={styles.summaryPill}>
-                  {isDailyPackage ? `${confirmedPlanDates.length}/1` : `${confirmedPlanDates.length}/${planSelectionLimit}`}
+                  {(isDailyPackage || isDayUnitPackage)
+                    ? `${confirmedPlanDates.length}/1`
+                    : `${confirmedPlanDates.length}/${planSelectionLimit}`}
                 </Text>
               </View>
 
               <Text style={styles.summarySub}>
-                {isDailyPackage
+                {(isDailyPackage || isDayUnitPackage)
                   ? 'Pick 1 day within the next 7 days. Tap again to remove.'
                   : 'Pick days from tomorrow onward. Tap again to remove a day.'}
               </Text>
@@ -1535,7 +1702,7 @@ export default function SelectDateTimeScreen() {
                 else if (slotLabel && fullSeriesOk === false) msg = 'This time slot is currently full. Try selecting a different time slot.';
                 else if (slotLabel && conflictsForSlot.length > 0) {
                   msg = 'Some selected dates are already booked for this time. Please remove the crossed dates and pick different days, or choose a different time slot.';
-                } else if (isDailyPackage && confirmedPlanDates.length < 1) {
+                } else if ((isDailyPackage || isDayUnitPackage) && confirmedPlanDates.length < 1) {
                   msg = 'This is a daily package — please select 1 day within the next 7 days.';
                 } else if (!isDailyPackage && !!planSelectionLimit && confirmedPlanDates.length < planSelectionLimit) {
                   msg = isMonthlyPlan
@@ -1570,9 +1737,11 @@ export default function SelectDateTimeScreen() {
               {/** (Deduped) selection/conflict/full-slot banners are handled by the dynamic banner above */}
 
               {(() => {
-                const todayISO = new Date().toISOString().split('T')[0];
+                // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
+                const today = new Date();
+                const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                 const minISO = addDaysISO(todayISO, 1);
-                const maxISO = isDailyPackage ? addDaysISO(minISO, 6) : addDaysISO(minISO, 60);
+                const maxISO = (isDailyPackage || isDayUnitPackage) ? addDaysISO(minISO, 6) : addDaysISO(minISO, 60);
 
                 // Only show the next month when the window crosses into it.
                 const minMonthKey = getMonthKey(minISO);
@@ -1592,6 +1761,14 @@ export default function SelectDateTimeScreen() {
 
                 const toggleDate = (iso: string) => {
                   setPlanPickError(null);
+
+                  // Day-unit packages are single-day bookings. Treat calendar tap as the active selectedDate.
+                  if (isDayUnitPackage) {
+                    setSelectedDate(iso);
+                    setConfirmedPlanDates([iso]);
+                    return;
+                  }
+
                   setConfirmedPlanDates((prev) => {
                     const next = [...prev];
                     const exists = next.includes(iso);
@@ -1629,13 +1806,21 @@ export default function SelectDateTimeScreen() {
                           );
                         }
 
-                        const selected = confirmedPlanDates.includes(c.iso);
+                        const selected = isDayUnitPackage
+                          ? (selectedDate === c.iso)
+                          : confirmedPlanDates.includes(c.iso);
                         const tooEarly = c.iso < minISO;
                         const tooLate = c.iso > maxISO;
                         const isConflict = conflictsForSlot.includes(c.iso);
-                        // For weekly/monthly recurring plans, conflicts ARE booked dates for the selected slot.
-                        const isBooked = isConflict;
-                        const localLimit = isDailyPackage ? 1 : planSelectionLimit;
+
+                        // Day-unit packages: use per-slot availability to mark a day fully booked.
+                        // Weekly/monthly recurring plans: conflicts ARE booked dates for the selected slot.
+                        // For day-unit packages, treat "unknown" (not yet computed) days as booked/unavailable.
+                        // This matches the stricter UX expectation: until we verify capacity, don't allow booking.
+                        const dayUnitUnknown = isDayUnitPackage ? !isDayComputed(c.iso) : false;
+                        const isBooked = isDayUnitPackage ? (dayUnitUnknown || isDayFullyBooked(c.iso)) : isConflict;
+
+                        const localLimit = (isDailyPackage || isDayUnitPackage) ? 1 : planSelectionLimit;
                         const atLimit = !selected && localLimit > 0 && confirmedPlanDates.length >= localLimit;
                         const disabled = tooEarly || tooLate || atLimit || isConflict || isBooked;
 
@@ -1672,7 +1857,7 @@ export default function SelectDateTimeScreen() {
                               {c.dayNumber}
                             </Text>
 
-                            {isConflict && (
+                            {(isConflict || (isDayUnitPackage && isBooked)) && (
                               <View style={styles.calendarConflictOverlay} pointerEvents="none">
                                 <Text style={styles.calendarConflictText}>✕</Text>
                               </View>
@@ -1697,8 +1882,7 @@ export default function SelectDateTimeScreen() {
             </View>
           )}
 
-          {/* Plan start-date preview calendar (recurring plan ranges).
-              Hide it for day-unit packages since we already show the single-day picker above. */}
+          {/* Plan start-date preview calendar (recurring plan ranges). */}
           {isPlanCalendarPicker && !needsDayConfirmation && !isDailyPackage && (
             <View style={styles.summaryCard}>
               <View style={styles.summaryRow}>
@@ -1711,7 +1895,9 @@ export default function SelectDateTimeScreen() {
               </Text>
 
               {(() => {
-                const todayISO = new Date().toISOString().split('T')[0];
+                // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
+                const today = new Date();
+                const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                 const minISO = addDaysISO(todayISO, 1);
                 const monthKey = getMonthKey(selectedDate || minISO);
                 const cells = buildMonthGrid(monthKey);
@@ -1885,20 +2071,42 @@ export default function SelectDateTimeScreen() {
             )}
 
             {slots.filter((slot) => {
-              // For package bookings we want to show ONLY available slots,
-              // except recurring packages (daily/weekly/monthly) where we show defined windows.
+              // IMPORTANT UX:
+              // - Service flow: always show all slots (we disable booked ones).
+              // - Recurring plans (week/month): show defined windows.
+              // - Single-day package bookings: show all slots for the currently selected day and disable booked ones.
+              //   Do NOT hide slots; otherwise one fully-booked day can make the UI look like "no slots exist".
               if (isServiceFlow) return true;
               if (isRecurringPackage) return true;
-              if (!slotAvailability || Object.keys(slotAvailability).length === 0) return true;
-              const key = `${selectedDate}|${slot}`;
-              return slotAvailability[key] !== false;
+              return true;
             }).map((slot) => {
               const isSelected = isSlotSelected(selectedDate, slot);
               const isFresh = !isServiceFlow ? true : (availabilityFreshByDate?.[selectedDate] === true);
-              const booked = isFresh ? isSlotBooked(selectedDate, slot) : true;
+              // Booked logic:
+              // - Service flow: use the detailed slotAvailability check (includes freshness/verification guards).
+              // - Package flow (single-day / non-recurring): use computed slotAvailability map if available.
+              //   Here `slotAvailability[key] === false` means no capacity for that slot.
+              const key = `${selectedDate}|${slot}`;
+              const hasComputedKey = !!(slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, key));
+              const booked = isServiceFlow
+                ? isSlotBooked(selectedDate, slot)
+                : (hasComputedKey ? slotAvailability[key] === false : false);
               const seriesKnown = isRecurringPackage && seriesAvailability && Object.keys(seriesAvailability).length > 0;
               const seriesOk = !seriesKnown ? true : (seriesAvailability[slot] !== false);
-              const disabled = !canInteractWithSlots || booked || (isRecurringPackage && !seriesOk);
+              // For package/day flow, we do NOT want to lock the UI while verification runs.
+              // Unknown/uncomputed keys should render as Available (optimistic) but show a "Verifying" badge.
+              // Booking is still prevented by the Continue guard + by disabling only the slots we KNOW are full.
+              const verifying = !isServiceFlow && !isRecurringPackage && !hasComputedKey;
+              const disabled = !canInteractWithSlots || booked || verifying || (isRecurringPackage && !seriesOk);
+              if (__DEV__ && !isServiceFlow && !isRecurringPackage && slot === slots[0]) {
+                const keysForDate = Object.keys(slotAvailability || {}).filter((k) => k.startsWith(`${selectedDate}|`));
+                console.log('🧪 UI slot state (package/day):', {
+                  selectedDate,
+                  hasComputedKeysForDate: keysForDate.length,
+                  firstKey: `${selectedDate}|${slots[0]}`,
+                  firstKeyValue: (slotAvailability as any)?.[`${selectedDate}|${slots[0]}`],
+                });
+              }
               return (
                 <TouchableOpacity
                   key={slot}
@@ -1928,6 +2136,10 @@ export default function SelectDateTimeScreen() {
                     {booked ? (
                       <View style={styles.badgeBooked}>
                         <Text style={styles.badgeBookedText}>Booked</Text>
+                      </View>
+                    ) : verifying ? (
+                      <View style={styles.badgeBooked}>
+                        <Text style={styles.badgeBookedText}>Verifying</Text>
                       </View>
                     ) : (!canInteractWithSlots || !isFresh) ? (
                       <View style={styles.badgeBooked}>
@@ -1962,11 +2174,11 @@ export default function SelectDateTimeScreen() {
         <TouchableOpacity
           style={[
             styles.continueBtn,
-            (!canContinue || isVerifyingAvailability) && styles.continueBtnDisabled,
+            (!canContinueFinal || isVerifyingAvailability) && styles.continueBtnDisabled,
           ]}
           activeOpacity={0.7}
           onPress={() => {
-            if (!canContinue || isVerifyingAvailability) return;
+            if (!canContinueFinal || isVerifyingAvailability) return;
 
             const selected = dates.find(d => d.key === selectedDate);
             
