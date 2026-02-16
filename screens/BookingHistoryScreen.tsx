@@ -5,12 +5,10 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  Image,
   ActivityIndicator,
   RefreshControl,
   Alert,
   ScrollView,
-  Animated,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +18,7 @@ import { BookingUtils } from "../utils/bookingUtils";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import auth from "@react-native-firebase/auth";
+import firestore from "@react-native-firebase/firestore";
 import axios from "axios";
 
 const LOG_PREFIX = "📚[SvcPay]";
@@ -32,6 +31,21 @@ const warn = (...args: any[]) => {
 
 type FilterStatus = 'all' | 'active' | 'pending' | 'completed' | 'rejected' | 'cancelled';
 
+const summarizeBookingForDebug = (b: any) => {
+  if (!b) return b;
+  return {
+    id: String(b.id || ''),
+    status: String(b.status || ''),
+    companyId: String(b.companyId || ''),
+    companyName: String(b.companyName || ''),
+    date: String(b.date || ''),
+    time: String(b.time || ''),
+    planGroupId: String((b as any).planGroupId || ''),
+    isPackageBooking: (b as any).isPackageBooking,
+    packageUnit: String((b as any).packageUnit || ''),
+  };
+};
+
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
   const [bookings, setBookings] = useState<ServiceBooking[]>([]);
@@ -40,9 +54,16 @@ export default function BookingHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('all');
-  const [tabAnimation] = useState(new Animated.Value(0));
+
+  // List UX: sorting and time filtering for better navigation through history
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>('all');
+  const [sortOrder, setSortOrder] = useState<'upcomingFirst' | 'newestFirst' | 'oldestFirst'>('upcomingFirst');
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<{id: string, serviceName: string, totalPrice?: number} | null>(null);
+
+  // TEST ONLY: allow deleting bookings regardless of status.
+  // Keep this OFF by default and remove later.
+  const [testAllowDeleteAnyStatus, setTestAllowDeleteAnyStatus] = useState(false);
 
   // Expand/collapse grouped rows (plan group or time slot group)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -143,27 +164,35 @@ export default function BookingHistoryScreen() {
         return;
       }
 
-      if (__DEV__) {
-        // DEBUG: Check current user first
-        console.log('👤 DEBUG: Checking current user...');
-        await FirestoreService.debugCurrentUser();
-
-        // DEBUG: Show all user bookings
-        console.log('🔍 DEBUG: Checking all bookings for current user...');
-        await FirestoreService.debugAllUserBookings();
-      }
+      // Keep noise low: history screen should be quiet in dev unless we're debugging grouping.
       
-      // First, get ALL user bookings for count calculation
-      console.log('📊 Getting all user bookings for count calculation...');
+  // First, get ALL user bookings for count calculation
       const allUserBookings = await FirestoreService.getSimpleUserBookings(100);
       setAllBookings(allUserBookings);
       
-      // Then get filtered bookings for display
-      console.log(`📱 Fetching bookings with filter: ${filter}`);
+  // Then get filtered bookings for display
       const fetchedBookings = await FirestoreService.getUserBookingsByStatus(filter, 50);
       setBookings(fetchedBookings);
+
+      if (__DEV__) {
+        const planLike = fetchedBookings.filter((b: any) => !!(b as any)?.planGroupId);
+        console.log('🧪 DEBUG(history): fetched bookings sample', {
+          filter,
+          fetchedCount: fetchedBookings.length,
+          planGroupIdCount: planLike.length,
+          uniquePlanGroupIds: Array.from(new Set(planLike.map((b: any) => String((b as any).planGroupId || '')))).filter(Boolean).length,
+          sample0: summarizeBookingForDebug(fetchedBookings[0]),
+          sample1: summarizeBookingForDebug(fetchedBookings[1]),
+        });
+      }
       
-      console.log(`✅ Loaded ${fetchedBookings.length} bookings with filter: ${filter} (${allUserBookings.length} total)`);
+      if (__DEV__) {
+        console.log(`🧪 DEBUG(history): loaded bookings`, {
+          filter,
+          fetched: fetchedBookings.length,
+          total: allUserBookings.length,
+        });
+      }
     } catch (error: any) {
       console.error('Error fetching user bookings:', error);
       
@@ -200,7 +229,6 @@ export default function BookingHistoryScreen() {
       }
     };
 
-    console.log('📱 Loading booking history and fixing status inconsistencies...');
     fixStatusesAndFetch();
   }, [activeFilter]);
 
@@ -208,25 +236,7 @@ export default function BookingHistoryScreen() {
     fetchBookings(true, activeFilter);
   };
 
-  const handleFilterChange = (filter: FilterStatus) => {
-    if (filter !== activeFilter) {
-      // Animate tab change
-      Animated.sequence([
-        Animated.timing(tabAnimation, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(tabAnimation, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
-      setActiveFilter(filter);
-    }
-  };
+  // Filter is set directly from sidebar UI; legacy handler removed.
 
   const getFilterCounts = () => {
     // Calculate counts from ALL user bookings
@@ -237,8 +247,6 @@ export default function BookingHistoryScreen() {
       const completed = allBookings.filter(b => b.status === 'completed').length;
       const reject = allBookings.filter(b => b.status === 'rejected' || b.status === 'reject').length;
       const cancelled = allBookings.filter(b => b.status === 'cancelled').length;
-      
-      console.log(`📊 Filter counts: All=${all}, Active=${active}, Pending=${pending}, Completed=${completed}, Rejected=${reject}, Cancelled=${cancelled}`);
       
       return { all, active, pending, completed, reject, cancelled };
     }
@@ -272,11 +280,6 @@ export default function BookingHistoryScreen() {
   };
 
   // NOTE: legacy horizontal tabs UI existed earlier; this screen currently uses the left sidebar filters.
-
-  const handleRejectBooking = async (bookingId: string, serviceName: string, totalPrice?: number) => {
-    setBookingToCancel({ id: bookingId, serviceName, totalPrice });
-    setShowCancellationModal(true);
-  };
 
   const handleConfirmCancellation = async () => {
     if (!bookingToCancel) return;
@@ -344,6 +347,7 @@ export default function BookingHistoryScreen() {
 
   const getPackageInfoFromBooking = (b: ServiceBooking) => {
     const selectedPackage: any = (b as any)?.selectedPackage;
+    const planGroupId = String((b as any)?.planGroupId || '').trim();
     const unit = normalizeUnit(
       (b as any)?.packageType ||
         selectedPackage?.unit ||
@@ -356,8 +360,11 @@ export default function BookingHistoryScreen() {
     const packageId = String(
       (b as any)?.packageId || selectedPackage?.id || selectedPackage?.packageId || ''
     ).trim();
-    const isPackage = (b as any)?.isPackage === true || (b as any)?.isPackageBooking === true;
-    return { isPackage, unit, packageName, packageId };
+    const isPackage =
+      (b as any)?.isPackage === true ||
+      (b as any)?.isPackageBooking === true ||
+      !!planGroupId;
+    return { isPackage, unit, packageName, packageId, planGroupId };
   };
 
   const groupBookingsForUI = (list: ServiceBooking[]): BookingGroup[] => {
@@ -368,12 +375,13 @@ export default function BookingHistoryScreen() {
       const companyKey = getCompanyKey(b);
       const time = getTimeLabel(b);
       const date = getDateISO(b);
-      const { isPackage, unit, packageName, packageId } = getPackageInfoFromBooking(b);
+      const { isPackage, unit, packageName, packageId, planGroupId } = getPackageInfoFromBooking(b);
 
-      if (isPackage && unit !== 'unknown') {
+      if (isPackage && (planGroupId || unit !== 'unknown')) {
         // Consumer UX: collapse all occurrences of the same plan into one group
-        // Keyed by company + package + time.
-        const planKey = `${companyKey}|${packageId || packageName || unit}|${time}`;
+        // Prefer planGroupId (server-stamped) so different bookings of the same plan always group.
+        // Fallback to packageId/name/unit.
+        const planKey = `${companyKey}|${planGroupId || packageId || packageName || unit}|${time}`;
         const arr = planGroups[planKey] || [];
         arr.push(b);
         planGroups[planKey] = arr;
@@ -450,7 +458,189 @@ export default function BookingHistoryScreen() {
     return out;
   };
 
-  const groupedBookings = groupBookingsForUI(bookings);
+  const groupedBookingsBase = groupBookingsForUI(bookings);
+
+  const groupedBookings = React.useMemo(() => {
+    const todayISO = new Date().toISOString().split('T')[0];
+
+    const getGroupDateISO = (g: BookingGroup) =>
+      String(g.kind === 'plan' ? (g.nextUpcomingDate || g.bookings?.[0]?.date || '') : g.date || '');
+
+    const isGroupUpcoming = (g: BookingGroup) => {
+      const d = getGroupDateISO(g);
+      return !!d && d >= todayISO;
+    };
+
+    const compareGroupsByDateTimeAsc = (a: BookingGroup, b: BookingGroup) => {
+      const aDate = getGroupDateISO(a);
+      const bDate = getGroupDateISO(b);
+      if (aDate !== bDate) return String(aDate).localeCompare(String(bDate));
+      return String(a.time || '').localeCompare(String(b.time || ''));
+    };
+
+    const compareGroupsByDateTimeDesc = (a: BookingGroup, b: BookingGroup) => -compareGroupsByDateTimeAsc(a, b);
+
+    let list = [...groupedBookingsBase];
+
+    // Time filter
+    if (timeFilter !== 'all') {
+      const wantUpcoming = timeFilter === 'upcoming';
+      list = list.filter((g) => isGroupUpcoming(g) === wantUpcoming);
+    }
+
+    // Sort
+    if (sortOrder === 'upcomingFirst') {
+      list.sort((a, b) => {
+        const aUp = isGroupUpcoming(a);
+        const bUp = isGroupUpcoming(b);
+        if (aUp !== bUp) return aUp ? -1 : 1;
+        // Within upcoming: earlier first. Within past: newest first.
+        return aUp ? compareGroupsByDateTimeAsc(a, b) : compareGroupsByDateTimeDesc(a, b);
+      });
+    } else if (sortOrder === 'newestFirst') {
+      list.sort(compareGroupsByDateTimeDesc);
+    } else {
+      list.sort(compareGroupsByDateTimeAsc);
+    }
+
+    return list;
+  }, [groupedBookingsBase, timeFilter, sortOrder]);
+
+  const normalizeStatus = (raw: any) => {
+    const s = String(raw || '').trim().toLowerCase();
+    // Handle common variants seen in mixed client/server setups
+    if (s === 'reject') return 'rejected';
+    if (s === 'canceled') return 'cancelled';
+    if (s === 'payment_pending' || s === 'payment-pending' || s === 'pending_payment') return 'pending';
+    if (s === 'unassigned') return 'pending';
+    return s;
+  };
+
+  const canDeleteBooking = (b: ServiceBooking) => {
+    if (testAllowDeleteAnyStatus) return true;
+    const s = normalizeStatus((b as any)?.status);
+    // Safety: allow only non-finalized bookings from the client UI.
+    // If you want to allow deleting completed/confirmed, we can extend this list.
+    return ['pending', 'cancelled', 'rejected'].includes(s);
+  };
+
+  const deleteBookings = async (bookingsToDelete: ServiceBooking[]) => {
+    if (!bookingsToDelete?.length) return;
+
+    const notAllowed = bookingsToDelete.filter((b) => !canDeleteBooking(b));
+    if (notAllowed.length > 0) {
+      const statusSummary = notAllowed
+        .map((b) => ({ id: String((b as any)?.id || ''), status: String((b as any)?.status || ''), normalized: normalizeStatus((b as any)?.status) }))
+        .slice(0, 8);
+      Alert.alert(
+        'Can\'t delete',
+        `Some bookings in this group are not deletable.\n\nAllowed: Pending / Cancelled / Rejected.\n\nBlocked sample: ${statusSummary
+          .map((x) => `${x.status}→${x.normalized}`)
+          .join(', ')}`
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Delete in chunks (Firestore batch max 500 ops)
+      const ids = bookingsToDelete.map((b) => String(b.id));
+      const chunkSize = 450;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = firestore().batch();
+        chunk.forEach((id) => {
+          batch.delete(firestore().collection('service_bookings').doc(id));
+        });
+        await batch.commit();
+      }
+
+      Alert.alert('Deleted', `Deleted ${ids.length} booking${ids.length === 1 ? '' : 's'}.`, [
+        { text: 'OK', onPress: () => fetchBookings(false, activeFilter) },
+      ]);
+    } catch (e) {
+      console.error('Error deleting bookings:', e);
+      Alert.alert('Error', 'Failed to delete booking(s). Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmDelete = (title: string, bookingsToDelete: ServiceBooking[]) => {
+    Alert.alert(
+      'Delete booking',
+      `Delete ${title}?\n\nThis will permanently remove it from your history.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteBookings(bookingsToDelete),
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteAllVisible = () => {
+    if (!testAllowDeleteAnyStatus) {
+      Alert.alert('Not enabled', 'Enable “Test delete” first.');
+      return;
+    }
+
+    const toDelete = groupedBookings.flatMap((g: any) => (Array.isArray(g?.bookings) ? g.bookings : []));
+    const uniq = new Map<string, ServiceBooking>();
+    toDelete.forEach((b: any) => {
+      const id = String(b?.id || '');
+      if (id) uniq.set(id, b);
+    });
+    const list = Array.from(uniq.values());
+
+    Alert.alert(
+      'Delete ALL bookings?',
+      `This will delete ${list.length} booking(s) from your account (current filter: ${activeFilter}).\n\nThis is for testing only.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete all',
+          style: 'destructive',
+          onPress: () => deleteBookings(list),
+        },
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    try {
+      const planGroups = groupedBookings.filter((g: any) => g?.kind === 'plan');
+      const slotGroups = groupedBookings.filter((g: any) => g?.kind === 'slot');
+
+      const planDebug = planGroups.slice(0, 8).map((g: any) => {
+        const sample = Array.isArray(g.bookings) ? g.bookings[0] : undefined;
+        const inferredPlanGroupId = String((sample as any)?.planGroupId || '');
+        return {
+          id: String(g.id || ''),
+          companyId: String(g.companyId || ''),
+          companyName: String(g.companyName || ''),
+          time: String(g.time || ''),
+          unit: String(g.unit || ''),
+          totalVisits: Number(g.totalVisits || 0),
+          inferredPlanGroupId,
+        };
+      });
+
+      console.log('🧪 DEBUG(history): grouping summary', {
+        rawBookings: bookings.length,
+        groupedTotal: groupedBookings.length,
+        planGroups: planGroups.length,
+        slotGroups: slotGroups.length,
+        planGroupsSample: planDebug,
+      });
+    } catch (e) {
+      console.log('🧪 DEBUG(history): grouping summary failed', e);
+    }
+  }, [bookings.length, groupedBookings]);
 
   const toggleGroupExpansion = (groupId: string) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -485,7 +675,17 @@ export default function BookingHistoryScreen() {
                 <View style={styles.groupCountPill}>
                   <Text style={styles.groupCountPillText}>{item.totalVisits}</Text>
                 </View>
-                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <TouchableOpacity
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={() => {
+                      confirmDelete(`${unitLabel} (${item.totalVisits} visits)`, item.bookings);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  </TouchableOpacity>
+                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -535,7 +735,17 @@ export default function BookingHistoryScreen() {
               <View style={styles.groupCountPill}>
                 <Text style={styles.groupCountPillText}>{count}</Text>
               </View>
-              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TouchableOpacity
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => {
+                    confirmDelete(`${item.companyName} (${dateLabel} ${item.time})`, item.bookings);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </TouchableOpacity>
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+              </View>
             </View>
           </View>
         </TouchableOpacity>
@@ -580,14 +790,55 @@ export default function BookingHistoryScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Booking History</Text>
-        <View style={styles.headerSpacer} />
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={22} color="#0f172a" />
+          </TouchableOpacity>
+
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>Bookings</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              Track, manage, and review
+            </Text>
+          </View>
+
+          <View style={styles.headerRight}>
+            <View style={styles.headerChip}>
+              <Ionicons name="calendar-outline" size={14} color="#1D4ED8" />
+              <Text style={styles.headerChipText}>{allBookings.length}</Text>
+            </View>
+          </View>
+        </View>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            style={[styles.devDeleteBadge, testAllowDeleteAnyStatus && styles.devDeleteBadgeActive]}
+            onPress={() => {
+              Alert.alert(
+                'Test delete',
+                testAllowDeleteAnyStatus
+                  ? 'Test delete is ON. You can delete ANY status incl. Unknown.'
+                  : 'Enable test delete? This will allow deleting ANY booking status (testing only).',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: testAllowDeleteAnyStatus ? 'Turn off' : 'Turn on',
+                    style: 'destructive',
+                    onPress: () => setTestAllowDeleteAnyStatus((v) => !v),
+                  },
+                ]
+              );
+            }}
+          >
+            <Ionicons name={testAllowDeleteAnyStatus ? 'bug' : 'bug-outline'} size={16} color={testAllowDeleteAnyStatus ? '#991B1B' : '#64748B'} />
+            <Text style={[styles.devDeleteText, testAllowDeleteAnyStatus && styles.devDeleteTextActive]}>
+              Test delete
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Main Content: Sidebar + Bookings */}
@@ -642,6 +893,62 @@ export default function BookingHistoryScreen() {
 
         {/* Right Side - Bookings List */}
         <View style={styles.bookingsContainer}>
+          {/* Sorting + time filter */}
+          <View style={styles.sortBar}>
+            <View style={styles.sortBarRow}>
+              <Text style={styles.sortBarLabel}>Show</Text>
+              {([
+                { key: 'all', label: 'All' },
+                { key: 'upcoming', label: 'Upcoming' },
+                { key: 'past', label: 'Past' },
+              ] as const).map((opt) => {
+                const active = timeFilter === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.pill, active && styles.pillActive]}
+                    onPress={() => setTimeFilter(opt.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={[styles.sortBarRow, { marginTop: 8 }]}>
+              <Text style={styles.sortBarLabel}>Sort</Text>
+              {([
+                { key: 'upcomingFirst', label: 'Upcoming first' },
+                { key: 'newestFirst', label: 'Newest' },
+                { key: 'oldestFirst', label: 'Oldest' },
+              ] as const).map((opt) => {
+                const active = sortOrder === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.pill, active && styles.pillActive]}
+                    onPress={() => setSortOrder(opt.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {__DEV__ && testAllowDeleteAnyStatus && bookings.length > 0 && (
+            <View style={styles.deleteAllBar}>
+              <Text style={styles.deleteAllHint} numberOfLines={2}>
+                Test delete ON • Unknown statuses allowed
+              </Text>
+              <TouchableOpacity style={styles.deleteAllBtn} onPress={confirmDeleteAllVisible}>
+                <Ionicons name="trash" size={16} color="#fff" />
+                <Text style={styles.deleteAllBtnText}>Delete all</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#3b82f6" />
@@ -693,7 +1000,7 @@ export default function BookingHistoryScreen() {
               data={groupedBookings}
               keyExtractor={(item) => item.id}
               renderItem={renderGroup}
-              contentContainerStyle={{ paddingBottom: 5, paddingTop: 18, paddingHorizontal: 8 }}
+              contentContainerStyle={{ paddingBottom: 5, paddingTop: 12, paddingHorizontal: 8 }}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -728,17 +1035,109 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
 
+  // Sorting/filters bar (right pane)
+  sortBar: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  sortBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sortBarLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+    marginRight: 4,
+  },
+  pill: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  pillActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  pillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  pillTextActive: {
+    color: '#1D4ED8',
+  },
+
   // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "white",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+  },
+
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 2,
+  },
+
+  headerRight: {
+    width: 64,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+
+  headerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#DBEAFE',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+  },
+
+  headerChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#1D4ED8',
   },
 
   backButton: {
@@ -750,7 +1149,31 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
-    flex: 1,
+  },
+
+  // Dev-only: test delete toggle
+  devDeleteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  devDeleteBadgeActive: {
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  devDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  devDeleteTextActive: {
+    color: '#991B1B',
   },
 
   headerSpacer: {
@@ -924,6 +1347,43 @@ const styles = StyleSheet.create({
   bookingsContainer: {
     flex: 1,
     backgroundColor: "#f8fafc",
+  },
+
+  // Dev-only: delete-all bar
+  deleteAllBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 10,
+    marginTop: 10,
+    marginBottom: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  deleteAllHint: {
+    flex: 1,
+    marginRight: 10,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  deleteAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+  },
+  deleteAllBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#fff',
   },
 
   filterContainer: {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Image,
 } from "react-native";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
+import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
 import ServiceAddedModal from "../components/ServiceAddedModal";
@@ -19,6 +20,7 @@ export default function CompanySelectionScreen() {
   const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
+  const navInFlightRef = useRef(false);
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -53,7 +55,6 @@ export default function CompanySelectionScreen() {
     if (isPackageBooking === true && typeof routeSelectedCompanyId === 'string' && routeSelectedCompanyId) {
       setSelectedCompanyId(routeSelectedCompanyId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPackageBooking, routeSelectedCompanyId]);
 
   // Package flow UX: show a single list of (company + package + price) options,
@@ -84,7 +85,6 @@ export default function CompanySelectionScreen() {
           return;
         }
 
-        const { firestore } = require('../firebase.native');
         const snaps = await Promise.all(
           selectedIssueIds.map((id: string) =>
             firestore().collection('service_services').doc(id).get()
@@ -152,43 +152,14 @@ export default function CompanySelectionScreen() {
       hasRouteSelectedPackage: !!routeSelectedPackage
     });
     console.log('========================================\n');
-  }, []);
+  }, [categoryId, fromServiceServices, isPackageBooking, issues, route.params, routeSelectedPackage, selectedDate, selectedIssueIds, selectedIssues, selectedTime, serviceTitle]);
 
-  // Fetch companies from Firestore based on selected issues
-  useEffect(() => {
-    // Validate required params
-    if (!serviceTitle) {
-      console.error('❌ Missing required param: serviceTitle');
-      setLoading(false);
-      return;
-    }
-    
-    if (!selectedIssueIds?.length && !issues?.length && !categoryId) {
-      console.error('❌ Missing required params: Need at least one of selectedIssueIds, issues, or categoryId');
-      setLoading(false);
-      return;
-    }
-    
-    fetchServiceCompanies();
-  }, [selectedIssueIds]);
-
-
-
-  // Refresh when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log('🔄 Screen focused - Refreshing company availability...');
-      fetchServiceCompanies();
-      // reset package selection when screen refocuses
-      setSelectedPackage(null);
-    }, [selectedIssueIds])
-  );
+  // NOTE: Effects that call `fetchServiceCompanies` are declared after the callback is defined
+  // to avoid “used before declaration” errors.
 
   // Check if a company has active workers
   const checkCompanyHasActiveWorkers = async (companyId: string): Promise<boolean> => {
     try {
-      const { firestore } = require('../firebase.native');
-      
       const workersQuery = await firestore()
         .collection('service_workers')
         .where('companyId', '==', companyId)
@@ -206,7 +177,7 @@ export default function CompanySelectionScreen() {
   };
 
   // Check real-time availability for a specific date and time
-  const checkRealTimeAvailability = async (companyId: string, date: string, time: string, serviceIds?: string[]): Promise<boolean> => {
+  const checkRealTimeAvailability = useCallback(async (companyId: string, date: string, time: string, serviceIds?: string[]): Promise<boolean> => {
     try {
       console.log(`🔍 DETAILED CHECK - Company ${companyId}:`);
       console.log(`   Date: ${date}, Time: ${time}`);
@@ -241,10 +212,10 @@ export default function CompanySelectionScreen() {
       console.error(`❌ Error checking real-time availability for company ${companyId}:`, error);
       return false; // If error, assume not available to be safe
     }
-  };
+  }, [selectedIssueIds, serviceTitle]);
 
   // Filter companies that have active workers and are available for the selected time
-  const filterCompaniesWithAvailability = async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
+  const filterCompaniesWithAvailability = useCallback(async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
     if (!checkTimeSlot || !selectedDate || !selectedTime) {
       // If not checking time slots, use the old logic for backward compatibility
       const availableCompanies: ServiceCompany[] = [];
@@ -271,7 +242,7 @@ export default function CompanySelectionScreen() {
     // For predefined/direct-price services, SelectDateTime now sends an auto-generated contiguous
     // block of slots (based on accumulated duration/quantity). We validate the company is
     // available for ALL of them.
-    const multiSlotPairs: Array<{ date: string; time: string }> =
+    const multiSlotPairs: { date: string; time: string }[] =
       (isPackageBooking === true)
         ? []
         : (Array.isArray(selectedSlots) ? selectedSlots : []);
@@ -409,9 +380,9 @@ export default function CompanySelectionScreen() {
       
       return availableCompanies;
     }
-  };
+  }, [categoryId, checkRealTimeAvailability, fromServiceServices, isPackageBooking, issues, selectedDate, selectedIssueIds, selectedIssues, selectedSlots, selectedTime, serviceTitle]);
 
-  const fetchServiceCompanies = async () => {
+  const fetchServiceCompanies = useCallback(async () => {
     try {
       setLoading(true);
       console.log('🏢 ========== FETCHING COMPANIES ==========');
@@ -571,7 +542,35 @@ export default function CompanySelectionScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryId, filterCompaniesWithAvailability, issues, route.params, selectedDate, selectedIssueIds, selectedTime, serviceTitle]);
+
+  // Fetch companies from Firestore based on selected issues
+  useEffect(() => {
+    // Validate required params
+    if (!serviceTitle) {
+      console.error('❌ Missing required param: serviceTitle');
+      setLoading(false);
+      return;
+    }
+
+    if (!selectedIssueIds?.length && !issues?.length && !categoryId) {
+      console.error('❌ Missing required params: Need at least one of selectedIssueIds, issues, or categoryId');
+      setLoading(false);
+      return;
+    }
+
+    fetchServiceCompanies();
+  }, [categoryId, fetchServiceCompanies, issues?.length, selectedIssueIds, serviceTitle]);
+
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Screen focused - Refreshing company availability...');
+      fetchServiceCompanies();
+      // reset package selection when screen refocuses
+      setSelectedPackage(null);
+    }, [fetchServiceCompanies])
+  );
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
@@ -748,11 +747,13 @@ export default function CompanySelectionScreen() {
                     disabled={isBusy}
                     onPress={() => {
                       if (isBusy) return;
+                      if (navInFlightRef.current) return;
+                      navInFlightRef.current = true;
                       setSelectedCompanyId(company.id);
                       setSelectedPackage(pkgObj);
                       // Ensure company details render on the slot screen.
                       // (We already have company data here; pass it through.)
-                      navigation.navigate("SelectDateTime", {
+                      navigation.replace("SelectDateTime", {
                         serviceTitle,
                         categoryId,
                         issues,

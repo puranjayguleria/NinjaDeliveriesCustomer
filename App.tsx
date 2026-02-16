@@ -803,36 +803,18 @@ function AppTabs() {
                       <Text style={styles.badgeText}>{totalItems}</Text>
                     </View>
                   )}
+
                 </Animated.View>
               );
             },
           };
         }}
       >
-        {/* ⿡ Home Tab (with listener to reset nested stack) */}
+
         <Tab.Screen
           name="HomeTab"
           component={HomeStack}
           options={{ title: "Home" }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (e) => {
-              const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
-              if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
-                e.preventDefault();
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "HomeTab",
-                        state: { routes: [{ name: "ProductsHome" }] },
-                      },
-                    ],
-                  })
-                );
-              }
-            },
-          })}
         />
 
         {/* ⿢ Categories Tab */}
@@ -858,50 +840,25 @@ function AppTabs() {
           }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
-              // If Cart selection modal is open, close it so it can't trap the user on Cart.
-              if (cartModalVisible) {
-                setCartModalVisible(false);
-                setPendingNavigation(null);
-              }
-
               // Check if user is in Tanda location or other restricted locations
               // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
               const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
               
               // Debug: Log current storeId to help identify location
-              console.log("[Services Tab] Current storeId:", location?.storeId);
-              console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
-              console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
+              if (__DEV__) {
+                console.log("[Services Tab] Current storeId:", location?.storeId);
+                console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
+                console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
+              }
               
               if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
                 e.preventDefault();
                 setServicesUnavailableModalVisible(true);
                 return;
               }
-              
-              // For non-restricted locations, show the service loader, then reset or navigate after a short delay
-              e.preventDefault();
-              console.log("[Services Tab] Showing service loader for non-restricted location");
-              setServiceLoaderVisible(true);
-              setTimeout(() => {
-                console.log("[Services Tab] Loader timeout completed, navigating...");
-                // Always reset Services stack to home so this tab press *always* lands on ServicesHome,
-                // even if the user is already focused on ServicesTab or coming from deep stacks.
-                console.log("[Services Tab] Resetting ServicesTab stack to ServicesHome");
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "ServicesTab",
-                        state: { routes: [{ name: "ServicesHome" }] },
-                      },
-                    ],
-                  })
-                );
-                console.log("[Services Tab] Hiding service loader");
-                setServiceLoaderVisible(false);
-              }, 900);
+
+              // Non-restricted location: let React Navigation handle the tab switch normally.
+              // (We intentionally do NOT preventDefault / do NOT reset the nested stack; that caused unmount loops.)
             },
           })}
         />

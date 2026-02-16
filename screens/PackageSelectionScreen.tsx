@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ type CompanyPackageGroup = {
   id: string;
   company: any;
   services: ServiceIssue[];
-  packages: Array<any & { __serviceId?: string; __serviceName?: string }>;
+  packages: (any & { __serviceId?: string; __serviceName?: string })[];
 };
 
 interface Package {
@@ -34,6 +34,7 @@ interface Package {
 export default function PackageSelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const navInFlightRef = useRef(false);
 
   const { serviceTitle, categoryId, allCategories, serviceId, serviceName } = route.params;
 
@@ -110,7 +111,7 @@ export default function PackageSelectionScreen() {
             : { id: cid, companyName: 'Available Providers', serviceName: 'Available Providers' };
 
           // Merge packages across all services, but keep the originating service context.
-          const mergedPackages: Array<any & { __serviceId?: string; __serviceName?: string }> = [];
+          const mergedPackages: (any & { __serviceId?: string; __serviceName?: string })[] = [];
           for (const svc of services) {
             const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
             pkgs.forEach((p: any) => {
@@ -138,7 +139,7 @@ export default function PackageSelectionScreen() {
         console.log('⚠️ Failed to load companies for package selection:', e);
         // Fallback: group everything under a single provider.
         const services = Array.isArray(packageBasedServices) ? packageBasedServices : [];
-        const mergedPackages: Array<any & { __serviceId?: string; __serviceName?: string }> = [];
+  const mergedPackages: (any & { __serviceId?: string; __serviceName?: string })[] = [];
         services.forEach((svc) => {
           const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
           pkgs.forEach((p: any) => mergedPackages.push({ ...p, __serviceId: svc.id, __serviceName: svc.name }));
@@ -352,6 +353,7 @@ export default function PackageSelectionScreen() {
   };
 
   const handleContinue = () => {
+    if (navInFlightRef.current) return;
     // New flow: user selected a company (selectedCompanyGroup) and then a package.
     if (selectedService && selectedPackage && selectedCompanyGroup) {
       const chosenPkg = (selectedCompanyGroup.packages || []).find((p: any) => {
@@ -360,7 +362,8 @@ export default function PackageSelectionScreen() {
       });
 
       if (chosenPkg) {
-        navigation.navigate("SelectDateTime", {
+        navInFlightRef.current = true;
+        navigation.replace("SelectDateTime", {
           serviceTitle,
           categoryId,
           issues: [selectedService.name],
@@ -391,7 +394,8 @@ export default function PackageSelectionScreen() {
       });
 
       // Navigate to SelectDateTime with package info
-      navigation.navigate("SelectDateTime", {
+      navInFlightRef.current = true;
+      navigation.replace("SelectDateTime", {
         serviceTitle,
         categoryId,
         issues: [selectedService.name],
@@ -414,7 +418,8 @@ export default function PackageSelectionScreen() {
       });
 
       // Navigate to SelectDateTime with direct-price service
-      navigation.navigate("SelectDateTime", {
+      navInFlightRef.current = true;
+      navigation.replace("SelectDateTime", {
         serviceTitle,
         categoryId,
         issues: [selectedDirectService.name],

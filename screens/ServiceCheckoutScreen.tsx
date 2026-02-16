@@ -18,8 +18,6 @@ import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import { useLocationContext } from "../context/LocationContext";
 import { FirestoreService } from "../services/firestoreService";
 import { formatDateToDDMMYYYY } from "../utils/dateUtils";
-import { fixExistingBookingsForWebsite } from "../utils/fixExistingBookings";
-import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { openRazorpayNative } from "../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
@@ -218,18 +216,20 @@ export default function ServiceCheckoutScreen() {
   };
 
   const handleProceedToPayment = async () => {
-    console.log(`🔘 BUTTON PRESSED: handleProceedToPayment called`);
-    console.log(`📊 Current state:`, {
-      selectedAddressId,
-      paymentMethod,
-      servicesCount: services.length,
-      totalAmount: computedTotalAmount,
-      loading
-    });
+    if (__DEV__) {
+      console.log(`🔘 BUTTON PRESSED: handleProceedToPayment called`);
+      console.log(`📊 Current state:`, {
+        selectedAddressId,
+        paymentMethod,
+        servicesCount: services.length,
+        totalAmount: computedTotalAmount,
+        loading,
+      });
+    }
     
     // Validate that user has selected an address
     if (!selectedAddressId || !getSelectedAddress()) {
-      console.log(`❌ Address validation failed - no address selected`);
+      if (__DEV__) console.log(`❌ Address validation failed - no address selected`);
       Alert.alert(
         "Address Required",
         "Please select or add a service address before proceeding with the booking.",
@@ -248,24 +248,24 @@ export default function ServiceCheckoutScreen() {
     }
 
     const selectedAddress = getSelectedAddress();
-    console.log(`✅ Address validation passed:`, selectedAddress);
+  if (__DEV__) console.log(`✅ Address validation passed:`, selectedAddress);
     
     // Handle payment based on selected method
     if (paymentMethod === 'online') {
-      console.log(`💳 Processing online payment...`);
+      if (__DEV__) console.log(`💳 Processing online payment...`);
       await handleRazorpayPayment();
     } else if (paymentMethod === 'cash') {
-      console.log(`💵 Processing cash on service booking...`);
+      if (__DEV__) console.log(`💵 Processing cash on service booking...`);
       // For cash payment, create bookings directly with pending payment status
       const bookingIds = await createBookings("pending");
       
       // Clear cart immediately after successful booking creation
-      console.log("🧹 Clearing service cart after successful cash booking...");
+      if (__DEV__) console.log("🧹 Clearing service cart after successful cash booking...");
       clearCart();
       
       // Navigate to booking confirmation screen with first booking ID
       if (bookingIds && bookingIds.length > 0) {
-        console.log(`🧭 Navigating to BookingConfirmation screen with booking ID: ${bookingIds[0]}`);
+        if (__DEV__) console.log(`🧭 Navigating to BookingConfirmation screen with booking ID: ${bookingIds[0]}`);
         navigation.reset({
           index: 0,
           routes: [
@@ -691,9 +691,14 @@ export default function ServiceCheckoutScreen() {
     try {
       if (__DEV__) {
         console.log(`🔍 Starting booking creation process...`);
-        console.log(`📍 Current location data:`, JSON.stringify(location, null, 2));
-        console.log(`💳 Payment status: ${paymentStatus}, method: ${paymentMethod}`);
+        console.log(` Payment status: ${paymentStatus}, method: ${paymentMethod}`);
         console.log(`🛒 Services to book: ${services.length}`);
+        // Avoid dumping full location JSON each time (very noisy)
+        console.log(`📍 Location:`, {
+          hasAddress: !!location?.address,
+          lat: location?.lat,
+          lng: location?.lng,
+        });
       }
       
       // Validate services array first
@@ -752,17 +757,16 @@ export default function ServiceCheckoutScreen() {
         if (__DEV__) {
           console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
         }
-        
-        // Debug: Log service additionalInfo to check package data
-        console.log('📦 Service additionalInfo:', JSON.stringify(service.additionalInfo, null, 2));
-        console.log('📦 Has package?', !!service.additionalInfo?.package);
-        if (service.additionalInfo?.package) {
-          console.log('📦 Package details:', {
-            id: service.additionalInfo.package.id,
-            name: service.additionalInfo.package.name,
-            price: service.additionalInfo.package.price,
-            unit: service.additionalInfo.package.unit,
-            frequency: service.additionalInfo.package.frequency
+
+        // Package debug (keep minimal and dev-only)
+        if (__DEV__) {
+          const pkg = service.additionalInfo?.package;
+          console.log('📦 Package:', {
+            hasPackage: !!pkg,
+            id: pkg?.id,
+            name: pkg?.name,
+            unit: pkg?.unit,
+            frequency: (pkg as any)?.frequency,
           });
         }
         
@@ -782,8 +786,27 @@ export default function ServiceCheckoutScreen() {
           ? occurrences
           : [{ date: service.selectedDate || new Date().toISOString().split('T')[0], time: service.selectedTime || "10:00 AM" }];
 
-        if (__DEV__ && occurrences.length > 0) {
-          console.log(`📅 Plan booking detected for ${service.serviceTitle}. Creating ${expandedOccurrences.length} bookings (one per occurrence).`);
+        // If the client is creating recurrence bookings, we must stamp a stable planGroupId
+        // so Booking History can group them into one card.
+        const packageObj = service.additionalInfo?.package;
+        const rawUnit = String(packageObj?.unit || packageObj?.frequency || packageObj?.type || '').toLowerCase().trim();
+        const packageUnit = rawUnit === 'monthly' ? 'month' : rawUnit === 'weekly' ? 'week' : rawUnit === 'daily' ? 'day' : rawUnit;
+        const isPlanUnit = ['day', 'week', 'month'].includes(packageUnit);
+        const isPlanBooking = !!packageObj && isPlanUnit && expandedOccurrences.length > 1;
+
+        // Deterministic-ish group id per plan purchase from the context we have.
+        // (If you have a real orderId/payment sessionId available, pass that instead.)
+        const planGroupId = isPlanBooking
+          ? `plan:${customerId}:${service.id || service.serviceTitle || 'service'}:${service.company?.companyId || service.company?.id || 'company'}:${String(expandedOccurrences[0]?.date || '')}:${String(expandedOccurrences[0]?.time || '')}`
+          : '';
+
+        if (__DEV__ && isPlanBooking) {
+          console.log(`📅 Plan booking detected`, {
+            serviceTitle: service.serviceTitle,
+            occurrences: expandedOccurrences.length,
+            packageUnit,
+            planGroupId,
+          });
         }
 
         return expandedOccurrences.map(async (occ, occIndex) => {
@@ -808,6 +831,10 @@ export default function ServiceCheckoutScreen() {
           // Package information (if this is a package booking)
           ...(service.additionalInfo?.package ? {
             isPackage: true,
+            isPackageBooking: true,
+            planGroupId: isPlanBooking ? planGroupId : undefined,
+            packageUnit: isPlanBooking ? packageUnit : undefined,
+            selectedPackage: service.additionalInfo.package,
             packageId: service.additionalInfo.package.id || "",
             packageName: service.additionalInfo.package.name || "",
             packageType: (
@@ -824,6 +851,7 @@ export default function ServiceCheckoutScreen() {
             packageDescription: service.additionalInfo.package.description || "",
           } : {
             isPackage: false, // Explicitly set to false for non-package bookings
+            isPackageBooking: false,
           }),
           // Add location data for website access (CRITICAL for website integration)
           location: {
@@ -856,24 +884,20 @@ export default function ServiceCheckoutScreen() {
         };
 
           if (__DEV__) {
-            console.log(`📋 About to create booking ${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''} with data:`, JSON.stringify(bookingData, null, 2));
-          console.log(`🌐 WEBSITE COMPATIBILITY CHECK:`);
-          console.log(`   Has location field: ${!!bookingData.location}`);
-          console.log(`   Location address: "${bookingData.location?.address}"`);
-          console.log(`   Location coordinates: lat=${bookingData.location?.lat}, lng=${bookingData.location?.lng}`);
-          console.log(`   This booking SHOULD appear on website for worker assignment`);
-          console.log(`📦 PACKAGE INFORMATION CHECK:`);
-          console.log(`   Is package booking: ${!!(bookingData as any).isPackage}`);
-          }
-          if ((bookingData as any).isPackage) {
-            console.log(`   Package name: ${(bookingData as any).packageName}`);
-            console.log(`   Package type: ${(bookingData as any).packageType}`);
-            console.log(`   Package price: ${(bookingData as any).packagePrice}`);
+            // Keep a tiny, useful summary only (avoid dumping full bookingData JSON)
+            console.log(`📋 Creating booking`, {
+              idx: `${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''}`,
+              date: bookingData.date,
+              time: bookingData.time,
+              companyId: bookingData.companyId,
+              hasLocation: !!bookingData.location,
+              isPackageBooking: !!(bookingData as any).isPackageBooking,
+              planGroupId: (bookingData as any).planGroupId,
+            });
           }
           try {
             const bookingId = await FirestoreService.createServiceBooking(bookingData);
-            console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
-            console.log(`🌐 Booking ${bookingId} should now be visible on website with location data`);
+            if (__DEV__) console.log(`✅ Created booking ${bookingId} for ${service.serviceTitle}`);
           
             // Create payment record in service_payments collection
             if (!bookingId) {
@@ -897,9 +921,17 @@ export default function ServiceCheckoutScreen() {
               }),
             };
 
-            console.log(`💳 Creating payment record ${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''} with data:`, paymentData);
+            if (__DEV__) {
+              console.log(`💳 Creating payment record`, {
+                idx: `${index + 1}${occurrences.length > 0 ? `.${occIndex + 1}` : ''}`,
+                bookingId,
+                amount: paymentData.amount,
+                paymentMethod: paymentData.paymentMethod,
+                paymentStatus: paymentData.paymentStatus,
+              });
+            }
             const paymentId = await FirestoreService.createServicePayment(paymentData);
-            console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
+            if (__DEV__) console.log(`✅ Created payment record ${paymentId} for booking ${bookingId}`);
             
             return bookingId;
           } catch (serviceError: any) {
@@ -910,9 +942,9 @@ export default function ServiceCheckoutScreen() {
       });
 
   const allPromises = bookingPromises.flat();
-  console.log(`\n🔄 Creating ${allPromises.length} bookings simultaneously...`);
+  if (__DEV__) console.log(`\n🔄 Creating ${allPromises.length} bookings simultaneously...`);
   const bookingIds = await Promise.all(allPromises);
-  console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
+  if (__DEV__) console.log(`✅ All ${bookingIds.length} bookings created successfully!`);
       
       return bookingIds;
 

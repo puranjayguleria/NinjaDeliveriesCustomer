@@ -287,9 +287,9 @@ export default function ServicesScreen() {
   // Re-subscribe to listeners when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 ServicesScreen focused - real-time listeners active');
+      if (__DEV__) console.log('📱 ServicesScreen focused - real-time listeners active');
       return () => {
-        console.log('📱 ServicesScreen unfocused');
+        if (__DEV__) console.log('📱 ServicesScreen unfocused');
 
         // Stop banner auto-scroll when leaving the screen.
         if (bannerAutoScrollIntervalRef.current) {
@@ -302,7 +302,7 @@ export default function ServicesScreen() {
 
   // Real-time listener for service categories
   useEffect(() => {
-    console.log('🔥 Setting up real-time listener for service categories...');
+    if (__DEV__) console.log('🔥 Setting up real-time listener for service categories...');
     setLoading(true);
     setError(null);
 
@@ -312,7 +312,9 @@ export default function ServicesScreen() {
       .onSnapshot(
         async (snapshot) => {
           try {
-            console.log(`📊 Real-time update: Found ${snapshot.size} active categories at ${new Date().toLocaleTimeString()}`);
+            if (__DEV__) {
+              console.log(`📊 Real-time categories: ${snapshot.size} active @ ${new Date().toLocaleTimeString()}`);
+            }
             
             const allCategories: ServiceCategory[] = [];
             
@@ -328,9 +330,6 @@ export default function ServicesScreen() {
                 updatedAt: data.updatedAt,
               };
               allCategories.push(category);
-              
-              // 🚨 DEBUG: Log each category with its ID
-              console.log(`📋 Category: "${category.name}" -> ID: ${doc.id}`);
             });
 
             // Sort by name
@@ -340,7 +339,6 @@ export default function ServicesScreen() {
             await FirestoreService.populateCategoryImages(allCategories);
 
             // Filter to show only categories with active workers
-            console.log('🔍 Filtering categories with active workers...');
             const companiesSnapshot = await firestore()
               .collection('service_services')
               .where('isActive', '==', true)
@@ -360,11 +358,13 @@ export default function ServicesScreen() {
               return hasWorkersWithOwnId || hasWorkersWithMasterId;
             });
             
-            console.log(`✅ Showing ${categoriesWithWorkers.length}/${allCategories.length} categories with active workers`);
+            if (__DEV__) {
+              console.log(`✅ Categories shown: ${categoriesWithWorkers.length}/${allCategories.length}`);
+            }
 
             setServiceCategories(categoriesWithWorkers);
             setLoading(false);
-            console.log('✅ Real-time categories updated:', categoriesWithWorkers.length);
+            if (__DEV__) console.log('✅ Real-time categories updated:', categoriesWithWorkers.length);
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
             setError('Failed to load services. Pull down to refresh.');
@@ -382,14 +382,14 @@ export default function ServicesScreen() {
 
     // Cleanup listener on unmount
     return () => {
-      console.log('🔥 Cleaning up service categories listener');
+      if (__DEV__) console.log('🔥 Cleaning up service categories listener');
       unsubscribe();
     };
   }, []);
 
   // Real-time listener for service banners
   useEffect(() => {
-    console.log('🔥 Setting up real-time listener for service banners...');
+    if (__DEV__) console.log('🔥 Setting up real-time listener for service banners...');
     setBannersLoading(true);
 
     const unsubscribe = firestore()
@@ -397,7 +397,9 @@ export default function ServicesScreen() {
       .where('isActive', '==', true)
       .onSnapshot(
         (snapshot) => {
-          console.log(`📊 Real-time update: Found ${snapshot.size} active banners at ${new Date().toLocaleTimeString()}`);
+          if (__DEV__) {
+            console.log(`📊 Real-time banners: ${snapshot.size} active @ ${new Date().toLocaleTimeString()}`);
+          }
           
           const banners: ServiceBanner[] = [];
           
@@ -429,7 +431,7 @@ export default function ServicesScreen() {
 
           setServiceBanners(banners);
           setBannersLoading(false);
-          console.log('✅ Real-time banners updated:', banners.length);
+          if (__DEV__) console.log('✅ Real-time banners updated:', banners.length);
         },
         (error) => {
           console.error('❌ Real-time listener error for banners:', error);
@@ -440,14 +442,14 @@ export default function ServicesScreen() {
 
     // Cleanup listener on unmount
     return () => {
-      console.log('🔥 Cleaning up service banners listener');
+      if (__DEV__) console.log('🔥 Cleaning up service banners listener');
       unsubscribe();
     };
   }, []);
 
   // Real-time listener for live bookings
   useEffect(() => {
-    console.log('🔥 Setting up real-time listener for live bookings...');
+    if (__DEV__) console.log('🔥 Setting up real-time listener for live bookings...');
 
     const unsubscribe = firestore()
       .collection('service_bookings')
@@ -455,7 +457,9 @@ export default function ServicesScreen() {
       .limit(15)
       .onSnapshot(
         (snapshot) => {
-          console.log(`📊 Real-time update: Found ${snapshot.size} live bookings at ${new Date().toLocaleTimeString()}`);
+          if (__DEV__) {
+            console.log(`📊 Real-time live bookings: ${snapshot.size} @ ${new Date().toLocaleTimeString()}`);
+          }
           
           const bookings: LiveBooking[] = [];
           
@@ -470,7 +474,7 @@ export default function ServicesScreen() {
           });
 
           setLiveBookings(bookings);
-          console.log('✅ Real-time bookings updated:', bookings.length);
+          if (__DEV__) console.log('✅ Real-time bookings updated:', bookings.length);
         },
         (error) => {
           console.error('❌ Real-time listener error for bookings:', error);
@@ -480,7 +484,7 @@ export default function ServicesScreen() {
 
     // Cleanup listener on unmount
     return () => {
-      console.log('🔥 Cleaning up live bookings listener');
+      if (__DEV__) console.log('🔥 Cleaning up live bookings listener');
       unsubscribe();
     };
   }, []);
@@ -559,6 +563,17 @@ export default function ServicesScreen() {
       }
     };
   }, [liveBookings.length]);
+
+  const latestLiveBooking = React.useMemo(() => {
+    if (!liveBookings?.length) return null;
+    // Query is already orderBy createdAt desc, but keep it defensive.
+    const sorted = [...liveBookings].sort((a, b) => {
+      const aSec = (a as any)?.timestamp?.seconds ?? 0;
+      const bSec = (b as any)?.timestamp?.seconds ?? 0;
+      return bSec - aSec;
+    });
+    return sorted[0] || null;
+  }, [liveBookings]);
 
   // Blinking animation for View All button (light)
   useEffect(() => {
@@ -656,13 +671,8 @@ export default function ServicesScreen() {
     }, [])
   );
 
-  // Navigation functions
-  const goTo = (screen: string, params: any) => {
-    navigation.navigate(screen, params);
-  };
-
   const handleCategoryPress = async (category: ServiceCategory) => {
-    console.log('🎯 Category clicked:', category.name, category.id);
+    if (__DEV__) console.log('🎯 Category clicked:', category.name, category.id);
 
     // Instant feedback so the user knows the tap registered.
     setTapLoading({ visible: true, message: 'Opening…' });
@@ -672,7 +682,7 @@ export default function ServicesScreen() {
     try {
       hasPackages = await FirestoreService.categoryHasPackages(category.id);
     } catch (e) {
-      console.log('⚠️ categoryHasPackages failed:', e);
+      if (__DEV__) console.log('⚠️ categoryHasPackages failed:', e);
     }
     
     const navigationParams = {
@@ -682,48 +692,11 @@ export default function ServicesScreen() {
     };
     
     if (hasPackages) {
-      console.log('✅ Category has packages, navigating to PackageSelection');
+      if (__DEV__) console.log('✅ Category has packages, navigating to PackageSelection');
       navigation.navigate("PackageSelection", navigationParams);
     } else {
-      console.log('✅ Category has no packages, navigating directly to ServiceCategory');
+      if (__DEV__) console.log('✅ Category has no packages, navigating directly to ServiceCategory');
       navigation.navigate("ServiceCategory", navigationParams);
-    }
-  };
-
-  const handleBannerPress = async (banner: ServiceBanner) => {
-    if (!banner.clickable) return;
-
-    setTapLoading({ visible: true, message: 'Opening…' });
-
-    if (banner.redirectType === "ServiceCategory" && banner.categoryId) {
-      // Check if category has packages before navigating
-      let hasPackages = false;
-      try {
-        hasPackages = await FirestoreService.categoryHasPackages(banner.categoryId);
-      } catch (e) {
-        console.log('⚠️ categoryHasPackages failed:', e);
-      }
-      
-      if (hasPackages) {
-        console.log('✅ Category has packages, navigating to PackageSelection');
-        navigation.navigate("PackageSelection", { 
-          serviceTitle: banner.title,
-          categoryId: banner.categoryId,
-          allCategories: serviceCategories,
-        });
-      } else {
-        console.log('✅ Category has no packages, navigating directly to ServiceCategory');
-        navigation.navigate("ServiceCategory", { 
-          serviceTitle: banner.title,
-          categoryId: banner.categoryId,
-          allCategories: serviceCategories,
-        });
-      }
-    } else if (banner.redirectType === "AllServices") {
-      navigation.navigate("AllServices");
-    } else if (banner.redirectUrl) {
-      // Handle external URLs or other navigation
-      console.log('Banner redirect URL:', banner.redirectUrl);
     }
   };
 
@@ -898,6 +871,9 @@ export default function ServicesScreen() {
     );
   }, [navigation]);
 
+  // NOTE: renderBanner intentionally depends on serviceCategories via outer scope.
+  // This file has a few legacy hook-deps warnings; we keep behavior as-is.
+
   const renderListItem = ({ item, index }: { item: ServiceCategory; index: number }) => {
     if (!item || !item.name) return null; // Safety check
     
@@ -908,30 +884,37 @@ export default function ServicesScreen() {
         activeOpacity={0.7}
         onPress={() => handleCategoryPress(item)}
       >
-        <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
-          {item.imageUrl ? (
-            <ExpoImage
-              source={{ uri: item.imageUrl }}
-              style={styles.gridCategoryImage}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={150}
-              onError={(e) => {
-                console.log(`⚠️ Failed to load image for ${item.name}`, {
-                  url: item.imageUrl,
-                  error: (e as any)?.nativeEvent,
-                });
-              }}
-            />
-          ) : (
-            <Ionicons 
-              name={categoryStyle.icon as any} 
-              size={32} 
-              color={categoryStyle.color} 
-            />
-          )}
+        <View style={styles.gridMedia}>
+          <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
+            {item.imageUrl ? (
+              <ExpoImage
+                source={{ uri: item.imageUrl }}
+                style={styles.gridCategoryImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={150}
+                onError={(e) => {
+                  if (__DEV__) {
+                    console.log(`⚠️ Failed to load image for ${item.name}`, {
+                      url: item.imageUrl,
+                      error: (e as any)?.nativeEvent,
+                    });
+                  }
+                }}
+              />
+            ) : (
+              <Ionicons 
+                name={categoryStyle.icon as any} 
+                size={36} 
+                color={categoryStyle.color} 
+              />
+            )}
+          </View>
         </View>
-        <Text style={styles.gridTitle}>{item.name}</Text>
+
+        <View style={styles.gridInfo}>
+          <Text style={styles.gridTitle} numberOfLines={2}>{item.name}</Text>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -957,7 +940,7 @@ export default function ServicesScreen() {
                 onPress={handleHistoryPress}
                 activeOpacity={0.8}
               >
-                <Ionicons name="receipt-outline" size={22} color="white" />
+                <Ionicons name="receipt-outline" size={20} color="#1D4ED8" />
                 <Text style={styles.historyButtonText}>History</Text>
               </TouchableOpacity>
             </View>
@@ -1063,79 +1046,43 @@ export default function ServicesScreen() {
                   <Text style={styles.liveText}>Live Bookings</Text>
                 </Animated.View>
               </View>
-              <View style={styles.liveUpdatesWrapper} pointerEvents="box-none">
-                <ScrollView 
-                  ref={liveBookingsScrollRef}
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  scrollEventThrottle={16}
-                  pointerEvents="box-none"
-                  contentContainerStyle={styles.liveUpdatesScroll}
-                  onScroll={Platform.OS === 'ios' ? undefined : (event) => {
-                    const contentWidth = event.nativeEvent.contentSize.width;
-                    const scrollWidth = event.nativeEvent.layoutMeasurement.width;
-                    const currentScrollX = event.nativeEvent.contentOffset.x;
-                    
-                    // Reset scroll when reaching end for infinite loop effect
-                    if (currentScrollX >= contentWidth - scrollWidth) {
-                      scrollX.current = 0;
-                      liveBookingsScrollRef.current?.scrollTo({ x: 0, animated: false });
-                    }
-                  }}
-                >
-                  {liveBookings.length > 0 ? (
-                    <>
-                      {/* Original bookings */}
-                      {liveBookings.map((booking, index) => (
-                        <Animated.View 
-                          key={`original-${booking.id}`} 
-                          style={[
-                            styles.liveUpdateItem,
-                            { opacity: bookingBlinkAnim }
-                          ]}
-                        >
-                          <View style={styles.liveUpdateDot} />
-                          <Text style={styles.liveUpdateSimpleText}>
-                            <Text style={styles.liveUpdateBold}>{booking.serviceName}</Text>
-                            {' '} service has been booked in{' '}
-                            <Text style={styles.liveUpdateLocation}>{booking.location}</Text>
-                          </Text>
-                        </Animated.View>
-                      ))}
-                      {/* Duplicate bookings for seamless loop */}
-                      {liveBookings.map((booking, index) => (
-                        <Animated.View 
-                          key={`duplicate-${booking.id}`} 
-                          style={[
-                            styles.liveUpdateItem,
-                            { opacity: bookingBlinkAnim }
-                          ]}
-                        >
-                          <View style={styles.liveUpdateDot} />
-                          <Text style={styles.liveUpdateSimpleText}>
-                            <Text style={styles.liveUpdateBold}>{booking.serviceName}</Text>
-                            {' '}booked in{' '}
-                            <Text style={styles.liveUpdateLocation}>{booking.location}</Text>
-                          </Text>
-                        </Animated.View>
-                      ))}
-                    </>
-                  ) : (
-                    <View style={styles.liveUpdateItem}>
-                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                      <Text style={styles.liveUpdateSimpleText}>
-                        No active bookings right now
-                      </Text>
+              <View style={styles.liveUpdatesWrapper}>
+                {latestLiveBooking ? (
+                  <Animated.View style={[styles.liveUpdateCard, { opacity: bookingBlinkAnim }]}>
+                    <View style={styles.liveUpdateCardLeft}>
+                      <View style={styles.liveUpdateDot} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
+                          {latestLiveBooking.serviceName}
+                        </Text>
+                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
+                          Booked in {latestLiveBooking.location}
+                        </Text>
+                      </View>
                     </View>
-                  )}
-                </ScrollView>
+                  </Animated.View>
+                ) : (
+                  <View style={styles.liveUpdateCard}>
+                    <View style={styles.liveUpdateCardLeft}>
+                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
+                          No live bookings
+                        </Text>
+                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
+                          No active bookings right now
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
               </View>
             </View>
           </>
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex, hasMoreCategories, liveBookings, arrowAnim]);
+  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex, hasMoreCategories, liveBookings, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking]);
 
   return (
     <View style={styles.container}>
@@ -1322,19 +1269,24 @@ const styles = StyleSheet.create({
   historyButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "transparent",
-    paddingHorizontal: 8,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 20,
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(255,255,255,0.85)",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
   historyButtonText: {
-    color: "white",
+    color: "#0F172A",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "800",
   },
 
   // Search Bar Styles
@@ -1639,6 +1591,26 @@ const styles = StyleSheet.create({
     minWidth: 270,
   },
 
+  liveUpdateCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+
+  liveUpdateCardTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+
+  liveUpdateCardSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+
   liveUpdateText: {
     fontSize: 13,
     color: "#64748b",
@@ -1661,7 +1633,7 @@ const styles = StyleSheet.create({
     width: (width - 48) / 2,
     backgroundColor: "white",
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     alignItems: "center",
     elevation: 2,
     shadowColor: '#000',
@@ -1670,22 +1642,36 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     borderWidth: 1,
     borderColor: "#f1f5f9",
+    overflow: 'hidden',
+  },
+
+  gridMedia: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 6,
+    paddingBottom: 10,
   },
 
   gridIconContainer: {
-    width: 72,
-    height: 72,
+    width: '100%',
+    height: 108,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
     overflow: "hidden",
   },
 
   gridCategoryImage: {
-    width: 72,
-    height: 72,
+    width: '100%',
+    height: '100%',
     borderRadius: 16,
+  },
+
+  gridInfo: {
+    width: '100%',
+    paddingHorizontal: 6,
+    paddingBottom: 10,
   },
 
   gridTitle: {

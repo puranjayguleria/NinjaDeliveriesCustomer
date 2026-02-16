@@ -6,14 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   TextInput,
   Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory } from '../services/firestoreService';
-import { firestore } from '../firebase.native';
 
 // Function to get icon based on service category name
 const getCategoryIcon = (categoryName: string) => {
@@ -92,10 +90,6 @@ export default function AllServicesScreen() {
     fetchServiceCategories();
   }, []);
 
-  useEffect(() => {
-    filterCategories();
-  }, [searchQuery, categories]);
-
   const fetchServiceCategories = async () => {
     try {
       setLoading(true);
@@ -118,7 +112,7 @@ export default function AllServicesScreen() {
     }
   };
 
-  const filterCategories = () => {
+  const filterCategories = React.useCallback(() => {
     if (!searchQuery.trim()) {
       setFilteredCategories(categories);
       return;
@@ -128,7 +122,11 @@ export default function AllServicesScreen() {
       category.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredCategories(filtered);
-  };
+  }, [categories, searchQuery]);
+
+  useEffect(() => {
+    filterCategories();
+  }, [filterCategories]);
 
   const handleServicePress = async (category: ServiceCategory) => {
     console.log('🎯 Category clicked:', category.name, category.id);
@@ -157,21 +155,26 @@ export default function AllServicesScreen() {
       activeOpacity={0.7}
       onPress={() => handleServicePress(item)}
     >
-      <View style={styles.categoryIconContainer}>
-        {item.imageUrl ? (
-          <Image 
-            source={{ uri: item.imageUrl }} 
-            style={styles.categoryImage}
-            resizeMode="cover"
-            onError={() => {
-              console.log(`⚠️ Failed to load image for ${item.name} in AllServices, falling back to icon`);
-            }}
-          />
-        ) : (
-          <Ionicons name={getCategoryIcon(item.name) as any} size={32} color="#00b4a0" />
-        )}
+      <View style={styles.categoryMedia}>
+        <View style={styles.categoryIconContainer}>
+          {item.imageUrl ? (
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={styles.categoryImage}
+              resizeMode="cover"
+              onError={() => {
+                console.log(`⚠️ Failed to load image for ${item.name} in AllServices, falling back to icon`);
+              }}
+            />
+          ) : (
+            <Ionicons name={getCategoryIcon(item.name) as any} size={36} color="#00b4a0" />
+          )}
+        </View>
       </View>
-      <Text style={styles.categoryName}>{item.name}</Text>
+
+      <View style={styles.categoryInfo}>
+        <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
+      </View>
     </TouchableOpacity>
   );
 
@@ -340,7 +343,7 @@ const styles = StyleSheet.create({
     width: '31%',
     backgroundColor: 'white',
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
     elevation: 2,
     shadowColor: '#000',
@@ -349,23 +352,37 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     borderWidth: 1,
     borderColor: '#f1f5f9',
+    overflow: 'hidden',
+  },
+
+  categoryMedia: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 6,
+    paddingBottom: 10,
   },
 
   categoryIconContainer: {
-    width: 64,
-    height: 64,
+    width: '100%',
+    height: 92,
     borderRadius: 16,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
     overflow: 'hidden',
   },
 
   categoryImage: {
-    width: 64,
-    height: 64,
+    width: '100%',
+    height: '100%',
     borderRadius: 16,
+  },
+
+  categoryInfo: {
+    width: '100%',
+    paddingHorizontal: 6,
+    paddingBottom: 10,
   },
 
   categoryName: {

@@ -110,6 +110,9 @@ export interface ServiceBooking {
   status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'cancelled' | 'expired' | 'reject';
   companyId?: string;
   companyName?: string; // Add company name field for website compatibility
+  // Payment fields (some flows read these)
+  paymentStatus?: string;
+  paymentMethod?: string;
   // Worker/Technician fields (using actual database field names)
   workerName?: string;    // Primary field name in database
   workerId?: string;      // Primary field name in database
@@ -122,12 +125,18 @@ export interface ServiceBooking {
   }>;
   // Package information (for monthly/weekly service packages)
   isPackage?: boolean; // Whether this booking is for a package
+  // Some backends/clients use isPackageBooking instead of isPackage
+  isPackageBooking?: boolean;
   packageId?: string; // Package ID from service_services
   packageName?: string; // Package name (e.g., "Monthly Package", "Weekly Package")
   packageType?: 'monthly' | 'weekly' | 'custom'; // Package frequency type
   packagePrice?: number; // Package price
   packageDuration?: string; // Package duration description
   packageDescription?: string; // Package description
+  // Plan metadata used for grouping recurring bookings
+  packageUnit?: string; // e.g. day/week/month
+  planGroupId?: string; // same across all occurrences of a purchased plan
+  selectedPackage?: any;
   // Location data for website access
   location?: {
     lat: number | null;
@@ -379,10 +388,10 @@ export class FirestoreService {
    */
   static async populateCategoryImages(categories: ServiceCategory[]): Promise<void> {
     try {
-      console.log(`🖼️ Fetching category images for ${categories.length} categories...`);
+      if (__DEV__) console.log(`🖼️ Fetching category images for ${categories.length} categories...`);
       
       if (categories.length === 0) {
-        console.log('⚠️ No categories to populate images for');
+        if (__DEV__) console.log('⚠️ No categories to populate images for');
         return;
       }
       
@@ -391,10 +400,10 @@ export class FirestoreService {
         .collection('service_categories_master')
         .get();
 
-      console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+  if (__DEV__) console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
 
       if (masterSnapshot.size === 0) {
-        console.log('⚠️ WARNING: service_categories_master collection is empty!');
+        if (__DEV__) console.log('⚠️ WARNING: service_categories_master collection is empty!');
       }
 
       // Create a map of category names to images for efficient lookup
@@ -405,52 +414,49 @@ export class FirestoreService {
         if (data.name && data.imageUrl) {
           // Store both exact name and lowercase name for flexible matching
           imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
-          console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
+          // Extremely noisy on startup; keep off by default.
+          // If you need it again, wrap with a dedicated debug flag.
+          // if (__DEV__) console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
         } else {
-          console.log(`⚠️ Master category missing name or imageUrl:`, {
-            hasName: !!data.name,
-            hasImageUrl: !!data.imageUrl,
-            docId: doc.id
-          });
+          if (__DEV__) {
+            console.log(`⚠️ Master category missing name or imageUrl:`, {
+              hasName: !!data.name,
+              hasImageUrl: !!data.imageUrl,
+              docId: doc.id,
+            });
+          }
         }
       });
 
-      console.log(`🔍 Image map has ${imageMap.size} entries`);
+      if (__DEV__) console.log(`🔍 Image map has ${imageMap.size} entries`);
 
       // Match categories with their images
       let imagesFound = 0;
       categories.forEach(category => {
         const categoryNameLower = category.name.toLowerCase().trim();
-        
-        console.log(`  Searching for image: "${category.name}" (${categoryNameLower})`);
+        // Don't log per-category matching (very noisy)
         
         // Try exact match first
         if (imageMap.has(categoryNameLower)) {
           category.imageUrl = imageMap.get(categoryNameLower) || null;
           imagesFound++;
-          console.log(`    ✅ Exact match found`);
         } else {
           // Try partial matching for similar names
           for (const [masterName, imageUrl] of imageMap.entries()) {
             if (masterName.includes(categoryNameLower) || categoryNameLower.includes(masterName)) {
               category.imageUrl = imageUrl;
               imagesFound++;
-              console.log(`    ✅ Partial match: matched with "${masterName}"`);
               break;
             }
-          }
-          
-          if (!category.imageUrl) {
-            console.log(`    ⚠️ No image match found`);
           }
         }
       });
 
-      console.log(`🖼️ Image matching complete: ${imagesFound}/${categories.length} categories matched`);
+      if (__DEV__) console.log(`🖼️ Image matching complete: ${imagesFound}/${categories.length} categories matched`);
     } catch (error) {
       console.error('❌ Error in populateCategoryImages:', error);
       // Don't throw error - just continue without images
-      console.log('⚠️ Continuing without category images...');
+      if (__DEV__) console.log('⚠️ Continuing without category images...');
     }
   }
 
@@ -6343,7 +6349,7 @@ export class FirestoreService {
         .collection('service_bookings')
         .where('date', '==', date)
         .where('time', '==', time)
-        .where('status', 'in', ['assigned', 'started', 'pending'])
+        .where('status', 'in', ['assigned', 'started', 'pending', 'confirmed'])
         .get();
       
       const busyWorkers: string[] = [];
@@ -6352,10 +6358,28 @@ export class FirestoreService {
         console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
       }
       
+      let unassignedActiveForServiceCount = 0;
+
       bookingsSnapshot.docs.forEach(doc => {
         const booking = doc.data();
         const workerId = booking.workerId || booking.technicianId;
         
+        // IMPORTANT:
+        // When pending bookings exceed worker capacity, the time slot must show as booked
+        // even if workers have not yet been assigned.
+        // So we count active *unassigned* bookings for this same company + service.
+        const bookingCompanyId = String(booking.companyId || '');
+        const isSameCompany = bookingCompanyId === String(companyId);
+
+        const hasWorkerAssigned = !!workerId;
+        if (isSameCompany && !hasWorkerAssigned) {
+          // If serviceTitle is available, use it to filter (best-effort; older docs may not have serviceId)
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '');
+          if (!serviceTitle || bookingServiceName === serviceTitle) {
+            unassignedActiveForServiceCount += 1;
+          }
+        }
+
         if (workerId && relevantWorkers.includes(workerId)) {
           busyWorkers.push(workerId);
           if (__DEV__) {
@@ -6364,15 +6388,22 @@ export class FirestoreService {
         }
       });
       
-      const availableWorkers = totalRelevantWorkers - busyWorkers.length;
+      // Capacity rule:
+      // totalRelevantWorkers is the slot capacity.
+      // If (assigned-busy + pending-unassigned) >= capacity => slot is booked.
+      const consumedCapacity = busyWorkers.length + unassignedActiveForServiceCount;
+      const availableWorkers = totalRelevantWorkers - consumedCapacity;
       
-      console.log(`📊 FINAL RESULT:`);
-      console.log(`   Total relevant workers: ${totalRelevantWorkers}`);
-      console.log(`   Busy workers: ${busyWorkers.length}`);
-      console.log(`   Available workers: ${availableWorkers}`);
+      if (__DEV__) {
+        console.log(`📊 FINAL RESULT:`);
+        console.log(`   Total relevant workers: ${totalRelevantWorkers}`);
+        console.log(`   Busy workers (assigned): ${busyWorkers.length}`);
+        console.log(`   Pending/unassigned (same service): ${unassignedActiveForServiceCount}`);
+        console.log(`   Available workers: ${availableWorkers}`);
+      }
       
       if (availableWorkers <= 0) {
-        console.log(`❌ ALL ${totalRelevantWorkers} RELEVANT WORKERS ARE BUSY`);
+        if (__DEV__) console.log(`❌ SLOT FULL: consumedCapacity=${consumedCapacity} / capacity=${totalRelevantWorkers}`);
         return {
           available: false,
           status: 'all_busy',
@@ -6382,7 +6413,7 @@ export class FirestoreService {
         };
       }
       
-      console.log(`✅ ${availableWorkers} WORKERS AVAILABLE for this service`);
+      if (__DEV__) console.log(`✅ ${availableWorkers} WORKERS AVAILABLE for this service`);
       return {
         available: true,
         status: 'available',

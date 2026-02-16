@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,11 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { firestore } from "../firebase.native";
 import { FirestoreService } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
@@ -27,21 +30,49 @@ type RecurringSchedule = {
   timeSlot: string; // UI label e.g. "9:00 AM - 11:00 AM"
 };
 
-type MonthlySchedule = {
-  unit: 'month';
-  anchorDate: string; // yyyy-mm-dd (user-selected date)
-  weekday: number; // 0=Sun..6=Sat derived from anchorDate
-  timeSlot: string; // UI slot label e.g. "9:00 AM - 11:00 AM"
-};
+// NOTE: MonthlySchedule was previously defined but unused in this screen.
 
 export default function SelectDateTimeScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
+  const insets = useSafeAreaInsets();
+
+  const instanceIdRef = useRef(`SDT-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  useEffect(() => {
+    const instanceId = instanceIdRef.current;
+    console.log("🧭 SelectDateTime", instanceId, "MOUNT");
+    return () => {
+      console.log("🧭 SelectDateTime", instanceId, "UNMOUNT");
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubFocus = navigation.addListener("focus", () => {
+      console.log("🧭 SelectDateTime", instanceIdRef.current, "FOCUS");
+    });
+    const unsubBlur = navigation.addListener("blur", () => {
+      console.log("🧭 SelectDateTime", instanceIdRef.current, "BLUR");
+    });
+    return () => {
+      unsubFocus();
+      unsubBlur();
+    };
+  }, [navigation]);
 
   const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, fromServiceServices, isPackageBooking, selectedPackage: selectedPackageParam, serviceQuantities, selectedCompanyId, selectedCompany } = route.params;
 
-  const selectedPackage = (() => {
+  useEffect(() => {
+    console.log("🧭 SelectDateTime", instanceIdRef.current, "ROUTE PARAMS", {
+      keys: Object.keys(route?.params || {}),
+      isPackageBooking,
+      selectedCompanyId,
+      selectedCompanyName: (selectedCompany as any)?.name,
+      selectedPackageType: typeof selectedPackageParam,
+    });
+  }, [isPackageBooking, route?.params, selectedCompany, selectedCompanyId, selectedPackageParam]);
+
+  const selectedPackage = useMemo(() => {
     // Some flows pass the package object, others pass a JSON stringified snapshot.
     // Normalize to an object so unit parsing works reliably.
     if (!selectedPackageParam) return selectedPackageParam;
@@ -56,12 +87,22 @@ export default function SelectDateTimeScreen() {
       }
     }
     return selectedPackageParam;
-  })();
+  }, [selectedPackageParam]);
+
+  const selectedPackageId = String((selectedPackage as any)?.id || '');
+  const selectedPackageName = String((selectedPackage as any)?.name || '');
+  const selectedPackagePrice = (selectedPackage as any)?.price;
+  const selectedPackageDuration = (selectedPackage as any)?.duration;
+
+  const serviceIdKey = String(selectedIssueIds?.[0] || "");
+  const selectedPackagePriceKey = String(selectedPackagePrice ?? "");
+  const selectedPackageDurationKey = String(selectedPackageDuration ?? "");
 
   const selectedPackageUnit = String((selectedPackage as any)?.unit || '').toLowerCase();
   const isMonthlyPackage = isPackageBooking === true && selectedPackageUnit === 'month';
   const isRecurringPackage = isPackageBooking === true && ['day', 'daily', 'week', 'weekly', 'month', 'monthly'].includes(selectedPackageUnit);
   const needsDayConfirmation = isRecurringPackage && (isMonthlyPackage || selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
+  const isDailyPackage = isPackageBooking === true && (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily');
 
   const isSundayISO = (dateISO: string) => {
     const d = new Date(dateISO);
@@ -73,6 +114,18 @@ export default function SelectDateTimeScreen() {
   const pad2 = (n: number) => String(n).padStart(2, "0");
 
   const getMonthKey = (iso: string): string => String(iso || "").slice(0, 7); // YYYY-MM
+
+  const addMonthsKey = (monthKey: string, deltaMonths: number): string => {
+    const [yStr, mStr] = String(monthKey).split('-');
+    const y0 = Number(yStr);
+    const m0 = Number(mStr);
+    if (!Number.isFinite(y0) || !Number.isFinite(m0)) return monthKey;
+
+    const dt = new Date(y0, (m0 - 1) + Number(deltaMonths || 0), 1);
+    const y = dt.getFullYear();
+    const m = dt.getMonth() + 1;
+    return `${y}-${pad2(m)}`;
+  };
 
   const startOfMonthISO = (monthKey: string): string => `${monthKey}-01`;
 
@@ -94,12 +147,12 @@ export default function SelectDateTimeScreen() {
 
   const makeISO = (monthKey: string, day: number): string => `${monthKey}-${pad2(day)}`;
 
-  const buildMonthGrid = (monthKey: string): Array<{ iso: string | null; dayNumber: number | null; isSunday: boolean }> => {
+  const buildMonthGrid = (monthKey: string): { iso: string | null; dayNumber: number | null; isSunday: boolean }[] => {
     const firstIso = startOfMonthISO(monthKey);
     const firstDow = dayOfWeekSun0(firstIso); // 0..6
     const total = daysInMonth(monthKey);
 
-    const cells: Array<{ iso: string | null; dayNumber: number | null; isSunday: boolean }> = [];
+  const cells: { iso: string | null; dayNumber: number | null; isSunday: boolean }[] = [];
     for (let i = 0; i < firstDow; i++) cells.push({ iso: null, dayNumber: null, isSunday: false });
     for (let day = 1; day <= total; day++) {
       const iso = makeISO(monthKey, day);
@@ -110,9 +163,22 @@ export default function SelectDateTimeScreen() {
   };
 
   const addDaysISO = (dateISO: string, days: number) => {
-    const d = new Date(dateISO);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    // Safer than new Date('YYYY-MM-DD') on some Android/JSC builds.
+    // Build a local Date from components to avoid parsing quirks/timezone shifts.
+    try {
+      const [yStr, mStr, dStr] = String(dateISO).split('-');
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const d0 = Number(dStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d0)) return dateISO;
+      const dt = new Date(y, m - 1, d0);
+      if (Number.isNaN(dt.getTime())) return dateISO;
+      dt.setDate(dt.getDate() + Number(days || 0));
+      if (Number.isNaN(dt.getTime())) return dateISO;
+      return dt.toISOString().split('T')[0];
+    } catch {
+      return dateISO;
+    }
   };
 
   const buildRecurringSchedule = (anchorDateISO: string, timeSlotLabel: string): RecurringSchedule | null => {
@@ -162,24 +228,27 @@ export default function SelectDateTimeScreen() {
     return out;
   };
 
-  // Debug: Log all route params immediately
-  console.log('🚀 SelectDateTimeScreen MOUNTED with params:', JSON.stringify({
-    serviceTitle,
-    categoryId,
-    issues,
-    selectedIssueIds,
-    selectedIssues: selectedIssues?.map((s: any) => s.name),
-    fromServiceServices,
-    isPackageBooking,
-    serviceQuantities,
-    selectedCompanyId,
-    selectedCompanyName: selectedCompany?.companyName || selectedCompany?.serviceName,
-    selectedPackage: selectedPackage ? {
-      name: selectedPackage.name,
-      price: selectedPackage.price,
-      id: selectedPackage.id
-    } : null
-  }, null, 2));
+  // Debug: Log initial params once per *real* mount (avoid log spam on rerenders)
+  useEffect(() => {
+    console.log('🚀 SelectDateTimeScreen MOUNTED with params:', JSON.stringify({
+      serviceTitle,
+      categoryId,
+      issues,
+      selectedIssueIds,
+      selectedIssues: selectedIssues?.map((s: any) => s.name),
+      fromServiceServices,
+      isPackageBooking,
+      serviceQuantities,
+      selectedCompanyId,
+      selectedCompanyName: selectedCompany?.companyName || selectedCompany?.serviceName,
+      selectedPackage: selectedPackage ? {
+        name: (selectedPackage as any)?.name,
+        price: (selectedPackage as any)?.price,
+        id: (selectedPackage as any)?.id,
+      } : null,
+    }, null, 2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // State for slots
   const [slots, setSlots] = useState<string[]>([]);
@@ -190,17 +259,30 @@ export default function SelectDateTimeScreen() {
   const [seriesConflicts, setSeriesConflicts] = useState<Record<string, string[]>>({});
   const [loadingSeriesAvailability, setLoadingSeriesAvailability] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityFreshByDate, setAvailabilityFreshByDate] = useState<Record<string, boolean>>({});
+  const availabilityReqIdRef = useRef(0);
+  const [availabilityStatusText, setAvailabilityStatusText] = useState<string>('');
   const [blockError, setBlockError] = useState<string | null>(null);
+  const [planPickError, setPlanPickError] = useState<string | null>(null);
+
+  // Guards against in-flight async loops / stale completions.
+  const seriesValidationReqRef = useRef(0);
+  const fetchSlotsReqRef = useRef(0);
+
+  const isVerifyingAvailability = loadingAvailability || loadingSeriesAvailability;
 
   // Predefined slots for services (non-package bookings)
-  const defaultSlots = [
-    "9:00 AM - 11:00 AM",
-    "11:00 AM - 1:00 PM", 
-    "1:00 PM - 3:00 PM",
-    "3:00 PM - 5:00 PM",
-    "5:00 PM - 7:00 PM",
-    "7:00 PM - 9:00 PM",
-  ];
+  const defaultSlots = useMemo(
+    () => [
+      "9:00 AM - 11:00 AM",
+      "11:00 AM - 1:00 PM",
+      "1:00 PM - 3:00 PM",
+      "3:00 PM - 5:00 PM",
+      "5:00 PM - 7:00 PM",
+      "7:00 PM - 9:00 PM",
+    ],
+    []
+  );
 
   const [time, setTime] = useState("");
   const [confirmedPlanDates, setConfirmedPlanDates] = useState<string[]>([]);
@@ -213,18 +295,249 @@ export default function SelectDateTimeScreen() {
 
   const isServiceFlow = isPackageBooking !== true;
 
-  // Phase-1 “duration accumulation” (slot-block) implementation:
-  // For service flow, required “time” scales with quantity, represented as # of contiguous slots.
-  // Later we can replace this with real per-service durations and convert minutes -> slots.
+  const isDayBookedForTimeSlot = (iso: string, timeSlotLabel: string) => {
+    const key = `${iso}|${timeSlotLabel}`;
+    // slotAvailability: true/false, where false means fully booked
+    if (slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, key)) {
+      return slotAvailability[key] === false;
+    }
+    return false;
+  };
+
+  // Service-flow “duration accumulation” (slot-block) implementation:
+  // Each time window in `defaultSlots` is treated as one 2-hour slot.
+  // For non-package services, we derive how many contiguous slots are needed from the
+  // selected service(s) `duration` + `durationUnit`, multiplied by quantity.
+  type DurationUnit = 'minute' | 'minutes' | 'min' | 'hour' | 'hours' | 'hr' | 'day' | 'days' | 'week' | 'weeks' | 'month' | 'months';
+
+  const normalizeDurationUnit = (u: any): DurationUnit | null => {
+    if (!u) return null;
+    const s = String(u).trim().toLowerCase();
+    if (
+      s === 'minute' || s === 'minutes' || s === 'min' ||
+      s === 'hour' || s === 'hours' || s === 'hr' ||
+      s === 'day' || s === 'days' ||
+      s === 'week' || s === 'weeks' ||
+      s === 'month' || s === 'months'
+    ) return s as DurationUnit;
+    return null;
+  };
+
+  const parseSlotHours = (label: string): number => {
+    // Expected label format: "9:00 AM - 11:00 AM".
+    // Fallback to 2 hours if parsing fails.
+    try {
+      const parts = String(label).split('-').map((p) => p.trim());
+      if (parts.length !== 2) return 2;
+      const toMinutes = (t: string) => {
+        const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        if (!m) return null;
+        let hh = Number(m[1]);
+        const mm = Number(m[2]);
+        const ap = m[3].toUpperCase();
+        if (ap === 'PM' && hh !== 12) hh += 12;
+        if (ap === 'AM' && hh === 12) hh = 0;
+        return hh * 60 + mm;
+      };
+      const a = toMinutes(parts[0]);
+      const b = toMinutes(parts[1]);
+      if (a == null || b == null) return 2;
+      const diff = b - a;
+      // Handle overnight ranges (shouldn't happen, but avoid negative duration).
+      const minutes = diff > 0 ? diff : diff + 24 * 60;
+      const hours = minutes / 60;
+      return hours > 0 ? hours : 2;
+    } catch {
+      return 2;
+    }
+  };
+
+  const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+  const durationToMinutes = (duration: any, unitRaw: any): number | null => {
+    const d = Number(duration);
+    if (!Number.isFinite(d) || d <= 0) return null;
+    const unit = normalizeDurationUnit(unitRaw);
+    if (!unit) return null;
+
+    switch (unit) {
+      case 'minute':
+      case 'minutes':
+      case 'min':
+        return d;
+      case 'hour':
+      case 'hours':
+      case 'hr':
+        return d * 60;
+      case 'day':
+      case 'days':
+        return d * 24 * 60;
+      case 'week':
+      case 'weeks':
+        return d * 7 * 24 * 60;
+      case 'month':
+      case 'months':
+        return d * 30 * 24 * 60;
+    }
+  };
+
+  const formatTime12h = (totalMinutes: number) => {
+    const m = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    let hh = Math.floor(m / 60);
+    const mm = m % 60;
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const hh12 = hh % 12 || 12;
+    return `${hh12}:${String(mm).padStart(2, '0')} ${ampm}`;
+  };
+
+  const buildSlotsForIntervalMinutes = useCallback((intervalMinutes: number): string[] => {
+    // Service slots are an in-day selection grid. We generate time windows for a business day.
+    // Current defaults cover 9 AM - 9 PM (12 hours). We'll keep the same day bounds.
+    const dayStartM = 9 * 60;
+    const dayEndM = 21 * 60;
+
+    const step = Math.round(intervalMinutes);
+    if (!Number.isFinite(step) || step <= 0) return [];
+
+    const out: string[] = [];
+    for (let start = dayStartM; start + step <= dayEndM; start += step) {
+      const end = start + step;
+      out.push(`${formatTime12h(start)} - ${formatTime12h(end)}`);
+    }
+    return out;
+  }, []);
+
+  const slotsPerDay = defaultSlots.length;
+  const singleSlotHours = parseSlotHours(defaultSlots?.[0] ?? "");
+
+  const [hydratedServiceMeta, setHydratedServiceMeta] = useState<{ id: string; duration?: any; durationUnit?: any }[]>([]);
+
+  // Some flows only pass lightweight service objects in `selectedIssues` (without duration fields).
+  // Hydrate duration metadata from Firestore so slot intervals can be generated reliably.
+  useEffect(() => {
+    if (!isServiceFlow) return;
+    if (!Array.isArray(selectedIssueIds) || selectedIssueIds.length === 0) {
+      setHydratedServiceMeta([]);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+  const metas: { id: string; duration?: any; durationUnit?: any }[] = [];
+        for (const id of selectedIssueIds) {
+          if (!id) continue;
+          try {
+            const snap = await firestore().collection('service_services').doc(String(id)).get();
+            const data: any = snap.exists ? snap.data() : null;
+            metas.push({ id: String(id), duration: data?.duration, durationUnit: data?.durationUnit });
+          } catch {
+            metas.push({ id: String(id) });
+          }
+        }
+        if (!cancelled) setHydratedServiceMeta(metas);
+      } catch {
+        if (!cancelled) setHydratedServiceMeta([]);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isServiceFlow, JSON.stringify(selectedIssueIds)]);
+
+  const effectiveServiceIntervalMinutes = (() => {
+    if (!isServiceFlow) return null;
+
+    const fromRoute = (Array.isArray(selectedIssues) ? selectedIssues : [])
+      .map((s: any) => durationToMinutes(s?.duration, s?.durationUnit))
+      .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0) as number[];
+
+    const fromHydrated = (Array.isArray(hydratedServiceMeta) ? hydratedServiceMeta : [])
+      .map((s: any) => durationToMinutes(s?.duration, s?.durationUnit))
+      .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0) as number[];
+
+    const candidates = [...fromRoute, ...fromHydrated];
+    if (candidates.length === 0) return null;
+    const minMins = Math.min(...candidates);
+    return clamp(minMins, 15, 12 * 60);
+  })();
+
+  const computeSlotsForService = (service: any): number => {
+    // In ServiceCategoryScreen, quantities are keyed by `item.id`.
+    const serviceId = service?.id ?? service?._id ?? service?.issueId;
+    const qty = Math.max(1, Number(serviceQuantities?.[serviceId] ?? 1) || 1);
+    const rawDuration = Number(service?.duration);
+    const unit = normalizeDurationUnit(service?.durationUnit);
+
+    // If duration is missing or invalid, fallback to 1 slot per quantity to preserve legacy behavior.
+    if (!Number.isFinite(rawDuration) || rawDuration <= 0 || !unit) {
+      return qty;
+    }
+
+    // Convert the service duration into hours.
+    let hours = 0;
+    switch (unit) {
+      case 'minute':
+      case 'minutes':
+      case 'min':
+        hours = rawDuration / 60;
+        break;
+      case 'hour':
+      case 'hours':
+      case 'hr':
+        hours = rawDuration;
+        break;
+      case 'day':
+      case 'days':
+        hours = rawDuration * 24;
+        break;
+      case 'week':
+      case 'weeks':
+        hours = rawDuration * 7 * 24;
+        break;
+      case 'month':
+      case 'months':
+        // Month isn't really meaningful for an in-day time slot grid; interpret as 30 days.
+        hours = rawDuration * 30 * 24;
+        break;
+    }
+
+    const slotsNeeded = Math.ceil(hours / Math.max(0.25, singleSlotHours));
+    return Math.max(1, slotsNeeded) * qty;
+  };
+
   const requiredSlots = (() => {
     if (!isServiceFlow) return 1;
-    if (!serviceQuantities || typeof serviceQuantities !== "object") return 1;
+
+    // Prefer new duration fields when present.
+    if (Array.isArray(selectedIssues) && selectedIssues.length > 0) {
+      // Important: a booking has ONE chosen start time window. If multiple services are in the cart,
+      // we should block enough time to satisfy the LONGEST selected service (not sum of all services),
+      // otherwise requiredSlots becomes unrealistically large.
+      const maxSlots = selectedIssues.reduce((acc: number, svc: any) => Math.max(acc, computeSlotsForService(svc)), 0);
+      return Math.max(1, maxSlots);
+    }
+
+    // Fallback: old quantity-based behavior.
+    if (!serviceQuantities || typeof serviceQuantities !== 'object') return 1;
     const sum = Object.values(serviceQuantities).reduce(
       (acc: number, v: any) => acc + (Number(v) || 0),
       0
     );
     return Math.max(1, sum);
   })();
+
+  const getVisibleDaysForServiceFlow = useCallback(() => {
+    // We show enough days so that long bookings can spill into next day(s).
+    // Example: if requiredSlots is 6 and we have 4 slots/day, we need at least 2 days.
+    if (!isServiceFlow) return 7;
+    const days = Math.ceil(requiredSlots / Math.max(1, slotsPerDay));
+    // Keep some extra buffer while still being bounded.
+    return Math.min(30, Math.max(7, days + 1));
+  }, [isServiceFlow, requiredSlots, slotsPerDay]);
 
   // In service flow, user picks ONE start slot and we auto-accumulate a contiguous block.
   const [startSlot, setStartSlot] = useState<SelectedSlot | null>(null);
@@ -241,9 +554,10 @@ export default function SelectDateTimeScreen() {
     return res;
   };
 
-  const buildSlotBlock = (start: SelectedSlot, slotsForDay: string[]): SlotBlockResult => {
-    // We can only accumulate within the next 7 days that UI exposes.
-    const visibleDates = getNextNDays(start.date, 7);
+  const buildSlotBlock = useCallback((start: SelectedSlot, slotsForDay: string[]): SlotBlockResult => {
+    // Accumulate across the visible dates that UI exposes.
+    // For service flow we may need >7 days for long durations.
+    const visibleDates = getNextNDays(start.date, isServiceFlow ? getVisibleDaysForServiceFlow() : 7);
     const startIndex = slotsForDay.indexOf(start.time);
     if (startIndex < 0) {
       return { ok: false, slots: [], reason: "Start slot not found" };
@@ -277,7 +591,7 @@ export default function SelectDateTimeScreen() {
     }
 
     return { ok: true, slots: out };
-  };
+  }, [getVisibleDaysForServiceFlow, isServiceFlow, requiredSlots, slotAvailability]);
 
   const computeAvailabilityForDate = async (dateISO: string, slotsForDay: string[]) => {
     // Monthly packages are date-based subscriptions. We shouldn't hide slots based on
@@ -295,8 +609,12 @@ export default function SelectDateTimeScreen() {
     }
     if (!dateISO || !Array.isArray(slotsForDay) || slotsForDay.length === 0) return;
 
+  const reqId = ++availabilityReqIdRef.current;
     setLoadingAvailability(true);
     setAvailabilityError(null);
+  // Mark this date as not-yet-fresh so UI won't show stale "Available" badges.
+  setAvailabilityFreshByDate((prev) => ({ ...prev, [dateISO]: false }));
+  setAvailabilityStatusText('Fetching providers…');
 
     try {
       // Step 1: determine which company IDs we should consider.
@@ -334,7 +652,11 @@ export default function SelectDateTimeScreen() {
         // No providers at all => everything booked.
         const next: Record<string, boolean> = { ...slotAvailability };
         for (const t of slotsForDay) next[`${dateISO}|${t}`] = false;
-        setSlotAvailability(next);
+        if (availabilityReqIdRef.current === reqId) {
+          setSlotAvailability(next);
+          setAvailabilityFreshByDate((prev) => ({ ...prev, [dateISO]: true }));
+          setAvailabilityStatusText('');
+        }
         return;
       }
 
@@ -345,6 +667,10 @@ export default function SelectDateTimeScreen() {
       const toCompute = slotsForDay
         .map((t) => ({ t, key: `${dateISO}|${t}` }))
         .filter((x) => !(x.key in next));
+
+      if (availabilityReqIdRef.current === reqId) {
+        setAvailabilityStatusText(`Checking ${toCompute.length} time slots…`);
+      }
 
       const maxConcurrency = 3;
       let idx = 0;
@@ -375,14 +701,25 @@ export default function SelectDateTimeScreen() {
 
       await Promise.all(Array.from({ length: Math.min(maxConcurrency, toCompute.length) }, () => worker()));
 
-      setSlotAvailability({ ...next });
+      if (availabilityReqIdRef.current === reqId) {
+        setSlotAvailability({ ...next });
+        setAvailabilityFreshByDate((prev) => ({ ...prev, [dateISO]: true }));
+        setAvailabilityStatusText('');
+      }
     } catch (e: any) {
       console.log('⚠️ Failed to compute slot availability:', e);
-      setAvailabilityError('Could not load availability. Showing all slots.');
-      // If we fail, leave availability empty so UI doesn't block user.
-      setSlotAvailability({});
+      if (availabilityReqIdRef.current === reqId) {
+        setAvailabilityError('Could not load availability. Showing all slots.');
+        // If we fail, leave availability empty so UI doesn't block user.
+        setSlotAvailability({});
+        // Consider it "fresh" so user can proceed, but they won't see misleading per-slot availability.
+        setAvailabilityFreshByDate((prev) => ({ ...prev, [dateISO]: true }));
+        setAvailabilityStatusText('');
+      }
     } finally {
-      setLoadingAvailability(false);
+      if (availabilityReqIdRef.current === reqId) {
+        setLoadingAvailability(false);
+      }
     }
   };
 
@@ -393,14 +730,28 @@ export default function SelectDateTimeScreen() {
     const companyId = typeof selectedCompanyId === 'string' ? selectedCompanyId : null;
     if (!companyId) return;
 
+    const reqId = ++seriesValidationReqRef.current;
     setLoadingSeriesAvailability(true);
     setAvailabilityError(null);
 
     try {
+      const timeoutMs = 20000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Series availability check timed out')), timeoutMs)
+      );
+
+      const t0 = __DEV__ ? Date.now() : 0;
       const maxOccurrencesToCheck = 40;
       const pickedDates = (needsDayConfirmation && Array.isArray(confirmedPlanDates) && confirmedPlanDates.length > 0)
         ? [...confirmedPlanDates].sort()
         : null;
+
+      const fullSelectionRequired = needsDayConfirmation
+        ? ((selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30)
+        : 0;
+      const hasFullDaySelection = !needsDayConfirmation
+        ? true
+        : (Array.isArray(confirmedPlanDates) && confirmedPlanDates.length === fullSelectionRequired);
 
       const occurrences = (pickedDates
         ? pickedDates.map((d) => ({ date: d, time: slotLabel }))
@@ -408,76 +759,137 @@ export default function SelectDateTimeScreen() {
       ).slice(0, maxOccurrencesToCheck);
 
       if (occurrences.length === 0) {
-        setSeriesAvailability({ [slotLabel]: false });
-        setSeriesConflicts({ [slotLabel]: [] });
+        // Don't wipe previously-known conflicts; just don't add any new ones.
+        setSeriesConflicts((prev) => prev);
+        // Only publish seriesAvailability once the user has full selection.
+        setSeriesAvailability(hasFullDaySelection ? { [slotLabel]: false } : {});
         return;
       }
 
+      // Performance note:
+      // Previously this loop awaited each occurrence serially (up to 40)
+      // which can be slow on mobile networks. We batch with limited concurrency.
+      const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
       const conflicts: string[] = [];
       let ok = true;
-      for (const occ of occurrences) {
-        const result = await FirestoreService.checkCompanyWorkerAvailability(
-          companyId,
-          occ.date,
-          occ.time,
-          Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined,
-          serviceTitle
-        );
 
-        if (result?.available !== true) {
-          ok = false;
-          conflicts.push(occ.date);
+      const maxConcurrency = 4;
+      const maxConflictsToCollect = 12; // avoid huge logs/state updates; we only need enough to show red-cross markers
+      let idx = 0;
+
+      const worker = async () => {
+        while (idx < occurrences.length) {
+          const current = occurrences[idx++];
+
+          // If already not ok and we've collected enough conflicts, stop doing more network calls.
+          if (!ok && conflicts.length >= maxConflictsToCollect) return;
+
+          const result = await FirestoreService.checkCompanyWorkerAvailability(
+            companyId,
+            current.date,
+            current.time,
+            selectedIds,
+            serviceTitle
+          );
+
+          if (result?.available !== true) {
+            ok = false;
+            if (conflicts.length < maxConflictsToCollect) {
+              conflicts.push(current.date);
+            }
+          }
         }
+      };
+
+      await Promise.race([
+        Promise.all(Array.from({ length: Math.min(maxConcurrency, occurrences.length) }, () => worker())),
+        timeoutPromise,
+      ]);
+
+      // Ignore stale completion.
+      if (seriesValidationReqRef.current !== reqId) return;
+
+      // Always publish conflicts so the calendar can show booked markers while picking days.
+      // IMPORTANT: merge with previous so markers don't "disappear" between runs.
+      setSeriesConflicts((prev) => {
+        const prevForSlot = Array.isArray(prev?.[slotLabel]) ? prev[slotLabel] : [];
+        const merged = Array.from(new Set([...(prevForSlot || []), ...(conflicts || [])])).sort();
+        return { ...prev, [slotLabel]: merged };
+      });
+
+    // Only publish seriesAvailability for weekly/monthly once the user has selected all required days.
+    setSeriesAvailability(hasFullDaySelection ? { [slotLabel]: ok } : {});
+
+      if (__DEV__) {
+        console.log('🧪 DEBUG(seriesAvailability): computed', {
+          unit: selectedPackageUnit,
+          occurrencesChecked: occurrences.length,
+          conflictsCollected: conflicts.length,
+          ok,
+          hasFullDaySelection,
+          ms: Date.now() - t0,
+        });
       }
 
-      setSeriesAvailability({ [slotLabel]: ok });
-      setSeriesConflicts({ [slotLabel]: conflicts });
-
-      // If the currently selected plan includes conflicting dates, drop them so the
-      // user is forced to pick replacements (while seeing the red-cross markers).
-      if (needsDayConfirmation && conflicts.length > 0) {
-        setConfirmedPlanDates((prev) => prev.filter((d) => !conflicts.includes(d)));
-      }
+      // IMPORTANT: Don't mutate confirmedPlanDates here.
+      // This function is triggered by a useEffect that depends on confirmedPlanDates;
+      // changing them here can create a validation loop and keep the screen "stuck" in loading.
+      // We keep conflicts separately (seriesConflicts) and only block Continue.
     } catch (e: any) {
       console.log('⚠️ Failed to compute series availability:', e);
-      setAvailabilityError('Could not validate recurring availability. You may proceed, but some dates could be unavailable.');
+      // Ignore stale completion.
+      if (seriesValidationReqRef.current !== reqId) return;
+      setAvailabilityError('Could not validate recurring availability. Please try again.');
       setSeriesAvailability({});
       setSeriesConflicts({});
     } finally {
-      setLoadingSeriesAvailability(false);
+      // Only clear loading if this is still the latest request.
+      if (seriesValidationReqRef.current === reqId) {
+        setLoadingSeriesAvailability(false);
+      }
     }
   };
 
   // Fetch slots based on booking type
   useEffect(() => {
     const fetchSlots = async () => {
+      const reqId = ++fetchSlotsReqRef.current;
       try {
         setLoadingSlots(true);
+        setAvailabilityError(null);
+
+        const timeoutMs = 15000;
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Fetch slots timed out')), timeoutMs)
+        );
         
         console.log('🔍 SelectDateTimeScreen - Route params:', {
           isPackageBooking,
           isPackageBookingType: typeof isPackageBooking,
           isPackageBookingTruthy: !!isPackageBooking,
-          selectedPackage: selectedPackage?.name,
+          selectedPackage,
           hasSelectedPackage: !!selectedPackage,
           serviceId: selectedIssueIds?.[0],
           fromServiceServices
         });
         
   // Check if this is a package booking (explicit true check)
-  if (isPackageBooking === true && selectedPackage) {
+  if (isPackageBooking === true && selectedPackage != null) {
           // For packages: fetch slots from Firestore
-          console.log('📦 PACKAGE BOOKING - Fetching slots from Firestore for package:', selectedPackage.name);
+          console.log('📦 PACKAGE BOOKING - Fetching slots from Firestore for package:', selectedPackage);
           
           // Get the service ID from selectedIssueIds
           const serviceId = selectedIssueIds?.[0];
           
           if (serviceId) {
             console.log('📦 Querying service_services collection for serviceId:', serviceId);
-            const serviceDoc = await firestore()
-              .collection('service_services')
-              .doc(serviceId)
-              .get();
+            const serviceDoc = await Promise.race([
+              firestore().collection('service_services').doc(serviceId).get(),
+              timeoutPromise,
+            ]);
+
+            // Ignore stale request.
+            if (fetchSlotsReqRef.current !== reqId) return;
             
             if (serviceDoc.exists) {
               const serviceData = serviceDoc.data();
@@ -490,11 +902,29 @@ export default function SelectDateTimeScreen() {
                 console.log('📦 Found packages array in service, searching for matching package...');
                 
                 // Find the selected package in the packages array
-                const matchingPackage = serviceData.packages.find((pkg: any) => 
-                  pkg.id === selectedPackage.id || 
-                  pkg.name === selectedPackage.name ||
-                  JSON.stringify(pkg) === JSON.stringify(selectedPackage)
-                );
+                const matchingPackage = serviceData.packages.find((pkg: any) => {
+                  // Prefer strong identity if present.
+                  if (selectedPackageId && pkg?.id && pkg.id === selectedPackageId) return true;
+                  if (selectedPackageName && pkg?.name && pkg.name === selectedPackageName) return true;
+
+                  // Many flows only pass a partial package snapshot (e.g. {price: 1}).
+                  // Fall back to matching on unit+duration+price.
+                  const unitA = String(pkg?.unit || '').toLowerCase();
+                  const unitB = String((selectedPackage as any)?.unit || '').toLowerCase();
+                  const durA = pkg?.duration;
+                  const durB = selectedPackageDuration;
+                  const priceA = pkg?.price;
+                  const priceB = selectedPackagePrice;
+                  if (unitA && unitB && unitA === unitB) {
+                    if (durA != null && durB != null && durA === durB) {
+                      if (priceA != null && priceB != null) return priceA === priceB;
+                      return true;
+                    }
+                    if (priceA != null && priceB != null && priceA === priceB) return true;
+                  }
+
+                  return false;
+                });
                 
                 if (matchingPackage) {
                   console.log('📦 Found matching package:', matchingPackage);
@@ -554,11 +984,11 @@ export default function SelectDateTimeScreen() {
               if (packageSlots.length > 0) {
                 console.log('✅ Found slots from Firestore:', packageSlots);
                 setSlots(packageSlots);
-                setTime(packageSlots[0]); // Set first slot as default
+                setTime((prev) => (prev && packageSlots.includes(prev) ? prev : packageSlots[0])); // keep existing if still valid
               } else {
                 console.log('⚠️ No slots found anywhere for package, using default slots as fallback');
                 setSlots(defaultSlots);
-                setTime(defaultSlots[2]); // Set middle slot as default
+                setTime((prev) => (prev && defaultSlots.includes(prev) ? prev : defaultSlots[2])); // Set middle slot as default
               }
 
               // For recurring packages, we don't compute per-worker slot availability here.
@@ -569,40 +999,70 @@ export default function SelectDateTimeScreen() {
             } else {
               console.log('⚠️ Service document not found in Firestore, using default slots');
               setSlots(defaultSlots);
-              setTime(defaultSlots[2]);
+              setTime((prev) => (prev && defaultSlots.includes(prev) ? prev : defaultSlots[2]));
             }
           } else {
             console.log('⚠️ No service ID provided for package, using default slots');
             setSlots(defaultSlots);
-            setTime(defaultSlots[2]);
+            setTime((prev) => (prev && defaultSlots.includes(prev) ? prev : defaultSlots[2]));
           }
         } else {
           // For services: use predefined slots
           console.log('💰 SERVICE BOOKING (NOT PACKAGE) - Using predefined slots');
-          setSlots(defaultSlots);
-          setTime(defaultSlots[2]); // Set middle slot as default
+          const serviceSlots = effectiveServiceIntervalMinutes ? buildSlotsForIntervalMinutes(effectiveServiceIntervalMinutes) : [];
+          const resolvedSlots = serviceSlots.length > 0 ? serviceSlots : defaultSlots;
+
+          // If we had to fall back (because interval is too fine/invalid), keep the old middle-slot default.
+          const defaultIndex = resolvedSlots === defaultSlots ? 2 : 0;
+          const fallbackIndex = Math.min(defaultIndex, Math.max(0, resolvedSlots.length - 1));
+          const defaultTime = resolvedSlots[fallbackIndex];
+
+          setSlots(resolvedSlots);
+          setTime((prev) => (prev && resolvedSlots.includes(prev) ? prev : defaultTime));
 
           // For service flow, preselect a START slot and auto-accumulate the block.
           if (isServiceFlow) {
-            const defaultTime = defaultSlots[2];
             const start = { date: selectedDate, time: defaultTime };
             setStartSlot(start);
-            const block = buildSlotBlock(start, defaultSlots);
+            const block = buildSlotBlock(start, resolvedSlots);
             setSelectedSlots(block.slots);
           }
         }
       } catch (error) {
         console.error('❌ Error fetching slots:', error);
+        if (fetchSlotsReqRef.current !== reqId) return;
+        setAvailabilityError('Could not load time slots. Showing default slots.');
         // Fallback to default slots on error
         setSlots(defaultSlots);
-        setTime(defaultSlots[2]);
+        setTime((prev) => (prev && defaultSlots.includes(prev) ? prev : defaultSlots[2]));
       } finally {
-        setLoadingSlots(false);
+        if (fetchSlotsReqRef.current === reqId) {
+          setLoadingSlots(false);
+        }
       }
     };
 
     fetchSlots();
-  }, [isPackageBooking, selectedPackage, selectedIssueIds, isServiceFlow, selectedDate, selectedCompanyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    // Stable primitives only. Do NOT depend on the selectedPackage object directly;
+    // it changes identity often and causes repeated refetch loops.
+  isPackageBooking,
+  serviceIdKey,
+    isServiceFlow,
+    selectedDate,
+    // Selected package identity fields
+    selectedPackageId,
+    selectedPackageName,
+    selectedPackageUnit,
+  selectedPackagePriceKey,
+  selectedPackageDurationKey,
+    // Flow toggles
+    fromServiceServices,
+    isRecurringPackage,
+    // Service slot generation input
+    effectiveServiceIntervalMinutes,
+  ]);
 
   // Compute availability for the selected date.
   // - Service flow: compute if any company can do the slot
@@ -619,11 +1079,16 @@ export default function SelectDateTimeScreen() {
 
     // Reset cache when the user changes service selection.
     setSlotAvailability({});
+  setAvailabilityFreshByDate((prev) => ({ ...prev, [selectedDate]: false }));
     computeAvailabilityForDate(selectedDate, slots);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isServiceFlow, selectedDate, selectedCompanyId, JSON.stringify(selectedIssueIds), slots.join('|')]);
 
   // For recurring packages, validate the whole series (all occurrences) for the selected time window.
+  // NOTE: For weekly/monthly "day confirmation" plans we still want BOOKED markers to show immediately
+  // while the user is picking days. So:
+  //   - We ALWAYS compute conflicts for the currently selected days.
+  //   - We ONLY compute seriesAvailability[time] (ok for the *full series*) once the user picks 7/30.
   useEffect(() => {
     if (!isRecurringPackage) {
       setSeriesAvailability({});
@@ -641,19 +1106,27 @@ export default function SelectDateTimeScreen() {
       return;
     }
 
-    // Weekly/monthly plans: validate only when the user has picked the full set of days.
+    // Day-confirmation plans: debounce checks so we don't spam network while user taps dates.
     if (needsDayConfirmation) {
-      const unitLimit = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30;
-      if (!Array.isArray(confirmedPlanDates) || confirmedPlanDates.length !== unitLimit) {
-        setSeriesAvailability({});
-        setSeriesConflicts({});
-        return;
-      }
+      const handle = setTimeout(() => {
+        computeSeriesAvailabilityForTimeSlot(selectedDate, time);
+      }, 450);
+      return () => clearTimeout(handle);
     }
 
     computeSeriesAvailabilityForTimeSlot(selectedDate, time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecurringPackage, selectedDate, selectedCompanyId, time, JSON.stringify(selectedIssueIds), needsDayConfirmation, confirmedPlanDates.join('|'), selectedPackageUnit]);
+
+  // Guardrail: for weekly/monthly selection, never keep dates selected that conflict for the chosen time.
+  // This prevents scenarios where tapping dates causes conflicts to "disappear" but the user can still continue.
+  useEffect(() => {
+    if (!needsDayConfirmation) return;
+    if (typeof time !== 'string' || time.trim().length === 0) return;
+    const conflicts = seriesConflicts?.[time] || [];
+    if (!Array.isArray(conflicts) || conflicts.length === 0) return;
+    setConfirmedPlanDates((prev) => prev.filter((d) => !conflicts.includes(d)));
+  }, [needsDayConfirmation, seriesConflicts, time]);
 
   const getNext7Days = () => {
     const days = [];
@@ -689,6 +1162,44 @@ export default function SelectDateTimeScreen() {
   const isMonthlyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'month' || selectedPackageUnit === 'monthly');
   const planSelectionLimit = isMonthlyPlan ? 30 : (isWeeklyPlan ? 7 : 0);
 
+  // Monthly plans: if within [tomorrow, tomorrow+60 days] there are fewer than 30 available days for the chosen time slot,
+  // tell the user to change the time slot. (Computed, no setState in render.)
+  const monthlyNotEnoughDaysMessage = useMemo(() => {
+    if (!needsDayConfirmation) return null;
+    if (!isMonthlyPlan) return null;
+    if (planSelectionLimit !== 30) return null;
+    if (typeof time !== 'string' || time.trim().length === 0) return null;
+
+    const slotLabel = time;
+    const conflictsForSlot = Array.isArray(seriesConflicts?.[slotLabel]) ? seriesConflicts[slotLabel] : [];
+
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 61);
+
+    // Count all days in this 60-day window that are not conflicted.
+    let availableCount = 0;
+    const cur = new Date(start);
+    let guard = 0;
+    while (cur.getTime() <= end.getTime() && guard < 70) {
+      const iso = cur.toISOString().split('T')[0];
+      if (!conflictsForSlot.includes(iso)) availableCount += 1;
+      if (availableCount >= 30) break;
+      cur.setDate(cur.getDate() + 1);
+      guard += 1;
+    }
+
+    return availableCount < 30
+      ? 'Please choose a different time slot — this slot doesn’t have 30 available days in the next 60 days.'
+      : null;
+  }, [isMonthlyPlan, needsDayConfirmation, planSelectionLimit, seriesConflicts, time]);
+
+  const planSeededRef = useRef(false);
+  useEffect(() => {
+    // Reset seeding when switching between weekly/monthly modes.
+    planSeededRef.current = false;
+  }, [needsDayConfirmation, selectedPackageUnit]);
+
   // For plan/package flows, as soon as the user picks a start date we want a time window selected
   // so the full plan window is highlighted immediately on the calendar.
   useEffect(() => {
@@ -700,34 +1211,57 @@ export default function SelectDateTimeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecurringPackage, selectedDate, slots.join('|')]);
 
+  // When the user changes the selected time slot, clear previously merged conflicts
+  // so we don't render stale booked markers from a different slot.
+  const lastTimeRef = useRef<string>('');
+  useEffect(() => {
+    if (!needsDayConfirmation) return;
+    const t = typeof time === 'string' ? time : '';
+    if (!t || t.trim().length === 0) return;
+    if (lastTimeRef.current && lastTimeRef.current !== t) {
+      setSeriesAvailability({});
+      setSeriesConflicts({});
+    }
+    lastTimeRef.current = t;
+  }, [needsDayConfirmation, time]);
+
   // When anchor date/time changes (and unit requires it), seed the confirmation list.
   useEffect(() => {
     if (!needsDayConfirmation) {
       setConfirmedPlanDates([]);
       return;
     }
+
+    // Seed only once when entering this mode. After that, let the user fully control selections.
+    if (planSeededRef.current) return;
     // For weekly/monthly plans, the user selects the exact days on the calendar.
-    // Seed a sensible default window from tomorrow.
+    // Seed a default window from the current anchor date (selectedDate).
+    // If selectedDate isn't set, fall back to tomorrow.
     const todayISO = new Date().toISOString().split('T')[0];
-    const startISO = addDaysISO(todayISO, 1);
+    const fallbackStartISO = addDaysISO(todayISO, 1);
+    const startISO = (typeof selectedDate === 'string' && selectedDate.trim().length > 0)
+      ? selectedDate
+      : fallbackStartISO;
     const limit = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30;
 
+    const seed = Array.from({ length: limit }, (_, i) => addDaysISO(startISO, i));
+
+    // Only seed if we don't already have the right window.
+    // This prevents a re-render loop where this effect overwrites user changes,
+    // which can keep availability validation running forever.
     setConfirmedPlanDates((prev) => {
-      if (Array.isArray(prev) && prev.length > 0) {
-        // Enforce max limit if a previous selection exists.
-        return prev.slice(0, limit).sort();
-      }
-      const seeded = Array.from({ length: limit }, (_, i) => addDaysISO(startISO, i));
-      return seeded;
+      const prevKey = Array.isArray(prev) ? prev.join('|') : '';
+      const seedKey = seed.join('|');
+      const next = prevKey === seedKey ? prev : seed;
+      planSeededRef.current = true;
+      return next;
     });
 
-    // Keep selectedDate aligned for the rest of the screen (slot availability, summary, etc.).
-    setSelectedDate((prev) => {
-      if (typeof prev === 'string' && prev >= startISO) return prev;
-      return startISO;
-    });
+    // Keep selectedDate aligned for the rest of the screen (slot availability, summary, etc.)
+    // but don't re-set it if it's already the same.
+    setSelectedDate((prev) => (prev === startISO ? prev : startISO));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsDayConfirmation, selectedDate, time, slots.join('|'), selectedPackageUnit]);
+  }, [needsDayConfirmation, selectedPackageUnit]);
 
   const onPickSlot = (date: string, slot: string) => {
     if (!isServiceFlow) {
@@ -763,20 +1297,38 @@ export default function SelectDateTimeScreen() {
 
   const isSlotBooked = (date: string, slot: string) => {
     if (!isServiceFlow) return false;
+    // If we're still verifying, don't claim a slot is available.
+    // Treat as "booked/disabled" to prevent wrong "slots available" messaging and premature continuation.
+    if (loadingAvailability) return true;
+    // If we haven't completed verification for this date yet, keep slots disabled.
+    if (availabilityFreshByDate?.[date] !== true) return true;
     if (!slotAvailability || Object.keys(slotAvailability).length === 0) return false;
     return slotAvailability[`${date}|${slot}`] === false;
   };
 
-  const canInteractWithSlots = !isServiceFlow || (!loadingAvailability && !loadingSlots);
+  const isAvailabilityFreshForSelectedDate = !isServiceFlow
+    ? true
+    : (availabilityFreshByDate?.[selectedDate] === true);
+  const canInteractWithSlots = !isServiceFlow || (!loadingAvailability && !loadingSlots && isAvailabilityFreshForSelectedDate);
   const canContinue = (() => {
     if (loadingSlots) return false;
     if (isServiceFlow && loadingAvailability) return false;
+    if (!isServiceFlow && isRecurringPackage && loadingSeriesAvailability) return false;
     if (isServiceFlow && (!!blockError || selectedSlots.length !== requiredSlots)) return false;
+    // For one-off services, block Continue until the current date's availability verification has completed.
+    if (isServiceFlow && availabilityFreshByDate?.[selectedDate] !== true) return false;
 
     // Recurring packages (daily/weekly/monthly): require selecting a time window
     // and ensure we can generate at least 1 occurrence (Sundays are off).
     if (isRecurringPackage) {
       if (typeof time !== 'string' || time.trim().length === 0) return false;
+
+      // Weekly/monthly: must pick the exact number of days.
+      if (needsDayConfirmation) {
+        const requiredDays = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30;
+        if (!Array.isArray(confirmedPlanDates) || confirmedPlanDates.length !== requiredDays) return false;
+      }
+
       const occ = needsDayConfirmation
         ? confirmedPlanDates.map((d) => ({ date: d, time }))
         : generateRecurringOccurrences(selectedDate, time);
@@ -793,9 +1345,29 @@ export default function SelectDateTimeScreen() {
     return true;
   })();
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    const conflictsForSlot = (typeof time === 'string' && time.trim().length > 0)
+      ? (seriesConflicts?.[time] || [])
+      : [];
+    console.log('🧪 DEBUG(canContinue)', {
+      needsDayConfirmation,
+      selectedPackageUnit,
+      selectedDate,
+      time,
+      confirmedPlanDatesCount: confirmedPlanDates?.length,
+      planSelectionLimit,
+      conflictsForSlotCount: conflictsForSlot.length,
+      seriesAvailabilityForSlot: seriesAvailability?.[time],
+      canContinue,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canContinue]);
+
   const continueLabel = (() => {
     if (loadingSlots) return 'Loading slots…';
     if (isServiceFlow && loadingAvailability) return 'Checking availability…';
+    if (isServiceFlow && availabilityFreshByDate?.[selectedDate] !== true) return 'Verifying availability…';
     if (isRecurringPackage && loadingSeriesAvailability) return 'Validating recurring availability…';
     if (isServiceFlow && !startSlot) return 'Select a start time';
     if (isServiceFlow && selectedSlots.length !== requiredSlots) return 'Select a start time';
@@ -807,9 +1379,36 @@ export default function SelectDateTimeScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Select Date & Time</Text>
+
+        <TouchableOpacity
+          onPress={() => {
+            try {
+              navigation.navigate("HomeTab");
+            } catch (e) {
+              console.log("[SelectDateTime] Failed to navigate HomeTab", e);
+            }
+          }}
+          style={styles.headerHomeBtn}
+        >
+          <Ionicons name="home-outline" size={20} color="#111" />
+        </TouchableOpacity>
       </View>
+
+      {/* Blocking modal when verifying availability */}
+      <Modal transparent visible={isVerifyingAvailability} animationType="fade">
+        <View style={styles.blockingModalOverlay}>
+          <View style={styles.blockingModalCard}>
+            <ActivityIndicator size="large" color="#4CAF50" />
+            <Text style={styles.blockingModalTitle}>Verifying availability</Text>
+            <Text style={styles.blockingModalSub}>Please wait…</Text>
+          </View>
+        </View>
+      </Modal>
 
       {loadingSlots ? (
         <View style={styles.loadingContainer}>
@@ -820,9 +1419,11 @@ export default function SelectDateTimeScreen() {
         <>
           {/* Main Content: Date & Time Selection */}
         <ScrollView
-          style={styles.slotsContainer}
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          contentContainerStyle={[styles.slotsContent, { paddingBottom: 24 + 96 }]}
         >
           {/* Summary Card */}
           <View style={styles.summaryCard}>
@@ -894,71 +1495,110 @@ export default function SelectDateTimeScreen() {
           </View>
 
           {/* Plan calendar (single selector for weekly/monthly plans) */}
-          {!isServiceFlow && needsDayConfirmation && (
+          {!isServiceFlow && (needsDayConfirmation || isDailyPackage) && (
             <View style={styles.summaryCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryTitle}>{isMonthlyPlan ? 'Monthly plan days' : 'Weekly plan days'}</Text>
+                <Text style={styles.summaryTitle}>
+                  {isDailyPackage ? 'Pick your day' : (isMonthlyPlan ? 'Monthly plan days' : 'Weekly plan days')}
+                </Text>
                 <Text style={styles.summaryPill}>
-                  {confirmedPlanDates.length}/{planSelectionLimit}
+                  {isDailyPackage ? `${confirmedPlanDates.length}/1` : `${confirmedPlanDates.length}/${planSelectionLimit}`}
                 </Text>
               </View>
 
               <Text style={styles.summarySub}>
-                Pick days from tomorrow onward. Tap again to remove a day.
+                {isDailyPackage
+                  ? 'Pick 1 day within the next 7 days. Tap again to remove.'
+                  : 'Pick days from tomorrow onward. Tap again to remove a day.'}
               </Text>
 
-              {!!planSelectionLimit && confirmedPlanDates.length < planSelectionLimit && (
-                <View style={styles.inlineAlert}>
-                  <Text style={styles.inlineAlertText}>
-                    {isMonthlyPlan
-                      ? `This is a monthly plan — please select ${planSelectionLimit} days.`
-                      : `This is a weekly plan — please select ${planSelectionLimit} days.`}
-                  </Text>
-                </View>
-              )}
-
               {(() => {
-                const conflictsForSlot = (typeof time === 'string' && time.trim().length > 0)
-                  ? (seriesConflicts[time] || [])
-                  : [];
+                const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
+                const conflictsForSlot = slotLabel ? (seriesConflicts?.[slotLabel] || []) : [];
+                const fullSeriesOk = slotLabel ? seriesAvailability?.[slotLabel] : undefined;
 
-                if (!conflictsForSlot || conflictsForSlot.length === 0) return null;
+                let msg: string | null = null;
 
+                // Priority order:
+                // 1) direct user tap error
+                // 2) slot full for full selection
+                // 3) conflicts exist
+                // 4) needs more days
+                if (planPickError) msg = planPickError;
+                else if (monthlyNotEnoughDaysMessage) msg = monthlyNotEnoughDaysMessage;
+                else if (slotLabel && fullSeriesOk === false) msg = 'This time slot is currently full. Try selecting a different time slot.';
+                else if (slotLabel && conflictsForSlot.length > 0) {
+                  msg = 'Some selected dates are already booked for this time. Please remove the crossed dates and pick different days, or choose a different time slot.';
+                } else if (isDailyPackage && confirmedPlanDates.length < 1) {
+                  msg = 'This is a daily package — please select 1 day within the next 7 days.';
+                } else if (!isDailyPackage && !!planSelectionLimit && confirmedPlanDates.length < planSelectionLimit) {
+                  msg = isMonthlyPlan
+                    ? `This is a monthly plan — please select ${planSelectionLimit} days.`
+                    : `This is a weekly plan — please select ${planSelectionLimit} days.`;
+                }
+
+                if (!msg) return null;
+                const danger = !!planPickError || fullSeriesOk === false || conflictsForSlot.length > 0;
                 return (
-                  <View style={styles.inlineAlertDanger}>
-                    <Text style={styles.inlineAlertDangerText}>
-                      Some selected dates are already booked for this time. Please remove the crossed dates and pick different days.
-                    </Text>
+                  <View style={danger ? styles.inlineAlertDanger : styles.inlineAlert}>
+                    <Text style={danger ? styles.inlineAlertDangerText : styles.inlineAlertText}>{msg}</Text>
                   </View>
                 );
               })()}
 
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                  <Text style={styles.legendText}>Selected</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderWidth: 1 }]} />
+                  <Text style={styles.legendText}>Available</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#fee2e2' }]} />
+                  <Text style={styles.legendText}>Booked</Text>
+                </View>
+              </View>
+
+              {/** (Deduped) selection/conflict/full-slot banners are handled by the dynamic banner above */}
+
               {(() => {
                 const todayISO = new Date().toISOString().split('T')[0];
                 const minISO = addDaysISO(todayISO, 1);
-                const keyThis = getMonthKey(selectedDate || minISO);
-                const firstOfThis = startOfMonthISO(keyThis);
-                const firstNext = startOfMonthISO(addDaysISO(firstOfThis, 32));
-                const keyNext = getMonthKey(firstNext);
+                const maxISO = isDailyPackage ? addDaysISO(minISO, 6) : addDaysISO(minISO, 60);
 
-                const cellsThis = buildMonthGrid(keyThis);
-                const cellsNext = buildMonthGrid(keyNext);
+                // Only show the next month when the window crosses into it.
+                const minMonthKey = getMonthKey(minISO);
+                const maxMonthKey = getMonthKey(maxISO);
+                // Ensure the 2nd calendar is the *immediate next month* (not a skipped month).
+                // Example: if window spans Feb..Apr, we still render Feb + Mar (enough for the boundary).
+                const monthKeys = minMonthKey === maxMonthKey ? [minMonthKey] : [minMonthKey, addMonthsKey(minMonthKey, 1)];
+
+                const monthGrids = monthKeys.map((mk) => ({ monthKey: mk, cells: buildMonthGrid(mk) }));
 
                 const conflictsForSlot = (typeof time === 'string' && time.trim().length > 0)
                   ? (seriesConflicts[time] || [])
                   : [];
 
+                // (Removed) local insufficient-days banner logic.
+                // We now compute the monthly “not enough days in next 60 days” warning via monthlyNotEnoughDaysMessage.
+
                 const toggleDate = (iso: string) => {
+                  setPlanPickError(null);
                   setConfirmedPlanDates((prev) => {
                     const next = [...prev];
                     const exists = next.includes(iso);
                     if (exists) {
                       return next.filter((x) => x !== iso).sort();
                     }
-                    if (planSelectionLimit > 0 && next.length >= planSelectionLimit) {
+                    const limit = isDailyPackage ? 1 : planSelectionLimit;
+                    if (limit > 0 && next.length >= limit) {
                       return next;
                     }
                     next.push(iso);
+                    // For daily package, keep exactly one selected date
+                    if (isDailyPackage) return [iso];
                     return next.sort();
                   });
                 };
@@ -985,9 +1625,13 @@ export default function SelectDateTimeScreen() {
 
                         const selected = confirmedPlanDates.includes(c.iso);
                         const tooEarly = c.iso < minISO;
+                        const tooLate = c.iso > maxISO;
                         const isConflict = conflictsForSlot.includes(c.iso);
-                        const atLimit = !selected && planSelectionLimit > 0 && confirmedPlanDates.length >= planSelectionLimit;
-                        const disabled = tooEarly || atLimit || isConflict;
+                        // For weekly/monthly recurring plans, conflicts ARE booked dates for the selected slot.
+                        const isBooked = isConflict;
+                        const localLimit = isDailyPackage ? 1 : planSelectionLimit;
+                        const atLimit = !selected && localLimit > 0 && confirmedPlanDates.length >= localLimit;
+                        const disabled = tooEarly || tooLate || atLimit || isConflict || isBooked;
 
                         return (
                           <TouchableOpacity
@@ -1000,8 +1644,15 @@ export default function SelectDateTimeScreen() {
                             activeOpacity={0.85}
                             onPress={() => {
                               if (tooEarly) return;
+                              if (tooLate) return;
                               if (atLimit) return;
                               if (isConflict) return;
+                              if (isBooked) {
+                                setPlanPickError(
+                                  'This day is already booked for the selected time. Please choose another day, or select a different time slot.'
+                                );
+                                return;
+                              }
                               toggleDate(c.iso as string);
                             }}
                           >
@@ -1029,16 +1680,20 @@ export default function SelectDateTimeScreen() {
 
                 return (
                   <View>
-                    {renderMonth(keyThis, cellsThis, 'm1')}
-                    {renderMonth(keyNext, cellsNext, 'm2')}
+                    {monthGrids.map((m, idx) => (
+                      <React.Fragment key={`month-${m.monthKey}-${idx}`}>
+                        {renderMonth(m.monthKey, m.cells, `m${idx + 1}`)}
+                      </React.Fragment>
+                    ))}
                   </View>
                 );
               })()}
             </View>
           )}
 
-          {/* Plan start-date preview calendar (daily plan only) */}
-          {isPlanCalendarPicker && !needsDayConfirmation && (
+          {/* Plan start-date preview calendar (recurring plan ranges).
+              Hide it for day-unit packages since we already show the single-day picker above. */}
+          {isPlanCalendarPicker && !needsDayConfirmation && !isDailyPackage && (
             <View style={styles.summaryCard}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryTitle}>Pick a start date</Text>
@@ -1091,7 +1746,8 @@ export default function SelectDateTimeScreen() {
 
                         const isStart = selectedDate === c.iso;
                         const inPlan = previewDates.includes(c.iso);
-                        const disabled = c.iso < minISO;
+                        const isBooked = chosenSlot ? isDayBookedForTimeSlot(c.iso, chosenSlot) : false;
+                        const disabled = c.iso < minISO || isBooked;
 
                         return (
                           <TouchableOpacity
@@ -1114,6 +1770,12 @@ export default function SelectDateTimeScreen() {
                             >
                               {c.dayNumber}
                             </Text>
+
+                            {isBooked && (
+                              <View style={styles.calendarConflictOverlay} pointerEvents="none">
+                                <Text style={[styles.calendarConflictText, { color: '#b91c1c' }]}>✕</Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
                         );
                       })}
@@ -1207,7 +1869,11 @@ export default function SelectDateTimeScreen() {
               <View style={styles.slotsBlockingOverlay} pointerEvents="none">
                 <View style={styles.slotsBlockingCard}>
                   <ActivityIndicator size="small" color="#0f172a" />
-                  <Text style={styles.slotsBlockingText}>Please wait, checking availability…</Text>
+                  <Text style={styles.slotsBlockingText}>
+                    {availabilityStatusText && availabilityStatusText.trim().length > 0
+                      ? availabilityStatusText
+                      : 'Please wait, checking availability…'}
+                  </Text>
                 </View>
               </View>
             )}
@@ -1222,7 +1888,8 @@ export default function SelectDateTimeScreen() {
               return slotAvailability[key] !== false;
             }).map((slot) => {
               const isSelected = isSlotSelected(selectedDate, slot);
-              const booked = isSlotBooked(selectedDate, slot);
+              const isFresh = !isServiceFlow ? true : (availabilityFreshByDate?.[selectedDate] === true);
+              const booked = isFresh ? isSlotBooked(selectedDate, slot) : true;
               const seriesKnown = isRecurringPackage && seriesAvailability && Object.keys(seriesAvailability).length > 0;
               const seriesOk = !seriesKnown ? true : (seriesAvailability[slot] !== false);
               const disabled = !canInteractWithSlots || booked || (isRecurringPackage && !seriesOk);
@@ -1256,9 +1923,9 @@ export default function SelectDateTimeScreen() {
                       <View style={styles.badgeBooked}>
                         <Text style={styles.badgeBookedText}>Booked</Text>
                       </View>
-                    ) : !canInteractWithSlots ? (
+                    ) : (!canInteractWithSlots || !isFresh) ? (
                       <View style={styles.badgeBooked}>
-                        <Text style={styles.badgeBookedText}>Loading</Text>
+                        <Text style={styles.badgeBookedText}>Verifying</Text>
                       </View>
                     ) : (isRecurringPackage && seriesKnown && !seriesOk) ? (
                       <View style={styles.badgeBooked}>
@@ -1285,15 +1952,15 @@ export default function SelectDateTimeScreen() {
         </ScrollView>
 
       {/* Bottom Continue Button */}
-      <View style={styles.bottomBar}>
+  <View style={styles.bottomBar} pointerEvents="box-none">
         <TouchableOpacity
           style={[
             styles.continueBtn,
-            !canContinue && styles.continueBtnDisabled,
+            (!canContinue || isVerifyingAvailability) && styles.continueBtnDisabled,
           ]}
           activeOpacity={0.7}
           onPress={() => {
-            if (!canContinue) return;
+            if (!canContinue || isVerifyingAvailability) return;
 
             const selected = dates.find(d => d.key === selectedDate);
             
@@ -1434,7 +2101,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: "white",
     paddingHorizontal: 16,
-    paddingTop: 50,
+    paddingTop: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
@@ -1448,9 +2115,68 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  backButton: {
+    position: "absolute",
+    left: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    zIndex: 2,
+  },
+
+  headerHomeBtn: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    zIndex: 2,
+  },
+
+  blockingModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+  },
+  blockingModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  blockingModalTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#0f172a",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  blockingModalSub: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    textAlign: "center",
+    marginTop: 10,
+  },
+
   // Right Side - Slots Container
   slotsContainer: {
     flex: 1,
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+
+  // ScrollView content wrapper (so the ScrollView itself can flex/scroll properly)
+  slotsContent: {
     backgroundColor: "#f8fafc",
     paddingHorizontal: 16,
     paddingTop: 20,
