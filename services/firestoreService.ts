@@ -770,8 +770,10 @@ export class FirestoreService {
         }
       }
 
-      const services: ServiceIssue[] = [];
-      const serviceNames = new Set<string>(); // Track unique service names
+  const services: ServiceIssue[] = [];
+  // Track unique services for this category.
+  // A service is considered the same if it has the same category master + same name.
+  const serviceKeys = new Set<string>();
       
       snapshot.forEach(doc => {
         const data = doc.data();
@@ -812,14 +814,17 @@ export class FirestoreService {
 
         console.log(`✅ SERVICE APPROVED: "${data.name}" has isActive: true - WILL BE SHOWN`);
 
-        // Check for duplicate service names - only add if not already added
-        if (serviceNames.has(data.name.toLowerCase().trim())) {
-          console.log(`⚠️ Skipping duplicate service: ${data.name} (already exists)`);
+        // Check for duplicates within the same category master.
+        const normalizedName = String(data.name).toLowerCase().trim();
+        const normalizedCategory = String(data.masterCategoryId || searchCategoryId || '').trim();
+        const dedupeKey = `${normalizedCategory}::${normalizedName}`;
+
+        if (serviceKeys.has(dedupeKey)) {
+          console.log(`⚠️ Skipping duplicate service: ${data.name} (category: ${normalizedCategory})`);
           return;
         }
 
-        // Add to unique services
-        serviceNames.add(data.name.toLowerCase().trim());
+        serviceKeys.add(dedupeKey);
         
         services.push({
           id: doc.id,

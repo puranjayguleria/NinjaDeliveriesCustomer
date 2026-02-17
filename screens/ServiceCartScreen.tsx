@@ -11,10 +11,38 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
+import { getBestActiveQuantityOffer } from "../utils/serviceQuantityOffers";
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
   const { state, removeService, updateService, clearCart, totalItems, hasServices } = useServiceCart();
+
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    try {
+      const items = Object.values(state.items || {});
+      console.log('🧪 [ServiceCartScreen] items debug', items.map((it: any) => ({
+        id: it?.id,
+        serviceTitle: it?.serviceTitle,
+        selectedDate: it?.selectedDate,
+        selectedTime: it?.selectedTime,
+        quantity: it?.quantity,
+        hasQuantityOffers: Array.isArray(it?.additionalInfo?.quantityOffers) && it.additionalInfo.quantityOffers.length > 0,
+        appliedOffer: it?.additionalInfo?.appliedQuantityOffer ? {
+          discountType: it.additionalInfo.appliedQuantityOffer.discountType,
+          minQuantity: it.additionalInfo.appliedQuantityOffer.minQuantity,
+          discountValue: it.additionalInfo.appliedQuantityOffer.discountValue,
+          newPricePerUnit: it.additionalInfo.appliedQuantityOffer.newPricePerUnit,
+          message: it.additionalInfo.appliedQuantityOffer.message,
+        } : null,
+        startSlot: it?.additionalInfo?.startSlot || null,
+        selectedSlotsCount: Array.isArray(it?.additionalInfo?.selectedSlots) ? it.additionalInfo.selectedSlots.length : 0,
+        selectedSlotsHead: Array.isArray(it?.additionalInfo?.selectedSlots) ? it.additionalInfo.selectedSlots.slice(0, 2) : null,
+      })));
+    } catch (e) {
+      console.log('🧪 [ServiceCartScreen] items debug failed', e);
+    }
+  }, [state.items]);
   
   const getDisplayPricing = (item: ServiceCartItem) => {
     const baseUnit = Number(item?.unitPrice) || Number(item?.company?.price) || 0;
@@ -168,10 +196,30 @@ export default function ServiceCartScreen() {
   
       {/* Quantity offer applied badge */}
       {(() => {
-        const offer = (item as any)?.additionalInfo?.appliedQuantityOffer;
-        if (!offer) return null;
-        const msg = String((offer as any)?.message || '').trim();
-        const text = msg || 'Offer applied!';
+        // If an offer is available but not yet applied (e.g., qty still below minQuantity),
+        // we still want to show the user that an offer exists.
+        const appliedOffer = (item as any)?.additionalInfo?.appliedQuantityOffer;
+        const allOffers = (item as any)?.additionalInfo?.quantityOffers;
+
+        const hasAnyOffers = Array.isArray(allOffers) && allOffers.length > 0;
+        const qty = Number(item.quantity) || 1;
+        const offer = appliedOffer || (hasAnyOffers ? getBestActiveQuantityOffer(allOffers, qty) : null);
+        if (!offer && !hasAnyOffers) return null;
+
+        const msg = offer ? String((offer as any)?.message || '').trim() : '';
+        const eligibleText = msg || (appliedOffer ? 'Offer applied!' : 'Offer available');
+
+        // If no eligible tier is found yet (e.g. minQuantity=4 but qty=1), show the first active tier message.
+        const firstActive = !offer && hasAnyOffers
+          ? (allOffers as any[]).find((o: any) => o && typeof o === 'object' && o.isActive !== false)
+          : null;
+        const firstMsg = firstActive ? String(firstActive.message || '').trim() : '';
+        const minQ = firstActive ? Number(firstActive.minQuantity) : NaN;
+        const preEligibleText = firstMsg
+          ? (Number.isFinite(minQ) && minQ > qty ? `${firstMsg} (min ${minQ})` : firstMsg)
+          : (Number.isFinite(minQ) && minQ > qty ? `Offer available (min ${minQ})` : 'Offer available');
+
+        const text = offer ? eligibleText : preEligibleText;
         return (
           <View style={styles.offerBadge}>
             <Text style={styles.offerBadgeText}>{text}</Text>
@@ -244,7 +292,49 @@ export default function ServiceCartScreen() {
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#666" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.detailText}>{item.selectedTime}</Text>
+            {/* For service flow we show a richer "Slot:" summary below; avoid duplicating the same range twice. */}
+            {(() => {
+              const start = (item as any)?.additionalInfo?.startSlot;
+              const windows = (item as any)?.additionalInfo?.selectedSlots;
+              const hasBlock = Boolean(start) || (Array.isArray(windows) && windows.length > 0);
+              return hasBlock ? null : (
+                <Text style={styles.detailText}>{item.selectedTime}</Text>
+              );
+            })()}
+
+            {(() => {
+              // Always show a slot summary for non-package services.
+              // Preferred: derive end time from selectedSlots (atomic windows).
+              // Fallback: show item.selectedTime (which is usually already a range).
+              const start = (item as any)?.additionalInfo?.startSlot;
+              const windows = (item as any)?.additionalInfo?.selectedSlots;
+
+              const fallbackLabel = String(item.selectedTime || '').trim();
+
+              let rangeText: string | null = null;
+
+              if (start && Array.isArray(windows) && windows.length > 0) {
+                // windows are like: {date, time: "9:00 AM - 9:30 AM"}
+                const last = windows[windows.length - 1];
+                const lastLabel = String(last?.time || '');
+                const m = lastLabel.match(/\s-\s(.+)$/);
+                const endLabel = m?.[1] ? String(m[1]).trim() : null;
+                const startLabel = String(start?.time || '').trim();
+                if (startLabel && endLabel) rangeText = `Slot: ${startLabel} - ${endLabel}`;
+              }
+
+              if (!rangeText && fallbackLabel) rangeText = `Slot: ${fallbackLabel}`;
+              if (!rangeText) return null;
+
+              return (
+                <Text
+                  style={[styles.detailText, { marginTop: 2, color: '#334155', fontWeight: '700' }]}
+                  numberOfLines={2}
+                >
+                  {rangeText}
+                </Text>
+              );
+            })()}
 
             {(() => {
               // Duration varies per service. We try a few common sources.
@@ -572,18 +662,20 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
   },
   bookingDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: "column",
+    gap: 6,
     marginBottom: 12,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: 'wrap',
   },
   detailText: {
     fontSize: 14,
     color: "#666",
     marginLeft: 4,
+    lineHeight: 18,
   },
   priceText: {
     fontSize: 16,
@@ -679,29 +771,32 @@ const styles = StyleSheet.create({
 
   serviceTitleText: {
     fontSize: 15,
-    fontWeight: "600",
-    color: "#1e40af",
+    fontWeight: "700",
+    color: "#0f172a",
     marginBottom: 4,
+    lineHeight: 20,
   },
 
   packageNameText: {
     fontSize: 13,
-    fontWeight: "500",
-    color: "#3b82f6",
+    fontWeight: "700",
+    color: "#334155",
+    lineHeight: 18,
   },
 
   packagePrice: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2563eb",
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#0f172a",
+    letterSpacing: 0.2,
   },
 
   originalPrice: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748b",
     textDecorationLine: "line-through",
-    marginBottom: 2,
-    fontWeight: "700",
+    marginBottom: 4,
+    fontWeight: "800",
   },
   
   savingsPill: {

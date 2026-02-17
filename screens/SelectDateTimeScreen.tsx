@@ -1312,6 +1312,8 @@ export default function SelectDateTimeScreen() {
     isRecurringPackage,
     // Service slot generation input
     effectiveServiceIntervalMinutes,
+    // IMPORTANT: when hydrated duration arrives (or qty changes), we must rebuild the start-time list.
+    requiredDurationMinutes,
   ]);
 
   // Compute availability for the selected date.
@@ -1659,6 +1661,14 @@ export default function SelectDateTimeScreen() {
       return;
     }
 
+    // Defensive guard: even if the UI accidentally allows a press, never allow selecting a booked slot.
+    if (isSlotBooked(date, slot)) {
+      if (__DEV__) {
+        console.log('🚫 Ignoring pick of booked slot', { date, slot });
+      }
+      return;
+    }
+
     // Service-flow dynamic slots:
     // `slot` is a start time label like "9:00 AM".
     // We convert it into atomic windows and validate the full block.
@@ -1764,6 +1774,8 @@ export default function SelectDateTimeScreen() {
     if (!isServiceFlow && isRecurringPackage && loadingSeriesAvailability) return false;
     if (isServiceFlow) {
       if (!!blockError) return false;
+      // If the chosen START slot is booked (or verification isn't fresh), block Continue.
+      if (startSlot?.date && startSlot?.time && isSlotBooked(startSlot.date, startSlot.time)) return false;
       // For dynamic duration slots, selection should represent the full atomic block for the duration.
       if (requiredDurationMinutes > 0) {
         const atomic = atomicIntervalMinutes ?? 30;
@@ -2404,6 +2416,8 @@ export default function SelectDateTimeScreen() {
               // Unknown/uncomputed keys should render as Available (optimistic) but show a "Verifying" badge.
               // Booking is still prevented by the Continue guard + by disabling only the slots we KNOW are full.
               const verifying = !isServiceFlow && !isRecurringPackage && !hasComputedKey;
+              // Booked slots should never be clickable.
+              // For service flow, booked already includes freshness + atomic-block validation.
               const disabled = !canInteractWithSlots || booked || verifying || (isRecurringPackage && !seriesOk);
               if (__DEV__ && !isServiceFlow && !isRecurringPackage && slot === slots[0]) {
                 const keysForDate = Object.keys(slotAvailability || {}).filter((k) => k.startsWith(`${selectedDate}|`));
@@ -2425,7 +2439,7 @@ export default function SelectDateTimeScreen() {
                     isSelected && styles.slotChipSelected,
                   ]}
                   onPress={() => {
-                    if (disabled) return;
+                    if (disabled || booked) return;
                     onPickSlot(selectedDate, slot);
                   }}
                   activeOpacity={0.7}
@@ -3055,7 +3069,7 @@ const styles = StyleSheet.create({
 
   slotChip: {
     backgroundColor: 'white',
-    borderRadius: 999,
+    borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -3082,6 +3096,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingVertical: 12,
     paddingHorizontal: 12,
+    justifyContent: 'center',
   },
   slotChipSelected: {
     backgroundColor: '#0f8e35ff',
@@ -3102,6 +3117,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#0f172a',
+    lineHeight: 16,
     flexShrink: 1,
     // Keep text inside fixed-width grid chips
     flexGrow: 1,
@@ -3112,8 +3128,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   slotChipTextPackage: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
+    lineHeight: 18,
   },
   slotChipTextSelected: {
     color: '#ffffff',
@@ -3131,8 +3148,9 @@ const styles = StyleSheet.create({
 
   slotChipDurationText: {
     marginTop: 6,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
+    lineHeight: 16,
     color: '#334155',
   },
   slotChipDurationTextSelected: {

@@ -664,8 +664,23 @@ export default function CompanySelectionScreen() {
     // Resolve selectedCompany from the id so this works even if selectedCompany isn't derived yet.
     const resolvedCompany = selectedCompany || companies.find(c => c.id === selectedCompanyId);
     if (!resolvedCompany) return;
+
+    // ✅ Singular service flow fix:
+    // For NON-package services, after picking a company/provider we must show the slot screen.
+    // We pass the chosen `service_services` document id (resolvedCompany.id).
+    if (isPackageBooking !== true) {
+      (navigation as any).navigate('SelectDateTime', {
+        ...route.params,
+        fromServiceServices: true,
+        isPackageBooking: false,
+        selectedIssueIds: [resolvedCompany.id],
+        // Keep these for downstream UI/cart and for cases where SelectDateTime needs context.
+        selectedCompanyId: resolvedCompany.companyId || resolvedCompany.id,
+      });
+      return;
+    }
     
-    // Determine booking type based on service title
+  // Determine booking type based on service title
     let bookingType: 'electrician' | 'plumber' | 'cleaning' | 'health' | 'dailywages' | 'carwash' = 'electrician';
     const lowerTitle = serviceTitle?.toLowerCase() || '';
     
@@ -715,6 +730,8 @@ export default function CompanySelectionScreen() {
       : (baseServiceUnitPrice > 0 ? baseServiceUnitPrice : (issueTotalPrice > 0 ? issueTotalPrice : 0));
 
     // Add service to cart (include package info when available)
+    // Quantity offers should be company-specific.
+    // In our data model they're stored on service_services docs, which already encode (serviceId + companyId).
     const rawQuantityOffers = (packageInfo as any)?.quantityOffers || (resolvedCompany as any)?.quantityOffers || null;
     const bestOffer = rawQuantityOffers
       ? getBestActiveQuantityOffer(rawQuantityOffers, Number(serviceQuantities ?? 1))

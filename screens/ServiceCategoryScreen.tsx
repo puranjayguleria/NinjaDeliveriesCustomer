@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
+import { dedupeServicesByCategoryAndName } from "../utils/serviceDedupe";
 import { firestore } from "../firebase.native";
 
 export default function ServiceCategoryScreen() {
@@ -30,6 +31,7 @@ export default function ServiceCategoryScreen() {
   // 🆕 New states for category sidebar
   const [categories] = useState<ServiceCategory[]>([]);
   const [selectedCategoryId] = useState<string>(categoryId || "");
+  const [categoryMasterId, setCategoryMasterId] = useState<string>(categoryId || "");
 
   const fetchServiceIssues = useCallback(async () => {
     try {
@@ -58,6 +60,8 @@ export default function ServiceCategoryScreen() {
           console.log(`🔧 Using masterCategoryId: ${searchCategoryId}`);
         }
       }
+
+      setCategoryMasterId(searchCategoryId);
 
       // Fetch DIRECTLY from service_services collection
       console.log(`� Querying service_services where categoryMasterId == "${searchCategoryId}"`);
@@ -101,8 +105,13 @@ export default function ServiceCategoryScreen() {
         }
       });
       
-      // Combine both types of services
-      const allServices = [...directPriceServices, ...packageBasedServices];
+      // Combine both types of services.
+      // IMPORTANT: service_services is company-specific, so the same service can appear multiple times.
+      // De-dupe for UI by (category master + name).
+      const allServices = dedupeServicesByCategoryAndName([
+        ...directPriceServices,
+        ...packageBasedServices,
+      ]);
       
       console.log(`📊 Summary:`);
       console.log(`   - Direct-price services: ${directPriceServices.length}`);
@@ -215,10 +224,10 @@ export default function ServiceCategoryScreen() {
         return;
       }
 
-      // All services are direct-price - navigate to SelectDateTime
-      console.log(`💰 Navigating to SelectDateTime with ${selectedIssueObjects.length} direct-price services`);
+  // All services are direct-price - navigate to CompanySelection first.
+  // This avoids duplicate services when multiple companies provide the same service.
+  console.log(`💰 Navigating to CompanySelection with ${selectedIssueObjects.length} direct-price services`);
       const serviceNames = selectedIssueObjects.map(s => s.name);
-      const selectedIds = selectedServices.map(s => s.id);
 
       // Ensure SelectDateTime receives per-service quantities directly on each service object.
       // This avoids ID-mismatch issues and makes duration×qty deterministic.
@@ -228,16 +237,24 @@ export default function ServiceCategoryScreen() {
         quantity: s.quantity,
       }));
       
-      navigation.navigate("SelectDateTime", {
+      navigation.navigate("CompanySelection", {
         serviceTitle,
-        categoryId: selectedCategoryId,
-        issues: serviceNames, // Service names
-        selectedIssueIds: selectedIds, // ✅ Pass actual Firestore document IDs
-        selectedIssues: selectedIssuesWithQty, // pass as array (with quantity)
-        serviceQuantities, // ✅ Pass quantities for each service (still useful as a fallback)
-        allCategories: categories, // 🆕 Pass all categories for sidebar
+        // IMPORTANT: CompanySelection provider lookup for service_services expects categoryMasterId.
+        // Passing the app_categories doc id would filter out all providers.
+        categoryId: categoryMasterId,
+        // Prefer showing providers for the *base service*.
+        // CompanySelectionScreen can use these names/ids to query service_services.
+        issues: serviceNames.map((n) => String(n || '').trim()).filter(Boolean),
+        // IMPORTANT: `service_services` docs are company-specific. After de-duping the service list,
+        // passing a single service_services doc id would incorrectly constrain CompanySelection to
+        // just that one company. For singular service flow we intentionally fetch providers by
+        // service name (and category) instead.
+        selectedIssueIds: [],
+        selectedIssues: selectedIssuesWithQty,
+        serviceQuantities,
+        allCategories: categories,
         fromServiceServices: true,
-        isPackageBooking: false, // ✅ Explicitly mark as NOT a package booking
+        isPackageBooking: false,
       });
     } catch (error) {
       console.error('Error checking service types:', error);

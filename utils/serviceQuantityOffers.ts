@@ -1,7 +1,7 @@
 export type QuantityOffer = {
   // NOTE: The backend/admin may send different strings (e.g. 'flat', 'percent', or
   // simplified flags). We keep the type wide but handle variants in logic.
-  discountType?: 'newPrice' | 'flat' | 'percent' | string;
+  discountType?: 'newPrice' | 'flat' | 'percent' | 'percentage' | 'absolute' | string;
   discountValue?: number;
   isActive?: boolean;
   minQuantity?: number;
@@ -62,12 +62,24 @@ export const computeQuantityOfferPricing = (params: {
 
   const appliedOffer = getBestActiveQuantityOffer(params.offers, quantity);
 
+  const fullPrice = Math.round(baseUnitPrice * quantity * 100) / 100;
   let effectiveUnitPrice = baseUnitPrice;
+  let totalPrice = fullPrice;
+
+  const offerType = String(appliedOffer?.discountType || '').toLowerCase();
 
   if (appliedOffer) {
-    const type = String(appliedOffer.discountType || '').toLowerCase();
-
-    if (type === 'newprice') {
+    // Semantics:
+    // - absolute: subtract discountValue from the FINAL total
+    // - percent/percentage: subtract discountValue% from the FINAL total
+    // - newPrice/flat: legacy per-unit behaviours
+    if (offerType === 'absolute' || offerType === 'amount' || offerType === 'fixed') {
+      const v = asNumber(appliedOffer.discountValue);
+      if (v != null && v >= 0) totalPrice = Math.max(0, Math.round((fullPrice - v) * 100) / 100);
+    } else if (offerType === 'percent' || offerType === 'percentage') {
+      const v = asNumber(appliedOffer.discountValue);
+      if (v != null && v >= 0) totalPrice = Math.max(0, Math.round((fullPrice - (fullPrice * v) / 100) * 100) / 100);
+    } else if (offerType === 'newprice') {
       const newPrice = asNumber((appliedOffer as any).newPricePerUnit);
       if (newPrice != null && newPrice >= 0) {
         // "newPrice" can mean the backend sends an explicit new unit price.
@@ -79,13 +91,10 @@ export const computeQuantityOfferPricing = (params: {
         const v = asNumber(appliedOffer.discountValue);
         if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - v);
       }
-    } else if (type === 'flat' || type === 'flatperunit' || type === 'perunit' || type === 'discount') {
+    } else if (offerType === 'flat' || offerType === 'flatperunit' || offerType === 'perunit' || offerType === 'discount') {
       const v = asNumber(appliedOffer.discountValue);
       // flat discountValue is assumed to be per-unit discount.
       if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - v);
-    } else if (type === 'percent') {
-      const v = asNumber(appliedOffer.discountValue);
-      if (v != null && v >= 0) effectiveUnitPrice = Math.max(0, baseUnitPrice - (baseUnitPrice * v) / 100);
     } else {
       // If discountType is missing/unknown but discountValue exists, treat it as a per-unit flat discount.
       const v = asNumber(appliedOffer.discountValue);
@@ -93,8 +102,18 @@ export const computeQuantityOfferPricing = (params: {
     }
   }
 
-  const totalPrice = Math.round(effectiveUnitPrice * quantity * 100) / 100;
-  const fullPrice = Math.round(baseUnitPrice * quantity * 100) / 100;
+  // For legacy per-unit pricing types, compute total from effectiveUnitPrice.
+  // For absolute/percentage types, totalPrice has already been computed directly.
+  const isWholeTotalDiscount = offerType === 'absolute'
+    || offerType === 'amount'
+    || offerType === 'fixed'
+    || offerType === 'percent'
+    || offerType === 'percentage';
+
+  if (!isWholeTotalDiscount) {
+    totalPrice = Math.round(effectiveUnitPrice * quantity * 100) / 100;
+  }
+
   const savings = Math.max(0, Math.round((fullPrice - totalPrice) * 100) / 100);
 
   return {
