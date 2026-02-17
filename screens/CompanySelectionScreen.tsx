@@ -54,6 +54,33 @@ export default function CompanySelectionScreen() {
   const [companies, setCompanies] = useState<ServiceCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [logoErrorIds, setLogoErrorIds] = useState<Record<string, true>>({});
+
+  const getCompanyLogoUrl = (c: any) => {
+    const raw = c?.imageUrl ?? c?.logoUrl ?? c?.photoUrl ?? c?.companyLogoUrl;
+    let u = typeof raw === 'string' ? raw.trim() : '';
+    if (!u) return null;
+
+    // React Native <Image> can’t load gs:// URIs; surface it clearly in logs.
+    if (/^gs:\/\//i.test(u)) return u;
+
+    // Android often blocks cleartext HTTP by default; prefer https if possible.
+    if (/^http:\/\//i.test(u)) u = u.replace(/^http:\/\//i, 'https://');
+
+    return u;
+  };
+
+  // Log the raw/resolved logo URLs whenever the companies list changes.
+  useEffect(() => {
+    if (!Array.isArray(companies) || companies.length === 0) return;
+    console.log('🖼️ Company logos (debug):', companies.map((c: any) => ({
+      id: c?.id,
+      companyId: c?.companyId,
+      name: c?.companyName,
+      raw: c?.imageUrl ?? c?.logoUrl,
+      resolved: getCompanyLogoUrl(c),
+    })));
+  }, [companies]);
 
   // When service_services documents don't include a `price` in the objects passed via navigation,
   // we fetch the authoritative `price` by id so cart totals don't end up as ₹0.
@@ -647,14 +674,15 @@ export default function CompanySelectionScreen() {
     fetchServiceCompanies();
   }, [categoryId, fetchServiceCompanies, issues?.length, selectedIssueIds, serviceTitle]);
 
-  // Refresh when screen comes into focus
+  // Refresh loop guard:
+  // We already fetch on mount/param-change via the useEffect above.
+  // Calling fetch again on focus causes duplicate calls and can look like a loop
+  // when SelectDateTime navigates back here.
   useFocusEffect(
     useCallback(() => {
-      console.log('🔄 Screen focused - Refreshing company availability...');
-      fetchServiceCompanies();
       // reset package selection when screen refocuses
       setSelectedPackage(null);
-    }, [fetchServiceCompanies])
+    }, [])
   );
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
@@ -675,7 +703,10 @@ export default function CompanySelectionScreen() {
         isPackageBooking: false,
         selectedIssueIds: [resolvedCompany.id],
         // Keep these for downstream UI/cart and for cases where SelectDateTime needs context.
-        selectedCompanyId: resolvedCompany.companyId || resolvedCompany.id,
+        // IMPORTANT: pass the real company id (service_company doc id) for downstream cart/worker checks.
+        selectedCompanyId: resolvedCompany.companyId,
+        // Also pass the full object so SelectDateTime can add to cart without re-fetch.
+        selectedCompany: resolvedCompany,
       });
       return;
     }
@@ -900,11 +931,12 @@ export default function CompanySelectionScreen() {
                   >
                     <View style={styles.providerHeader}>
                       <View style={styles.providerTitleRow}>
-                        {company.imageUrl ? (
+                        {getCompanyLogoUrl(company) && !logoErrorIds[company.id] ? (
                           <Image
-                            source={{ uri: company.imageUrl }}
+                            source={{ uri: getCompanyLogoUrl(company) as string }}
                             style={styles.companyLogo}
-                            resizeMode="cover"
+                            resizeMode="contain"
+                            onError={() => setLogoErrorIds((p) => ({ ...p, [company.id]: true }))}
                           />
                         ) : (
                           <View style={styles.companyLogoPlaceholder}>
@@ -915,6 +947,11 @@ export default function CompanySelectionScreen() {
                         )}
                         <View style={{ flex: 1 }}>
                           <Text style={styles.providerName}>{company.companyName || company.serviceName}</Text>
+                          {(typeof (company as any)?.description === 'string' && String((company as any).description).trim().length > 0) ? (
+                            <Text style={styles.companyDescription} numberOfLines={2}>
+                              {String((company as any).description).trim()}
+                            </Text>
+                          ) : null}
                           <Text style={styles.packageOptionName} numberOfLines={1}>
                             {pkgObj?.name ?? 'Package'}
                           </Text>
@@ -966,11 +1003,12 @@ export default function CompanySelectionScreen() {
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
                     {/* Company Logo */}
-                    {item.imageUrl ? (
+                    {getCompanyLogoUrl(item) && !logoErrorIds[item.id] ? (
                       <Image 
-                        source={{ uri: item.imageUrl }} 
+                        source={{ uri: getCompanyLogoUrl(item) as string }} 
                         style={styles.companyLogo}
-                        resizeMode="cover"
+                        resizeMode="contain"
+                        onError={() => setLogoErrorIds((p) => ({ ...p, [item.id]: true }))}
                       />
                     ) : (
                       <View style={styles.companyLogoPlaceholder}>
@@ -981,6 +1019,11 @@ export default function CompanySelectionScreen() {
                     )}
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                   </View>
+                  {(typeof (item as any)?.description === 'string' && String((item as any).description).trim().length > 0) ? (
+                    <Text style={styles.companyDescription} numberOfLines={2}>
+                      {String((item as any).description).trim()}
+                    </Text>
+                  ) : null}
                 </View>
 
                 {/* Availability Status */}
@@ -1353,6 +1396,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexWrap: "wrap",
     gap: 8,
+  },
+
+  companyDescription: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+    marginLeft: 12,
+    lineHeight: 16,
   },
 
   companyLogo: {

@@ -8,6 +8,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Modal,
+  Pressable,
+  TextInput,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
@@ -27,6 +30,14 @@ export default function ServiceCategoryScreen() {
   const [showAll, setShowAll] = useState(false);
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Description modal
+  const [descriptionModal, setDescriptionModal] = useState<{
+    visible: boolean;
+    title: string;
+    description: string;
+  }>({ visible: false, title: '', description: '' });
   
   // 🆕 New states for category sidebar
   const [categories] = useState<ServiceCategory[]>([]);
@@ -92,6 +103,8 @@ export default function ServiceCategoryScreen() {
           imageUrl: data.imageUrl || null,
           price: data.price,
           serviceType: data.serviceType,
+          // Not part of ServiceIssue type (yet), but we keep it on the object for UI use.
+          description: data.description || '',
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         };
@@ -140,9 +153,18 @@ export default function ServiceCategoryScreen() {
   // ✅ Remove the old hardcoded issues logic and replace with dynamic data
   const displayedIssues = useMemo(() => {
     if (!issues || !Array.isArray(issues)) return [];
-    if (showAll) return issues;
-    return issues.slice(0, 5);
-  }, [issues, showAll]);
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q.length === 0
+      ? issues
+      : issues.filter((s: any) => {
+          const name = String(s?.name || '').toLowerCase();
+          const desc = String(s?.description || '').toLowerCase();
+          return name.includes(q) || desc.includes(q);
+        });
+
+    if (showAll || q.length > 0) return filtered;
+    return filtered.slice(0, 5);
+  }, [issues, searchQuery, showAll]);
 
   const hasMoreItems = issues.length > 5;
 
@@ -265,6 +287,7 @@ export default function ServiceCategoryScreen() {
   const renderItem = ({ item }: any) => {
     const quantity = serviceQuantities[item.id] || 0;
     const hasQuantity = quantity > 0;
+    const desc = typeof item?.description === 'string' ? item.description.trim() : '';
 
     return (
       <View
@@ -287,8 +310,27 @@ export default function ServiceCategoryScreen() {
         
         <View style={styles.serviceTextContainer}>
           <Text style={styles.serviceTitle}>{item.name}</Text>
-          {item.price && (
-            <Text style={styles.servicePriceText}>₹{item.price}</Text>
+
+          {/* Price is company-specific (service_services). Don't show it at service level. */}
+
+          {!!desc && (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.serviceDescription} numberOfLines={2}>
+                {desc}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  setDescriptionModal({
+                    visible: true,
+                    title: String(item?.name || 'Service'),
+                    description: desc,
+                  })
+                }
+                hitSlop={8}
+              >
+                <Text style={styles.seeMoreText}>See more</Text>
+              </Pressable>
+            </View>
           )}
         </View>
         
@@ -354,9 +396,49 @@ export default function ServiceCategoryScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Description Modal */}
+      <Modal
+        visible={descriptionModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>{descriptionModal.title}</Text>
+              <Pressable
+                onPress={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
+                hitSlop={10}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.modalDescription}>{descriptionModal.description}</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Select Services</Text>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search services…"
+          placeholderTextColor="#94a3b8"
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
       </View>
 
       {/* Main Content: Services Only */}
@@ -434,6 +516,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
+  },
+
+  searchContainer: {
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+
+  searchInput: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#0f172a",
   },
 
   // Main Content Layout
@@ -585,6 +685,64 @@ const styles = StyleSheet.create({
   serviceTextContainer: {
     flex: 1,
     minWidth: 0,
+  },
+
+  descriptionContainer: {
+    marginTop: 6,
+  },
+
+  serviceDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#475569",
+  },
+
+  seeMoreText: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2563eb",
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+    padding: 18,
+    justifyContent: "center",
+  },
+
+  modalCard: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  modalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    paddingRight: 10,
+  },
+
+  modalCloseText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563eb",
+  },
+
+  modalDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#334155",
   },
 
   serviceTitle: { 

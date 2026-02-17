@@ -18,6 +18,40 @@ export type QuantityOfferPricing = {
   savings: number;
 };
 
+const normalizeOffer = (offer: any): QuantityOffer | null => {
+  if (!offer || typeof offer !== 'object') return null;
+
+  const minQuantity = asNumber((offer as any).minQuantity ?? (offer as any).minQty ?? (offer as any).quantity);
+  const discountValue = asNumber((offer as any).discountValue ?? (offer as any).value ?? (offer as any).discount);
+  const newPricePerUnit = asNumber((offer as any).newPricePerUnit ?? (offer as any).newUnitPrice ?? (offer as any).pricePerUnit);
+
+  const rawType = String((offer as any).discountType ?? (offer as any).type ?? '').trim();
+  const discountType = rawType || undefined;
+
+  // isActive defaults to true when missing.
+  const isActive = (offer as any).isActive === false ? false : true;
+
+  const message = typeof (offer as any).message === 'string'
+    ? (offer as any).message
+    : (typeof (offer as any).label === 'string' ? (offer as any).label : undefined);
+
+  return {
+    discountType,
+    discountValue: discountValue ?? undefined,
+    isActive,
+    minQuantity: minQuantity ?? undefined,
+    newPricePerUnit: newPricePerUnit ?? undefined,
+    message,
+  };
+};
+
+const normalizeOffers = (offers: any): QuantityOffer[] => {
+  if (!Array.isArray(offers)) return [];
+  return offers
+    .map(normalizeOffer)
+    .filter((o): o is QuantityOffer => Boolean(o));
+};
+
 const asNumber = (v: any): number | null => {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
@@ -27,15 +61,15 @@ export const getBestActiveQuantityOffer = (
   offers: any,
   quantity: number
 ): QuantityOffer | undefined => {
-  if (!Array.isArray(offers) || offers.length === 0) return undefined;
+  const normalizedOffers = normalizeOffers(offers);
+  if (normalizedOffers.length === 0) return undefined;
   const q = Math.max(0, Number(quantity) || 0);
   if (q <= 0) return undefined;
 
-  const eligible: QuantityOffer[] = offers
-    .filter((o: any) => o && typeof o === 'object')
+  const eligible: QuantityOffer[] = normalizedOffers
     .filter((o: any) => o.isActive !== false)
     .filter((o: any) => {
-      const minQ = asNumber(o.minQuantity);
+      const minQ = asNumber((o as any).minQuantity);
       return minQ != null && minQ > 0 && q >= minQ;
     });
 
@@ -60,7 +94,8 @@ export const computeQuantityOfferPricing = (params: {
   const baseUnitPrice = Math.max(0, Number(params.baseUnitPrice) || 0);
   const quantity = Math.max(0, Number(params.quantity) || 0);
 
-  const appliedOffer = getBestActiveQuantityOffer(params.offers, quantity);
+  const normalizedOffers = normalizeOffers(params.offers);
+  const appliedOffer = getBestActiveQuantityOffer(normalizedOffers, quantity);
 
   const fullPrice = Math.round(baseUnitPrice * quantity * 100) / 100;
   let effectiveUnitPrice = baseUnitPrice;

@@ -17,6 +17,7 @@ export interface ServiceIssue {
   companyId?: string;
   isActive: boolean;
   imageUrl?: string | null; // Service image from service_services collection
+  description?: string;
   serviceKey?: string;
   serviceType?: string;
   price?: number;
@@ -32,6 +33,9 @@ export interface ServiceCompany {
   serviceName: string; // Service name like "Yoga sessions (beginneradvanced)"
   companyName?: string; // Actual company name
   price?: number;
+  // Duration metadata for dynamic slot generation (service_services.duration + service_services.durationUnit)
+  duration?: any;
+  durationUnit?: any;
   quantityOffers?: any[]; // Quantity-based offers from service_services
   isActive: boolean;
   imageUrl?: string | null;
@@ -907,14 +911,17 @@ export class FirestoreService {
             categoryIds.add(data.masterCategoryId);
           }
           if (data.name) {
-            serviceNames.add(data.name.toLowerCase().trim());
+            // IMPORTANT: Firestore '==' string match is case-sensitive.
+            // Keep original casing for querying `service_services.name`.
+            serviceNames.add(String(data.name).trim());
           }
         });
       } else {
         // NOT found in app_services - assume these are service NAMES from service_services
         console.log(`💡 No services found in app_services - treating input as service NAMES from service_services`);
         issueIds.forEach(name => {
-          serviceNames.add(name.toLowerCase().trim());
+          // IMPORTANT: Keep casing to match `service_services.name` exactly.
+          serviceNames.add(String(name).trim());
         });
       }
 
@@ -970,6 +977,8 @@ export class FirestoreService {
             serviceName: data.name || '', // This is the service name
             companyName: '', // Will be populated below with actual company name
             price: data.price,
+            duration: data.duration,
+            durationUnit: data.durationUnit,
             isActive: data.isActive || false,
             imageUrl: data.imageUrl,
             packages: data.packages,
@@ -5762,8 +5771,11 @@ export class FirestoreService {
               serviceName: serviceName,
               companyName: companyData.companyName || companyData.name || 'Unknown Company',
               price: serviceData.price || 0,
+              duration: serviceData.duration,
+              durationUnit: serviceData.durationUnit,
               isActive: true,
-              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              // 🖼️ Company logos live in service_company.logoUrl (direct-price flow)
+              imageUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,
@@ -6188,25 +6200,98 @@ export class FirestoreService {
       // 🔥 NEW: Get service_services IDs for this company and service
       // Workers have service_services IDs in their assignedServices, not app_services IDs
       let serviceServicesIds: string[] = [];
+
+      // Fast-path: sometimes upstream already passes service_services doc IDs.
+      // If so, we can use them as-is (workers.assignedServices stores service_services ids).
+      if (serviceIdsArray.length > 0) {
+        const snapshotByIds = await firestore()
+          .collection('service_services')
+          .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+          .get();
+        if (!snapshotByIds.empty) {
+          snapshotByIds.forEach(doc => serviceServicesIds.push(doc.id));
+          if (__DEV__) {
+            console.log(`   ✅ Using provided service_services doc IDs (matched ${snapshotByIds.size})`);
+          }
+        }
+      }
       
-      if (serviceTitle) {
+      if (serviceServicesIds.length === 0 && serviceTitle) {
         try {
           if (__DEV__) {
             console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
           }
-          
+
+          // 1) Most reliable when titles match exactly.
           const serviceServicesSnapshot = await firestore()
             .collection('service_services')
             .where('companyId', '==', companyId)
             .where('name', '==', serviceTitle)
             .get();
-          
-          serviceServicesSnapshot.forEach(doc => {
-            serviceServicesIds.push(doc.id);
-            if (__DEV__) {
-              console.log(`   ✅ Found service_services ID: ${doc.id} for "${serviceTitle}"`);
+
+          serviceServicesSnapshot.forEach(doc => serviceServicesIds.push(doc.id));
+
+          // 2) If not found, try to map app_services -> service_services using adminServiceId/serviceKey.
+          if (serviceServicesIds.length === 0 && serviceIdsArray.length > 0) {
+            const appSnapshot = await firestore()
+              .collection('app_services')
+              .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+              .get();
+
+            const adminServiceIds = new Set<string>();
+            const serviceKeys = new Set<string>();
+            const appNames = new Set<string>();
+
+            appSnapshot.forEach(doc => {
+              const d: any = doc.data();
+              if (d?.adminServiceId) adminServiceIds.add(String(d.adminServiceId));
+              if (d?.serviceKey) serviceKeys.add(String(d.serviceKey));
+              if (d?.name) appNames.add(String(d.name));
+            });
+
+            // Prefer adminServiceId mapping.
+            for (const adminServiceId of adminServiceIds) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('adminServiceId', '==', adminServiceId)
+                .get();
+              ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
             }
-          });
+
+            // Next try serviceKey mapping.
+            if (serviceServicesIds.length === 0) {
+              for (const key of serviceKeys) {
+                const ssSnap = await firestore()
+                  .collection('service_services')
+                  .where('companyId', '==', companyId)
+                  .where('serviceKey', '==', key)
+                  .get();
+                ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
+              }
+            }
+
+            // Last resort: try app service name exact match.
+            if (serviceServicesIds.length === 0) {
+              for (const name of appNames) {
+                const ssSnap = await firestore()
+                  .collection('service_services')
+                  .where('companyId', '==', companyId)
+                  .where('name', '==', name)
+                  .get();
+                ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
+              }
+            }
+          }
+
+          // Dedupe
+          serviceServicesIds = Array.from(new Set(serviceServicesIds));
+
+          if (__DEV__) {
+            for (const id of serviceServicesIds) {
+              console.log(`   ✅ Using service_services ID: ${id} for "${serviceTitle}"`);
+            }
+          }
 
           if (__DEV__) {
             console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);

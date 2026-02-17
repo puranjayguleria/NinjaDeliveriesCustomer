@@ -50,4 +50,25 @@ describe('serviceQuantityOffers', () => {
 
     expect(pricing.totalPrice).toBe(400);
   });
+
+  it('normalizes backend offer key aliases', () => {
+    const pricing = computeQuantityOfferPricing({
+      baseUnitPrice: 100,
+      quantity: 4,
+      offers: [
+        {
+          isActive: true,
+          minQty: 4,
+          type: 'newPrice',
+          value: 25,
+          // would imply new unit price 75
+          message: 'Save ₹25 per unit',
+        },
+      ],
+    });
+
+    expect(pricing.totalPrice).toBe(300);
+    expect(pricing.savings).toBe(100);
+    expect(pricing.appliedOffer?.minQuantity).toBe(4);
+  });
 });

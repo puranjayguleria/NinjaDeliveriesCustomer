@@ -483,7 +483,18 @@ export default function SelectDateTimeScreen() {
   // Hydrate duration metadata from Firestore so slot intervals can be generated reliably.
   useEffect(() => {
     if (!isServiceFlow) return;
-    if (!Array.isArray(selectedIssueIds) || selectedIssueIds.length === 0) {
+    // In the singular-service flow, some upstream screens may still pass app_services ids
+    // in selectedIssueIds. For duration-based slot generation we want the company-specific
+    // service_services doc. Prefer `selectedCompany.id` when present.
+    const selectedCompanyServiceDocId = (selectedCompany as any)?.id ? String((selectedCompany as any).id) : null;
+
+    const idsToHydrate = (
+      selectedCompanyServiceDocId
+        ? [selectedCompanyServiceDocId]
+        : (Array.isArray(selectedIssueIds) ? selectedIssueIds : [])
+    ).filter(Boolean) as string[];
+
+    if (idsToHydrate.length === 0) {
       setHydratedServiceMeta([]);
       return;
     }
@@ -492,7 +503,7 @@ export default function SelectDateTimeScreen() {
     const run = async () => {
       try {
   const metas: { id: string; duration?: any; durationUnit?: any }[] = [];
-        for (const id of selectedIssueIds) {
+        for (const id of idsToHydrate) {
           if (!id) continue;
           try {
             const snap = await firestore().collection('service_services').doc(String(id)).get();
@@ -513,7 +524,7 @@ export default function SelectDateTimeScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isServiceFlow, JSON.stringify(selectedIssueIds)]);
+  }, [isServiceFlow, (selectedCompany as any)?.id, JSON.stringify(selectedIssueIds)]);
 
   const effectiveServiceIntervalMinutes = (() => {
     if (!isServiceFlow) return null;
@@ -536,6 +547,28 @@ export default function SelectDateTimeScreen() {
   // Requirement: reserve total time = SUM(duration(service) * quantity(service)) for all selected services.
   const requiredDurationMinutes = useMemo(() => {
     if (!isServiceFlow) return 0;
+
+    // ✅ Most reliable source in the singular-company service flow:
+    // `selectedCompany` represents the chosen `service_services` doc for that company.
+    // If duration is present here, use it directly so slot blocking is consistent per company
+    // even when selectedIssueIds/selectedIssues are app_services-shaped.
+    const selectedCompanyMins = durationToMinutes(
+      (selectedCompany as any)?.duration,
+      (selectedCompany as any)?.durationUnit,
+    );
+    if (selectedCompanyMins && selectedCompanyMins > 0) {
+      // Quantity preference order:
+      // 1) quantity attached to selectedCompany itself
+      // 2) total of serviceQuantities map (common when only one service is being booked)
+      // 3) fallback 1
+      const embeddedQty = Number((selectedCompany as any)?.quantity);
+      const qtyFromEmbedded = (Number.isFinite(embeddedQty) && embeddedQty > 0) ? Math.round(embeddedQty) : null;
+      const totalQty = (serviceQuantities && typeof serviceQuantities === 'object')
+        ? Object.values(serviceQuantities).reduce((acc: number, v: any) => acc + Math.max(0, Number(v) || 0), 0)
+        : 0;
+      const qty = Math.max(1, qtyFromEmbedded ?? (totalQty > 0 ? Math.round(totalQty) : 1));
+      return selectedCompanyMins * qty;
+    }
 
     const resolveQtyForService = (svc: any, idx: number): number => {
       // Best signal: selectedIssues already carries quantity (if upstream attached it)
@@ -642,7 +675,7 @@ export default function SelectDateTimeScreen() {
     }
 
     return 0;
-  }, [durationToMinutes, hydratedServiceMeta, isServiceFlow, selectedIssueIds, selectedIssues, serviceQuantities]);
+  }, [durationToMinutes, hydratedServiceMeta, isServiceFlow, selectedCompany, selectedIssueIds, selectedIssues, serviceQuantities]);
 
   useEffect(() => {
     if (!__DEV__ || !isServiceFlow) return;
@@ -2518,7 +2551,7 @@ export default function SelectDateTimeScreen() {
             (!canContinueFinal || isVerifyingAvailability) && styles.continueBtnDisabled,
           ]}
           activeOpacity={0.7}
-          onPress={() => {
+          onPress={async () => {
             if (!canContinueFinal || isVerifyingAvailability) return;
 
             const selected = dates.find(d => d.key === selectedDate);
@@ -2622,22 +2655,124 @@ export default function SelectDateTimeScreen() {
 
               navigation.navigate("ServiceCart");
             } else {
-              navigation.navigate("CompanySelection", {
+              // Direct-price service flow: company was already selected earlier.
+              // After slot selection, go straight to cart/checkout.
+              const companyObj = selectedCompany;
+              const companyId = typeof selectedCompanyId === 'string' ? selectedCompanyId : (companyObj?.id || null);
+
+              if (!companyObj || !companyId) {
+                // This should never happen in the direct-price flow because the user
+                // must select a company before reaching slots. Avoid looping back.
+                console.warn('⚠️ Direct-price flow missing company selection; cannot add to cart', {
+                  selectedCompanyId,
+                  hasSelectedCompany: !!selectedCompany,
+                });
+                return;
+              }
+
+              // Determine booking type from serviceTitle
+              let bookingType: any = 'electrician';
+              const lowerTitle = (serviceTitle || '').toLowerCase();
+              if (lowerTitle.includes('plumber')) bookingType = 'plumber';
+              else if (lowerTitle.includes('cleaning')) bookingType = 'cleaning';
+              else if (lowerTitle.includes('health')) bookingType = 'health';
+              else if (lowerTitle.includes('daily') || lowerTitle.includes('wages')) bookingType = 'dailywages';
+              else if (lowerTitle.includes('car') || lowerTitle.includes('wash')) bookingType = 'carwash';
+
+              // Direct-price service:
+              // - `quantity` is controlled by the cart item quantity stepper.
+              // - `unitPrice` should be the PER-UNIT price from the selected company/service_services doc.
+              // - `issues` here are mainly for describing selected services; we keep quantity=1 for each.
+              const cartIssues = (Array.isArray(selectedIssues) ? selectedIssues : []).map((issue: any) => {
+                const unitPrice = typeof issue?.price === 'number' ? issue.price : 0;
+                return {
+                  name: issue?.name || issue,
+                  price: unitPrice,
+                  quantity: 1,
+                };
+              });
+
+              // IMPORTANT: offers + per-unit base price live on the service_services doc.
+              // `selectedCompany` SHOULD be that doc, but in some cases it can be a lightweight object.
+              // So we defensively refetch the service_services doc by id right before adding to cart.
+              let baseUnitPrice = typeof (companyObj as any)?.price === 'number'
+                ? (companyObj as any).price
+                : (typeof cartIssues?.[0]?.price === 'number' ? cartIssues[0].price : 0);
+
+              let offersForCart: any =
+                (cartIssues as any)?.[0]?.quantityOffers
+                || (cartIssues as any)?.[0]?.data?.quantityOffers
+                || (selectedIssues as any)?.[0]?.quantityOffers
+                || (selectedIssues as any)?.[0]?.data?.quantityOffers
+                || (companyObj as any)?.quantityOffers
+                || null;
+
+              await (async () => {
+                try {
+                  const serviceDocId = String((companyObj as any)?.id || companyId || '');
+                  if (serviceDocId) {
+                    const snap = await firestore().collection('service_services').doc(serviceDocId).get();
+                    const data: any = snap.exists ? snap.data() : null;
+                    if (data) {
+                      if (typeof data.price === 'number' && data.price > 0) baseUnitPrice = data.price;
+                      if (data.quantityOffers && Array.isArray(data.quantityOffers)) offersForCart = data.quantityOffers;
+                    }
+                  }
+                } catch (e) {
+                  // Non-fatal; we can still continue with whatever was passed via navigation.
+                  if (__DEV__) console.log('⚠️ Failed to refetch service_services for offers', e);
+                }
+              })();
+
+              // Preserve the user-selected quantity from the service screen.
+              // In the direct-price service flow we typically have a single service, so we can safely
+              // sum the `serviceQuantities` map.
+              const selectedQty = (serviceQuantities && typeof serviceQuantities === 'object')
+                ? Math.max(
+                    1,
+                    Object.values(serviceQuantities).reduce(
+                      (acc: number, v: any) => acc + Math.max(0, Number(v) || 0),
+                      0
+                    )
+                  )
+                : 1;
+
+              addService({
                 serviceTitle,
                 categoryId,
-                selectedIssueIds,
-                selectedIssues,
-                issues,
+                issues: cartIssues,
+                company: {
+                  id: companyObj.id,
+                  companyId: (companyObj as any).companyId || companyObj.id,
+                  name: (companyObj as any).companyName || (companyObj as any).serviceName,
+                  price: (companyObj as any).price,
+                  rating: (companyObj as any).rating,
+                  verified: (companyObj as any).isActive,
+                },
                 selectedDate: chosenDate,
                 selectedTime: chosenTime,
-                selectedDateFull: selected?.full,
-                fromServiceServices, // Pass the flag forward
-                isPackageBooking, // Pass package flag
-                selectedPackage, // Pass package info
-                serviceQuantities,
-                selectedSlots: isServiceFlow ? selectedSlots : undefined,
-                startSlot: isServiceFlow ? startSlot : undefined,
+                bookingType,
+                unitPrice: baseUnitPrice,
+                totalPrice: baseUnitPrice * selectedQty,
+                quantity: selectedQty,
+                additionalInfo: {
+                  fromServiceServices: true,
+                  isPackageService: false,
+                  serviceQuantities,
+                  selectedSlots: isServiceFlow ? selectedSlots : undefined,
+                  startSlot: isServiceFlow ? startSlot : undefined,
+                  // Quantity offer support (company-specific offers come from the selected service_services doc).
+                  // By persisting these into the cart item, the cart can auto-apply the best eligible tier
+                  // when the user increases/decreases quantity.
+                  baseOfferUnitPrice: baseUnitPrice,
+                  // Offers exist on the company-specific service_services doc(s).
+                  // Some flows set `selectedCompany` to a service_company object which won't carry quantityOffers.
+                  // Prefer offers stored on the selected issue object or any embedded offers payload.
+                  quantityOffers: offersForCart,
+                },
               });
+
+              navigation.navigate("ServiceCart");
             }
           }}
         >
