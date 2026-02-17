@@ -38,17 +38,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
 import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
-
-try {
-  // RNFB v22-compatible way to check initialized apps:
-  // If zero on iOS, native didn't configure from GoogleService-Info.plist
-  console.log('[RNFB] apps length', app.apps?.length);
-} catch (e) {
-  console.log('[RNFB] apps check threw', e);
-}
-
-console.log('[RNFB] Native module present?', !!NativeModules.RNFBAppModule);
-console.log('[RNFB] Native apps constant', NativeModules.RNFBAppModule?.NATIVE_FIREBASE_APPS);
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -63,7 +52,6 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
    Screens
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/ProductsHomeScreen";
-import ServicesScreen from "./screens/ServicesScreen";
 import ServicesStack from "./navigation/ServicesStack";
 
 import CategoriesScreen from "./screens/CategoriesScreen";
@@ -102,8 +90,8 @@ import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
 import { Linking } from "react-native";
-import  firebase  from "@react-native-firebase/app";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
 import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
@@ -322,13 +310,6 @@ const NinjaEatsTabs = () => (
   </Tab.Navigator>
 );
 
-
-try {
-  const def = firebase.app();
-  console.log("[RNFB] default app:", def?.name, def?.options);
-} catch (e) {
-  console.log("[RNFB] firebase.app() threw:", e);
-}
 
 // Log inbound deep links (for the reCAPTCHA return)
 Linking.addEventListener("url", ({ url }) => console.log("[Linking] open url:", url));
@@ -590,6 +571,9 @@ function AppTabs() {
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
+
+  // One-time welcome modal -> jump user to Services
+  const navigation = useNavigation<any>();
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -737,7 +721,22 @@ function AppTabs() {
 
   return (
     <>
-      <View style={{ flex: 1 }}>
+      <WelcomeServicesOnceModal
+        onGoToServices={() => {
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [
+                {
+                  name: "ServicesTab",
+                  state: { routes: [{ name: "ServicesHome" }] },
+                },
+              ],
+            })
+          );
+        }}
+      />
+
       <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={({ route }) => {
@@ -962,7 +961,6 @@ function AppTabs() {
           serviceItemCount={serviceTotalItems}
         />
       )}
-          </View>
     </>
   );
 }

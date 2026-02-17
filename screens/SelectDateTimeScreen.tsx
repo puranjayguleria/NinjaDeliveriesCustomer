@@ -95,6 +95,7 @@ export default function SelectDateTimeScreen() {
   const selectedPackageDuration = (selectedPackage as any)?.duration;
 
   const serviceIdKey = String(selectedIssueIds?.[0] || "");
+  const selectedIssueIdsKey = useMemo(() => JSON.stringify(selectedIssueIds ?? []), [selectedIssueIds]);
   const selectedPackagePriceKey = String(selectedPackagePrice ?? "");
   const selectedPackageDurationKey = String(selectedPackageDuration ?? "");
 
@@ -291,6 +292,7 @@ export default function SelectDateTimeScreen() {
 
   const [time, setTime] = useState("");
   const [confirmedPlanDates, setConfirmedPlanDates] = useState<string[]>([]);
+  const confirmedPlanDatesKey = useMemo(() => confirmedPlanDates.join('|'), [confirmedPlanDates]);
   const [selectedDate, setSelectedDate] = useState(() => {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
@@ -1000,7 +1002,7 @@ export default function SelectDateTimeScreen() {
     const companyId = typeof selectedCompanyId === 'string' ? selectedCompanyId : null;
     if (!companyId) return;
 
-    const reqId = ++seriesValidationReqRef.current;
+  const reqId = ++seriesValidationReqRef.current;
     setLoadingSeriesAvailability(true);
     setAvailabilityError(null);
 
@@ -1402,6 +1404,16 @@ export default function SelectDateTimeScreen() {
       return;
     }
 
+    // Weekly day-confirmation plans have their own smarter prefetch + auto-pick effect below.
+    // Running the generic debounced validator here can race it and overwrite state (making autopick
+    // appear to "not work").
+    if (
+      needsDayConfirmation &&
+      (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly')
+    ) {
+      return;
+    }
+
     // Day-confirmation plans: debounce checks so we don't spam network while user taps dates.
     if (needsDayConfirmation) {
       const handle = setTimeout(() => {
@@ -1412,17 +1424,129 @@ export default function SelectDateTimeScreen() {
 
     computeSeriesAvailabilityForTimeSlot(selectedDate, time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecurringPackage, selectedDate, selectedCompanyId, time, JSON.stringify(selectedIssueIds), needsDayConfirmation, confirmedPlanDates.join('|'), selectedPackageUnit]);
+  }, [isRecurringPackage, selectedDate, selectedCompanyId, time, selectedIssueIdsKey, needsDayConfirmation, confirmedPlanDatesKey, selectedPackageUnit]);
 
-  // Guardrail: for weekly/monthly selection, never keep dates selected that conflict for the chosen time.
-  // This prevents scenarios where tapping dates causes conflicts to "disappear" but the user can still continue.
+  // Weekly plan UX improvement:
+  // As soon as the user picks a time slot:
+  //  1) pre-check an upcoming window for that slot and mark booked days (✕)
+  //  2) auto-select the nearest 7 AVAILABLE days to give the user a great default
+  //     (user can still modify after)
   useEffect(() => {
     if (!needsDayConfirmation) return;
-    if (typeof time !== 'string' || time.trim().length === 0) return;
-    const conflicts = seriesConflicts?.[time] || [];
-    if (!Array.isArray(conflicts) || conflicts.length === 0) return;
-    setConfirmedPlanDates((prev) => prev.filter((d) => !conflicts.includes(d)));
-  }, [needsDayConfirmation, seriesConflicts, time]);
+    const isWeekly = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
+    if (!isWeekly) return;
+    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
+    if (!slotLabel) return;
+
+    // Use selectedDate as anchor if present, else tomorrow.
+    const today = new Date();
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const minISO = addDaysISO(todayISO, 1);
+    const anchor = selectedDate && selectedDate >= minISO ? selectedDate : minISO;
+  // Check a reasonable future window so we can find 7 available days even if some are booked.
+  const windowDays = 21;
+  const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
+
+    const reqId = ++seriesValidationReqRef.current;
+    setLoadingSeriesAvailability(true);
+    setAvailabilityError(null);
+
+  const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
+
+    (async () => {
+      try {
+        const maxConcurrency = 4;
+
+        // Deterministic worker pool (avoids shared mutable idx/arrays races).
+        const queue = [...windowISOs];
+  const results: { dateISO: string; available: boolean }[] = [];
+
+        const worker = async () => {
+          while (queue.length > 0) {
+            const dateISO = queue.shift();
+            if (!dateISO) break;
+            const result = await FirestoreService.checkCompanyWorkerAvailability(
+              selectedCompanyId,
+              dateISO,
+              slotLabel,
+              selectedIds,
+              serviceTitle
+            );
+            results.push({ dateISO, available: result?.available === true });
+          }
+        };
+
+        await Promise.all(
+          Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker())
+        );
+
+        if (seriesValidationReqRef.current !== reqId) return;
+
+        const available = results.filter((r) => r.available).map((r) => r.dateISO);
+        const conflicts = results.filter((r) => !r.available).map((r) => r.dateISO);
+
+        // Replace (not merge) so markers are accurate for this slotLabel.
+        const uniqueConflicts = Array.from(new Set(conflicts)).sort();
+        setSeriesConflicts((prev) => ({ ...prev, [slotLabel]: uniqueConflicts }));
+
+  // Auto-pick nearest available days.
+  // IMPORTANT: never auto-select booked/conflict days.
+  // Defensive: even if the backend returns inconsistent availability flags,
+  // always exclude anything we consider a conflict for this slot.
+  const availableNotConflicted = available.filter((d) => !uniqueConflicts.includes(d));
+  const picked = availableNotConflicted.slice(0, 7).sort();
+
+        if (__DEV__) {
+          console.log('🗓️ Weekly autopick results', {
+            slotLabel,
+            anchor,
+            windowDays,
+            checked: results.length,
+            availableCount: available.length,
+            conflictCount: conflicts.length,
+            availableNotConflictedCount: availableNotConflicted.length,
+            picked,
+          });
+        }
+
+        setConfirmedPlanDates((prev) => {
+          // If user already has 7 picked, don't override.
+          if (Array.isArray(prev) && prev.length >= 7) return prev;
+
+          // If we found at least 1 available day, always replace the placeholder seed.
+          // If fewer than 7 are available in the window, pick as many as we can.
+          if (picked.length > 0) return picked;
+
+          // If nothing is available, NEVER keep conflict days selected by default.
+          // Purge any known conflicts for this slot.
+          const safePrev = Array.isArray(prev)
+            ? prev.filter((d) => !uniqueConflicts.includes(d))
+            : [];
+          return safePrev;
+        });
+
+        // Only set seriesAvailability when we have 7 picked days.
+        setSeriesAvailability(picked.length === 7 ? { [slotLabel]: true } : {});
+      } catch (e: any) {
+        if (seriesValidationReqRef.current !== reqId) return;
+        console.log('⚠️ Weekly seeding availability check failed:', e);
+        setAvailabilityError('Could not validate weekly availability. Please try again.');
+      } finally {
+        if (seriesValidationReqRef.current === reqId) {
+          setLoadingSeriesAvailability(false);
+        }
+      }
+    })();
+  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIds, serviceTitle]);
+
+  // IMPORTANT UX:
+  // For weekly/monthly "day confirmation" plans we should NEVER mutate the user's selection
+  // based on verification results. Doing so makes it feel like the app "marks their choice as booked".
+  // Instead:
+  //  - keep confirmedPlanDates exactly as the user tapped
+  //  - render conflicts as ✕ markers (booked/disabled for NEW taps)
+  //  - block Continue until the user has selected the required count with no conflicts
 
   const getNext7Days = () => {
     const days = [];
@@ -1646,44 +1770,37 @@ export default function SelectDateTimeScreen() {
     lastTimeRef.current = t;
   }, [needsDayConfirmation, time]);
 
-  // When anchor date/time changes (and unit requires it), seed the confirmation list.
+  // When entering day-confirmation mode, ensure we have a sane anchor date.
+  // IMPORTANT: Do NOT seed a fixed 7/30-day window here.
+  // Weekly plans should be auto-picked using real availability (see weekly autopick effect).
+  // Monthly plans rely on user selection + conflict markers.
   useEffect(() => {
     if (!needsDayConfirmation) {
       setConfirmedPlanDates([]);
+      planSeededRef.current = false;
       return;
     }
 
-    // Seed only once when entering this mode. After that, let the user fully control selections.
+    // Only do minimal initialization once per mode entry.
     if (planSeededRef.current) return;
-    // For weekly/monthly plans, the user selects the exact days on the calendar.
-    // Seed a default window from the current anchor date (selectedDate).
-    // If selectedDate isn't set, fall back to tomorrow.
-    // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
+
     const today = new Date();
     const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const fallbackStartISO = addDaysISO(todayISO, 1);
-    const startISO = (typeof selectedDate === 'string' && selectedDate.trim().length > 0)
-      ? selectedDate
-      : fallbackStartISO;
-    const limit = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30;
 
-    const seed = Array.from({ length: limit }, (_, i) => addDaysISO(startISO, i));
-
-    // Only seed if we don't already have the right window.
-    // This prevents a re-render loop where this effect overwrites user changes,
-    // which can keep availability validation running forever.
-    setConfirmedPlanDates((prev) => {
-      const prevKey = Array.isArray(prev) ? prev.join('|') : '';
-      const seedKey = seed.join('|');
-      const next = prevKey === seedKey ? prev : seed;
-      planSeededRef.current = true;
-      return next;
+    // If selectedDate isn't set, fall back to tomorrow.
+    setSelectedDate((prev) => {
+      if (typeof prev === 'string' && prev.trim().length > 0) return prev;
+      return fallbackStartISO;
     });
 
-    // Keep selectedDate aligned for the rest of the screen (slot availability, summary, etc.)
-    // but don't re-set it if it's already the same.
-    setSelectedDate((prev) => (prev === startISO ? prev : startISO));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // IMPORTANT:
+    // Don't preselect a day here. Tomorrow can be booked for the chosen slot, and we don't want the
+    // system to ever select booked days by default.
+    // Weekly autopick will select the best available days once the user picks a slot/time.
+    setConfirmedPlanDates((prev) => (Array.isArray(prev) ? prev : []));
+
+    planSeededRef.current = true;
   }, [needsDayConfirmation, selectedPackageUnit]);
 
   const onPickSlot = (date: string, slot: string) => {
@@ -2102,8 +2219,9 @@ export default function SelectDateTimeScreen() {
 
                 const monthGrids = monthKeys.map((mk) => ({ monthKey: mk, cells: buildMonthGrid(mk) }));
 
-                const conflictsForSlot = (typeof time === 'string' && time.trim().length > 0)
-                  ? (seriesConflicts[time] || [])
+                const slotLabelForCalendar = (typeof time === 'string' && time.trim().length > 0) ? time : null;
+                const conflictsForSlot = slotLabelForCalendar
+                  ? (seriesConflicts?.[slotLabelForCalendar] || [])
                   : [];
 
                 // (Removed) local insufficient-days banner logic.
@@ -2161,18 +2279,30 @@ export default function SelectDateTimeScreen() {
                           : confirmedPlanDates.includes(c.iso);
                         const tooEarly = c.iso < minISO;
                         const tooLate = c.iso > maxISO;
-                        const isConflict = conflictsForSlot.includes(c.iso);
+                        const isConflict = !!slotLabelForCalendar && conflictsForSlot.includes(c.iso);
 
                         // Day-unit packages: use per-slot availability to mark a day fully booked.
                         // Weekly/monthly recurring plans: conflicts ARE booked dates for the selected slot.
                         // For day-unit packages, treat "unknown" (not yet computed) days as booked/unavailable.
                         // This matches the stricter UX expectation: until we verify capacity, don't allow booking.
                         const dayUnitUnknown = isDayUnitPackage ? !isDayComputed(c.iso) : false;
-                        const isBooked = isDayUnitPackage ? (dayUnitUnknown || isDayFullyBooked(c.iso)) : isConflict;
+                        const isBooked = isDayUnitPackage
+                          ? (dayUnitUnknown || isDayFullyBooked(c.iso))
+                          : (isConflict && !selected);
 
                         const localLimit = (isDailyPackage || isDayUnitPackage) ? 1 : planSelectionLimit;
                         const atLimit = !selected && localLimit > 0 && confirmedPlanDates.length >= localLimit;
-                        const disabled = tooEarly || tooLate || atLimit || isConflict || isBooked;
+                        // UX:
+                        // - Weekly/monthly plans: show booked (✕) days based on conflictsForSlot and do NOT allow selecting them.
+                        //   This prevents the frustrating flow where the user selects first and then gets told to deselect.
+                        // - Day-unit packages: keep strict booked behavior based on per-slot availability.
+                        // Weekly/monthly UX:
+                        // - Always allow tapping an already-selected date so user can deselect.
+                        // - Only block selecting NEW dates that we *know* are booked for the chosen time slot.
+                        // - Before a time slot is chosen, don't disable days due to conflicts.
+                        const disabled = isDayUnitPackage
+                          ? (tooEarly || tooLate || (atLimit && !selected) || isBooked)
+                          : (tooEarly || tooLate || (atLimit && !selected) || (!selected && isConflict));
 
                         return (
                           <TouchableOpacity
@@ -2187,13 +2317,24 @@ export default function SelectDateTimeScreen() {
                               if (tooEarly) return;
                               if (tooLate) return;
                               if (atLimit) return;
-                              if (isConflict) return;
-                              if (isBooked) {
+
+                              // Weekly/monthly: conflict means slot capacity reached for this time slot.
+                              // Don't allow selecting NEW dates that are booked.
+                              if (!isDayUnitPackage && !selected && isConflict) {
                                 setPlanPickError(
                                   'This day is already booked for the selected time. Please choose another day, or select a different time slot.'
                                 );
                                 return;
                               }
+
+                              // Day-unit packages: hard block selecting a fully booked day.
+                              if (isDayUnitPackage && isBooked) {
+                                setPlanPickError(
+                                  'This day is already booked for the selected time. Please choose another day.'
+                                );
+                                return;
+                              }
+
                               toggleDate(c.iso as string);
                             }}
                           >
@@ -2207,7 +2348,7 @@ export default function SelectDateTimeScreen() {
                               {c.dayNumber}
                             </Text>
 
-                            {(isConflict || (isDayUnitPackage && isBooked)) && (
+                            {((isDayUnitPackage && isBooked) || isConflict) && (
                               <View style={styles.calendarConflictOverlay} pointerEvents="none">
                                 <Text style={styles.calendarConflictText}>✕</Text>
                               </View>

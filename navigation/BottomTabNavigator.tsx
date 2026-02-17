@@ -5,9 +5,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import OrdersStack from './OrdersStack';
 import NewOrderStack from './NewOrderStack';
-import ContactUsScreen from '../screens/ContactUsScreen';
-import BusinessStack from './BusinessStack';
 import ProfileScreen from '../screens/ProfileScreen';
+import ServicesStack from './ServicesStack';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const Tab = createBottomTabNavigator();
 
@@ -16,7 +17,7 @@ const BottomTabNavigator: React.FC = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
-          let iconName: string;
+          let iconName: IoniconName;
 
           switch (route.name) {
             case "Orders":
@@ -25,11 +26,8 @@ const BottomTabNavigator: React.FC = () => {
             case "NewOrder":
               iconName = "add-circle-outline";
               break;
-            case "ContactUs":
-              iconName = "call-outline";
-              break;
-            case "Business":
-              iconName = "briefcase-outline";
+            case "Services":
+              iconName = "grid-outline";
               break;
             case "Profile":
               iconName = "person-outline";
@@ -57,7 +55,7 @@ tabBarInactiveTintColor: "#64748b",   // Slate gray
           },
         })}
       />
-      <Tab.Screen name="Business" component={BusinessStack} />
+      <Tab.Screen name="Services" component={ServicesStack} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

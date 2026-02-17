@@ -6451,7 +6451,7 @@ export class FirestoreService {
         console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
       }
       
-      let unassignedActiveForServiceCount = 0;
+  let unassignedActiveForServiceCount = 0;
 
       bookingsSnapshot.docs.forEach(doc => {
         const booking = doc.data();
@@ -6466,9 +6466,27 @@ export class FirestoreService {
 
         const hasWorkerAssigned = !!workerId;
         if (isSameCompany && !hasWorkerAssigned) {
-          // If serviceTitle is available, use it to filter (best-effort; older docs may not have serviceId)
+          // Prefer strict matching on service IDs to avoid counting unrelated pending bookings.
+          // Bookings may store either:
+          //  - serviceId/serviceIds (service_services doc id)
+          //  - serviceKey/adminServiceId
+          //  - serviceName/serviceTitle (fallback)
+
+          const bookingServiceIdsRaw = (booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds) as any;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
           const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '');
-          if (!serviceTitle || bookingServiceName === serviceTitle) {
+
+          const matchesById = bookingServiceIds.length > 0 && serviceServicesIds.some((id: string) => bookingServiceIds.includes(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+
+          const matchesService = matchesById || matchesByName;
+
+          if (matchesService) {
             unassignedActiveForServiceCount += 1;
           }
         }
@@ -6484,8 +6502,10 @@ export class FirestoreService {
       // Capacity rule:
       // totalRelevantWorkers is the slot capacity.
       // If (assigned-busy + pending-unassigned) >= capacity => slot is booked.
-      const consumedCapacity = busyWorkers.length + unassignedActiveForServiceCount;
-      const availableWorkers = totalRelevantWorkers - consumedCapacity;
+  const consumedCapacityRaw = busyWorkers.length + unassignedActiveForServiceCount;
+  // Guardrail: capacity math should never go below 0 available.
+  const consumedCapacity = Math.min(consumedCapacityRaw, totalRelevantWorkers);
+  const availableWorkers = Math.max(0, totalRelevantWorkers - consumedCapacity);
       
       if (__DEV__) {
         console.log(`📊 FINAL RESULT:`);
