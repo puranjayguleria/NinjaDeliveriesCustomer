@@ -95,6 +95,10 @@ export interface ServiceBanner {
   redirectType?: string;
   redirectUrl?: string;
   categoryId?: string;
+  categoryName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  companyId?: string;
   offerText?: string;
   iconName?: string;
   priority?: number;

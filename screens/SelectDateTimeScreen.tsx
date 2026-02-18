@@ -1561,6 +1561,79 @@ export default function SelectDateTimeScreen() {
     })();
   }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIds, serviceTitle]);
 
+  // Monthly plan UX improvement:
+  // As soon as the user picks a time slot, pre-check a larger window (next 60 days)
+  // so the calendar can render booked (✕) dates BEFORE the user taps them.
+  useEffect(() => {
+    if (!needsDayConfirmation) return;
+  const unitLower = String(selectedPackageUnit || '').toLowerCase();
+  const isMonthly = (unitLower === 'month' || unitLower === 'monthly');
+    if (!isMonthly) return;
+    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
+    if (!slotLabel) return;
+
+    const today = new Date();
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const minISO = addDaysISO(todayISO, 1);
+    const anchor = selectedDate && selectedDate >= minISO ? selectedDate : minISO;
+
+    const windowDays = 60;
+    const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
+
+    const reqId = ++seriesValidationReqRef.current;
+    setLoadingSeriesAvailability(true);
+    setAvailabilityError(null);
+
+    const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
+
+    (async () => {
+      try {
+        const maxConcurrency = 5;
+        const queue = [...windowISOs];
+        const results: { dateISO: string; available: boolean }[] = [];
+
+        const worker = async () => {
+          while (queue.length > 0) {
+            const dateISO = queue.shift();
+            if (!dateISO) break;
+            const result = await FirestoreService.checkCompanyWorkerAvailability(
+              selectedCompanyId,
+              dateISO,
+              slotLabel,
+              selectedIds,
+              serviceTitle
+            );
+            results.push({ dateISO, available: result?.available === true });
+          }
+        };
+
+        await Promise.all(
+          Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker())
+        );
+
+        if (seriesValidationReqRef.current !== reqId) return;
+
+        const conflicts = results.filter((r) => !r.available).map((r) => r.dateISO);
+        const uniqueConflicts = Array.from(new Set(conflicts)).sort();
+
+        // Replace (not merge) so markers are accurate for this slotLabel.
+        setSeriesConflicts((prev) => ({ ...prev, [slotLabel]: uniqueConflicts }));
+
+        // Monthly plan: we do NOT auto-pick dates. We only precompute booked markers.
+        // Also don't set seriesAvailability here; that is validated when user completes 30 days.
+      } catch (e: any) {
+        if (seriesValidationReqRef.current !== reqId) return;
+        console.log('⚠️ Monthly precheck availability failed:', e);
+        setAvailabilityError('Could not validate monthly availability. Please try again.');
+      } finally {
+        if (seriesValidationReqRef.current === reqId) {
+          setLoadingSeriesAvailability(false);
+        }
+      }
+    })();
+  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIds, serviceTitle]);
+
   // IMPORTANT UX:
   // For weekly/monthly "day confirmation" plans we should NEVER mutate the user's selection
   // based on verification results. Doing so makes it feel like the app "marks their choice as booked".

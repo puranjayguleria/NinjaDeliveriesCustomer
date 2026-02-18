@@ -38,10 +38,15 @@ const errorLog = (...args: any[]) => {
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { clearCart } = useServiceCart();
+  const { clearCart, state } = useServiceCart();
   const { location } = useLocationContext();
   
-  const { services } = route.params;
+  const routeServices = route.params?.services;
+  // Backward/forward compatible: some entry points (e.g., services search/banner deep-links)
+  // may navigate here without passing `services`. In that case, use the current cart.
+  const services = Array.isArray(routeServices)
+    ? routeServices
+    : Object.values(state?.items || {});
   // Ensure displayed total comes from the actual services (preserve package/company prices)
   const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
   const [notes, setNotes] = useState("");

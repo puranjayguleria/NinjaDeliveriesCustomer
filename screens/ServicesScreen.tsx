@@ -209,6 +209,8 @@ export default function ServicesScreen() {
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
   const [liveBookings, setLiveBookings] = useState<LiveBooking[]>([]);
+  const [allServices, setAllServices] = useState<any[]>([]);
+  const [searchServices, setSearchServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +226,7 @@ export default function ServicesScreen() {
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
   const bannerAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentBookingIndex = React.useRef(0);
+  // const currentBookingIndex = React.useRef(0);
   const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
@@ -274,6 +276,8 @@ export default function ServicesScreen() {
     setServiceConfirmedBanner(null);
     await AsyncStorage.removeItem(SERVICE_CONFIRMED_BANNER_KEY);
   }, []);
+
+  // (handleSearch / clearSearch are defined later near other handlers)
 
   // Manual refresh function
   const onRefresh = useCallback(async () => {
@@ -386,6 +390,64 @@ export default function ServicesScreen() {
       unsubscribe();
     };
   }, []);
+
+  // Real-time listener for active services (used for client-side search to avoid Firestore index requirements).
+  useEffect(() => {
+    const unsub = firestore()
+      .collection('service_services')
+      .where('isActive', '==', true)
+      .onSnapshot(
+        (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+          setAllServices(items);
+        },
+        (err) => {
+          if (__DEV__) console.log('❌ Failed to listen to active services', err);
+          setAllServices([]);
+        }
+      );
+
+    return () => unsub();
+  }, []);
+
+  // Client-side service search (debounced) to avoid Firestore index errors and reduce load.
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setSearchServices([]);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      const raw = (allServices || [])
+        .filter((s) => String(s?.name || '').toLowerCase().includes(q));
+
+      // Deduplicate ONLY direct-price services. If a service has packages, keep multiple
+      // entries because packages/prices can differ by company.
+      const seenDirect = new Set<string>();
+      const deduped: any[] = [];
+
+      for (const s of raw) {
+        const hasPackages = Array.isArray((s as any)?.packages) && (s as any).packages.length > 0;
+        if (hasPackages) {
+          deduped.push(s);
+          continue;
+        }
+
+        const nameKey = String((s as any)?.name || '').trim().toLowerCase();
+        const catKey = String((s as any)?.categoryMasterId || (s as any)?.categoryId || '').trim();
+        const key = `${catKey}::${nameKey}`;
+        if (!nameKey) continue;
+        if (seenDirect.has(key)) continue;
+        seenDirect.add(key);
+        deduped.push(s);
+      }
+
+      setSearchServices(deduped.slice(0, 25));
+    }, 250);
+
+    return () => clearTimeout(t);
+  }, [searchQuery, allServices]);
 
   // Real-time listener for service banners
   useEffect(() => {
@@ -662,6 +724,42 @@ export default function ServicesScreen() {
 
   const filteredCategories = getFilteredCategories();
 
+  const onServicePress = useCallback((svc: any) => {
+    if (!svc?.id) return;
+    const categoryId = String(svc.categoryId || svc.categoryMasterId || '');
+    if (!categoryId) {
+      console.log('❌ Service missing categoryId/categoryMasterId; cannot open flow', svc);
+      return;
+    }
+
+    const hasPackages = Array.isArray(svc?.packages) && svc.packages.length > 0;
+
+    setTapLoading({ visible: true, message: 'Opening…' });
+    try {
+      if (hasPackages) {
+        // PackageSelectionScreen supports (serviceId + serviceName) to fetch only that
+        // service’s packages.
+        navigation.navigate('PackageSelection', {
+          serviceTitle: svc.categoryName || svc.name || 'Service',
+          categoryId,
+          allCategories: serviceCategories,
+          serviceId: svc.id,
+          serviceName: svc.name || 'Service',
+        } as any);
+      } else {
+        // Direct-price services should open the category service selection screen
+        // so the user can pick the service and continue to CompanySelection -> SelectDateTime.
+        navigation.navigate('ServiceCategory', {
+          serviceTitle: svc.categoryName || 'Services',
+          categoryId,
+        } as any);
+      }
+    } catch (e) {
+      console.log('❌ Failed to navigate from service search', e);
+      setTapLoading({ visible: false });
+    }
+  }, [navigation, serviceCategories]);
+
   // Ensure we never leave the "Opening..." overlay stuck if navigation succeeds.
   useFocusEffect(
     useCallback(() => {
@@ -671,7 +769,7 @@ export default function ServicesScreen() {
     }, [])
   );
 
-  const handleCategoryPress = async (category: ServiceCategory) => {
+  const handleCategoryPress = useCallback(async (category: ServiceCategory) => {
     if (__DEV__) console.log('🎯 Category clicked:', category.name, category.id);
 
     // Instant feedback so the user knows the tap registered.
@@ -698,17 +796,17 @@ export default function ServicesScreen() {
       if (__DEV__) console.log('✅ Category has no packages, navigating directly to ServiceCategory');
       navigation.navigate("ServiceCategory", navigationParams);
     }
-  };
+  }, [navigation, serviceCategories]);
 
-  const handleViewAllCategories = () => {
+  const handleViewAllCategories = useCallback(() => {
     setTapLoading({ visible: true, message: 'Loading…' });
-    navigation.navigate("AllServices");
-  };
+    navigation.navigate('AllServices');
+  }, [navigation]);
 
-  const handleHistoryPress = () => {
+  const handleHistoryPress = useCallback(() => {
     setTapLoading({ visible: true, message: 'Loading…' });
-    navigation.navigate("BookingHistory");
-  };
+    navigation.navigate('BookingHistory');
+  }, [navigation]);
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
@@ -716,6 +814,7 @@ export default function ServicesScreen() {
 
   const clearSearch = () => {
     setSearchQuery('');
+    setSearchServices([]);
     searchInputRef.current?.focus();
   };
 
@@ -738,12 +837,39 @@ export default function ServicesScreen() {
         clickable: banner.clickable,
         redirectType: banner.redirectType,
         categoryId: banner.categoryId,
+        serviceId: (banner as any).serviceId,
+        companyId: (banner as any).companyId,
       });
 
       // If clickable is false, don't navigate
       if (banner.clickable === false) {
         console.log('⚠️ Banner is not clickable');
         return;
+      }
+
+      // Service-level deep link (preferred when present)
+      // Banner doc example contains: serviceId, serviceName, companyId, categoryId...
+      const bannerServiceId = (banner as any).serviceId as string | undefined;
+      const bannerCompanyId = (banner as any).companyId as string | undefined;
+      const bannerServiceName = (banner as any).serviceName as string | undefined;
+      if (bannerServiceId && bannerCompanyId) {
+        try {
+          console.log('✅ Banner has serviceId; navigating to service flow', {
+            bannerServiceId,
+            bannerCompanyId,
+          });
+
+          // We navigate directly to the service checkout flow used elsewhere in the app.
+          // NOTE: some stacks may require a different route name; this is the one used by ServiceCartScreen.
+          navigation.navigate('ServiceCheckout', {
+            serviceId: bannerServiceId,
+            companyId: bannerCompanyId,
+            serviceName: bannerServiceName || banner.title,
+          } as any);
+          return;
+        } catch (e) {
+          console.log('⚠️ Failed to navigate via serviceId banner deep link; falling back to category flow', e);
+        }
       }
 
       // If categoryId exists, check for packages before navigating
@@ -869,12 +995,12 @@ export default function ServicesScreen() {
         )}
       </TouchableOpacity>
     );
-  }, [navigation]);
+  }, [navigation, serviceCategories]);
 
   // NOTE: renderBanner intentionally depends on serviceCategories via outer scope.
   // This file has a few legacy hook-deps warnings; we keep behavior as-is.
 
-  const renderListItem = ({ item, index }: { item: ServiceCategory; index: number }) => {
+  const renderListItem = useCallback(({ item, index }: { item: ServiceCategory; index: number }) => {
     if (!item || !item.name) return null; // Safety check
     
     const categoryStyle = getCategoryStyle(item.name, index);
@@ -917,7 +1043,35 @@ export default function ServicesScreen() {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [handleCategoryPress]);
+
+  const renderServiceListItem = useCallback(({ item }: { item: any }) => {
+    if (!item) return null;
+    return (
+      <TouchableOpacity
+        style={styles.searchServiceRow}
+        activeOpacity={0.7}
+        onPress={() => onServicePress(item)}
+      >
+        <View style={styles.searchServiceLeft}>
+          <View style={styles.searchServiceIcon}>
+            <Ionicons name="briefcase-outline" size={18} color="#0f172a" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.searchServiceTitle} numberOfLines={1}>
+              {String(item.name || 'Service')}
+            </Text>
+            {!!item.categoryName && (
+              <Text style={styles.searchServiceSub} numberOfLines={1}>
+                {String(item.categoryName)}
+              </Text>
+            )}
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+      </TouchableOpacity>
+    );
+  }, [onServicePress]);
 
   const HeaderUI = React.useMemo(() => {
     return (
@@ -976,7 +1130,7 @@ export default function ServicesScreen() {
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              {(filteredCategories || []).length} service{(filteredCategories || []).length !== 1 ? 's' : ''} found
+              {(filteredCategories || []).length + (searchServices || []).length} result{((filteredCategories || []).length + (searchServices || []).length) !== 1 ? 's' : ''} found
             </Text>
           </View>
         )}
@@ -1080,9 +1234,45 @@ export default function ServicesScreen() {
             </View>
           </>
         )}
+
+        {/* Search results (services + categories) */}
+        {searchQuery.length > 0 && (
+          <View style={styles.searchResultsCard}>
+            {(searchServices || []).length > 0 && (
+              <>
+                <Text style={styles.searchSectionTitle}>Services</Text>
+                <FlatList
+                  data={searchServices}
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={renderServiceListItem}
+                  scrollEnabled={false}
+                  ItemSeparatorComponent={() => <View style={styles.searchDivider} />}
+                />
+              </>
+            )}
+
+            {(filteredCategories || []).length > 0 && (
+              <>
+                <Text style={[styles.searchSectionTitle, { marginTop: (searchServices || []).length > 0 ? 14 : 0 }]}>Categories</Text>
+                <FlatList
+                  data={(filteredCategories || []).slice(0, 20)}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderListItem}
+                  numColumns={2}
+                  scrollEnabled={false}
+                  columnWrapperStyle={styles.gridRow}
+                />
+              </>
+            )}
+
+            {(searchServices || []).length === 0 && (filteredCategories || []).length === 0 && (
+              <Text style={styles.searchEmptyText}>No results found</Text>
+            )}
+          </View>
+        )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, bannersLoading, serviceBanners, navigation, renderBanner, activeBannerIndex, hasMoreCategories, liveBookings, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking]);
+  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderListItem, renderServiceListItem]);
 
   return (
     <View style={styles.container}>
@@ -1142,7 +1332,7 @@ export default function ServicesScreen() {
                 <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>{error}</Text>
               </View>
-            ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 ? (
+            ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 && (searchServices || []).length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
                 <Text style={styles.emptyText}>No services found</Text>
@@ -1332,6 +1522,76 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
     marginLeft: 8,
+  },
+
+  searchResultsCard: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+
+  searchSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 10,
+  },
+
+  searchDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 8,
+  },
+
+  searchEmptyText: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+
+  searchServiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+  },
+
+  searchServiceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  searchServiceIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e2e8f0',
+  },
+
+  searchServiceTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+
+  searchServiceSub: {
+    marginTop: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
   },
 
   searchResultsHeader: {
