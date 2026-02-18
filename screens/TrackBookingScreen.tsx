@@ -743,14 +743,14 @@ export default function TrackBookingScreen() {
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <View style={styles.statusLeft}>
-              <View style={[styles.statusIconBG, { backgroundColor: BookingUtils.getStatusColor(booking.status) }]}>
-                <Ionicons name="construct" size={18} color="#fff" />
+              <View style={[styles.statusIconBG, { backgroundColor: BookingUtils.getStatusColor(booking.status) + '20' }]}>
+                <Ionicons name="time-outline" size={22} color={BookingUtils.getStatusColor(booking.status)} />
               </View>
-              <Text style={styles.statusTitle}>Current Status</Text>
+              <Text style={styles.statusTitle}>Service Status</Text>
             </View>
 
-            <View style={[styles.statusBadgeSmall, { backgroundColor: BookingUtils.getStatusColor(booking.status) }]}>
-              <Text style={styles.statusBadgeText}>{BookingUtils.getStatusText(booking.status)}</Text>
+            <View style={[styles.statusBadgeSmall, { backgroundColor: BookingUtils.getStatusColor(booking.status) + '15' }]}>
+              <Text style={[styles.statusBadgeText, { color: BookingUtils.getStatusColor(booking.status) }]}>{BookingUtils.getStatusText(booking.status)}</Text>
             </View>
           </View>
 
@@ -780,24 +780,28 @@ export default function TrackBookingScreen() {
           {/* Show completion OTP for started bookings */}
           {booking.status === "started" && (booking.completionOtp || booking.startOtp) && (
             <View style={styles.otpContainer}>
-              <Ionicons name="key-outline" size={18} color="#3B82F6" />
-              <View style={{ marginLeft: 10 }}>
-                <Text style={styles.otpLabel}>Service Completion OTP</Text>
+              <View style={styles.otpIconWrapper}>
+                <Ionicons name="shield-checkmark" size={22} color="#3B82F6" />
+              </View>
+              <View style={styles.otpContent}>
+                <Text style={styles.otpLabel}>Completion Code</Text>
                 <Text style={styles.otpValue}>
                   {booking.completionOtp || booking.startOtp}
                 </Text>
-                <Text style={styles.otpNote}>Give this OTP to the company when service is completed</Text>
+                <Text style={styles.otpNote}>Share this code when the service is complete</Text>
               </View>
             </View>
           )}
 
           {/* Fallback: Always show OTP section for started services */}
           {booking.status === "started" && !booking.completionOtp && !booking.startOtp && (
-            <View style={styles.otpContainer}>
-              <Ionicons name="warning-outline" size={18} color="#EF4444" />
-              <View style={{ marginLeft: 10 }}>
-                <Text style={styles.otpLabel}>OTP Not Available</Text>
-                <Text style={styles.otpNote}>Contact support for service completion OTP</Text>
+            <View style={[styles.otpContainer, { backgroundColor: '#FEF3C7' }]}>
+              <View style={styles.otpIconWrapper}>
+                <Ionicons name="information-circle" size={22} color="#F59E0B" />
+              </View>
+              <View style={styles.otpContent}>
+                <Text style={[styles.otpLabel, { color: '#F59E0B' }]}>Completion Code</Text>
+                <Text style={styles.otpNote}>Please contact support for your completion code</Text>
               </View>
             </View>
           )}
@@ -812,7 +816,10 @@ export default function TrackBookingScreen() {
 
         {/* Tracking Timeline */}
         <View style={styles.timelineCard}>
-          <Text style={styles.timelineTitle}>Booking Progress</Text>
+          <View style={styles.timelineHeader}>
+            <Ionicons name="git-commit-outline" size={20} color="#6D28D9" />
+            <Text style={styles.timelineTitle}>Service Journey</Text>
+          </View>
           
           {timelineSteps.map((step, index) => (
             <View key={step.id} style={styles.timelineItem}>
@@ -851,7 +858,10 @@ export default function TrackBookingScreen() {
         {/* Booking Details Card */}
         {(booking.totalPrice || booking.addOns?.length) && (
           <View style={styles.detailsCard}>
-            <Text style={styles.detailsTitle}>Booking Details</Text>
+            <View style={styles.detailsHeader}>
+              <Ionicons name="receipt-outline" size={20} color="#6D28D9" />
+              <Text style={styles.detailsTitle}>Booking Summary</Text>
+            </View>
             
             {booking.totalPrice && (
               <View style={styles.priceRow}>
@@ -862,10 +872,13 @@ export default function TrackBookingScreen() {
             
             {booking.addOns && booking.addOns.length > 0 && (
               <View style={styles.addOnsSection}>
-                <Text style={styles.addOnsTitle}>Add-ons:</Text>
+                <Text style={styles.addOnsTitle}>Additional Services</Text>
                 {booking.addOns.map((addon, index) => (
                   <View key={index} style={styles.addonItem}>
-                    <Text style={styles.addonName}>• {addon.name}</Text>
+                    <View style={styles.addonLeft}>
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                      <Text style={styles.addonName}>{addon.name}</Text>
+                    </View>
                     <Text style={styles.addonPrice}>₹{addon.price}</Text>
                   </View>
                 ))}
@@ -880,14 +893,17 @@ export default function TrackBookingScreen() {
             {hasAlreadyRated ? (
               // Show existing rating
               <View>
-                <Text style={styles.ratingTitle}>✅ Your Rating</Text>
+                <View style={styles.ratingHeader}>
+                  <Ionicons name="star" size={20} color="#FFD700" />
+                  <Text style={styles.ratingTitle}>Your Rating</Text>
+                </View>
                 
                 {/* Show technician info if available */}
                 {(booking.workerName || booking.technicianName || booking.companyId) && (
                   <View style={styles.ratingTechnicianInfo}>
-                    <Ionicons name="person-circle" size={20} color="#6B7280" />
+                    <Ionicons name="person-circle-outline" size={18} color="#6B7280" />
                     <Text style={styles.ratingTechnicianText}>
-                      Rated: {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
+                      {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
                     </Text>
                   </View>
                 )}
@@ -897,40 +913,49 @@ export default function TrackBookingScreen() {
                     <Ionicons
                       key={num}
                       name={userRating >= num ? "star" : "star-outline"}
-                      size={40}
-                      color={userRating >= num ? "#FFD700" : "#CCCCCC"}
+                      size={36}
+                      color={userRating >= num ? "#FFD700" : "#E5E7EB"}
                     />
                   ))}
                 </View>
-                <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+                <Text style={styles.ratingValue}>{userRating} out of 5</Text>
                 {userFeedback && (
                   <View style={styles.existingFeedbackContainer}>
-                    <Text style={styles.existingFeedbackLabel}>Your Feedback:</Text>
+                    <Text style={styles.existingFeedbackLabel}>Your Feedback</Text>
                     <Text style={styles.existingFeedbackText}>{userFeedback}</Text>
                   </View>
                 )}
-                <Text style={styles.alreadyRatedNote}>Thank you for rating this service!</Text>
+                <View style={styles.thankYouBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={styles.alreadyRatedNote}>Thank you for your feedback!</Text>
+                </View>
               </View>
             ) : checkingRatingStatus ? (
               // Show loading while checking rating status
               <View>
-                <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+                <View style={styles.ratingHeader}>
+                  <Ionicons name="star-outline" size={20} color="#6D28D9" />
+                  <Text style={styles.ratingTitle}>Rate Your Experience</Text>
+                </View>
                 <View style={styles.ratingLoadingContainer}>
                   <ActivityIndicator size="small" color="#6D28D9" />
-                  <Text style={styles.ratingLoadingText}>Checking rating status...</Text>
+                  <Text style={styles.ratingLoadingText}>Loading...</Text>
                 </View>
               </View>
             ) : (
               // Show rating interface for new ratings
               <View>
-                <Text style={styles.ratingTitle}>⭐ Rate This Service</Text>
+                <View style={styles.ratingHeader}>
+                  <Ionicons name="star-outline" size={20} color="#6D28D9" />
+                  <Text style={styles.ratingTitle}>Rate Your Experience</Text>
+                </View>
                 
                 {/* Show technician info if available */}
                 {(booking.workerName || booking.technicianName || booking.companyId) && (
                   <View style={styles.ratingTechnicianInfo}>
-                    <Ionicons name="person-circle" size={20} color="#6B7280" />
+                    <Ionicons name="person-circle-outline" size={18} color="#6B7280" />
                     <Text style={styles.ratingTechnicianText}>
-                      Rating: {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
+                      {booking.workerName || booking.technicianName || `${booking.serviceName} Provider`}
                     </Text>
                   </View>
                 )}
@@ -940,17 +965,18 @@ export default function TrackBookingScreen() {
                     <TouchableOpacity
                       key={num}
                       onPress={() => setUserRating(num)}
+                      activeOpacity={0.7}
                     >
                       <Ionicons
                         name={userRating >= num ? "star" : "star-outline"}
-                        size={40}
-                        color={userRating >= num ? "#FFD700" : "#CCCCCC"}
+                        size={36}
+                        color={userRating >= num ? "#FFD700" : "#E5E7EB"}
                       />
                     </TouchableOpacity>
                   ))}
                 </View>
                 {userRating > 0 && (
-                  <Text style={styles.ratingValue}>{userRating} out of 5 stars</Text>
+                  <Text style={styles.ratingValue}>{userRating} out of 5</Text>
                 )}
               </View>
             )}
@@ -960,11 +986,14 @@ export default function TrackBookingScreen() {
         {/* Feedback Textarea - Show after rating selected and not already rated */}
         {booking.status === "completed" && userRating > 0 && !hasAlreadyRated && !checkingRatingStatus && (
           <View style={styles.feedbackContainer}>
-            <Text style={styles.feedbackLabel}>Share Your Feedback</Text>
+            <View style={styles.feedbackHeader}>
+              <Ionicons name="chatbox-ellipses-outline" size={18} color="#6366F1" />
+              <Text style={styles.feedbackLabel}>Share Your Experience</Text>
+            </View>
             <TextInput
               style={styles.feedbackInput}
-              placeholder="Tell us about your experience..."
-              placeholderTextColor="#999"
+              placeholder="Tell us what you think..."
+              placeholderTextColor="#9CA3AF"
               multiline={true}
               numberOfLines={4}
               value={userFeedback}
@@ -972,7 +1001,7 @@ export default function TrackBookingScreen() {
               maxLength={500}
             />
             <Text style={styles.feedbackCounter}>
-              {userFeedback.length}/500 characters
+              {userFeedback.length}/500
             </Text>
           </View>
         )}
@@ -1159,12 +1188,15 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#F3F4F6",
+  },
+  backButton: {
+    padding: 4,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#000",
+    color: "#1F2937",
   },
   loadingContainer: {
     flex: 1,
@@ -1185,19 +1217,33 @@ const styles = StyleSheet.create({
     paddingVertical: 50,
     paddingHorizontal: 20,
   },
-  errorText: {
-    fontSize: 16,
-    color: "#ef4444",
-    textAlign: "center",
-    marginBottom: 20,
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
     marginTop: 16,
-    lineHeight: 24,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 15,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 22,
   },
   retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     backgroundColor: "#6D28D9",
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   retryText: {
     color: "#fff",
@@ -1291,19 +1337,20 @@ const styles = StyleSheet.create({
   statusCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   statusTitle: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
+    fontWeight: "600",
+    color: "#1F2937",
   },
   statusHeader: {
     flexDirection: "row",
@@ -1316,23 +1363,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statusIconBG: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#3B82F6",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: 12,
   },
   statusBadgeSmall: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    borderRadius: 12,
   },
   statusBadgeText: {
-    color: "#fff",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   progressWrap: {
     marginTop: 6,
@@ -1353,39 +1398,54 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   progressBar: {
-    height: 8,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 8,
+    height: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 6,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#3B82F6",
-    borderRadius: 8,
+    borderRadius: 6,
   },
   otpContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "#EBF8FF",
-    borderRadius: 8,
+    marginTop: 16,
+    padding: 14,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+  },
+  otpIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  otpContent: {
+    flex: 1,
   },
   otpLabel: {
     fontSize: 13,
     color: "#3B82F6",
-    fontWeight: "500",
+    fontWeight: "600",
+    marginBottom: 4,
   },
   otpValue: {
-    fontSize: 18,
-    color: "#0F172A",
+    fontSize: 20,
+    color: "#1F2937",
     fontWeight: "700",
-    letterSpacing: 2,
+    letterSpacing: 3,
+    marginBottom: 4,
   },
   otpNote: {
     fontSize: 12,
     color: "#6B7280",
-    marginTop: 2,
+    lineHeight: 16,
   },
   etaContainer: {
     flexDirection: "row",
@@ -1457,20 +1517,25 @@ const styles = StyleSheet.create({
   timelineCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  timelineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 20,
   },
   timelineTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#000",
-    marginBottom: 20,
+    color: "#1F2937",
   },
   timelineItem: {
     flexDirection: "row",
@@ -1513,92 +1578,119 @@ const styles = StyleSheet.create({
   detailsCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  detailsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
   },
   detailsTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#000",
-    marginBottom: 16,
+    color: "#1F2937",
   },
   priceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
     marginBottom: 12,
   },
   priceLabel: {
     fontSize: 14,
     color: "#6B7280",
+    fontWeight: "500",
   },
   priceValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     color: "#10B981",
   },
   addOnsSection: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 4,
+    paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
+    borderTopColor: "#F3F4F6",
   },
   addOnsTitle: {
     fontSize: 14,
     fontWeight: "600",
     color: "#374151",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   addonItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  addonLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
   },
   addonName: {
     fontSize: 13,
-    color: "#6B7280",
+    color: "#374151",
+    flex: 1,
   },
   addonPrice: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
+    color: "#10B981",
   },
   ratingCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
     marginBottom: 16,
-    padding: 18,
-    borderRadius: 12,
+    padding: 20,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  ratingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
   },
   ratingTitle: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 16,
+    fontWeight: "600",
+    color: "#1F2937",
   },
   starsContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 16,
-    marginBottom: 12,
+    gap: 12,
+    marginVertical: 16,
   },
   ratingValue: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFD700",
+    color: "#F59E0B",
     textAlign: "center",
+    marginBottom: 8,
   },
   ratingLoadingContainer: {
     flexDirection: "row",
@@ -1611,62 +1703,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
   },
-  existingFeedbackContainer: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: "#F0F9FF",
-    borderRadius: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: "#10B981",
-  },
-  existingFeedbackLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 6,
-  },
-  existingFeedbackText: {
-    fontSize: 14,
-    color: "#6B7280",
-    lineHeight: 20,
-  },
-  alreadyRatedNote: {
-    fontSize: 13,
-    color: "#10B981",
-    textAlign: "center",
-    marginTop: 12,
-    fontWeight: "500",
-  },
   feedbackContainer: {
-    backgroundColor: "#f8f9ff",
+    backgroundColor: "white",
     marginHorizontal: 20,
     marginBottom: 16,
-    padding: 14,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: "#6366F1",
+    padding: 16,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  feedbackHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
   },
   feedbackLabel: {
     fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 10,
+    fontWeight: "600",
+    color: "#1F2937",
   },
   feedbackInput: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: "#333",
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#1F2937",
     textAlignVertical: "top",
-    marginBottom: 6,
+    marginBottom: 8,
+    minHeight: 100,
   },
   feedbackCounter: {
     fontSize: 11,
-    color: "#999",
+    color: "#9CA3AF",
     textAlign: "right",
   },
   ratingButtonContainer: {
@@ -1677,10 +1752,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#10B981",
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: 12,
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitRatingText: {
     color: "white",
@@ -1743,19 +1823,53 @@ const styles = StyleSheet.create({
   ratingTechnicianInfo: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: "#F0F9FF",
+    backgroundColor: "#F9FAFB",
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E0F2FE",
   },
   ratingTechnicianText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  existingFeedbackContainer: {
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#10B981",
+  },
+  existingFeedbackLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#059669",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  existingFeedbackText: {
     fontSize: 14,
     color: "#374151",
+    lineHeight: 20,
+  },
+  thankYouBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 10,
+  },
+  alreadyRatedNote: {
+    fontSize: 13,
+    color: "#10B981",
     fontWeight: "500",
   },
   addOnSection: {

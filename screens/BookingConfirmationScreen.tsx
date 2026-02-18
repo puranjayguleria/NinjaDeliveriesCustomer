@@ -28,10 +28,8 @@ export default function BookingConfirmationScreen() {
   const [companyPhone, setCompanyPhone] = useState<string>("");
   const [showAddOnModal, setShowAddOnModal] = useState(false);
   const [categoryId, setCategoryId] = useState<string>("");
-  const [addOnServices, setAddOnServices] = useState<any[]>([]);
-  const [totalWithAddOns, setTotalWithAddOns] = useState<number>(0);
 
-  // Set up real-time listener for booking data instead of manual fetch
+  // Set up real-time listener for booking data
   useEffect(() => {
     if (!bookingId) {
       console.error("No bookingId provided");
@@ -51,9 +49,7 @@ export default function BookingConfirmationScreen() {
         }
 
         setBookingData(booking);
-        setTotalWithAddOns(booking.totalPrice || 0);
         
-        // Debug: Log package-related fields
         console.log('📦 [BookingConfirmation] Booking package info:', {
           isPackage: booking.isPackage,
           packageName: booking.packageName,
@@ -62,13 +58,19 @@ export default function BookingConfirmationScreen() {
           bookingType: booking.bookingType
         });
         
+        console.log('⏱️ [BookingConfirmation] Duration info:', {
+          estimatedDuration: booking.estimatedDuration,
+          selectedSlots: (booking as any).selectedSlots,
+          selectedSlotsLength: Array.isArray((booking as any).selectedSlots) ? (booking as any).selectedSlots.length : 0,
+          time: booking.time
+        });
+        
         // Fetch company name if companyId exists
         if (booking.companyId) {
           try {
             const companyNameFetched = await FirestoreService.getActualCompanyName(booking.companyId);
             setCompanyName(companyNameFetched);
             
-            // Try to get company phone from service_company collection
             const companyDoc = await firestore()
               .collection('service_company')
               .doc(booking.companyId)
@@ -84,7 +86,6 @@ export default function BookingConfirmationScreen() {
           }
         }
 
-        // Try to determine category ID for add-on services
         await determineCategoryId(booking.serviceName);
         
         console.log(`🔄 Real-time update: ${booking.serviceName} - Status: ${booking.status}`);
@@ -103,7 +104,6 @@ export default function BookingConfirmationScreen() {
     };
   }, [bookingId]);
 
-  // Helper function to get status color and icon
   const getStatusInfo = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'pending':
@@ -123,12 +123,10 @@ export default function BookingConfirmationScreen() {
     }
   };
 
-  // Helper function to format date and time
   const formatDateTime = (date: string, time: string) => {
     if (!date) return 'Not scheduled';
     
     try {
-      // Try to parse and format the date nicely
       const dateObj = new Date(date);
       if (!isNaN(dateObj.getTime())) {
         const formattedDate = dateObj.toLocaleDateString('en-US', {
@@ -146,13 +144,64 @@ export default function BookingConfirmationScreen() {
     return `${date} at ${time || 'Time TBD'}`;
   };
 
-  // Helper: format an estimated duration that might be stored as hours (number)
-  // or minutes (number). We keep this defensive because some older records can be missing it.
-  const formatEstimatedDuration = (raw: any): string | null => {
+  const formatEstimatedDuration = (raw: any, selectedSlots?: any[], timeSlot?: string): string | null => {
+    // First, try to parse duration from time slot string (e.g., "9:00 AM - 9:30 AM")
+    if (timeSlot && typeof timeSlot === 'string' && timeSlot.includes('-')) {
+      try {
+        const [startTime, endTime] = timeSlot.split('-').map(t => t.trim());
+        
+        const parseTime = (timeStr: string): number => {
+          const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+          if (!match) return 0;
+          
+          let hours = parseInt(match[1]);
+          const minutes = parseInt(match[2]);
+          const period = match[3].toUpperCase();
+          
+          if (period === 'PM' && hours !== 12) hours += 12;
+          if (period === 'AM' && hours === 12) hours = 0;
+          
+          return hours * 60 + minutes;
+        };
+        
+        const startMinutes = parseTime(startTime);
+        const endMinutes = parseTime(endTime);
+        
+        if (startMinutes > 0 || endMinutes > 0) {
+          const durationMinutes = endMinutes - startMinutes;
+          
+          if (durationMinutes > 0) {
+            if (durationMinutes < 60) return `${durationMinutes} min`;
+            
+            const h = Math.floor(durationMinutes / 60);
+            const m = durationMinutes % 60;
+            if (m === 0) return `${h} hour${h !== 1 ? 's' : ''}`;
+            return `${h}h ${m}m`;
+          }
+        }
+      } catch (error) {
+        console.log('Error parsing time slot:', error);
+      }
+    }
+    
+    // Second, try to calculate duration from selectedSlots
+    if (Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+      // Each slot is typically 30 minutes
+      const slotDurationMinutes = 30;
+      const totalMinutes = selectedSlots.length * slotDurationMinutes;
+      
+      if (totalMinutes < 60) return `${totalMinutes} min`;
+      
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      if (m === 0) return `${h} hour${h !== 1 ? 's' : ''}`;
+      return `${h}h ${m}m`;
+    }
+    
+    // Fallback to raw duration value
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return null;
 
-    // Heuristic: if value is large, it's probably minutes (e.g. 120). Otherwise hours (e.g. 2).
     const minutes = n >= 12 ? Math.round(n) : Math.round(n * 60);
     if (minutes < 60) return `${minutes} min`;
 
@@ -162,13 +211,10 @@ export default function BookingConfirmationScreen() {
     return `${h}h ${m}m`;
   };
 
-  // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
     try {
-      // Fetch all categories and find the one that matches the service
       const categories = await FirestoreService.getServiceCategories();
       
-      // Simple matching logic - you might need to improve this based on your data structure
       const matchingCategory = categories.find(category => 
         serviceName.toLowerCase().includes(category.name.toLowerCase()) ||
         category.name.toLowerCase().includes(serviceName.toLowerCase())
@@ -185,7 +231,6 @@ export default function BookingConfirmationScreen() {
     }
   };
 
-  // Get display data - prioritize real booking data over fallback
   const getDisplayData = () => {
     const fallbackData = route.params || {};
     
@@ -199,13 +244,14 @@ export default function BookingConfirmationScreen() {
         customerAddress: bookingData.customerAddress,
         selectedDate: bookingData.date,
         selectedTime: bookingData.time,
-        status: bookingData.status, // Real-time status from Firebase
+        status: bookingData.status,
         totalPrice: bookingData.totalPrice || 0,
         addOns: bookingData.addOns || [],
         technicianName: bookingData.technicianName,
         technicianId: bookingData.technicianId,
         estimatedDuration: bookingData.estimatedDuration,
-        companyId: bookingData.companyId, // Add company ID
+        selectedSlots: (bookingData as any).selectedSlots || [], // Get selectedSlots from booking data
+        companyId: bookingData.companyId,
         createdAt: bookingData.createdAt,
         updatedAt: bookingData.updatedAt,
         assignedAt: bookingData.assignedAt,
@@ -214,7 +260,6 @@ export default function BookingConfirmationScreen() {
       };
     }
     
-    // Fallback to route params if no booking data
     return {
       bookingId: fallbackData.bookingId || bookingId,
       serviceName: fallbackData.serviceName || "",
@@ -227,7 +272,8 @@ export default function BookingConfirmationScreen() {
       status: fallbackData.status || "pending",
       totalPrice: fallbackData.totalAmount || fallbackData.totalPrice || 0,
       addOns: [],
-      companyId: fallbackData.companyId, // Add company ID from fallback
+      selectedSlots: fallbackData.selectedSlots || [],
+      companyId: fallbackData.companyId,
     };
   };
 
@@ -267,11 +313,9 @@ export default function BookingConfirmationScreen() {
     navigation.navigate("BookingHistory");
   };
 
-  // Helper function to check if technician is assigned
   const isTechnicianAssigned = (): boolean => {
     if (!bookingData) return false;
     
-    // Check multiple conditions to determine if technician is assigned
     const hasAssignedStatus = bookingData.status === 'assigned' || 
                              bookingData.status === 'started' || 
                              bookingData.status === 'completed';
@@ -283,7 +327,6 @@ export default function BookingConfirmationScreen() {
     
     const hasAssignmentTimestamp = !!bookingData.assignedAt;
     
-    // Technician is considered assigned if any of these conditions are met
     const isAssigned = hasAssignedStatus || hasTechnicianInfo || hasAssignmentTimestamp;
     
     console.log(`🔍 Checking technician assignment:`, {
@@ -308,7 +351,6 @@ export default function BookingConfirmationScreen() {
       return;
     }
     
-    // Debug log to check worker info
     console.log('🔍 [BookingConfirmation] Add-on services button clicked:', {
       workerId: bookingData?.workerId,
       technicianId: bookingData?.technicianId,
@@ -322,16 +364,8 @@ export default function BookingConfirmationScreen() {
 
   const handleAddServicesConfirm = async (selectedServices: any[]) => {
     try {
-      // Add-on services are now handled with immediate payment in the modal
-      // This function is called after successful payment
-      setAddOnServices(selectedServices);
-      const addOnTotal = selectedServices.reduce((sum, service) => sum + service.price, 0);
-      const newTotal = (bookingData?.totalPrice || 0) + addOnTotal;
-      setTotalWithAddOns(newTotal);
+      console.log(`✅ Add-on services confirmed with payment: ${selectedServices.length} services`);
       
-      console.log(`✅ Add-on services confirmed with payment: ${selectedServices.length} services, ₹${addOnTotal}`);
-      
-      // Refresh booking data to show updated add-ons
       if (bookingId) {
         try {
           const updatedBooking = await FirestoreService.getServiceBookingById(bookingId);
@@ -361,92 +395,70 @@ export default function BookingConfirmationScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with gradient effect */}
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.successIconContainer}>
-            <Ionicons name="checkmark-circle" size={48} color="#10B981" />
-          </View>
-          <Text style={styles.headerTitle}>Booking Confirmed!</Text>
-          <Text style={styles.headerSubtitle}>Your service has been scheduled</Text>
+        <View style={styles.successIcon}>
+          <Ionicons name="checkmark" size={50} color="#fff" />
         </View>
+        <Text style={styles.headerTitle}>Booking Confirmed!</Text>
+        <Text style={styles.headerSubtitle}>Your service has been scheduled</Text>
       </View>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         
         {/* Status Banner */}
         <View style={[styles.statusBanner, { backgroundColor: getStatusInfo(displayData.status).color }]}>
           <Ionicons 
             name={getStatusInfo(displayData.status).icon as any} 
-            size={24} 
+            size={22} 
             color="#fff" 
           />
-          <Text style={styles.statusBannerText}>
+          <Text style={styles.statusText}>
             Status: {getStatusInfo(displayData.status).text}
           </Text>
         </View>
 
-        {/* Booking Details Card */}
-        <View style={styles.bookingCard}>
+        {/* Main Details Card */}
+        <View style={styles.detailsCard}>
           
           {/* Booking ID */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="document-text" size={20} color="#6B7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Booking ID:</Text>
-              <Text style={styles.detailValue}>{displayData.bookingId || "-"}</Text>
-            </View>
+          <View style={styles.detailSection}>
+            <Text style={styles.detailLabel}>Booking ID</Text>
+            <Text style={styles.detailValue}>{displayData.bookingId}</Text>
           </View>
 
-          {/* Service Name */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="construct" size={20} color="#6B7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Service:</Text>
-              <Text style={styles.detailValue}>{displayData.serviceName || "-"}</Text>
-              {displayData.workName && displayData.workName !== displayData.serviceName && (
-                <Text style={styles.workNameText}>Work: {displayData.workName}</Text>
-              )}
-            </View>
+          {/* Service */}
+          <View style={styles.detailSection}>
+            <Text style={styles.detailLabel}>Service</Text>
+            <Text style={styles.detailValue}>{displayData.serviceName}</Text>
+            {displayData.workName && displayData.workName !== displayData.serviceName && (
+              <Text style={styles.detailSubValue}>{displayData.workName}</Text>
+            )}
           </View>
 
-          {/* Service Date & Time */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="calendar" size={20} color="#6B7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Scheduled:</Text>
-              <Text style={styles.detailValue}>
-                {formatDateTime(displayData.selectedDate, displayData.selectedTime)}
-              </Text>
-              {!!formatEstimatedDuration(displayData.estimatedDuration) && (
-                <Text style={styles.durationText}>
-                  Duration: {formatEstimatedDuration(displayData.estimatedDuration)}
-                </Text>
-              )}
-            </View>
+          {/* Scheduled */}
+          <View style={styles.detailSection}>
+            <Text style={styles.detailLabel}>Scheduled</Text>
+            <Text style={styles.detailValue}>
+              {formatDateTime(displayData.selectedDate, displayData.selectedTime)}
+            </Text>
           </View>
 
-          {/* Company */}
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="business" size={20} color="#6B7280" />
+          {/* Duration */}
+          {!!formatEstimatedDuration(displayData.estimatedDuration, displayData.selectedSlots, displayData.selectedTime) && (
+            <View style={styles.detailSection}>
+              <Text style={styles.detailLabel}>Duration</Text>
+              <Text style={styles.detailValue}>{formatEstimatedDuration(displayData.estimatedDuration, displayData.selectedSlots, displayData.selectedTime)}</Text>
             </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Service Provider:</Text>
-              <Text style={styles.detailValue}>{companyName || "Assigning..."}</Text>
-            </View>
+          )}
+
+          {/* Service Provider */}
+          <View style={styles.detailSection}>
+            <Text style={styles.detailLabel}>Service Provider</Text>
+            <Text style={styles.detailValue}>{companyName || "Assigning..."}</Text>
           </View>
 
-          {/* Technician Information */}
+          {/* Technician Info */}
           <TechnicianInfo 
             booking={{
               ...displayData,
@@ -469,112 +481,24 @@ export default function BookingConfirmationScreen() {
             compact={true}
           />
 
-          {/* Customer Info */}
+          {/* Customer */}
           {displayData.customerName && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="person-circle" size={20} color="#6B7280" />
-              </View>
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Customer:</Text>
-                <Text style={styles.detailValue}>{displayData.customerName}</Text>
-                {displayData.customerPhone && (
-                  <Text style={styles.customerInfoText}>📱 {displayData.customerPhone}</Text>
-                )}
-                {displayData.customerAddress && (
-                  <Text style={styles.customerInfoText}>📍 {displayData.customerAddress}</Text>
-                )}
-              </View>
+            <View style={styles.detailSection}>
+              <Text style={styles.detailLabel}>Customer</Text>
+              <Text style={styles.detailValue}>{displayData.customerName}</Text>
             </View>
           )}
-
-          {/* Timeline - Show timestamps based on status */}
-          {(displayData.assignedAt || displayData.startedAt || displayData.completedAt) && (
-            <View style={styles.timelineSection}>
-              <Text style={styles.sectionTitle}>Booking Timeline</Text>
-              
-              {displayData.createdAt && (
-                <View style={styles.timelineItem}>
-                  <View style={styles.timelineDot} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.timelineLabel}>Booking Created</Text>
-                    <Text style={styles.timelineTime}>
-                      {new Date(displayData.createdAt.toDate()).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              {displayData.assignedAt && (
-                <View style={styles.timelineItem}>
-                  <View style={[styles.timelineDot, { backgroundColor: '#3B82F6' }]} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.timelineLabel}>Technician Assigned</Text>
-                    <Text style={styles.timelineTime}>
-                      {new Date(displayData.assignedAt.toDate()).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              {displayData.startedAt && (
-                <View style={styles.timelineItem}>
-                  <View style={[styles.timelineDot, { backgroundColor: '#8B5CF6' }]} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.timelineLabel}>Service Started</Text>
-                    <Text style={styles.timelineTime}>
-                      {new Date(displayData.startedAt.toDate()).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              {displayData.completedAt && (
-                <View style={styles.timelineItem}>
-                  <View style={[styles.timelineDot, { backgroundColor: '#10B981' }]} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.timelineLabel}>Service Completed</Text>
-                    <Text style={styles.timelineTime}>
-                      {new Date(displayData.completedAt.toDate()).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Total Amount - Highlighted */}
-          <View style={styles.priceCard}>
-            <View style={styles.priceHeader}>
-              <Ionicons name="cash-outline" size={24} color="#10B981" />
-              <Text style={styles.priceLabel}>Total Amount</Text>
-            </View>
-            <Text style={styles.priceValue}>₹{displayData.totalPrice || 0}</Text>
-            {displayData.addOns && displayData.addOns.length > 0 && (
-              <Text style={styles.priceNote}>Includes {displayData.addOns.length} add-on service(s)</Text>
-            )}
-          </View>
 
           {/* Add-On Services */}
           {displayData.addOns && displayData.addOns.length > 0 && (
             <View style={styles.addOnSection}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="add-circle" size={20} color="#F59E0B" />
-                <Text style={styles.sectionTitle}>Add-On Services</Text>
-              </View>
-              <View style={styles.addOnList}>
-                {displayData.addOns.map((service: any, index: number) => (
-                  <View key={index} style={styles.addOnCard}>
-                    <View style={styles.addOnIconWrapper}>
-                      <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                    </View>
-                    <View style={styles.addOnDetails}>
-                      <Text style={styles.addOnName}>{service.name}</Text>
-                      <Text style={styles.addOnPrice}>₹{service.price}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.detailLabel}>Add-On Services</Text>
+              {displayData.addOns.map((service: any, index: number) => (
+                <View key={index} style={styles.addOnItem}>
+                  <Text style={styles.addOnName}>• {service.name}</Text>
+                  <Text style={styles.addOnPrice}>₹{service.price}</Text>
+                </View>
+              ))}
             </View>
           )}
 
@@ -583,92 +507,58 @@ export default function BookingConfirmationScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           
-          {/* Add-On Services Button - Only show when technician is assigned and NOT a package booking */}
+          {/* Add More Services Button */}
           {(() => {
-            // Check if this is a package booking using multiple indicators
             const isPackageBooking = bookingData?.isPackage === true || 
                                      !!(bookingData?.packageName) || 
                                      !!(bookingData?.packageId) ||
                                      !!(bookingData?.packageType) ||
-                                     // Fallback: Check service name for package indicators
                                      bookingData?.serviceName?.toLowerCase().includes('package') ||
                                      bookingData?.serviceName?.toLowerCase().includes('monthly') ||
                                      bookingData?.serviceName?.toLowerCase().includes('weekly') ||
-                                     // Specific service names that are package-based
                                      bookingData?.serviceName?.toLowerCase().includes('gym') ||
                                      bookingData?.serviceName?.toLowerCase().includes('yoga') ||
                                      bookingData?.serviceName?.toLowerCase().includes('fitness');
             
             const shouldShowAddOn = categoryId && isTechnicianAssigned() && !isPackageBooking;
             
-            // Debug logging
-            console.log('🔍 [BookingConfirmation] Add-on button visibility check:', {
-              categoryId,
-              isTechnicianAssigned: isTechnicianAssigned(),
-              'bookingData.isPackage': bookingData?.isPackage,
-              'bookingData.packageName': bookingData?.packageName,
-              'bookingData.packageId': bookingData?.packageId,
-              'bookingData.packageType': bookingData?.packageType,
-              'bookingData.serviceName': bookingData?.serviceName,
-              isPackageBooking,
-              shouldShowAddOn
-            });
-            
             return shouldShowAddOn ? (
               <TouchableOpacity 
-                style={styles.addOnButton}
+                style={styles.primaryButton}
                 onPress={handleAddOnServices}
               >
-                <View style={styles.buttonIconWrapper}>
-                  <Ionicons name="add-circle" size={22} color="#fff" />
-                </View>
-                <View style={styles.buttonTextWrapper}>
-                  <Text style={styles.addOnButtonText}>Add More Services</Text>
-                  <Text style={styles.buttonSubtext}>Enhance your booking</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#fff" />
+                <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                <Text style={styles.primaryButtonText}>Add More Services</Text>
               </TouchableOpacity>
             ) : null;
           })()}
 
-          {/* Primary Actions Grid */}
-          <View style={styles.primaryActionsGrid}>
-            <TouchableOpacity 
-              style={styles.gridButton}
-              onPress={handleTrackBooking}
-            >
-              <View style={[styles.gridIconContainer, { backgroundColor: '#8B5CF6' }]}>
-                <Ionicons name="location" size={28} color="#fff" />
-              </View>
-              <Text style={styles.gridButtonText}>Track</Text>
-              <Text style={styles.gridButtonSubtext}>Live Location</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.gridButton}
-              onPress={handleCallAgency}
-            >
-              <View style={[styles.gridIconContainer, { backgroundColor: '#3B82F6' }]}>
-                <Ionicons name="call" size={28} color="#fff" />
-              </View>
-              <Text style={styles.gridButtonText}>Call</Text>
-              <Text style={styles.gridButtonSubtext}>Contact Agency</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Secondary Action */}
           <TouchableOpacity 
-            style={styles.secondaryButton}
+            style={styles.primaryButton}
+            onPress={handleTrackBooking}
+          >
+            <Ionicons name="location-outline" size={20} color="#fff" />
+            <Text style={styles.primaryButtonText}>Track Booking</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.outlineButton}
+            onPress={handleCallAgency}
+          >
+            <Ionicons name="call-outline" size={20} color="#007AFF" />
+            <Text style={styles.outlineButtonText}>Call Service Provider</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.outlineButton}
             onPress={handleGoToBookingHistory}
           >
-            <Ionicons name="time-outline" size={20} color="#6B7280" />
-            <Text style={styles.secondaryButtonText}>View Booking History</Text>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            <Ionicons name="time-outline" size={20} color="#007AFF" />
+            <Text style={styles.outlineButtonText}>View Booking History</Text>
           </TouchableOpacity>
 
         </View>
 
-        {/* Bottom spacing */}
         <View style={{ height: 30 }} />
 
       </ScrollView>
@@ -686,7 +576,7 @@ export default function BookingConfirmationScreen() {
         ]}
         bookingId={bookingId}
         companyId={displayData.companyId}
-        workerId={bookingData?.workerId || bookingData?.technicianId} // Pass worker ID for filtering
+        workerId={bookingData?.workerId || bookingData?.technicianId}
       />
     </View>
   );
@@ -695,38 +585,35 @@ export default function BookingConfirmationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#f5f5f5",
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
     backgroundColor: "#fff",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  headerContent: {
+    paddingTop: 50,
+    paddingBottom: 25,
+    paddingHorizontal: 20,
     alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
   },
-  successIconContainer: {
-    marginBottom: 12,
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "center",
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    marginBottom: 5,
   },
   headerSubtitle: {
-    fontSize: 15,
-    color: "#6B7280",
-    textAlign: "center",
+    fontSize: 14,
+    color: "#666",
   },
   content: {
     flex: 1,
@@ -741,333 +628,101 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  statusBannerText: {
+  statusText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "600",
   },
-  bookingCard: {
+  detailsCard: {
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 20,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
   },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  detailSection: {
     marginBottom: 18,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F9FAFB",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  detailContent: {
-    flex: 1,
+    borderBottomColor: "#f0f0f0",
   },
   detailLabel: {
     fontSize: 13,
-    color: "#9CA3AF",
-    marginBottom: 5,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    color: "#888",
+    marginBottom: 6,
   },
   detailValue: {
     fontSize: 16,
-    color: "#111827",
-    fontWeight: "700",
-    lineHeight: 22,
-  },
-  phoneText: {
-    fontSize: 14,
-    color: "#10B981",
-    marginTop: 6,
+    color: "#1a1a1a",
     fontWeight: "600",
   },
-  priceCard: {
-    backgroundColor: "#F0FDF4",
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 8,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: "#10B981",
-  },
-  priceHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  priceLabel: {
+  detailSubValue: {
     fontSize: 14,
-    color: "#059669",
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    color: "#666",
+    marginTop: 4,
   },
-  priceValue: {
-    fontSize: 32,
+  addOnSection: {
+    marginTop: 8,
+  },
+  addOnItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  addOnName: {
+    fontSize: 15,
+    color: "#333",
+    flex: 1,
+  },
+  addOnPrice: {
+    fontSize: 15,
+    fontWeight: "600",
     color: "#10B981",
-    fontWeight: "900",
-    marginBottom: 4,
-  },
-  priceNote: {
-    fontSize: 12,
-    color: "#059669",
-    fontWeight: "500",
   },
   actionButtons: {
     gap: 12,
-    marginBottom: 20,
   },
-  addOnButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F59E0B",
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    shadowColor: "#F59E0B",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  buttonIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonTextWrapper: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  addOnButtonText: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  buttonSubtext: {
-    color: "rgba(255, 255, 255, 0.9)",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  primaryActionsGrid: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  gridButton: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  gridIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  gridButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  gridButtonSubtext: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  secondaryButton: {
+  primaryButton: {
+    backgroundColor: "#007AFF",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#fff",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
+    paddingVertical: 15,
+    borderRadius: 10,
   },
-  secondaryButtonText: {
-    color: "#374151",
-    fontSize: 15,
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 16,
     fontWeight: "600",
-    flex: 1,
-    textAlign: "center",
+  },
+  outlineButton: {
+    backgroundColor: "#fff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#007AFF",
+  },
+  outlineButtonText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#f5f5f5",
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: "#6B7280",
-  },
-  workNameText: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-  durationText: {
-    fontSize: 12,
-    color: "#8B5CF6",
-    marginTop: 2,
-  },
-  customerInfoText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 2,
-  },
-  technicianNote: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  addOnSection: {
-    marginTop: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  addOnList: {
-    gap: 10,
-  },
-  addOnCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    padding: 14,
-    borderRadius: 12,
-    gap: 12,
-  },
-  addOnIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#D1FAE5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addOnDetails: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  addOnName: {
-    fontSize: 15,
-    color: "#374151",
-    fontWeight: "600",
-    flex: 1,
-  },
-  addOnPrice: {
-    fontSize: 16,
-    color: "#10B981",
-    fontWeight: "700",
-  },
-  timelineSection: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  timelineItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 12,
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#10B981",
-    marginTop: 4,
-    marginRight: 12,
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 2,
-  },
-  timelineTime: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  timestampRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingTop: 12,
-    marginTop: 12,
-  },
-  timestampLabel: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    marginBottom: 4,
-  },
-  timestampText: {
-    fontSize: 11,
-    color: "#6B7280",
-    marginTop: 2,
+    color: "#666",
   },
 });

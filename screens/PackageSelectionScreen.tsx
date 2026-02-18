@@ -54,6 +54,13 @@ export default function PackageSelectionScreen() {
   const [companyGroups, setCompanyGroups] = useState<CompanyPackageGroup[]>([]);
   const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyPackageGroup | null>(null);
 
+  // Helper function to close packages modal and deselect company
+  const closePackagesModal = () => {
+    setShowPackagesModal(false);
+    setSelectedCompanyGroup(null);
+    setSelectedPackage(null);
+  };
+
   useEffect(() => {
     // If serviceId is provided, fetch only that service's packages
     if (serviceId && serviceName) {
@@ -133,9 +140,7 @@ export default function PackageSelectionScreen() {
         });
 
         setCompanyGroups(groups);
-        if (!selectedCompanyGroup && groups.length > 0) {
-          setSelectedCompanyGroup(groups[0]);
-        }
+        // Don't auto-select any company - let user choose
       } catch (e) {
         console.log('⚠️ Failed to load companies for package selection:', e);
         // Fallback: group everything under a single provider.
@@ -154,7 +159,7 @@ export default function PackageSelectionScreen() {
           packages: mergedPackages,
         };
         setCompanyGroups([group]);
-        setSelectedCompanyGroup(group);
+        // Don't auto-select - let user choose
       } finally {
         setCompaniesLoading(false);
       }
@@ -722,7 +727,7 @@ export default function PackageSelectionScreen() {
         {/* Company Selection (for package-based services) */}
         {packageBasedServices.length > 0 && companyGroups.length > 0 && (
           <View style={{ marginBottom: 12 }}>
-            <Text style={[styles.sectionButtonTitle, { marginBottom: 8 }]}>Choose a company</Text>
+            <Text style={[styles.sectionButtonTitle, { marginBottom: 8, textAlign: 'center' }]}>Choose a company</Text>
             {companyGroups.map((g) => {
               const isSelected = selectedCompanyGroup?.id === g.id;
               const companyName = g.company?.companyName || g.company?.serviceName || 'Company';
@@ -802,12 +807,12 @@ export default function PackageSelectionScreen() {
         visible={showPackagesModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowPackagesModal(false)}
+        onRequestClose={closePackagesModal}
       >
         <TouchableOpacity 
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setShowPackagesModal(false)}
+          onPress={closePackagesModal}
         >
           <TouchableOpacity 
             style={[styles.modalContainer, styles.packagesModalContainer]}
@@ -818,7 +823,7 @@ export default function PackageSelectionScreen() {
             <View style={[styles.modalHeader, styles.packagesModalHeader]}>
               <Text style={[styles.modalTitle, styles.packagesModalTitle]}>📦 Select Package</Text>
               <TouchableOpacity 
-                onPress={() => setShowPackagesModal(false)}
+                onPress={closePackagesModal}
                 style={styles.modalCloseButton}
               >
                 <Text style={styles.modalCloseText}>✕</Text>
@@ -1315,12 +1320,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 16,
     padding: 20,
-    borderWidth: 2,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   packagesSectionButton: {
