@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   Dimensions,
+  Pressable,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -60,8 +61,8 @@ export default function WelcomeServicesOnceModal({ onGoToServices }: Props) {
       animationType="fade"
       onRequestClose={closeAndPersist}
     >
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <Pressable style={styles.backdrop} onPress={closeAndPersist}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.hero}>
             <Image
               source={require("../assets/welcomeservices.jpeg")}
@@ -92,8 +93,8 @@ export default function WelcomeServicesOnceModal({ onGoToServices }: Props) {
               <Text style={styles.secondaryText}>Maybe later</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

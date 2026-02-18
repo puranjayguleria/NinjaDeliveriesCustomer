@@ -723,17 +723,9 @@ function AppTabs() {
     <>
       <WelcomeServicesOnceModal
         onGoToServices={() => {
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [
-                {
-                  name: "ServicesTab",
-                  state: { routes: [{ name: "ServicesHome" }] },
-                },
-              ],
-            })
-          );
+          // Use the same route naming pattern as the Services tab listener below.
+          // (reset() can fail here if the nested state shape doesn't match the navigator hierarchy)
+          navigation.navigate("ServicesTab", { screen: "ServicesHome" });
         }}
       />
 
