@@ -13,6 +13,7 @@ import {
   TextInput,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
 import { dedupeServicesByCategoryAndName } from "../utils/serviceDedupe";
 import { firestore } from "../firebase.native";
@@ -424,7 +425,11 @@ export default function ServiceCategoryScreen() {
 
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Select Services</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Search */}
@@ -508,7 +513,18 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+
+  headerSpacer: {
+    width: 38,
   },
 
   headerTitle: {
@@ -516,6 +532,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
+    flex: 1,
   },
 
   searchContainer: {

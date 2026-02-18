@@ -11,6 +11,7 @@ import {
   Modal,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 import { firestore } from "../firebase.native";
 
@@ -686,7 +687,11 @@ export default function PackageSelectionScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color="#0f172a" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>{serviceTitle}</Text>
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
@@ -700,8 +705,14 @@ export default function PackageSelectionScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{serviceTitle}</Text>
-        <Text style={styles.headerSubtitle}>Choose a company, then a package</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+        </TouchableOpacity>
+        <View style={styles.headerTextContainer}>
+          <Text style={styles.headerTitle}>{serviceTitle}</Text>
+          <Text style={styles.headerSubtitle}>Choose a company, then a package</Text>
+        </View>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView 
@@ -1016,6 +1027,23 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+
+  headerTextContainer: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  headerSpacer: {
+    width: 38,
   },
 
   headerTitle: {

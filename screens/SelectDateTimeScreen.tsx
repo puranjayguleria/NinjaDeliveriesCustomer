@@ -2948,7 +2948,9 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
 
   headerTitle: {
@@ -2956,26 +2958,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
+    flex: 1,
   },
 
   backButton: {
-    position: "absolute",
-    left: 12,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    zIndex: 2,
+    padding: 8,
+    marginLeft: -8,
   },
 
   headerHomeBtn: {
-    position: "absolute",
-    right: 12,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    zIndex: 2,
+    padding: 8,
+    marginRight: -8,
   },
 
   blockingModalOverlay: {

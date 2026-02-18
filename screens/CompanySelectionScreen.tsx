@@ -845,7 +845,11 @@ export default function CompanySelectionScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.headerSection}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+        </TouchableOpacity>
         <Text style={styles.header}>Select Service Company </Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Main Content: Companies List */}
@@ -1338,7 +1342,18 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+
+  headerSpacer: {
+    width: 38,
   },
 
   header: { 
@@ -1346,6 +1361,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
     textAlign: "center",
+    flex: 1,
   },
 
   // Companies Container
