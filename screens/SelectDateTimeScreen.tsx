@@ -146,7 +146,12 @@ export default function SelectDateTimeScreen() {
     const y = Number(yStr);
     const m = Number(mStr);
     const d = Number(dStr);
-    return new Date(y, m - 1, d).getDay(); // 0..6
+    const date = new Date(y, m - 1, d);
+    const dow = date.getDay(); // 0=Sunday, 6=Saturday
+    if (__DEV__) {
+      console.log(`📅 dayOfWeekSun0: ${iso} -> ${dow} (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow]})`);
+    }
+    return dow;
   };
 
   const makeISO = (monthKey: string, day: number): string => `${monthKey}-${pad2(day)}`;
@@ -156,13 +161,29 @@ export default function SelectDateTimeScreen() {
     const firstDow = dayOfWeekSun0(firstIso); // 0..6
     const total = daysInMonth(monthKey);
 
-  const cells: { iso: string | null; dayNumber: number | null; isSunday: boolean }[] = [];
-    for (let i = 0; i < firstDow; i++) cells.push({ iso: null, dayNumber: null, isSunday: false });
+    if (__DEV__) {
+      console.log(`📅 buildMonthGrid: ${monthKey}, firstDay=${firstIso}, firstDow=${firstDow}, totalDays=${total}`);
+    }
+
+    const cells: { iso: string | null; dayNumber: number | null; isSunday: boolean }[] = [];
+    // Add empty cells before the first day
+    for (let i = 0; i < firstDow; i++) {
+      cells.push({ iso: null, dayNumber: null, isSunday: false });
+    }
+    // Add actual days
     for (let day = 1; day <= total; day++) {
       const iso = makeISO(monthKey, day);
       cells.push({ iso, dayNumber: day, isSunday: isSundayISO(iso) });
     }
-    while (cells.length % 7 !== 0) cells.push({ iso: null, dayNumber: null, isSunday: false });
+    // Add empty cells at the end to complete the grid
+    while (cells.length % 7 !== 0) {
+      cells.push({ iso: null, dayNumber: null, isSunday: false });
+    }
+    
+    if (__DEV__) {
+      console.log(`📅 buildMonthGrid result: ${cells.length} cells (${cells.length / 7} rows)`);
+    }
+    
     return cells;
   };
 
@@ -2259,19 +2280,13 @@ export default function SelectDateTimeScreen() {
                     <Text style={styles.calendarMonthTitle}>{monthKey}</Text>
                     <View style={styles.calendarHeaderRow}>
                       {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                        <React.Fragment key={`${prefix}-dow-${d}-${i}`}>
-                          <Text style={styles.calendarDowText}>{d}</Text>
-                        </React.Fragment>
+                        <Text key={`${prefix}-dow-${d}-${i}`} style={styles.calendarDowText}>{d}</Text>
                       ))}
                     </View>
                     <View style={styles.calendarGrid}>
                       {cells.map((c, idx) => {
                         if (!c.iso || !c.dayNumber) {
-                          return (
-                            <React.Fragment key={`${prefix}-blank-${idx}`}>
-                              <View style={styles.calendarCell} />
-                            </React.Fragment>
-                          );
+                          return <View key={`${prefix}-blank-${idx}`} style={styles.calendarCell} />;
                         }
 
                         const selected = isDayUnitPackage
@@ -2410,20 +2425,14 @@ export default function SelectDateTimeScreen() {
                   <View style={{ marginTop: 10 }}>
                     <View style={styles.calendarHeaderRow}>
                       {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                        <React.Fragment key={`${d}-${i}`}>
-                          <Text style={styles.calendarDowText}>{d}</Text>
-                        </React.Fragment>
+                        <Text key={`${d}-${i}`} style={styles.calendarDowText}>{d}</Text>
                       ))}
                     </View>
 
                     <View style={styles.calendarGrid}>
                       {cells.map((c, idx) => {
                         if (!c.iso || !c.dayNumber) {
-                          return (
-                            <React.Fragment key={`blank-start-${idx}`}>
-                              <View style={styles.calendarCell} />
-                            </React.Fragment>
-                          );
+                          return <View key={`blank-start-${idx}`} style={styles.calendarCell} />;
                         }
 
                         const isStart = selectedDate === c.iso;
@@ -3070,12 +3079,10 @@ const styles = StyleSheet.create({
   },
   calendarHeaderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 2,
     marginBottom: 8,
   },
   calendarDowText: {
-    width: `${100 / 7}%`,
+    flex: 1,
     textAlign: "center",
     color: "#64748b",
     fontWeight: "800",
@@ -3086,7 +3093,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   calendarCell: {
-    width: `${100 / 7}%`,
+    width: '14.28%',
     aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
