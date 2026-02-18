@@ -6488,6 +6488,20 @@ export class FirestoreService {
 
           if (matchesService) {
             unassignedActiveForServiceCount += 1;
+            if (__DEV__) {
+              console.log(
+                `   ⏳ Counting UNASSIGNED booking as capacity (booking: ${doc.id})`,
+                {
+                  companyId: bookingCompanyId,
+                  status: booking.status,
+                  date: booking.date,
+                  time: booking.time,
+                  bookingServiceIds,
+                  bookingServiceName,
+                  matchedBy: matchesById ? "id" : "name",
+                }
+              );
+            }
           }
         }
 

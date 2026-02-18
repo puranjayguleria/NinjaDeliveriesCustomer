@@ -2281,13 +2281,12 @@ export default function SelectDateTimeScreen() {
                         const tooLate = c.iso > maxISO;
                         const isConflict = !!slotLabelForCalendar && conflictsForSlot.includes(c.iso);
 
-                        // Day-unit packages: use per-slot availability to mark a day fully booked.
+                        // Day-unit packages: mark a day as booked ONLY when we *know* it's fully booked.
+                        // Unknown/uncomputed days should remain selectable; the time-slots list will show
+                        // "Verifying" until availability is computed.
                         // Weekly/monthly recurring plans: conflicts ARE booked dates for the selected slot.
-                        // For day-unit packages, treat "unknown" (not yet computed) days as booked/unavailable.
-                        // This matches the stricter UX expectation: until we verify capacity, don't allow booking.
-                        const dayUnitUnknown = isDayUnitPackage ? !isDayComputed(c.iso) : false;
                         const isBooked = isDayUnitPackage
-                          ? (dayUnitUnknown || isDayFullyBooked(c.iso))
+                          ? isDayFullyBooked(c.iso)
                           : (isConflict && !selected);
 
                         const localLimit = (isDailyPackage || isDayUnitPackage) ? 1 : planSelectionLimit;
