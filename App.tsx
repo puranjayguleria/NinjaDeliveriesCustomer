@@ -26,6 +26,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
+import { navigationRef } from "./navigation/rootNavigation";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -128,9 +129,6 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
         const recovery = JSON.parse(raw);
         const razorpayOrderId = String(recovery?.razorpayOrderId || "");
         if (!razorpayOrderId) return;
-
-        // Small delay gives auth state time to settle and avoids race with other startup work.
-        await new Promise((r) => setTimeout(r, 500));
         if (cancelled) return;
 
         const axios = require("axios").default;
@@ -572,8 +570,7 @@ function AppTabs() {
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
 
-  // One-time welcome modal -> jump user to Services
-  const navigation = useNavigation<any>();
+  // One-time welcome modal -> jump user to Services (uses root navigation ref)
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -723,9 +720,10 @@ function AppTabs() {
     <>
       <WelcomeServicesOnceModal
         onGoToServices={() => {
-          // Use the same route naming pattern as the Services tab listener below.
-          // (reset() can fail here if the nested state shape doesn't match the navigator hierarchy)
-          navigation.navigate("ServicesTab", { screen: "ServicesHome" });
+          // Navigate from the ROOT navigator so this works from a global modal.
+          if (navigationRef.isReady()) {
+            (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
+          }
         }}
       />
 
@@ -1229,7 +1227,7 @@ const App: React.FC = () => {
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>
-                <NavigationContainer>
+                <NavigationContainer ref={navigationRef}>
                   <GlobalCongrats />
                   <RootStack.Navigator
                     initialRouteName={initialRoute}
