@@ -298,7 +298,10 @@ export default function SelectDateTimeScreen() {
   const monthlyPrecheckReqRef = useRef(0);
   const fetchSlotsReqRef = useRef(0);
 
-  const isVerifyingAvailability = loadingAvailability || loadingSeriesAvailability || loadingMonthlyPrecheck;
+  // Keep the *screen-blocking* modal only for service/day slot availability checks.
+  // Recurring series validation and monthly precheck can take a while and should not freeze scrolling.
+  const isBlockingAvailabilityModal = loadingAvailability;
+  const isVerifyingAvailability = isBlockingAvailabilityModal || loadingSeriesAvailability || loadingMonthlyPrecheck;
 
   // Predefined slots for services (non-package bookings)
   const defaultSlots = useMemo(
@@ -316,6 +319,9 @@ export default function SelectDateTimeScreen() {
   const [time, setTime] = useState("");
   const [confirmedPlanDates, setConfirmedPlanDates] = useState<string[]>([]);
   const confirmedPlanDatesKey = useMemo(() => confirmedPlanDates.join('|'), [confirmedPlanDates]);
+  // Tracks whether the user has manually edited the plan date selection for the *current* time slot.
+  // Used to avoid async autopick/precheck overwriting user interactions.
+  const planDatesTouchedRef = useRef(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     // Default to tomorrow instead of today
     const tomorrow = new Date();
@@ -1490,7 +1496,14 @@ export default function SelectDateTimeScreen() {
     setLoadingSeriesAvailability(true);
     setAvailabilityError(null);
 
-  const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
+    const selectedIds = (() => {
+      try {
+        const parsed = JSON.parse(selectedIssueIdsKey);
+        return Array.isArray(parsed) ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
 
     (async () => {
       try {
@@ -1549,6 +1562,7 @@ export default function SelectDateTimeScreen() {
         }
 
         setConfirmedPlanDates((prev) => {
+          if (planDatesTouchedRef.current) return Array.isArray(prev) ? prev : [];
           // If user already has 7 picked, don't override.
           if (Array.isArray(prev) && prev.length >= 7) return prev;
 
@@ -1576,10 +1590,10 @@ export default function SelectDateTimeScreen() {
         }
       }
     })();
-  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIds, serviceTitle]);
+  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIdsKey, serviceTitle]);
 
   // Monthly plan UX improvement:
-  // As soon as the user picks a time slot, pre-check a larger window (next 60 days)
+  // As soon as the user picks a time slot, pre-check a window (next 30 days)
   // so the calendar can render booked (✕) dates BEFORE the user taps them.
   useEffect(() => {
     if (!needsDayConfirmation) return;
@@ -1595,14 +1609,21 @@ export default function SelectDateTimeScreen() {
     const minISO = addDaysISO(todayISO, 1);
     const anchor = selectedDate && selectedDate >= minISO ? selectedDate : minISO;
 
-    const windowDays = 60;
+    const windowDays = 30;
     const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
 
     const reqId = ++monthlyPrecheckReqRef.current;
     setLoadingMonthlyPrecheck(true);
     setAvailabilityError(null);
 
-    const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
+    const selectedIds = (() => {
+      try {
+        const parsed = JSON.parse(selectedIssueIdsKey);
+        return Array.isArray(parsed) ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
 
     (async () => {
       try {
@@ -1643,6 +1664,12 @@ export default function SelectDateTimeScreen() {
         const availableNotConflicted = available.filter((d) => !uniqueConflicts.includes(d));
         const picked = availableNotConflicted.slice(0, 30).sort();
 
+        // If this slot cannot support 30 days in the next 30 days, mark it as not available.
+        // This disables the slot chip and blocks Continue, prompting the user to pick another slot.
+        if (availableNotConflicted.length < 30) {
+          setSeriesAvailability({ [slotLabel]: false });
+        }
+
         if (__DEV__) {
           console.log('🗓️ Monthly autopick results', {
             slotLabel,
@@ -1657,6 +1684,7 @@ export default function SelectDateTimeScreen() {
         }
 
         setConfirmedPlanDates((prev) => {
+          if (planDatesTouchedRef.current) return Array.isArray(prev) ? prev : [];
           // If user already has 30 picked, don't override.
           if (Array.isArray(prev) && prev.length >= 30) return prev;
 
@@ -1672,8 +1700,10 @@ export default function SelectDateTimeScreen() {
         });
 
         // Publish seriesAvailability only when we can fully auto-pick 30.
-        // If fewer are available, keep empty so we don't misleadingly "approve" the series.
-        setSeriesAvailability(picked.length === 30 ? { [slotLabel]: true } : {});
+        // If fewer are available, the slot is already marked false above.
+        if (picked.length === 30) {
+          setSeriesAvailability({ [slotLabel]: true });
+        }
       } catch (e: any) {
         if (monthlyPrecheckReqRef.current !== reqId) return;
         console.log('⚠️ Monthly precheck availability failed:', e);
@@ -1684,7 +1714,7 @@ export default function SelectDateTimeScreen() {
         }
       }
     })();
-  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIds, serviceTitle]);
+  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIdsKey, serviceTitle]);
 
   // IMPORTANT UX:
   // For weekly/monthly "day confirmation" plans we should NEVER mutate the user's selection
@@ -1852,7 +1882,7 @@ export default function SelectDateTimeScreen() {
   const isMonthlyPlan = !isServiceFlow && isRecurringPackage && (selectedPackageUnit === 'month' || selectedPackageUnit === 'monthly');
   const planSelectionLimit = isMonthlyPlan ? 30 : (isWeeklyPlan ? 7 : 0);
 
-  // Monthly plans: if within [tomorrow, tomorrow+60 days] there are fewer than 30 available days for the chosen time slot,
+  // Monthly plans: if within [tomorrow, tomorrow+30 days] there are fewer than 30 available days for the chosen time slot,
   // tell the user to change the time slot. (Computed, no setState in render.)
   const monthlyNotEnoughDaysMessage = useMemo(() => {
     if (!needsDayConfirmation) return null;
@@ -1863,27 +1893,32 @@ export default function SelectDateTimeScreen() {
     const slotLabel = time;
     const conflictsForSlot = Array.isArray(seriesConflicts?.[slotLabel]) ? seriesConflicts[slotLabel] : [];
 
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 61);
+    // If monthly precheck explicitly marked this slot as not viable, show the message.
+    if (seriesAvailability?.[slotLabel] === false) {
+      return 'Please choose a different time slot — this slot doesn’t have 30 available days in the next 30 days.';
+    }
 
-    // Count all days in this 60-day window that are not conflicted.
+    // Count all days in the next 30-day window [tomorrow .. tomorrow+29] that are not conflicted.
+    // Keep this window aligned with the monthly precheck effect.
+    const today = new Date();
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const minISO = addDaysISO(todayISO, 1);
+    const maxISO = addDaysISO(minISO, 29);
+
     let availableCount = 0;
-    const cur = new Date(start);
+    let curISO = minISO;
     let guard = 0;
-    while (cur.getTime() <= end.getTime() && guard < 70) {
-      // IMPORTANT: use local YYYY-MM-DD (not UTC) to avoid off-by-one day issues.
-      const iso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
-      if (!conflictsForSlot.includes(iso)) availableCount += 1;
+    while (curISO <= maxISO && guard < 65) {
+      if (!conflictsForSlot.includes(curISO)) availableCount += 1;
       if (availableCount >= 30) break;
-      cur.setDate(cur.getDate() + 1);
+      curISO = addDaysISO(curISO, 1);
       guard += 1;
     }
 
     return availableCount < 30
-      ? 'Please choose a different time slot — this slot doesn’t have 30 available days in the next 60 days.'
+      ? 'Please choose a different time slot — this slot doesn’t have 30 available days in the next 30 days.'
       : null;
-  }, [isMonthlyPlan, needsDayConfirmation, planSelectionLimit, seriesConflicts, time]);
+  }, [isMonthlyPlan, needsDayConfirmation, planSelectionLimit, seriesAvailability, seriesConflicts, time]);
 
   const planSeededRef = useRef(false);
   useEffect(() => {
@@ -1912,6 +1947,13 @@ export default function SelectDateTimeScreen() {
     if (lastTimeRef.current && lastTimeRef.current !== t) {
       setSeriesAvailability({});
       setSeriesConflicts({});
+
+      // The chosen days are tied to a specific time slot.
+      // If the user changes the time slot, reset the selection so weekly/monthly can re-autopick
+      // and the user can pick a new set of days without being stuck at the selection limit.
+      setConfirmedPlanDates([]);
+      setPlanPickError(null);
+      planDatesTouchedRef.current = false;
     }
     lastTimeRef.current = t;
   }, [needsDayConfirmation, time]);
@@ -1924,6 +1966,7 @@ export default function SelectDateTimeScreen() {
     if (!needsDayConfirmation) {
       setConfirmedPlanDates([]);
       planSeededRef.current = false;
+      planDatesTouchedRef.current = false;
       return;
     }
 
@@ -2090,6 +2133,10 @@ export default function SelectDateTimeScreen() {
     if (isRecurringPackage) {
       if (typeof time !== 'string' || time.trim().length === 0) return false;
 
+      // Monthly day-confirmation: if the next 60-day window can't support 30 days for this slot,
+      // force the user to pick another time slot.
+      if (isMonthlyPlan && !!monthlyNotEnoughDaysMessage) return false;
+
       // Weekly/monthly: must pick the exact number of days.
       if (needsDayConfirmation) {
         const requiredDays = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly') ? 7 : 30;
@@ -2153,6 +2200,7 @@ export default function SelectDateTimeScreen() {
     if (isServiceFlow && loadingAvailability) return 'Checking availability…';
     if (isServiceFlow && availabilityFreshByDate?.[selectedDate] !== true) return 'Verifying availability…';
     if (isRecurringPackage && loadingSeriesAvailability) return 'Validating recurring availability…';
+    if (isMonthlyPlan && !!monthlyNotEnoughDaysMessage) return 'Choose another time';
     if (isServiceFlow && !startSlot) return 'Select a start time';
     if (isServiceFlow && selectedSlots.length !== requiredSlots) return 'Select a start time';
     if (isServiceFlow && !!blockError) return 'Choose another time';
@@ -2184,7 +2232,7 @@ export default function SelectDateTimeScreen() {
       </View>
 
       {/* Blocking modal when verifying availability */}
-      <Modal transparent visible={isVerifyingAvailability} animationType="fade">
+      <Modal transparent visible={isBlockingAvailabilityModal} animationType="fade">
         <View style={styles.blockingModalOverlay}>
           <View style={styles.blockingModalCard}>
             <ActivityIndicator size="large" color="#4CAF50" />
@@ -2304,6 +2352,7 @@ export default function SelectDateTimeScreen() {
                 const fullSeriesOk = slotLabel ? seriesAvailability?.[slotLabel] : undefined;
 
                 let msg: string | null = null;
+                const isComputing = (isMonthlyPlan && loadingMonthlyPrecheck) || (!!isRecurringPackage && loadingSeriesAvailability);
 
                 // Priority order:
                 // 1) direct user tap error
@@ -2311,7 +2360,9 @@ export default function SelectDateTimeScreen() {
                 // 3) conflicts exist
                 // 4) needs more days
                 if (planPickError) msg = planPickError;
+                else if (isMonthlyPlan && loadingMonthlyPrecheck) msg = 'Checking availability for this time slot…';
                 else if (monthlyNotEnoughDaysMessage) msg = monthlyNotEnoughDaysMessage;
+                else if (isRecurringPackage && loadingSeriesAvailability) msg = 'Validating recurring availability…';
                 else if (slotLabel && fullSeriesOk === false) msg = 'This time slot is currently full. Try selecting a different time slot.';
                 else if (slotLabel && conflictsForSlot.length > 0) {
                   msg = 'Some selected dates are already booked for this time. Please remove the crossed dates and pick different days, or choose a different time slot.';
@@ -2327,7 +2378,16 @@ export default function SelectDateTimeScreen() {
                 const danger = !!planPickError || fullSeriesOk === false || conflictsForSlot.length > 0;
                 return (
                   <View style={danger ? styles.inlineAlertDanger : styles.inlineAlert}>
-                    <Text style={danger ? styles.inlineAlertDangerText : styles.inlineAlertText}>{msg}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {isComputing && (
+                        <ActivityIndicator
+                          size="small"
+                          color={danger ? '#b91c1c' : '#0f172a'}
+                          style={{ marginRight: 8 }}
+                        />
+                      )}
+                      <Text style={danger ? styles.inlineAlertDangerText : styles.inlineAlertText}>{msg}</Text>
+                    </View>
                   </View>
                 );
               })()}
@@ -2354,7 +2414,9 @@ export default function SelectDateTimeScreen() {
                 const today = new Date();
                 const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                 const minISO = addDaysISO(todayISO, 1);
-                const maxISO = (isDailyPackage || isDayUnitPackage) ? addDaysISO(minISO, 6) : addDaysISO(minISO, 60);
+                const maxISO = (isDailyPackage || isDayUnitPackage)
+                  ? addDaysISO(minISO, 6)
+                  : (isMonthlyPlan ? addDaysISO(minISO, 29) : addDaysISO(minISO, 60));
 
                 // Only show the next month when the window crosses into it.
                 const minMonthKey = getMonthKey(minISO);
@@ -2378,10 +2440,13 @@ export default function SelectDateTimeScreen() {
 
                   // Day-unit packages are single-day bookings. Treat calendar tap as the active selectedDate.
                   if (isDayUnitPackage) {
+                    planDatesTouchedRef.current = true;
                     setSelectedDate(iso);
                     setConfirmedPlanDates([iso]);
                     return;
                   }
+
+                  planDatesTouchedRef.current = true;
 
                   setConfirmedPlanDates((prev) => {
                     const next = [...prev];
@@ -2674,6 +2739,13 @@ export default function SelectDateTimeScreen() {
             <View style={styles.availabilityRow}>
               <ActivityIndicator size="small" color="#64748b" />
               <Text style={styles.availabilityText}>Validating recurring availability…</Text>
+            </View>
+          )}
+
+          {!isServiceFlow && isMonthlyPlan && loadingMonthlyPrecheck && (
+            <View style={styles.availabilityRow}>
+              <ActivityIndicator size="small" color="#64748b" />
+              <Text style={styles.availabilityText}>Checking availability for this time slot…</Text>
             </View>
           )}
 
