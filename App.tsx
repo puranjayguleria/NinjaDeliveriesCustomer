@@ -1056,6 +1056,8 @@ const App: React.FC = () => {
 
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const NOTIF_MODAL_SNOOZE_UNTIL_KEY = "notif_modal_snooze_until_v1";
+  const NOTIF_MODAL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   useEffect(() => {
     (async () => {
@@ -1068,11 +1070,40 @@ const App: React.FC = () => {
   /* ask for push-permission on first mount */
   useEffect(() => {
     (async () => {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== "granted") {
-        setShowNotifModal(true);
-      } else {
-        await ensurePushTokenSynced();
+      try {
+        const snoozeRaw = await AsyncStorage.getItem(NOTIF_MODAL_SNOOZE_UNTIL_KEY);
+        const snoozeUntil = snoozeRaw ? Number(snoozeRaw) : 0;
+        if (Number.isFinite(snoozeUntil) && snoozeUntil > Date.now()) {
+          return;
+        }
+
+        const perms = await Notifications.getPermissionsAsync();
+        if (__DEV__) {
+          console.log("[NotifModal] permissions", {
+            status: perms?.status,
+            granted: perms?.granted,
+            canAskAgain: perms?.canAskAgain,
+          });
+        }
+        const isEnabled = (perms?.granted === true) || (perms?.status === "granted");
+        const canAskAgain = perms?.canAskAgain !== false;
+
+        if (!isEnabled) {
+          // If the OS won't show the permission prompt again, don't nag the user every launch.
+          if (!canAskAgain) {
+            await AsyncStorage.setItem(
+              NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+              String(Date.now() + (30 * 24 * 60 * 60 * 1000))
+            );
+            return;
+          }
+          setShowNotifModal(true);
+        } else {
+          await ensurePushTokenSynced();
+        }
+      } catch (e) {
+        // Non-fatal: if storage/permissions read fails, don't block app start.
+        console.log("[NotifModal] permissions check failed", e);
       }
     })();
   }, []);
@@ -1270,7 +1301,15 @@ const App: React.FC = () => {
           visible
           transparent
           animationType="slide"
-          onRequestClose={() => setShowNotifModal(false)}
+          onRequestClose={async () => {
+            setShowNotifModal(false);
+            try {
+              await AsyncStorage.setItem(
+                NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+              );
+            } catch {}
+          }}
           statusBarTranslucent
         >
           <View style={styles.modalOverlay}>
@@ -1285,14 +1324,47 @@ const App: React.FC = () => {
                   style={styles.modalButton}
                   onPress={async () => {
                     setShowNotifModal(false);
-                    await ensurePushTokenSynced();
+
+                    // Request OS permission even if the user isn't logged in yet.
+                    // (ensurePushTokenSynced() short-circuits when auth().currentUser is null.)
+                    try {
+                      const perms = await Notifications.requestPermissionsAsync();
+                      const isEnabled = (perms?.granted === true) || (perms?.status === "granted");
+                      if (isEnabled) {
+                        // Don't show again once enabled.
+                        await AsyncStorage.removeItem(NOTIF_MODAL_SNOOZE_UNTIL_KEY);
+                        await ensurePushTokenSynced();
+                      } else {
+                        // User denied or didn't enable: snooze so it doesn't reappear every launch.
+                        const canAskAgain = perms?.canAskAgain !== false;
+                        const snoozeMs = canAskAgain ? NOTIF_MODAL_SNOOZE_MS : (30 * 24 * 60 * 60 * 1000);
+                        await AsyncStorage.setItem(
+                          NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                          String(Date.now() + snoozeMs)
+                        );
+                      }
+                    } catch (e) {
+                      console.log("[NotifModal] request permissions failed", e);
+                      await AsyncStorage.setItem(
+                        NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                        String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+                      );
+                    }
                   }}
                 >
                   <Text style={styles.modalButtonText}>Enable</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalCancelButton]}
-                  onPress={() => setShowNotifModal(false)}
+                  onPress={async () => {
+                    setShowNotifModal(false);
+                    try {
+                      await AsyncStorage.setItem(
+                        NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                        String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+                      );
+                    } catch {}
+                  }}
                 >
                   <Text
                     style={[styles.modalButtonText, styles.modalCancelButtonText]}
