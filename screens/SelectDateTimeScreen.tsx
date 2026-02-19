@@ -285,6 +285,7 @@ export default function SelectDateTimeScreen() {
   const [seriesAvailability, setSeriesAvailability] = useState<Record<string, boolean>>({});
   const [seriesConflicts, setSeriesConflicts] = useState<Record<string, string[]>>({});
   const [loadingSeriesAvailability, setLoadingSeriesAvailability] = useState(false);
+  const [loadingMonthlyPrecheck, setLoadingMonthlyPrecheck] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [availabilityFreshByDate, setAvailabilityFreshByDate] = useState<Record<string, boolean>>({});
   const availabilityReqIdRef = useRef(0);
@@ -294,9 +295,10 @@ export default function SelectDateTimeScreen() {
 
   // Guards against in-flight async loops / stale completions.
   const seriesValidationReqRef = useRef(0);
+  const monthlyPrecheckReqRef = useRef(0);
   const fetchSlotsReqRef = useRef(0);
 
-  const isVerifyingAvailability = loadingAvailability || loadingSeriesAvailability;
+  const isVerifyingAvailability = loadingAvailability || loadingSeriesAvailability || loadingMonthlyPrecheck;
 
   // Predefined slots for services (non-package bookings)
   const defaultSlots = useMemo(
@@ -1435,6 +1437,21 @@ export default function SelectDateTimeScreen() {
       return;
     }
 
+    // Monthly day-confirmation plans:
+    // - Conflicts for the whole upcoming window are computed by the monthly precheck effect.
+    // - Only validate the full selection once the user has exactly 30 picked days.
+    //   (Prevents extra network calls and avoids competing loaders.)
+    if (needsDayConfirmation) {
+      const unitLower = String(selectedPackageUnit || '').toLowerCase();
+      const isMonthly = (unitLower === 'month' || unitLower === 'monthly');
+      if (isMonthly) {
+        const requiredDays = 30;
+        if (!Array.isArray(confirmedPlanDates) || confirmedPlanDates.length !== requiredDays) {
+          return;
+        }
+      }
+    }
+
     // Day-confirmation plans: debounce checks so we don't spam network while user taps dates.
     if (needsDayConfirmation) {
       const handle = setTimeout(() => {
@@ -1566,8 +1583,8 @@ export default function SelectDateTimeScreen() {
   // so the calendar can render booked (✕) dates BEFORE the user taps them.
   useEffect(() => {
     if (!needsDayConfirmation) return;
-  const unitLower = String(selectedPackageUnit || '').toLowerCase();
-  const isMonthly = (unitLower === 'month' || unitLower === 'monthly');
+    const unitLower = String(selectedPackageUnit || '').toLowerCase();
+    const isMonthly = (unitLower === 'month' || unitLower === 'monthly');
     if (!isMonthly) return;
     if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
     const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
@@ -1581,8 +1598,8 @@ export default function SelectDateTimeScreen() {
     const windowDays = 60;
     const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
 
-    const reqId = ++seriesValidationReqRef.current;
-    setLoadingSeriesAvailability(true);
+    const reqId = ++monthlyPrecheckReqRef.current;
+    setLoadingMonthlyPrecheck(true);
     setAvailabilityError(null);
 
     const selectedIds = Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined;
@@ -1612,23 +1629,58 @@ export default function SelectDateTimeScreen() {
           Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker())
         );
 
-        if (seriesValidationReqRef.current !== reqId) return;
+        if (monthlyPrecheckReqRef.current !== reqId) return;
 
+        const available = results.filter((r) => r.available).map((r) => r.dateISO);
         const conflicts = results.filter((r) => !r.available).map((r) => r.dateISO);
         const uniqueConflicts = Array.from(new Set(conflicts)).sort();
 
         // Replace (not merge) so markers are accurate for this slotLabel.
         setSeriesConflicts((prev) => ({ ...prev, [slotLabel]: uniqueConflicts }));
 
-        // Monthly plan: we do NOT auto-pick dates. We only precompute booked markers.
-        // Also don't set seriesAvailability here; that is validated when user completes 30 days.
+        // Auto-pick nearest available days (same UX as weekly, but 30 days).
+        // IMPORTANT: never auto-select booked/conflict days.
+        const availableNotConflicted = available.filter((d) => !uniqueConflicts.includes(d));
+        const picked = availableNotConflicted.slice(0, 30).sort();
+
+        if (__DEV__) {
+          console.log('🗓️ Monthly autopick results', {
+            slotLabel,
+            anchor,
+            windowDays,
+            checked: results.length,
+            availableCount: available.length,
+            conflictCount: conflicts.length,
+            availableNotConflictedCount: availableNotConflicted.length,
+            pickedCount: picked.length,
+          });
+        }
+
+        setConfirmedPlanDates((prev) => {
+          // If user already has 30 picked, don't override.
+          if (Array.isArray(prev) && prev.length >= 30) return prev;
+
+          // If fewer than 30 are available in the window, pick as many as we can.
+          // (Continue remains blocked until 30 are selected.)
+          if (picked.length > 0) return picked;
+
+          // If nothing is available, NEVER keep conflict days selected by default.
+          const safePrev = Array.isArray(prev)
+            ? prev.filter((d) => !uniqueConflicts.includes(d))
+            : [];
+          return safePrev;
+        });
+
+        // Publish seriesAvailability only when we can fully auto-pick 30.
+        // If fewer are available, keep empty so we don't misleadingly "approve" the series.
+        setSeriesAvailability(picked.length === 30 ? { [slotLabel]: true } : {});
       } catch (e: any) {
-        if (seriesValidationReqRef.current !== reqId) return;
+        if (monthlyPrecheckReqRef.current !== reqId) return;
         console.log('⚠️ Monthly precheck availability failed:', e);
         setAvailabilityError('Could not validate monthly availability. Please try again.');
       } finally {
-        if (seriesValidationReqRef.current === reqId) {
-          setLoadingSeriesAvailability(false);
+        if (monthlyPrecheckReqRef.current === reqId) {
+          setLoadingMonthlyPrecheck(false);
         }
       }
     })();
@@ -1867,7 +1919,7 @@ export default function SelectDateTimeScreen() {
   // When entering day-confirmation mode, ensure we have a sane anchor date.
   // IMPORTANT: Do NOT seed a fixed 7/30-day window here.
   // Weekly plans should be auto-picked using real availability (see weekly autopick effect).
-  // Monthly plans rely on user selection + conflict markers.
+  // Monthly plans are auto-picked (30 days) once the user picks a time slot.
   useEffect(() => {
     if (!needsDayConfirmation) {
       setConfirmedPlanDates([]);
