@@ -847,12 +847,13 @@ function AppTabs() {
               }
 
               // Non-restricted location:
-              // Always bring the user back to ServicesHome when they tap the Services tab,
-              // even if they're currently deep in the Services stack (e.g. ServiceCart).
-              // This fixes the "tap Services tab does nothing" symptom caused by being already on ServicesTab
-              // with a nested route that doesn't reset.
+              // Show loader and navigate to ServicesHome
               e.preventDefault();
-              navigation.navigate("ServicesTab", { screen: "ServicesHome" });
+              setServiceLoaderVisible(true);
+              setTimeout(() => {
+                navigation.navigate("ServicesTab", { screen: "ServicesHome" });
+                setServiceLoaderVisible(false);
+              }, 800);
             },
           })}
         />
@@ -923,7 +924,7 @@ function AppTabs() {
         >
           <View style={styles.serviceLoaderOverlay}>
             <Image
-              source={require("./assets/ninjaServiceLoader.gif")}
+              source={require("./assets/ninjaServiceLoader3.gif")}
               style={styles.serviceLoaderImage}
               resizeMode="contain"
             />
