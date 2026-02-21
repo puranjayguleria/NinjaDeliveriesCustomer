@@ -78,6 +78,30 @@ export default function ServiceCheckoutScreen() {
   // Load saved addresses on component mount
   useEffect(() => {
     loadSavedAddresses();
+    
+    // Check if returning from login with saved state
+    const restoreCheckoutState = async () => {
+      try {
+        const restoreState = route.params?.restoreState;
+        if (restoreState) {
+          console.log('Restoring checkout state after login:', restoreState);
+          
+          // Restore form state
+          if (restoreState.notes) setNotes(restoreState.notes);
+          if (restoreState.paymentMethod) setPaymentMethod(restoreState.paymentMethod);
+          
+          // If there was a pending address, restore it and show the modal
+          if (restoreState.pendingAddress) {
+            setNewAddress(restoreState.pendingAddress);
+            setShowAddAddressModal(true);
+          }
+        }
+      } catch (e) {
+        console.error('Error restoring checkout state:', e);
+      }
+    };
+    
+    restoreCheckoutState();
   }, []);
 
   // On screen mount, try to reconcile any previously paid-but-not-finalized service payments.
@@ -137,6 +161,15 @@ export default function ServiceCheckoutScreen() {
     try {
       setLoadingAddresses(true);
       
+      // Check if user is logged in
+      const user = auth().currentUser;
+      if (!user) {
+        console.log('User not logged in, skipping address load');
+        setSavedAddresses([]);
+        setLoadingAddresses(false);
+        return;
+      }
+      
       // Load from dedicated user_addresses collection
       const savedAddrs = await FirestoreService.getUserSavedAddresses();
       
@@ -178,6 +211,31 @@ export default function ServiceCheckoutScreen() {
   const saveNewAddress = async () => {
     if (!newAddress.fullAddress.trim()) {
       Alert.alert("Address Required", "Please enter a complete address");
+      return;
+    }
+
+    // Check if user is logged in
+    const user = auth().currentUser;
+    if (!user) {
+      // Close the modal first
+      setShowAddAddressModal(false);
+      
+      // Save the current screen state to AsyncStorage for return after login
+      try {
+        await AsyncStorage.setItem('returnToCheckout', JSON.stringify({
+          services,
+          notes,
+          paymentMethod,
+          pendingAddress: newAddress
+        }));
+      } catch (e) {
+        console.error('Error saving checkout state:', e);
+      }
+      
+      // Navigate to login screen in HomeTab
+      navigation.navigate('HomeTab', {
+        screen: 'LoginInHomeStack'
+      });
       return;
     }
 

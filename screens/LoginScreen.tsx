@@ -19,6 +19,7 @@ import Constants from "expo-constants";
 import { useCustomer } from "../context/CustomerContext";
 import ErrorModal from "../components/ErrorModal";
 import { useNavigation, CommonActions } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const LoginScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -166,6 +167,9 @@ if (__DEV__ && Platform.OS === "ios") {
         setCustomerId(user.uid);
         await saveUserInfo();
 
+        // Check if user came from checkout screen
+        const checkoutState = await AsyncStorage.getItem('returnToCheckout');
+        
         const userDoc = await firestore().collection("users").doc(user.uid).get();
         console.log("User document fetched:", userDoc.exists, userDoc.data());
         if (!userDoc.exists) {
@@ -185,6 +189,50 @@ if (__DEV__ && Platform.OS === "ios") {
         }
 
         const hasAccepted = userDoc.data()?.hasAcceptedTerms === true;
+        
+        // If user came from checkout, redirect back to checkout
+        if (checkoutState && hasAccepted) {
+          console.log("User came from checkout, redirecting back");
+          const state = JSON.parse(checkoutState);
+          
+          // Clear the stored state
+          await AsyncStorage.removeItem('returnToCheckout');
+          
+          // Navigate back to ServicesTab -> ServiceCheckout
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [
+                { 
+                  name: "AppTabs",
+                  state: {
+                    routes: [
+                      {
+                        name: "ServicesTab",
+                        state: {
+                          routes: [
+                            { name: "ServicesHome" },
+                            { 
+                              name: "ServiceCheckout", 
+                              params: { 
+                                services: state.services,
+                                restoreState: state
+                              } 
+                            }
+                          ],
+                          index: 1
+                        }
+                      }
+                    ],
+                    index: 0
+                  }
+                }
+              ],
+            })
+          );
+          return;
+        }
+        
         if (hasAccepted) {
           console.log("User has accepted terms, navigating to AppTabs");
           navigation.dispatch(

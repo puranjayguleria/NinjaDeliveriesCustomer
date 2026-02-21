@@ -685,12 +685,16 @@ function AppTabs() {
   const handleSelectServices = () => {
     setCartModalVisible(false);
     if (pendingNavigation) {
-      // Show loader briefly, then navigate to services tab and service cart
+      // Navigate first, then show loader
+      pendingNavigation.navigate("ServicesTab", { 
+        screen: "ServiceCart" 
+      });
+      
+      // Show loader immediately
       setServiceLoaderVisible(true);
+      
+      // Hide loader after animation
       setTimeout(() => {
-        pendingNavigation.navigate("ServicesTab", { 
-          screen: "ServiceCart" 
-        });
         setServiceLoaderVisible(false);
       }, 500);
     }
@@ -847,11 +851,17 @@ function AppTabs() {
               }
 
               // Non-restricted location:
-              // Show loader and navigate to ServicesHome
+              // Navigate immediately and show loader
               e.preventDefault();
+              
+              // Navigate first
+              navigation.navigate("ServicesTab", { screen: "ServicesHome" });
+              
+              // Show loader immediately
               setServiceLoaderVisible(true);
+              
+              // Hide loader after animation
               setTimeout(() => {
-                navigation.navigate("ServicesTab", { screen: "ServicesHome" });
                 setServiceLoaderVisible(false);
               }, 800);
             },
@@ -1410,14 +1420,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 9999,
   },
   serviceLoaderImage: {
-    width: 160,
-    height: 160,
+    width: "100%",
+    height: "100%",
   },
 
   inProgressBar: {
