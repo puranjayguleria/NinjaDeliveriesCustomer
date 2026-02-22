@@ -207,10 +207,12 @@ interface LiveBooking {
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [rawServiceCategories, setRawServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
   const [liveBookings, setLiveBookings] = useState<LiveBooking[]>([]);
   const [allServices, setAllServices] = useState<any[]>([]);
   const [searchServices, setSearchServices] = useState<any[]>([]);
+  const [activeServiceCategoryIdsKey, setActiveServiceCategoryIdsKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -231,6 +233,8 @@ export default function ServicesScreen() {
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
+
+  const prefetchedUrlsRef = React.useRef<string>('');
 
   // One-time banner shown after backend/webhook finalized a service payment.
   const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
@@ -342,37 +346,16 @@ export default function ServicesScreen() {
             // Populate images from service_categories_master
             await FirestoreService.populateCategoryImages(allCategories);
 
-            // Filter to show only categories with active workers
-            const companiesSnapshot = await firestore()
-              .collection('service_services')
-              .where('isActive', '==', true)
-              .get();
-            
-            const activeCategoryIds = new Set<string>();
-            companiesSnapshot.forEach(doc => {
-              const data = doc.data();
-              if (data.categoryMasterId) {
-                activeCategoryIds.add(data.categoryMasterId);
-              }
-            });
-            
-            const categoriesWithWorkers = allCategories.filter(category => {
-              const hasWorkersWithOwnId = activeCategoryIds.has(category.id);
-              const hasWorkersWithMasterId = category.masterCategoryId ? activeCategoryIds.has(category.masterCategoryId) : false;
-              return hasWorkersWithOwnId || hasWorkersWithMasterId;
-            });
-            
-            if (__DEV__) {
-              console.log(`✅ Categories shown: ${categoriesWithWorkers.length}/${allCategories.length}`);
-            }
-
-            setServiceCategories(categoriesWithWorkers);
+            // Store raw categories immediately; we filter using the already-running
+            // active services listener (see activeServiceCategoryIdsKey effect below).
+            setRawServiceCategories(allCategories);
             setLoading(false);
-            if (__DEV__) console.log('✅ Real-time categories updated:', categoriesWithWorkers.length);
+            if (__DEV__) console.log('✅ Real-time categories updated (raw):', allCategories.length);
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
             setError('Failed to load services. Pull down to refresh.');
             setServiceCategories([]);
+            setRawServiceCategories([]);
             setLoading(false);
           }
         },
@@ -380,6 +363,7 @@ export default function ServicesScreen() {
           console.error('❌ Real-time listener error for categories:', error);
           setError('Connection lost. Pull down to refresh.');
           setServiceCategories([]);
+          setRawServiceCategories([]);
           setLoading(false);
         }
       );
@@ -391,6 +375,40 @@ export default function ServicesScreen() {
     };
   }, []);
 
+  // Filter categories using already-loaded active services category IDs.
+  // Avoid blocking UI on an extra Firestore query.
+  useEffect(() => {
+    if (!Array.isArray(rawServiceCategories) || rawServiceCategories.length === 0) {
+      setServiceCategories([]);
+      return;
+    }
+
+    const ids = activeServiceCategoryIdsKey
+      ? activeServiceCategoryIdsKey.split('|').filter(Boolean)
+      : [];
+
+    // While active services are still loading, show raw categories to keep the screen responsive.
+    if (ids.length === 0) {
+      setServiceCategories(rawServiceCategories);
+      return;
+    }
+
+    const activeSet = new Set(ids);
+    const filtered = rawServiceCategories.filter((category) => {
+      const hasWorkersWithOwnId = activeSet.has(category.id);
+      const hasWorkersWithMasterId = category.masterCategoryId
+        ? activeSet.has(String(category.masterCategoryId))
+        : false;
+      return hasWorkersWithOwnId || hasWorkersWithMasterId;
+    });
+
+    if (__DEV__) {
+      console.log(`✅ Categories shown: ${filtered.length}/${rawServiceCategories.length}`);
+    }
+
+    setServiceCategories(filtered);
+  }, [activeServiceCategoryIdsKey, rawServiceCategories]);
+
   // Real-time listener for active services (used for client-side search to avoid Firestore index requirements).
   useEffect(() => {
     const unsub = firestore()
@@ -400,10 +418,18 @@ export default function ServicesScreen() {
         (snap) => {
           const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
           setAllServices(items);
+
+          const ids = new Set<string>();
+          for (const s of items) {
+            const catId = String((s as any)?.categoryMasterId || '').trim();
+            if (catId) ids.add(catId);
+          }
+          setActiveServiceCategoryIdsKey(Array.from(ids).sort().join('|'));
         },
         (err) => {
           if (__DEV__) console.log('❌ Failed to listen to active services', err);
           setAllServices([]);
+          setActiveServiceCategoryIdsKey('');
         }
       );
 
@@ -508,6 +534,34 @@ export default function ServicesScreen() {
       unsubscribe();
     };
   }, []);
+
+  // Non-blocking image prefetch (helps first paint/scroll feel faster).
+  useEffect(() => {
+    try {
+      const urls: string[] = [];
+      for (const b of serviceBanners || []) {
+        const u = String((b as any)?.imageUrl || '').trim();
+        if (u && (u.startsWith('http://') || u.startsWith('https://'))) urls.push(u);
+      }
+      for (const c of serviceCategories || []) {
+        const u = String((c as any)?.imageUrl || '').trim();
+        if (u && (u.startsWith('http://') || u.startsWith('https://'))) urls.push(u);
+      }
+
+      const unique = Array.from(new Set(urls)).slice(0, 20);
+      const key = unique.join('|');
+      if (!key || prefetchedUrlsRef.current === key) return;
+      prefetchedUrlsRef.current = key;
+
+      // expo-image exposes Image.prefetch, but TS typing varies across versions.
+      const prefetch = (ExpoImage as any)?.prefetch;
+      if (typeof prefetch === 'function') {
+        prefetch(unique);
+      }
+    } catch {
+      // ignore
+    }
+  }, [serviceBanners, serviceCategories]);
 
   // Real-time listener for live bookings
   useEffect(() => {

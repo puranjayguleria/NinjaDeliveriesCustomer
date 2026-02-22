@@ -173,7 +173,9 @@ export default function AllServicesScreen() {
       </View>
 
       <View style={styles.categoryInfo}>
-        <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.categoryName} numberOfLines={3} ellipsizeMode="tail">
+          {item.name}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -335,7 +337,8 @@ const styles = StyleSheet.create({
 
   gridRow: {
     paddingHorizontal: 16,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 8,
     marginBottom: 16,
   },
 
@@ -343,7 +346,7 @@ const styles = StyleSheet.create({
     width: '31%',
     backgroundColor: 'white',
     borderRadius: 16,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
     elevation: 2,
     shadowColor: '#000',
@@ -359,13 +362,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 6,
-    paddingBottom: 10,
+    paddingTop: 0,
+    paddingBottom: 8,
   },
 
   categoryIconContainer: {
     width: '100%',
-    height: 92,
+    height: 104,
     borderRadius: 16,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
@@ -381,15 +384,17 @@ const styles = StyleSheet.create({
 
   categoryInfo: {
     width: '100%',
-    paddingHorizontal: 6,
-    paddingBottom: 10,
+    paddingHorizontal: 4,
+    paddingBottom: 6,
   },
 
   categoryName: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: '#0f172a',
     textAlign: 'center',
+    lineHeight: 14,
+    minHeight: 42,
   },
   
   emptyContainer: {

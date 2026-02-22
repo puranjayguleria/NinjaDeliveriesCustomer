@@ -193,6 +193,10 @@ export interface ServiceBooking {
 }
 
 export class FirestoreService {
+  private static categoryImageMapCache: Map<string, string> | null = null;
+  private static categoryImageMapLoadedAt = 0;
+  private static categoryImageMapInFlight: Promise<Map<string, string>> | null = null;
+  private static readonly CATEGORY_IMAGE_CACHE_TTL_MS = 10 * 60 * 1000;
   /**
    * Check if a category has any package-based services
    * Returns true if category has at least one service with packages
@@ -404,40 +408,51 @@ export class FirestoreService {
         return;
       }
       
-      // Fetch all documents from service_categories_master
-      const masterSnapshot = await firestore()
-        .collection('service_categories_master')
-        .get();
+      const now = Date.now();
+      const cacheFresh =
+        FirestoreService.categoryImageMapCache &&
+        (now - FirestoreService.categoryImageMapLoadedAt) < FirestoreService.CATEGORY_IMAGE_CACHE_TTL_MS;
 
-  if (__DEV__) console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+      const loadImageMap = async (): Promise<Map<string, string>> => {
+        // Coalesce concurrent calls.
+        if (FirestoreService.categoryImageMapInFlight) return FirestoreService.categoryImageMapInFlight;
 
-      if (masterSnapshot.size === 0) {
-        if (__DEV__) console.log('⚠️ WARNING: service_categories_master collection is empty!');
-      }
+        FirestoreService.categoryImageMapInFlight = (async () => {
+          const masterSnapshot = await firestore()
+            .collection('service_categories_master')
+            .get();
 
-      // Create a map of category names to images for efficient lookup
-      const imageMap = new Map<string, string>();
-      
-      masterSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.name && data.imageUrl) {
-          // Store both exact name and lowercase name for flexible matching
-          imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
-          // Extremely noisy on startup; keep off by default.
-          // If you need it again, wrap with a dedicated debug flag.
-          // if (__DEV__) console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
-        } else {
-          if (__DEV__) {
-            console.log(`⚠️ Master category missing name or imageUrl:`, {
-              hasName: !!data.name,
-              hasImageUrl: !!data.imageUrl,
-              docId: doc.id,
-            });
+          if (__DEV__) console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+
+          if (masterSnapshot.size === 0) {
+            if (__DEV__) console.log('⚠️ WARNING: service_categories_master collection is empty!');
           }
-        }
-      });
 
-      if (__DEV__) console.log(`🔍 Image map has ${imageMap.size} entries`);
+          const imageMap = new Map<string, string>();
+          masterSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.name && data.imageUrl) {
+              imageMap.set(String(data.name).toLowerCase().trim(), String(data.imageUrl));
+            }
+          });
+
+          FirestoreService.categoryImageMapCache = imageMap;
+          FirestoreService.categoryImageMapLoadedAt = Date.now();
+          if (__DEV__) console.log(`🔍 Image map has ${imageMap.size} entries`);
+
+          return imageMap;
+        })();
+
+        try {
+          return await FirestoreService.categoryImageMapInFlight;
+        } finally {
+          FirestoreService.categoryImageMapInFlight = null;
+        }
+      };
+
+      const imageMap = cacheFresh
+        ? (FirestoreService.categoryImageMapCache as Map<string, string>)
+        : await loadImageMap();
 
       // Match categories with their images
       let imagesFound = 0;

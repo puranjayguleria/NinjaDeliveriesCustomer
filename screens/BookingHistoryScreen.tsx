@@ -61,10 +61,6 @@ export default function BookingHistoryScreen() {
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<{id: string, serviceName: string, totalPrice?: number} | null>(null);
 
-  // TEST ONLY: allow deleting bookings regardless of status.
-  // Keep this OFF by default and remove later.
-  const [testAllowDeleteAnyStatus, setTestAllowDeleteAnyStatus] = useState(false);
-
   // Expand/collapse grouped rows (plan group or time slot group)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
@@ -517,7 +513,6 @@ export default function BookingHistoryScreen() {
   };
 
   const canDeleteBooking = (b: ServiceBooking) => {
-    if (testAllowDeleteAnyStatus) return true;
     const s = normalizeStatus((b as any)?.status);
     // Safety: allow only non-finalized bookings from the client UI.
     // If you want to allow deleting completed/confirmed, we can extend this list.
@@ -582,33 +577,6 @@ export default function BookingHistoryScreen() {
     );
   };
 
-  const confirmDeleteAllVisible = () => {
-    if (!testAllowDeleteAnyStatus) {
-      Alert.alert('Not enabled', 'Enable “Test delete” first.');
-      return;
-    }
-
-    const toDelete = groupedBookings.flatMap((g: any) => (Array.isArray(g?.bookings) ? g.bookings : []));
-    const uniq = new Map<string, ServiceBooking>();
-    toDelete.forEach((b: any) => {
-      const id = String(b?.id || '');
-      if (id) uniq.set(id, b);
-    });
-    const list = Array.from(uniq.values());
-
-    Alert.alert(
-      'Delete ALL bookings?',
-      `This will delete ${list.length} booking(s) from your account (current filter: ${activeFilter}).\n\nThis is for testing only.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete all',
-          style: 'destructive',
-          onPress: () => deleteBookings(list),
-        },
-      ]
-    );
-  };
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -812,33 +780,6 @@ export default function BookingHistoryScreen() {
             </View>
           </View>
         </View>
-
-        {__DEV__ && (
-          <TouchableOpacity
-            style={[styles.devDeleteBadge, testAllowDeleteAnyStatus && styles.devDeleteBadgeActive]}
-            onPress={() => {
-              Alert.alert(
-                'Test delete',
-                testAllowDeleteAnyStatus
-                  ? 'Test delete is ON. You can delete ANY status incl. Unknown.'
-                  : 'Enable test delete? This will allow deleting ANY booking status (testing only).',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: testAllowDeleteAnyStatus ? 'Turn off' : 'Turn on',
-                    style: 'destructive',
-                    onPress: () => setTestAllowDeleteAnyStatus((v) => !v),
-                  },
-                ]
-              );
-            }}
-          >
-            <Ionicons name={testAllowDeleteAnyStatus ? 'bug' : 'bug-outline'} size={16} color={testAllowDeleteAnyStatus ? '#991B1B' : '#64748B'} />
-            <Text style={[styles.devDeleteText, testAllowDeleteAnyStatus && styles.devDeleteTextActive]}>
-              Test delete
-            </Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Main Content: Sidebar + Bookings */}
@@ -937,18 +878,6 @@ export default function BookingHistoryScreen() {
               })}
             </View>
           </View>
-
-          {__DEV__ && testAllowDeleteAnyStatus && bookings.length > 0 && (
-            <View style={styles.deleteAllBar}>
-              <Text style={styles.deleteAllHint} numberOfLines={2}>
-                Test delete ON • Unknown statuses allowed
-              </Text>
-              <TouchableOpacity style={styles.deleteAllBtn} onPress={confirmDeleteAllVisible}>
-                <Ionicons name="trash" size={16} color="#fff" />
-                <Text style={styles.deleteAllBtnText}>Delete all</Text>
-              </TouchableOpacity>
-            </View>
-          )}
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#3b82f6" />
@@ -1151,31 +1080,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Dev-only: test delete toggle
-  devDeleteBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-  },
-  devDeleteBadgeActive: {
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  devDeleteText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  devDeleteTextActive: {
-    color: '#991B1B',
-  },
-
   headerSpacer: {
     width: 20,
   },
@@ -1347,43 +1251,6 @@ const styles = StyleSheet.create({
   bookingsContainer: {
     flex: 1,
     backgroundColor: "#f8fafc",
-  },
-
-  // Dev-only: delete-all bar
-  deleteAllBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 10,
-    marginTop: 10,
-    marginBottom: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  deleteAllHint: {
-    flex: 1,
-    marginRight: 10,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#991B1B',
-  },
-  deleteAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#EF4444',
-  },
-  deleteAllBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#fff',
   },
 
   filterContainer: {
