@@ -20,8 +20,8 @@ export default function RazorpayWebView() {
   const lastReloadAtRef = useRef<number>(0);
 
   // IMPORTANT:
-  // This screen is used in multiple stacks. Some show a native header/back button.
-  // To avoid double-back UI, we do not render our own back button inside the screen.
+  // In this app, navigators typically hide the native header for this screen.
+  // So we render a small in-screen header with a back button.
 
   const log = (...args: any[]) => {
     if (__DEV__) console.log("🌐[RZPWebView]", ...args);
@@ -433,6 +433,13 @@ true;
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Payment</Text>
+          <View style={styles.backButton} />
+        </View>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={64} color="#ef4444" />
           <Text style={styles.errorTitle}>Connection Error</Text>
@@ -452,91 +459,93 @@ true;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Loading Overlay */}
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingContent}>
-            <ActivityIndicator size="large" color="#059669" />
-            <Text style={styles.loadingText}>Loading secure payment...</Text>
-            <Text style={styles.loadingSubtext}>Please wait while we prepare your payment</Text>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Payment</Text>
+        <View style={styles.backButton} />
+      </View>
+
+      <View style={styles.body}>
+        {/* Loading Overlay (only covers WebView area, not the header) */}
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingContent}>
+              <ActivityIndicator size="large" color="#059669" />
+              <Text style={styles.loadingText}>Loading secure payment...</Text>
+              <Text style={styles.loadingSubtext}>Please wait while we prepare your payment</Text>
+            </View>
           </View>
-        </View>
-      )}
-      
-      {/* WebView */}
-      <WebView
-        ref={webViewRef}
-        key={webViewKey}
-        source={{ html: razorpayHTML }}
-        onMessage={handleMessage}
-        onLoadEnd={() => {
-          setLoading(false);
-          injectDomProbe();
-        }}
-        onError={handleError}
-        onNavigationStateChange={(navState) => {
-          const url = String(navState?.url || '');
-          lastNavUrlRef.current = url || 'about:blank';
-        }}
-        setSupportMultipleWindows={false}
-        onOpenWindow={(event) => {
-          const targetUrl = String(event?.nativeEvent?.targetUrl || "");
-          log("open_window", { url: targetUrl });
+        )}
 
-          // Razorpay sometimes opens internal iframe srcdoc in a new window.
-          // If we don't handle this, iOS may try to open it via Linking and show:
-          // "Unable to open URL: about:srcdoc ... LSApplicationQueriesSchemes".
-          if (targetUrl.startsWith("about:")) {
-            log("open_window_block_about", { url: targetUrl });
-            return;
-          }
+        {/* WebView */}
+        <WebView
+          ref={webViewRef}
+          key={webViewKey}
+          source={{ html: razorpayHTML }}
+          onMessage={handleMessage}
+          onLoadEnd={() => {
+            setLoading(false);
+            injectDomProbe();
+          }}
+          onError={handleError}
+          onNavigationStateChange={(navState) => {
+            const url = String(navState?.url || '');
+            lastNavUrlRef.current = url || 'about:blank';
+          }}
+          setSupportMultipleWindows={false}
+          onOpenWindow={(event) => {
+            const targetUrl = String(event?.nativeEvent?.targetUrl || "");
+            log("open_window", { url: targetUrl });
 
-          // Only open external for known UPI/payment app schemes.
-          const didOpenExternal = maybeOpenExternal(targetUrl);
-          if (!didOpenExternal) {
-            log("open_window_ignored", { url: targetUrl });
-          }
-        }}
-        onShouldStartLoadWithRequest={(req) => {
-          const url = String(req?.url || "");
+            // Razorpay sometimes opens internal iframe srcdoc in a new window.
+            if (targetUrl.startsWith("about:")) {
+              log("open_window_block_about", { url: targetUrl });
+              return;
+            }
 
-          // WebView uses about:* internally on iOS.
-          // Allow all about:* (e.g., about:blank, about:srcdoc) which are internal to the WebView.
-          if (url.startsWith("about:")) {
-            log("nav_allow_about", { url });
-            return true;
-          }
+            const didOpenExternal = maybeOpenExternal(targetUrl);
+            if (!didOpenExternal) {
+              log("open_window_ignored", { url: targetUrl });
+            }
+          }}
+          onShouldStartLoadWithRequest={(req) => {
+            const url = String(req?.url || "");
 
-          // Allow the initial checkout html and normal web content.
-          if (url.startsWith("http://") || url.startsWith("https://")) {
-            return true;
-          }
+            if (url.startsWith("about:")) {
+              log("nav_allow_about", { url });
+              return true;
+            }
 
-          if (url.startsWith("data:") || url.startsWith("blob:")) {
-            return true;
-          }
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+              return true;
+            }
 
-          if (url.startsWith("tel:") || url.startsWith("mailto:")) {
-            maybeOpenExternal(url);
+            if (url.startsWith("data:") || url.startsWith("blob:")) {
+              return true;
+            }
+
+            if (url.startsWith("tel:") || url.startsWith("mailto:")) {
+              maybeOpenExternal(url);
+              return false;
+            }
+
+            if (maybeOpenExternal(url)) {
+              return false;
+            }
+
+            log("nav_block_unknown", { url });
             return false;
-          }
-
-          // For UPI / intent links, try opening externally.
-          if (maybeOpenExternal(url)) {
-            return false;
-          }
-
-          // Block any other unknown schemes.
-          log("nav_block_unknown", { url });
-          return false;
-        }}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={false}
-        style={styles.webview}
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-      />
+          }}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={false}
+          style={styles.webview}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -545,6 +554,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+  },
+  body: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

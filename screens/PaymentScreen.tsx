@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
 
@@ -81,7 +83,7 @@ export default function PaymentScreen() {
   const isMultipleBookings = bookings && Array.isArray(bookings);
   const isAddOn = isAddOnPayment && addOnServices && Array.isArray(addOnServices);
   const finalAmount = isAddOn ? totalAmount : (isMultipleBookings ? totalAmount : amount);
-  const selectedPaymentMethod = isAddOn ? "online" : (isMultipleBookings ? paymentMethod : "cash");
+  const selectedPaymentMethod: "online" = "online";
 
   console.log("PaymentScreen processed:", { 
     isMultipleBookings, 
@@ -204,79 +206,46 @@ export default function PaymentScreen() {
     }, 60000);
 
     try {
-      if (selectedPaymentMethod === "online") {
-        console.log("Processing online payment for services...");
-        
-        // WebView Razorpay is always available
-        const razorpayWorking = isRazorpayReallyAvailable();
-        console.log("WebView Razorpay check result:", razorpayWorking);
-        
-        if (!razorpayWorking) {
-          console.log("WebView not available - fallback to cash");
-          setLoading(false);
-          
-          Alert.alert(
-            "⚠️ Payment Gateway Unavailable",
-            "Online payment is temporarily unavailable. Please use cash payment.",
-            [
-              { 
-                text: "Cancel", 
-                style: "cancel"
-              },
-              {
-                text: "Use Cash Payment",
-                onPress: () => {
-                  console.log("Switching to cash payment");
-                  proceedWithCashPayment();
-                }
-              }
-            ]
-          );
-          return;
-        }
-        
-        // Real Razorpay WebView flow
-        console.log("Razorpay WebView is working, proceeding with real payment...");
-        try {
-          // Create Razorpay order
-          console.log("Creating Razorpay order...");
-          const serverOrder = await createRazorpayOrderOnServer(finalAmount);
-          
-          // Open Razorpay WebView
-          console.log("Opening Razorpay WebView...");
-          await openRazorpayWebView(
-            serverOrder.keyId,
-            serverOrder.orderId,
-            serverOrder.amountPaise,
-            serverOrder.currency
-          );
+      console.log("Processing online payment for services...");
 
-          // The next screen (WebView) handles success/failure callbacks.
-          // Keep loader on briefly to cover navigation lag, then let it go.
-          setTimeout(() => setLoading(false), 800);
-          
-          // Navigation will be handled by WebView callbacks
-        } catch (razorpayError: any) {
-          console.error("Razorpay WebView error:", razorpayError);
+      const razorpayWorking = isRazorpayReallyAvailable();
+      console.log("WebView Razorpay check result:", razorpayWorking);
 
-          setLoading(false);
-          
-          Alert.alert(
-            "Payment Gateway Error",
-            "The payment gateway encountered an error. Would you like to try cash payment instead?",
-            [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Use Cash Payment",
-                onPress: () => proceedWithCashPayment()
-              }
-            ]
-          );
-          return;
-        }
-      } else {
-        console.log("Processing cash payment for services...");
-        proceedWithCashPayment();
+      if (!razorpayWorking) {
+        setLoading(false);
+        Alert.alert(
+          "⚠️ Payment Gateway Unavailable",
+          "Online payment is temporarily unavailable. Please try again.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      console.log("Razorpay WebView is working, proceeding with real payment...");
+      try {
+        console.log("Creating Razorpay order...");
+        const serverOrder = await createRazorpayOrderOnServer(finalAmount);
+
+        console.log("Opening Razorpay WebView...");
+        await openRazorpayWebView(
+          serverOrder.keyId,
+          serverOrder.orderId,
+          serverOrder.amountPaise,
+          serverOrder.currency
+        );
+
+        // The next screen (WebView) handles success/failure callbacks.
+        // Keep loader on briefly to cover navigation lag, then let it go.
+        setTimeout(() => setLoading(false), 800);
+      } catch (razorpayError: any) {
+        console.error("Razorpay WebView error:", razorpayError);
+        setLoading(false);
+        Alert.alert(
+          "Payment Gateway Error",
+          "The payment gateway encountered an error. Please try again.",
+          [{ text: "OK" }]
+        );
+        return;
       }
     } catch (error: any) {
       console.error("Payment error:", error);
@@ -290,23 +259,10 @@ export default function PaymentScreen() {
         message = error.message;
       }
       
-      Alert.alert("Payment Failed", message, [
-        { text: "OK" },
-        {
-          text: "Use Cash Payment",
-          onPress: () => {
-            proceedWithCashPayment();
-          }
-        }
-      ]);
+      Alert.alert("Payment Failed", message, [{ text: "OK" }]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const proceedWithCashPayment = () => {
-    console.log("Processing cash payment...");
-    navigateToBookingDetails("pending");
   };
 
   const navigateToBookingDetails = (paymentStatus: string) => {
@@ -352,215 +308,219 @@ export default function PaymentScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Scrollable Content */}
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Secure Booking Banner */}
-        <View style={styles.bannerCard}>
-          <Image
-            source={require("../assets/images/icon_home_repair.png")}
-            style={styles.bannerIcon}
-          />
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          Payment
+        </Text>
+        <View style={styles.headerSpacer} />
+      </View>
 
-          <View style={styles.bannerContent}>
-            <Text style={styles.bannerTitle}>
-              {isAddOn ? "Secure Add-On Payment" : "Secure Your Service"}
-            </Text>
-            <Text style={styles.bannerSub}>
-              {isAddOn 
-                ? "Pay securely for additional services"
-                : (selectedPaymentMethod === "online" 
-                  ? "Pay securely to confirm your booking"
-                  : "Pay when service is completed"
-                )
-              }
-            </Text>
+      <View style={styles.contentArea}>
+        {/* Scrollable Content */}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Secure Booking Banner */}
+          <View style={styles.bannerCard}>
+            <Image
+              source={require("../assets/images/icon_home_repair.png")}
+              style={styles.bannerIcon}
+            />
+
+            <View style={styles.bannerContent}>
+              <Text style={styles.bannerTitle}>
+                {isAddOn ? "Secure Add-On Payment" : "Secure Your Service"}
+              </Text>
+              <Text style={styles.bannerSub}>
+                {isAddOn
+                  ? "Pay securely for additional services"
+                  : "Pay securely to confirm your booking"}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        {/* Booking Summary */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>
-            {isAddOn ? "Add-On Services" : "Booking Summary"}
-          </Text>
+          {/* Booking Summary */}
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>
+              {isAddOn ? "Add-On Services" : "Booking Summary"}
+            </Text>
 
-          {isAddOn ? (
-            // Add-on services display
-            <>
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Original Booking</Text>
-                <Text style={styles.value}>{serviceName || "Service"}</Text>
-              </View>
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Service Provider</Text>
-                <Text style={styles.value}>{companyName || "Service Provider"}</Text>
-              </View>
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Additional Services</Text>
-                <Text style={styles.value}>{addOnServices?.length || 0} service{(addOnServices?.length || 0) > 1 ? 's' : ''}</Text>
-              </View>
-
-              {addOnServices?.map((service: any, index: number) => (
-                <View key={index} style={styles.serviceItem}>
-                  <Text style={styles.serviceTitle}>+ {service.name}</Text>
-                  <Text style={styles.servicePrice}>₹{service.price}</Text>
+            {isAddOn ? (
+              // Add-on services display
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Original Booking</Text>
+                  <Text style={styles.value}>{serviceName || "Service"}</Text>
                 </View>
-              ))}
 
-              <View style={styles.summaryDivider} />
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Original Amount</Text>
-                <Text style={styles.value}>₹{originalAmount || 0}</Text>
-              </View>
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Add-On Total</Text>
-                <Text style={styles.value}>₹{addOnTotal || 0}</Text>
-              </View>
-            </>
-          ) : isMultipleBookings ? (
-            // Multiple bookings display
-            <>
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Services</Text>
-                <Text style={styles.value}>{bookings.length} service{bookings.length > 1 ? 's' : ''}</Text>
-              </View>
-
-              {bookings.slice(0, 3).map((booking: any, index: number) => (
-                <View key={index} style={styles.serviceItem}>
-                  <Text style={styles.serviceTitle}>{booking.serviceTitle}</Text>
-                  <Text style={styles.serviceCompany}>{booking.company.name}</Text>
-                  <Text style={styles.servicePrice}>₹{booking.totalPrice}</Text>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Service Provider</Text>
+                  <Text style={styles.value}>{companyName || "Service Provider"}</Text>
                 </View>
-              ))}
 
-              {bookings.length > 3 && (
-                <Text style={styles.moreServices}>
-                  +{bookings.length - 3} more service{bookings.length - 3 > 1 ? 's' : ''}
-                </Text>
-              )}
-            </>
-          ) : (
-            // Single booking display (old format)
-            <>
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Service</Text>
-                <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
-              </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Additional Services</Text>
+                  <Text style={styles.value}>
+                    {addOnServices?.length || 0} service{(addOnServices?.length || 0) > 1 ? "s" : ""}
+                  </Text>
+                </View>
 
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Issues</Text>
-                <Text style={styles.valueMultiline}>{displayIssues}</Text>
-              </View>
+                {addOnServices?.map((service: any, index: number) => (
+                  <View key={index} style={styles.serviceItem}>
+                    <Text style={styles.serviceTitle}>+ {service.name}</Text>
+                    <Text style={styles.servicePrice}>₹{service.price}</Text>
+                  </View>
+                ))}
 
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Provider</Text>
-                <Text style={styles.value}>
-                  {company?.name || "Service Provider"}
-                </Text>
-              </View>
+                <View style={styles.summaryDivider} />
 
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Time Slot</Text>
-                <Text style={styles.value}>{time || "N/A"}</Text>
-              </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Original Amount</Text>
+                  <Text style={styles.value}>₹{originalAmount || 0}</Text>
+                </View>
 
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Date</Text>
-                <Text style={styles.value}>{date || "Today"}</Text>
-              </View>
-            </>
-          )}
-        </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Add-On Total</Text>
+                  <Text style={styles.value}>₹{addOnTotal || 0}</Text>
+                </View>
+              </>
+            ) : isMultipleBookings ? (
+              // Multiple bookings display
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Services</Text>
+                  <Text style={styles.value}>
+                    {bookings.length} service{bookings.length > 1 ? "s" : ""}
+                  </Text>
+                </View>
 
-        {/* Payment Details */}
-        <View style={styles.paymentCard}>
-          <Text style={styles.paymentTitle}>Payment Details</Text>
+                {bookings.slice(0, 3).map((booking: any, index: number) => (
+                  <View key={index} style={styles.serviceItem}>
+                    <Text style={styles.serviceTitle}>{booking.serviceTitle}</Text>
+                    <Text style={styles.serviceCompany}>{booking.company.name}</Text>
+                    <Text style={styles.servicePrice}>₹{booking.totalPrice}</Text>
+                  </View>
+                ))}
 
-          {/* Debug Info */}
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>🔧 Debug Info:</Text>
-            <Text style={styles.debugText}>Payment System: Real Razorpay WebView</Text>
-            <Text style={styles.debugText}>WebView Status: Available</Text>
-            <Text style={styles.debugText}>Payment Type: {isAddOn ? "Add-On Payment" : "Regular Payment"}</Text>
-            <Text style={styles.debugText}>Payment Method: {selectedPaymentMethod}</Text>
-            <Text style={styles.debugText}>Amount: ₹{finalAmount}</Text>
-            <Text style={styles.successText}>✅ Real Razorpay WebView ready</Text>
+                {bookings.length > 3 && (
+                  <Text style={styles.moreServices}>
+                    +{bookings.length - 3} more service{bookings.length - 3 > 1 ? "s" : ""}
+                  </Text>
+                )}
+              </>
+            ) : (
+              // Single booking display (old format)
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Service</Text>
+                  <Text style={styles.value}>{serviceTitle || "N/A"}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Issues</Text>
+                  <Text style={styles.valueMultiline}>{displayIssues}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Provider</Text>
+                  <Text style={styles.value}>{company?.name || "Service Provider"}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Time Slot</Text>
+                  <Text style={styles.value}>{time || "N/A"}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Date</Text>
+                  <Text style={styles.value}>{date || "Today"}</Text>
+                </View>
+              </>
+            )}
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Payment Method</Text>
-            <Text style={styles.value}>
-              {selectedPaymentMethod === "online" ? "Pay Online" : "Cash on Service"}
-            </Text>
-          </View>
+          {/* Payment Details */}
+          <View style={styles.paymentCard}>
+            <Text style={styles.paymentTitle}>Payment Details</Text>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Service Charge</Text>
-            <Text style={styles.amount}>₹{finalAmount || 0}</Text>
-          </View>
+            {/* Debug Info */}
+            <View style={styles.debugInfo}>
+              <Text style={styles.debugText}>🔧 Debug Info:</Text>
+              <Text style={styles.debugText}>Payment System: Real Razorpay WebView</Text>
+              <Text style={styles.debugText}>WebView Status: Available</Text>
+              <Text style={styles.debugText}>
+                Payment Type: {isAddOn ? "Add-On Payment" : "Regular Payment"}
+              </Text>
+              <Text style={styles.debugText}>Payment Method: {selectedPaymentMethod}</Text>
+              <Text style={styles.debugText}>Amount: ₹{finalAmount}</Text>
+              <Text style={styles.successText}>✅ Real Razorpay WebView ready</Text>
+            </View>
 
-          {(selectedPaymentMethod === "online" || isAddOn) && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.label}>Payment Method</Text>
+              <Text style={styles.value}>Pay Online</Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.label}>Service Charge</Text>
+              <Text style={styles.amount}>₹{finalAmount || 0}</Text>
+            </View>
+
             <View style={styles.summaryRow}>
               <Text style={styles.label}>Amount to Pay Now</Text>
               <Text style={styles.advanceAmount}>₹{finalAmount || 0}</Text>
             </View>
-          )}
 
-          <View style={styles.noteBox}>
-            <Text style={styles.noteTitle}>
-              {(selectedPaymentMethod === "online" || isAddOn) ? "💳 Online Payment" : "💰 Cash Payment"}
-            </Text>
-            <Text style={styles.noteText}>
-              {(selectedPaymentMethod === "online" || isAddOn)
-                ? "Pay securely using UPI (Google Pay, PhonePe, Paytm), Cards, or Net Banking via Razorpay. Your payment is protected."
-                : "Pay the service provider directly when the service is completed."
-              }
-            </Text>
+            <View style={styles.noteBox}>
+              <Text style={styles.noteTitle}>💳 Online Payment</Text>
+              <Text style={styles.noteText}>
+                Pay securely using UPI (Google Pay, PhonePe, Paytm), Cards, or Net Banking via Razorpay. Your payment is protected.
+              </Text>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
 
-      {/* Fixed Bottom Section */}
-      <View style={styles.bottomSection}>
-        <TouchableOpacity 
-          style={[styles.payBtn, loading && styles.disabledBtn]} 
-          activeOpacity={0.7} 
-          onPress={handlePayment}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.payBtnText}>
-              {(selectedPaymentMethod === "online" || isAddOn)
-                ? `Pay ₹${finalAmount || 0} & Confirm`
-                : `Confirm Booking - ₹${finalAmount || 0}`
-              }
-            </Text>
-          )}
-        </TouchableOpacity>
+        {/* Fixed Bottom Section */}
+        <View style={styles.bottomSection}>
+          <TouchableOpacity
+            style={[styles.payBtn, loading && styles.disabledBtn]}
+            activeOpacity={0.7}
+            onPress={handlePayment}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.payBtnText}>
+                {`Pay ₹${finalAmount || 0} & Confirm`}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Loading Overlay (does not block header) */}
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#4CAF50" />
+              <Text style={styles.loadingText}>
+                Processing payment...
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
-
-      {/* Loading Overlay */}
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4CAF50" />
-            <Text style={styles.loadingText}>
-              {(selectedPaymentMethod === "online" || isAddOn) ? "Processing payment..." : "Confirming booking..."}
-            </Text>
-          </View>
-        </View>
-      )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -568,6 +528,38 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: "#fafbfc",
+  },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e9ecef",
+  },
+
+  backButton: {
+    padding: 8,
+  },
+
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    textAlign: "center",
+    marginRight: 40,
+  },
+
+  headerSpacer: {
+    width: 40,
+  },
+
+  contentArea: {
+    flex: 1,
+    position: "relative",
   },
 
   // Scroll View

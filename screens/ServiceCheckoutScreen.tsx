@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import { useLocationContext } from "../context/LocationContext";
 import { FirestoreService } from "../services/firestoreService";
@@ -52,7 +53,7 @@ export default function ServiceCheckoutScreen() {
   // Ensure displayed total comes from the actual services (preserve package/company prices)
   const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("online");
+  const paymentMethod = "online" as const;
   const [loading, setLoading] = useState(false);
   // const [showConfirmModal, setShowConfirmModal] = useState(false);
   // Legacy state (kept to avoid risky refactors). Online flow now uses a server-side intent
@@ -187,18 +188,7 @@ export default function ServiceCheckoutScreen() {
           
           // Restore form state
           if (restoreState.notes) setNotes(restoreState.notes);
-          if (restoreState.paymentMethod) {
-            const raw = restoreState.paymentMethod;
-            const candidate =
-              typeof raw === 'string'
-                ? raw
-                : (raw && typeof raw === 'object')
-                  ? (raw.value || raw.method || raw.type || raw.key || '')
-                  : '';
-
-            const normalized = String(candidate).trim().toLowerCase();
-            setPaymentMethod(normalized === 'online' ? 'online' : 'cash');
-          }
+          // Payment method is online-only.
           
           // If there was a pending address, restore it and show the modal
           if (restoreState.pendingAddress) {
@@ -428,33 +418,8 @@ export default function ServiceCheckoutScreen() {
     if (!canDeliver) return;
     
     // Handle payment based on selected method
-    if (paymentMethod === 'online') {
-      if (__DEV__) console.log(`💳 Processing online payment...`);
-      await handleRazorpayPayment();
-    } else if (paymentMethod === 'cash') {
-      if (__DEV__) console.log(`💵 Processing cash on service booking...`);
-      // For cash payment, create bookings directly with pending payment status
-      const bookingIds = await createBookings("pending");
-      
-      // Clear cart immediately after successful booking creation
-      if (__DEV__) console.log("🧹 Clearing service cart after successful cash booking...");
-      clearCart();
-      
-      // Navigate to booking confirmation screen with first booking ID
-      if (bookingIds && bookingIds.length > 0) {
-        if (__DEV__) console.log(`🧭 Navigating to BookingConfirmation screen with booking ID: ${bookingIds[0]}`);
-        navigation.reset({
-          index: 0,
-          routes: [
-            { name: 'ServicesHome' },
-            { 
-              name: 'BookingConfirmation', 
-              params: { bookingId: bookingIds[0] } 
-            }
-          ],
-        });
-      }
-    }
+    if (__DEV__) console.log(`💳 Processing online payment...`);
+    await handleRazorpayPayment();
   };
 
   const handleRazorpayPayment = async () => {
@@ -851,13 +816,7 @@ export default function ServiceCheckoutScreen() {
       }
       
       Alert.alert("Payment Failed", message, [
-        { text: "OK" },
-        {
-          text: "Use Cash Payment",
-          onPress: () => {
-            setPaymentMethod("cash");
-          }
-        }
+        { text: "OK" }
       ]);
       setLoading(false);
     }
@@ -1097,7 +1056,7 @@ export default function ServiceCheckoutScreen() {
             lat: (location.lat !== null && location.lat !== undefined) ? location.lat : null,
             lng: (location.lng !== null && location.lng !== undefined) ? location.lng : null,
           },
-          paymentMethod: paymentMethod || "cash",
+          paymentMethod: "online",
           paymentStatus: paymentStatus || "pending",
           notes: notes || "",
           // Add additional fields that website might expect
@@ -1132,12 +1091,12 @@ export default function ServiceCheckoutScreen() {
             const paymentData = {
               bookingId,
               amount: service.totalPrice || 0,
-              paymentMethod: paymentMethod as 'cash' | 'online',
+              paymentMethod: 'online' as const,
               paymentStatus: paymentStatus as 'pending' | 'paid',
               serviceName: service.serviceTitle || 'Service',
               companyName: service.company?.name || 'Service Provider',
               companyId: service.company?.companyId || service.company?.id || '',
-              paymentGateway: paymentMethod === 'online' ? 'razorpay' as const : 'cash' as const,
+              paymentGateway: 'razorpay' as const,
               // Add Razorpay details if payment was successful
               ...(razorpayResponse && paymentStatus === 'paid' && {
                 transactionId: razorpayResponse.razorpay_payment_id || '',
@@ -1244,7 +1203,7 @@ export default function ServiceCheckoutScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
       <View style={styles.header}>
         <TouchableOpacity
@@ -1363,12 +1322,8 @@ export default function ServiceCheckoutScreen() {
           <Text style={styles.sectionTitle}>Payment Method</Text>
           
           {/* Online Payment Option */}
-          <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === 'online' && styles.paymentOptionSelected
-            ]}
-            onPress={() => setPaymentMethod('online')}
+          <View
+            style={[styles.paymentOption, styles.paymentOptionSelected]}
           >
             <View style={styles.paymentOptionContent}>
               <View style={styles.onlineIconContainer}>
@@ -1379,50 +1334,15 @@ export default function ServiceCheckoutScreen() {
                 <Text style={styles.paymentOptionSubtext}>UPI, Cards, Net Banking via Razorpay</Text>
               </View>
             </View>
-            {paymentMethod === 'online' && (
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-            )}
-          </TouchableOpacity>
+            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+          </View>
 
-          {/* Cash on Service Option */}
-          <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === 'cash' && styles.paymentOptionSelected
-            ]}
-            onPress={() => setPaymentMethod('cash')}
-          >
-            <View style={styles.paymentOptionContent}>
-              <View style={styles.cashIconContainer}>
-                <Ionicons name="cash-outline" size={24} color="#FF9800" />
-              </View>
-              <View style={styles.paymentOptionTextContainer}>
-                <Text style={styles.paymentOptionText}>Cash on Service</Text>
-                <Text style={styles.paymentOptionSubtext}>Pay after service completion</Text>
-              </View>
-            </View>
-            {paymentMethod === 'cash' && (
-              <Ionicons name="checkmark-circle" size={24} color="#FF9800" />
-            )}
-          </TouchableOpacity>
-
-          {paymentMethod === 'online' && (
-            <View style={styles.paymentNote}>
-              <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
-              <Text style={styles.paymentNoteText}>
-                Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
-              </Text>
-            </View>
-          )}
-
-          {paymentMethod === 'cash' && (
-            <View style={styles.cashPaymentNote}>
-              <Ionicons name="information-circle-outline" size={16} color="#FF9800" />
-              <Text style={styles.cashPaymentNoteText}>
-                Pay in cash to the service provider after the service is completed. Please keep exact change ready.
-              </Text>
-            </View>
-          )}
+          <View style={styles.paymentNote}>
+            <Ionicons name="information-circle-outline" size={16} color="#2563eb" />
+            <Text style={styles.paymentNoteText}>
+              Secure payment via Razorpay. Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, and Net Banking.
+            </Text>
+          </View>
         </View>
 
         <View style={styles.summarySection}>
@@ -1467,7 +1387,7 @@ export default function ServiceCheckoutScreen() {
         
         <TouchableOpacity
           style={[
-            paymentMethod === 'cash' ? styles.cashPayButton : styles.proceedButton,
+            styles.proceedButton,
             loading && styles.proceedButtonDisabled
           ]}
           onPress={handleProceedToPayment}
@@ -1477,13 +1397,8 @@ export default function ServiceCheckoutScreen() {
             <View style={styles.loadingContainer}>
               <ActivityIndicator color="#fff" size="small" />
               <Text style={styles.proceedButtonText}>
-                {paymentMethod === 'cash' ? 'Creating Booking...' : 'Processing Payment...'}
+                Processing Payment...
               </Text>
-            </View>
-          ) : paymentMethod === 'cash' ? (
-            <View style={styles.cashPayButtonContent}>
-              <Ionicons name="cash-outline" size={20} color="#fff" />
-              <Text style={styles.proceedButtonText}>Confirm Booking</Text>
             </View>
           ) : (
             <View style={styles.onlinePayButtonContent}>
@@ -1613,7 +1528,7 @@ export default function ServiceCheckoutScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
