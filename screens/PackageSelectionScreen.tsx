@@ -501,7 +501,7 @@ export default function PackageSelectionScreen() {
           selectedIssueIds: [selectedService.id],
           selectedIssues: [selectedService],
           selectedPackage: chosenPkg,
-          selectedCompanyId: selectedCompanyGroup.company?.id,
+          selectedCompanyId: selectedCompanyGroup.company?.companyId || selectedCompanyGroup.company?.id,
           selectedCompany: selectedCompanyGroup.company,
           isPackageBooking: true,
           allCategories,

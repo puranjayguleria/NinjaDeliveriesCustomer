@@ -74,6 +74,15 @@ export default function SelectDateTimeScreen() {
 
   const { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues, fromServiceServices, isPackageBooking, selectedPackage: selectedPackageParam, serviceQuantities, selectedCompanyId, selectedCompany } = route.params;
 
+  // Availability checks depend on `service_workers.companyId`.
+  // Some navigation flows pass a Firestore doc id in `selectedCompanyId`, so prefer `selectedCompany.companyId` when present.
+  const availabilityCompanyId = useMemo(() => {
+    const fromObj = (selectedCompany as any)?.companyId;
+    if (typeof fromObj === 'string' && fromObj.trim().length > 0) return fromObj.trim();
+    if (typeof selectedCompanyId === 'string' && selectedCompanyId.trim().length > 0) return selectedCompanyId.trim();
+    return '';
+  }, [selectedCompany, selectedCompanyId]);
+
   // (Removed noisy route param debug logs)
 
   const selectedPackage = useMemo(() => {
@@ -112,9 +121,23 @@ export default function SelectDateTimeScreen() {
   const needsDayConfirmation = isRecurringPackage && (isMonthlyPackage || selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
   const isDailyPackage = isPackageBooking === true && (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily');
 
+  const parseISOToLocalDate = (dateISO: string): Date | null => {
+    try {
+      const [yStr, mStr, dStr] = String(dateISO).split('-');
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const d = Number(dStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+      const dt = new Date(y, m - 1, d);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    } catch {
+      return null;
+    }
+  };
+
   const isSundayISO = (dateISO: string) => {
-    const d = new Date(dateISO);
-    if (Number.isNaN(d.getTime())) return false;
+    const d = parseISOToLocalDate(dateISO);
+    if (!d) return false;
     return d.getDay() === 0;
   };
 
@@ -204,8 +227,8 @@ export default function SelectDateTimeScreen() {
 
   const buildRecurringSchedule = (anchorDateISO: string, timeSlotLabel: string): RecurringSchedule | null => {
     if (!anchorDateISO || !timeSlotLabel) return null;
-    const d = new Date(anchorDateISO);
-    if (Number.isNaN(d.getTime())) return null;
+    const d = parseISOToLocalDate(anchorDateISO);
+    if (!d) return null;
     return {
       unit: selectedPackageUnit,
       anchorDate: anchorDateISO,
@@ -217,8 +240,7 @@ export default function SelectDateTimeScreen() {
   const generateRecurringOccurrences = (anchorDateISO: string, timeSlotLabel: string): SelectedSlot[] => {
     const out: SelectedSlot[] = [];
     if (!anchorDateISO || !timeSlotLabel) return out;
-    const anchor = new Date(anchorDateISO);
-    if (Number.isNaN(anchor.getTime())) return out;
+    if (!parseISOToLocalDate(anchorDateISO)) return out;
 
     if (selectedPackageUnit === 'day' || selectedPackageUnit === 'daily') {
       // Day-unit packages are single-day bookings.
@@ -853,7 +875,7 @@ export default function SelectDateTimeScreen() {
     }
     // Service flow => compute "any company available" (existing behavior)
     // Package flow => compute availability for the chosen company only (new behavior)
-    const filterToCompanyId = isServiceFlow ? null : (typeof selectedCompanyId === 'string' ? selectedCompanyId : null);
+    const filterToCompanyId = isServiceFlow ? null : (availabilityCompanyId ? availabilityCompanyId : null);
     if (!isServiceFlow && !filterToCompanyId) {
       // No chosen company yet; don't block user with a broken availability map.
       return;
@@ -1053,7 +1075,7 @@ export default function SelectDateTimeScreen() {
     if (!isRecurringPackage) return;
     if (!anchorDateISO || !slotLabel) return;
 
-    const companyId = typeof selectedCompanyId === 'string' ? selectedCompanyId : null;
+    const companyId = availabilityCompanyId ? availabilityCompanyId : null;
     if (!companyId) return;
 
   const reqId = ++seriesValidationReqRef.current;
@@ -1336,7 +1358,7 @@ export default function SelectDateTimeScreen() {
             }
           }
         }
-      } catch (error) {
+      } catch {
         if (fetchSlotsReqRef.current !== reqId) return;
         setAvailabilityError('Could not load time slots. Showing default slots.');
         // Fallback to default slots on error
@@ -1384,7 +1406,7 @@ export default function SelectDateTimeScreen() {
     if (isRecurringPackage) return;
 
     // In package flow, we need a chosen company to compute availability.
-    if (!isServiceFlow && !selectedCompanyId) return;
+    if (!isServiceFlow && !availabilityCompanyId) return;
 
     // IMPORTANT:
     // Do NOT wipe the entire availability map on every date change.
@@ -1397,7 +1419,7 @@ export default function SelectDateTimeScreen() {
   }, [
     isServiceFlow,
     selectedDate,
-    selectedCompanyId,
+    availabilityCompanyId,
     selectedIssueIdsKey,
     slotsKey,
     // Service-flow slot-key semantics depend on duration + atomic granularity.
@@ -1419,7 +1441,7 @@ export default function SelectDateTimeScreen() {
     }
     if (!selectedDate) return;
     if (!Array.isArray(slots) || slots.length === 0) return;
-    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    if (!availabilityCompanyId) return;
 
     // Only validate once the user has chosen a slot.
     if (typeof time !== 'string' || time.trim().length === 0) {
@@ -1463,7 +1485,7 @@ export default function SelectDateTimeScreen() {
 
     computeSeriesAvailabilityForTimeSlot(selectedDate, time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecurringPackage, selectedDate, selectedCompanyId, time, selectedIssueIdsKey, needsDayConfirmation, confirmedPlanDatesKey, selectedPackageUnit]);
+  }, [isRecurringPackage, selectedDate, availabilityCompanyId, time, selectedIssueIdsKey, needsDayConfirmation, confirmedPlanDatesKey, selectedPackageUnit]);
 
   // Weekly plan UX improvement:
   // As soon as the user picks a time slot:
@@ -1474,7 +1496,7 @@ export default function SelectDateTimeScreen() {
     if (!needsDayConfirmation) return;
     const isWeekly = (selectedPackageUnit === 'week' || selectedPackageUnit === 'weekly');
     if (!isWeekly) return;
-    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    if (!availabilityCompanyId) return;
     const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
     if (!slotLabel) return;
 
@@ -1512,7 +1534,7 @@ export default function SelectDateTimeScreen() {
             const dateISO = String(windowISOs[idx++]);
             try {
               const res: any = await FirestoreService.checkCompanyWorkerAvailability(
-                selectedCompanyId,
+                availabilityCompanyId,
                 dateISO,
                 slotLabel,
                 selectedIds,
@@ -1564,7 +1586,7 @@ export default function SelectDateTimeScreen() {
 
         // Only set seriesAvailability when we have 7 picked days.
         setSeriesAvailability(picked.length === 7 ? { [slotLabel]: true } : {});
-      } catch (e: any) {
+      } catch {
         if (seriesValidationReqRef.current !== reqId) return;
         setAvailabilityError('Could not validate weekly availability. Please try again.');
       } finally {
@@ -1573,7 +1595,7 @@ export default function SelectDateTimeScreen() {
         }
       }
     })();
-  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIdsKey, serviceTitle]);
+  }, [needsDayConfirmation, selectedPackageUnit, availabilityCompanyId, time, selectedDate, selectedIssueIdsKey, serviceTitle]);
 
   // Monthly plan UX improvement:
   // As soon as the user picks a time slot, pre-check a window (next 30 days)
@@ -1583,7 +1605,7 @@ export default function SelectDateTimeScreen() {
     const unitLower = String(selectedPackageUnit || '').toLowerCase();
     const isMonthly = (unitLower === 'month' || unitLower === 'monthly');
     if (!isMonthly) return;
-    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    if (!availabilityCompanyId) return;
     const slotLabel = (typeof time === 'string' && time.trim().length > 0) ? time : null;
     if (!slotLabel) return;
 
@@ -1595,7 +1617,7 @@ export default function SelectDateTimeScreen() {
 
     // Validate a longer window so a user can deselect a picked day
     // and still have other available days to choose from.
-    const windowDays = 30;
+    const windowDays = 60;
     // IMPORTANT: monthly verification should be stable while the user is tapping dates.
     // Cache a per-slot a3chor date so we don't re-verify the whole window on every tap.
     const stableAnchor = (() => {
@@ -1648,7 +1670,7 @@ export default function SelectDateTimeScreen() {
             const dateISO = String(windowISOs[i]);
             try {
               const res: any = await FirestoreService.checkCompanyWorkerAvailability(
-                selectedCompanyId,
+                  availabilityCompanyId,
                 dateISO,
                 slotLabel,
                 selectedIds,
@@ -1710,7 +1732,7 @@ export default function SelectDateTimeScreen() {
         if (picked.length === 30) {
           setSeriesAvailability({ [slotLabel]: true });
         }
-      } catch (e: any) {
+      } catch {
         if (monthlyPrecheckReqRef.current !== reqId) return;
         setAvailabilityError('Could not validate monthly availability. Please try again.');
       } finally {
@@ -1720,7 +1742,7 @@ export default function SelectDateTimeScreen() {
         }
       }
     })();
-  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedIssueIdsKey, serviceTitle]);
+  }, [needsDayConfirmation, selectedPackageUnit, availabilityCompanyId, time, selectedIssueIdsKey, serviceTitle]);
 
   // IMPORTANT UX:
   // For weekly/monthly "day confirmation" plans we should NEVER mutate the user's selection
@@ -1794,7 +1816,7 @@ export default function SelectDateTimeScreen() {
     if (!isDayUnitPackage) return;
     if (!selectedDate) return;
     if (!Array.isArray(slots) || slots.length === 0) return;
-    if (typeof selectedCompanyId !== 'string' || !selectedCompanyId) return;
+    if (!availabilityCompanyId) return;
 
     // If the day is only partially computed (some keys exist but others are missing),
     // the UI can get stuck showing "Verifying" for those missing slots. Recompute.
@@ -1803,7 +1825,7 @@ export default function SelectDateTimeScreen() {
 
     computeAvailabilityForDate(selectedDate, slots);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDayUnitPackage, isDayComputed, loadingAvailability, selectedCompanyId, selectedDate, slots.join('|'), slotAvailability]);
+  }, [isDayUnitPackage, isDayComputed, loadingAvailability, availabilityCompanyId, selectedDate, slots.join('|'), slotAvailability]);
 
 
 
@@ -1828,7 +1850,7 @@ export default function SelectDateTimeScreen() {
   useEffect(() => {
     if (!isDayUnitPackage) return;
     if (!Array.isArray(slots) || slots.length === 0) return;
-    if (!selectedCompanyId) return;
+    if (!availabilityCompanyId) return;
 
     let cancelled = false;
     const run = async () => {
@@ -1846,7 +1868,7 @@ export default function SelectDateTimeScreen() {
           const iso = pending[idx++];
           try {
             await computeAvailabilityForDate(iso, slots);
-          } catch (e) {
+          } catch {
             // Availability failures should not break the rest of the prefetch.
           }
         }
@@ -1859,7 +1881,7 @@ export default function SelectDateTimeScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDayUnitPackage, selectedCompanyId, slots.join('|'), dayUnitWindowISOs.join('|')]);
+  }, [isDayUnitPackage, availabilityCompanyId, slots.join('|'), dayUnitWindowISOs.join('|')]);
 
   // On entry, auto-select the earliest available day inside the next-7-day window.
   // If we can't determine availability yet, fall back to the first day in the window.
@@ -2226,7 +2248,7 @@ export default function SelectDateTimeScreen() {
           onPress={() => {
             try {
               navigation.navigate("HomeTab");
-            } catch (e) {
+            } catch {
             }
           }}
           style={styles.headerHomeBtn}
@@ -2493,14 +2515,20 @@ export default function SelectDateTimeScreen() {
                 const minISO = addDaysISO(todayISO, 1);
                 const maxISO = (isDailyPackage || isDayUnitPackage)
                   ? addDaysISO(minISO, 6)
-                  : (isMonthlyPlan ? addDaysISO(minISO, 29) : addDaysISO(minISO, 60));
+                  : (isMonthlyPlan ? addDaysISO(minISO, 59) : addDaysISO(minISO, 60));
 
-                // Only show the next month when the window crosses into it.
+                // Render all months spanned by the [minISO..maxISO] window.
                 const minMonthKey = getMonthKey(minISO);
                 const maxMonthKey = getMonthKey(maxISO);
-                // Ensure the 2nd calendar is the *immediate next month* (not a skipped month).
-                // Example: if window spans Feb..Apr, we still render Feb + Mar (enough for the boundary).
-                const monthKeys = minMonthKey === maxMonthKey ? [minMonthKey] : [minMonthKey, addMonthsKey(minMonthKey, 1)];
+                const monthKeys: string[] = [];
+                let cur = minMonthKey;
+                let guard = 0;
+                while (guard < 12) {
+                  monthKeys.push(cur);
+                  if (cur === maxMonthKey) break;
+                  cur = addMonthsKey(cur, 1);
+                  guard += 1;
+                }
 
                 const monthGrids = monthKeys.map((mk) => ({ monthKey: mk, cells: buildMonthGrid(mk) }));
 
@@ -3192,7 +3220,7 @@ export default function SelectDateTimeScreen() {
                       if (data.quantityOffers && Array.isArray(data.quantityOffers)) offersForCart = data.quantityOffers;
                     }
                   }
-                } catch (e) {
+                } catch {
                   // Non-fatal; we can still continue with whatever was passed via navigation.
                 }
               })();
