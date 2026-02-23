@@ -1038,9 +1038,9 @@ const styles = StyleSheet.create({
 
   packageCard: {
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 2,
     borderColor: "#e2e8f0",
     position: "relative",
@@ -1073,30 +1073,30 @@ const styles = StyleSheet.create({
   },
 
   packageName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "700",
     color: "#0f172a",
-    marginBottom: 12,
+    marginBottom: 6,
+    paddingRight: 32,
   },
 
   priceContainer: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginBottom: 12,
+    marginBottom: 6,
   },
+priceSymbol: {
+  fontSize: 16,
+  fontWeight: "600",
+  color: "#111827",
+  marginRight: 2,
+},
 
-  priceSymbol: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#2563eb",
-    marginRight: 2,
-  },
-
-  priceAmount: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#2563eb",
-  },
+priceAmount: {
+  fontSize: 22,
+  fontWeight: "700",
+  color: "#111827",
+},
 
   priceDuration: {
     fontSize: 16,
@@ -1112,10 +1112,10 @@ const styles = StyleSheet.create({
   },
 
   packageDescription: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#64748b",
-    marginBottom: 16,
-    lineHeight: 20,
+    marginBottom: 0,
+    lineHeight: 16,
   },
 
   featuresContainer: {
@@ -1144,11 +1144,11 @@ const styles = StyleSheet.create({
 
   checkbox: {
     position: "absolute",
-    top: 16,
-    right: 16,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    top: 10,
+    right: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: "#cbd5e1",
     alignItems: "center",
@@ -1163,7 +1163,7 @@ const styles = StyleSheet.create({
 
   checkmark: {
     color: "white",
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "700",
   },
 
@@ -1443,8 +1443,8 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    minHeight: "85%",
-    maxHeight: "85%",
+    minHeight: "70%",
+    maxHeight: "70%",
     paddingBottom: 20,
   },
 
