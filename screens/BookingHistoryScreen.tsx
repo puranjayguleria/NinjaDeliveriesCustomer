@@ -643,17 +643,7 @@ export default function BookingHistoryScreen() {
                 <View style={styles.groupCountPill}>
                   <Text style={styles.groupCountPillText}>{item.totalVisits}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <TouchableOpacity
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={() => {
-                      confirmDelete(`${unitLabel} (${item.totalVisits} visits)`, item.bookings);
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  </TouchableOpacity>
-                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
-                </View>
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
               </View>
             </View>
           </TouchableOpacity>
@@ -703,17 +693,7 @@ export default function BookingHistoryScreen() {
               <View style={styles.groupCountPill}>
                 <Text style={styles.groupCountPillText}>{count}</Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <TouchableOpacity
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  onPress={() => {
-                    confirmDelete(`${item.companyName} (${dateLabel} ${item.time})`, item.bookings);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                </TouchableOpacity>
-                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
-              </View>
+              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
             </View>
           </View>
         </TouchableOpacity>
