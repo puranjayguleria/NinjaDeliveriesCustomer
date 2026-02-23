@@ -1555,7 +1555,75 @@ export default function CompanySelectionScreen() {
                   item.price && (
                     <View style={styles.priceSection}>
                       <Text style={styles.priceLabel}>Service Price</Text>
-                      <Text style={styles.priceValue}>₹{item.price}</Text>
+                      <Text style={styles.priceValue}>
+                        ₹{(() => {
+                          // Get quantity from selectedIssues array which has quantity per service
+                          let quantity = 1;
+                          
+                          // Debug logs
+                          console.log('💰 Price Calculation Debug:', {
+                            itemId: item.id,
+                            itemServiceName: item.serviceName,
+                            itemName: (item as any)?.name,
+                            itemPrice: item.price,
+                            selectedIssuesCount: selectedIssues?.length,
+                            serviceQuantitiesKeys: serviceQuantities ? Object.keys(serviceQuantities) : []
+                          });
+                          
+                          // Try to find quantity from selectedIssues first
+                          if (Array.isArray(selectedIssues) && selectedIssues.length > 0) {
+                            const matchingService = selectedIssues.find((s: any) => 
+                              s?.id === item.id || 
+                              s?.name === item.serviceName ||
+                              s?.name === (item as any)?.name
+                            );
+                            if (matchingService && matchingService.quantity) {
+                              quantity = matchingService.quantity;
+                              console.log('✅ Found quantity from selectedIssues:', quantity);
+                            }
+                          }
+                          
+                          // Fallback: try serviceQuantities map
+                          if (quantity === 1 && serviceQuantities) {
+                            // Try different possible keys
+                            quantity = (serviceQuantities as any)?.[item.id] || 
+                                      (serviceQuantities as any)?.[item.serviceName] ||
+                                      (serviceQuantities as any)?.[(item as any)?.name] ||
+                                      1;
+                            if (quantity > 1) {
+                              console.log('✅ Found quantity from serviceQuantities:', quantity);
+                            }
+                          }
+                          
+                          const totalPrice = item.price * quantity;
+                          console.log('💰 Final calculation:', { quantity, basePrice: item.price, totalPrice });
+                          return totalPrice;
+                        })()}
+                        {(() => {
+                          // Get quantity for display
+                          let quantity = 1;
+                          
+                          if (Array.isArray(selectedIssues) && selectedIssues.length > 0) {
+                            const matchingService = selectedIssues.find((s: any) => 
+                              s?.id === item.id || 
+                              s?.name === item.serviceName ||
+                              s?.name === (item as any)?.name
+                            );
+                            if (matchingService && matchingService.quantity) {
+                              quantity = matchingService.quantity;
+                            }
+                          }
+                          
+                          if (quantity === 1 && serviceQuantities) {
+                            quantity = (serviceQuantities as any)?.[item.id] || 
+                                      (serviceQuantities as any)?.[item.serviceName] ||
+                                      (serviceQuantities as any)?.[(item as any)?.name] ||
+                                      1;
+                          }
+                          
+                          return quantity && quantity > 1 ? ` (₹${item.price} × ${quantity})` : '';
+                        })()}
+                      </Text>
                     </View>
                   )
                 )}
