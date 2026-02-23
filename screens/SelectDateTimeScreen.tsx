@@ -908,23 +908,9 @@ export default function SelectDateTimeScreen() {
           categoryId
         );
 
-        // Step 1b: keep only companies that have at least one active worker.
-        // This avoids doing expensive booking checks for companies that can't ever satisfy the slot.
-        const rawCompanyIds = (companies || []).map((c: any) => c.companyId || c.id).filter(Boolean);
-        for (const id of rawCompanyIds) {
-          try {
-            const workersSnap = await firestore()
-              .collection('service_workers')
-              .where('companyId', '==', id)
-              .where('isActive', '==', true)
-              .limit(1)
-              .get();
-            if (!workersSnap.empty) companyIds.push(id);
-          } catch {
-            // If worker check fails, keep the company (better UX than hiding everything)
-            companyIds.push(id);
-          }
-        }
+        // Note: worker/service filtering is handled inside the batched availability call.
+        // Avoid per-company worker existence queries here (huge performance win).
+        companyIds = (companies || []).map((c: any) => c.companyId || c.id).filter(Boolean);
       }
 
       if (companyIds.length === 0) {
@@ -962,38 +948,46 @@ export default function SelectDateTimeScreen() {
         setAvailabilityStatusText(`Checking ${toCompute.length} time slots…`);
       }
 
-      const maxConcurrency = 3;
-      let idx = 0;
-      const worker = async () => {
-        while (idx < toCompute.length) {
-          const current = toCompute[idx++];
-          let anyAvailable = false;
+      const timesToCheck = Array.from(new Set(toCompute.map((x) => String(x.t))));
 
-          // Small optimization: limit checks. If there are many companies, check first few first.
-          const idsToCheck = filterToCompanyId ? companyIds : companyIds.slice(0, 12);
-          for (const companyId of idsToCheck) {
-            const result = await FirestoreService.checkCompanyWorkerAvailability(
+      // Small optimization: if there are many companies, check first few first.
+      const idsToCheck = filterToCompanyId ? companyIds : companyIds.slice(0, 12);
+      const companyAvailabilityById: Record<string, Record<string, boolean>> = {};
+
+      if (availabilityReqIdRef.current === reqId) {
+        setAvailabilityStatusText(`Checking availability…`);
+      }
+
+      // Fetch per-company/day availability in parallel with a small pool.
+      const maxCompanyConcurrency = 4;
+      let companyIdx = 0;
+      const companyWorker = async () => {
+        while (companyIdx < idsToCheck.length) {
+          const companyId = idsToCheck[companyIdx++];
+          try {
+            const res = await FirestoreService.getCompanyAvailabilityForDateTimes(
               companyId,
               dateISO,
-              current.t,
+              timesToCheck,
               Array.isArray(selectedIssueIds) ? selectedIssueIds : undefined,
               serviceTitle
             );
-            if (result?.available === true) {
-              anyAvailable = true;
-              break;
-            }
+            companyAvailabilityById[companyId] = res?.availabilityByTime || {};
+          } catch {
+            companyAvailabilityById[companyId] = {};
           }
-
-          // IMPORTANT:
-          // Our UI suffix logic treats `true` as "available" and `false` as "booked".
-          // If we ever fail to compute (undefined) we should be conservative and block,
-          // BUT here we always compute a boolean; so store it explicitly.
-          next[current.key] = anyAvailable === true;
         }
       };
 
-      await Promise.all(Array.from({ length: Math.min(maxConcurrency, toCompute.length) }, () => worker()));
+      await Promise.all(
+        Array.from({ length: Math.min(maxCompanyConcurrency, idsToCheck.length) }, () => companyWorker())
+      );
+
+      // Derive per-slot "any company available" (service flow) or "chosen company" (package flow).
+      for (const current of toCompute) {
+        const anyAvailable = idsToCheck.some((cid) => companyAvailabilityById[cid]?.[current.t] === true);
+        next[current.key] = anyAvailable === true;
+      }
 
       if (availabilityReqIdRef.current === reqId) {
         if (__DEV__) {
@@ -1078,38 +1072,32 @@ export default function SelectDateTimeScreen() {
       const conflicts: string[] = [];
       let ok = true;
 
-      const maxConcurrency = 4;
       const maxConflictsToCollect = 12; // avoid huge logs/state updates; we only need enough to show red-cross markers
-      let idx = 0;
 
-      const worker = async () => {
-        while (idx < occurrences.length) {
-          const current = occurrences[idx++];
-
-          // If already not ok and we've collected enough conflicts, stop doing more network calls.
-          if (!ok && conflicts.length >= maxConflictsToCollect) return;
-
-          const result = await FirestoreService.checkCompanyWorkerAvailability(
-            companyId,
-            current.date,
-            current.time,
-            selectedIds,
-            serviceTitle
-          );
-
-          if (result?.available !== true) {
-            ok = false;
-            if (conflicts.length < maxConflictsToCollect) {
-              conflicts.push(current.date);
-            }
-          }
-        }
-      };
-
-      await Promise.race([
-        Promise.all(Array.from({ length: Math.min(maxConcurrency, occurrences.length) }, () => worker())),
+      const uniqDates = Array.from(new Set(occurrences.map((o) => String(o.date)).filter(Boolean)));
+      const batch = await Promise.race([
+        FirestoreService.getCompanyAvailabilityForDatesAtTime(
+          companyId,
+          uniqDates,
+          slotLabel,
+          selectedIds,
+          serviceTitle
+        ),
         timeoutPromise,
       ]);
+
+      const availabilityByDate = batch?.availabilityByDate || {};
+
+      for (const current of occurrences) {
+        // If already not ok and we've collected enough conflicts, stop collecting.
+        if (!ok && conflicts.length >= maxConflictsToCollect) break;
+        if (availabilityByDate[String(current.date)] !== true) {
+          ok = false;
+          if (conflicts.length < maxConflictsToCollect) {
+            conflicts.push(String(current.date));
+          }
+        }
+      }
 
       // Ignore stale completion.
       if (seriesValidationReqRef.current !== reqId) return;
@@ -1521,30 +1509,19 @@ export default function SelectDateTimeScreen() {
 
     (async () => {
       try {
-        const maxConcurrency = 4;
-
-        // Deterministic worker pool (avoids shared mutable idx/arrays races).
-        const queue = [...windowISOs];
-  const results: { dateISO: string; available: boolean }[] = [];
-
-        const worker = async () => {
-          while (queue.length > 0) {
-            const dateISO = queue.shift();
-            if (!dateISO) break;
-            const result = await FirestoreService.checkCompanyWorkerAvailability(
-              selectedCompanyId,
-              dateISO,
-              slotLabel,
-              selectedIds,
-              serviceTitle
-            );
-            results.push({ dateISO, available: result?.available === true });
-          }
-        };
-
-        await Promise.all(
-          Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker())
+        const batch = await FirestoreService.getCompanyAvailabilityForDatesAtTime(
+          selectedCompanyId,
+          windowISOs,
+          slotLabel,
+          selectedIds,
+          serviceTitle
         );
+
+        const availabilityByDate = batch?.availabilityByDate || {};
+        const results: { dateISO: string; available: boolean }[] = windowISOs.map((dateISO) => ({
+          dateISO,
+          available: availabilityByDate[String(dateISO)] === true,
+        }));
 
         if (seriesValidationReqRef.current !== reqId) return;
 
@@ -1641,28 +1618,19 @@ export default function SelectDateTimeScreen() {
 
     (async () => {
       try {
-        const maxConcurrency = 5;
-        const queue = [...windowISOs];
-        const results: { dateISO: string; available: boolean }[] = [];
-
-        const worker = async () => {
-          while (queue.length > 0) {
-            const dateISO = queue.shift();
-            if (!dateISO) break;
-            const result = await FirestoreService.checkCompanyWorkerAvailability(
-              selectedCompanyId,
-              dateISO,
-              slotLabel,
-              selectedIds,
-              serviceTitle
-            );
-            results.push({ dateISO, available: result?.available === true });
-          }
-        };
-
-        await Promise.all(
-          Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker())
+        const batch = await FirestoreService.getCompanyAvailabilityForDatesAtTime(
+          selectedCompanyId,
+          windowISOs,
+          slotLabel,
+          selectedIds,
+          serviceTitle
         );
+
+        const availabilityByDate = batch?.availabilityByDate || {};
+        const results: { dateISO: string; available: boolean }[] = windowISOs.map((dateISO) => ({
+          dateISO,
+          available: availabilityByDate[String(dateISO)] === true,
+        }));
 
         if (monthlyPrecheckReqRef.current !== reqId) return;
 

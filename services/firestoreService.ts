@@ -195,6 +195,553 @@ export interface ServiceBooking {
 }
 
 export class FirestoreService {
+  private static readonly ACTIVE_BOOKING_STATUSES: string[] = [
+    'assigned',
+    'started',
+    'pending',
+    'confirmed',
+    'in_progress',
+  ];
+
+  private static serviceServicesIdsCache = new Map<string, { ids: string[]; ts: number }>();
+  private static readonly SERVICE_SERVICES_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  private static buildServiceServicesCacheKey(companyId: string, serviceIds: string[], serviceTitle?: string) {
+    return `${String(companyId).trim()}|${serviceIds.map((s) => String(s).trim()).sort().join(',')}|${String(serviceTitle || '').trim()}`;
+  }
+
+  private static async resolveServiceServicesIdsForCompany(
+    companyId: string,
+    serviceIds: string[] | undefined,
+    serviceTitle?: string
+  ): Promise<string[]> {
+    const serviceIdsArray = Array.isArray(serviceIds) ? serviceIds : [];
+    const key = this.buildServiceServicesCacheKey(companyId, serviceIdsArray, serviceTitle);
+    const now = Date.now();
+    const cached = this.serviceServicesIdsCache.get(key);
+    if (cached && now - cached.ts < this.SERVICE_SERVICES_CACHE_TTL_MS) {
+      return cached.ids;
+    }
+
+    let serviceServicesIds: string[] = [];
+
+    // Fast-path: if upstream already passes service_services doc IDs, accept those.
+    if (serviceIdsArray.length > 0) {
+      try {
+        const snapshotByIds = await firestore()
+          .collection('service_services')
+          .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+          .get();
+        if (!snapshotByIds.empty) {
+          snapshotByIds.forEach((doc) => serviceServicesIds.push(doc.id));
+        }
+      } catch {
+        // ignore, fall back
+      }
+    }
+
+    if (serviceServicesIds.length === 0 && serviceTitle) {
+      try {
+        // 1) Exact title match in service_services for this company.
+        const serviceServicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('companyId', '==', companyId)
+          .where('name', '==', serviceTitle)
+          .get();
+        serviceServicesSnapshot.forEach((doc) => serviceServicesIds.push(doc.id));
+
+        // 2) If still not found, map app_services -> service_services using adminServiceId/serviceKey.
+        if (serviceServicesIds.length === 0 && serviceIdsArray.length > 0) {
+          const appSnapshot = await firestore()
+            .collection('app_services')
+            .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+            .get();
+
+          const adminServiceIds = new Set<string>();
+          const serviceKeys = new Set<string>();
+          const appNames = new Set<string>();
+
+          appSnapshot.forEach((doc) => {
+            const d: any = doc.data();
+            if (d?.adminServiceId) adminServiceIds.add(String(d.adminServiceId));
+            if (d?.serviceKey) serviceKeys.add(String(d.serviceKey));
+            if (d?.name) appNames.add(String(d.name));
+          });
+
+          for (const adminServiceId of adminServiceIds) {
+            const ssSnap = await firestore()
+              .collection('service_services')
+              .where('companyId', '==', companyId)
+              .where('adminServiceId', '==', adminServiceId)
+              .get();
+            ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+          }
+
+          if (serviceServicesIds.length === 0) {
+            for (const key of serviceKeys) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('serviceKey', '==', key)
+                .get();
+              ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+            }
+          }
+
+          if (serviceServicesIds.length === 0) {
+            for (const name of appNames) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('name', '==', name)
+                .get();
+              ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    serviceServicesIds = Array.from(new Set(serviceServicesIds));
+    this.serviceServicesIdsCache.set(key, { ids: serviceServicesIds, ts: now });
+    return serviceServicesIds;
+  }
+
+  static async getCompanyAvailabilityForDateTimes(
+    companyId: string,
+    date: string,
+    times: string[],
+    serviceIds?: string[] | string,
+    serviceTitle?: string
+  ): Promise<{
+    totalWorkers: number;
+    availabilityByTime: Record<string, boolean>;
+  }> {
+    const uniqTimes = Array.from(new Set((Array.isArray(times) ? times : []).map((t) => String(t))));
+    const availabilityByTime: Record<string, boolean> = {};
+
+    if (!companyId || !date || uniqTimes.length === 0) {
+      return { totalWorkers: 0, availabilityByTime };
+    }
+
+    // Normalize service IDs.
+    const serviceIdsArray: string[] = !serviceIds
+      ? []
+      : Array.isArray(serviceIds)
+        ? serviceIds.map((x) => String(x))
+        : [String(serviceIds)];
+
+    // Resolve service_services IDs once.
+    const serviceServicesIds = await this.resolveServiceServicesIdsForCompany(
+      String(companyId),
+      serviceIdsArray,
+      serviceTitle
+    );
+
+    // Fetch active workers once.
+    const allWorkersSnapshot = await firestore()
+      .collection('service_workers')
+      .where('companyId', '==', companyId)
+      .where('isActive', '==', true)
+      .get();
+
+    const relevantWorkers: string[] = [];
+    allWorkersSnapshot.docs.forEach((doc) => {
+      const worker: any = doc.data();
+      const workerId = doc.id;
+
+      let hasService = false;
+
+      if (serviceServicesIds.length > 0) {
+        hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+      }
+
+      if (!hasService && serviceIdsArray.length > 0) {
+        hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+      }
+
+      if (!hasService && serviceTitle) {
+        const title = String(serviceTitle).toLowerCase();
+        hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+          const raw = String(s || '').toLowerCase();
+          return raw.includes(title) || title.includes(raw);
+        });
+      }
+
+      if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+        hasService = true;
+      }
+
+      if (hasService) relevantWorkers.push(workerId);
+    });
+
+    const totalRelevantWorkers = relevantWorkers.length;
+    if (totalRelevantWorkers === 0) {
+      uniqTimes.forEach((t) => (availabilityByTime[t] = false));
+      return { totalWorkers: 0, availabilityByTime };
+    }
+
+    // Pull bookings once for the company/day; derive per-time counts.
+    // If this query fails in some environments (e.g. index), fall back to the existing per-time query.
+    try {
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('companyId', '==', String(companyId))
+        .where('date', '==', String(date))
+        .get();
+
+      const activeStatuses = new Set(this.ACTIVE_BOOKING_STATUSES);
+      const busyWorkersByTime = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByTime = new Map<string, number>();
+
+      bookingsSnapshot.docs.forEach((doc) => {
+        const booking: any = doc.data();
+        const status = String(booking?.status || '');
+        if (!activeStatuses.has(status)) return;
+
+        const t = String(booking?.time || '').trim();
+        if (!t) return;
+
+        const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+        // Count unassigned active bookings for this same company + service.
+        if (!workerId) {
+          const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+          const matchesById = bookingServiceIds.length > 0 && serviceServicesIds.some((id) => bookingServiceIds.includes(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+          if (matchesById || matchesByName) {
+            unassignedActiveForServiceByTime.set(t, (unassignedActiveForServiceByTime.get(t) || 0) + 1);
+          }
+        }
+
+        // Track busy workers only if relevant.
+        if (workerId && relevantWorkers.includes(workerId)) {
+          if (!busyWorkersByTime.has(t)) busyWorkersByTime.set(t, new Set());
+          busyWorkersByTime.get(t)!.add(workerId);
+        }
+      });
+
+      for (const t of uniqTimes) {
+        const busyCount = busyWorkersByTime.get(t)?.size || 0;
+        const unassigned = unassignedActiveForServiceByTime.get(t) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByTime[t] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByTime };
+    } catch {
+      // Fallback: run the existing single-time check, but without repeating worker/service mapping.
+      // Keep it lightly parallel to avoid long sequential waits.
+      const next: Record<string, boolean> = {};
+      const maxConcurrency = 4;
+      let idx = 0;
+      const worker = async () => {
+        while (idx < uniqTimes.length) {
+          const t = uniqTimes[idx++];
+          try {
+            const res = await this.checkCompanyWorkerAvailability(companyId, date, t, serviceIdsArray, serviceTitle);
+            next[t] = res?.available === true;
+          } catch {
+            next[t] = false;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(maxConcurrency, uniqTimes.length) }, () => worker()));
+      return { totalWorkers: totalRelevantWorkers, availabilityByTime: next };
+    }
+  }
+
+  static async getCompanyAvailabilityForDatesAtTime(
+    companyId: string,
+    dates: string[],
+    time: string,
+    serviceIds?: string[] | string,
+    serviceTitle?: string
+  ): Promise<{
+    totalWorkers: number;
+    availabilityByDate: Record<string, boolean>;
+  }> {
+    const uniqDates = Array.from(new Set((Array.isArray(dates) ? dates : []).map((d) => String(d)).filter(Boolean)));
+    const availabilityByDate: Record<string, boolean> = {};
+
+    if (!companyId || !time || uniqDates.length === 0) {
+      return { totalWorkers: 0, availabilityByDate };
+    }
+
+    const serviceIdsArray: string[] = !serviceIds
+      ? []
+      : Array.isArray(serviceIds)
+        ? serviceIds.map((x) => String(x))
+        : [String(serviceIds)];
+    const serviceIdSet = new Set(serviceIdsArray.map((x) => String(x)));
+
+    const serviceServicesIds = await this.resolveServiceServicesIdsForCompany(
+      String(companyId),
+      serviceIdsArray,
+      serviceTitle
+    );
+    const serviceServicesIdSet = new Set(serviceServicesIds.map((x) => String(x)));
+
+    const allWorkersSnapshot = await firestore()
+      .collection('service_workers')
+      .where('companyId', '==', companyId)
+      .where('isActive', '==', true)
+      .get();
+
+    const relevantWorkers: string[] = [];
+    allWorkersSnapshot.docs.forEach((doc) => {
+      const worker: any = doc.data();
+      const workerId = doc.id;
+
+      let hasService = false;
+
+      if (serviceServicesIds.length > 0) {
+        hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+      }
+
+      if (!hasService && serviceIdsArray.length > 0) {
+        hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+      }
+
+      if (!hasService && serviceTitle) {
+        const title = String(serviceTitle).toLowerCase();
+        hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+          const raw = String(s || '').toLowerCase();
+          return raw.includes(title) || title.includes(raw);
+        });
+      }
+
+      if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+        hasService = true;
+      }
+
+      if (hasService) relevantWorkers.push(workerId);
+    });
+
+    const totalRelevantWorkers = relevantWorkers.length;
+    if (totalRelevantWorkers === 0) {
+      uniqDates.forEach((d) => (availabilityByDate[d] = false));
+      return { totalWorkers: 0, availabilityByDate };
+    }
+
+    const relevantWorkerSet = new Set(relevantWorkers.map((x) => String(x)));
+    const activeStatuses = new Set(this.ACTIVE_BOOKING_STATUSES);
+    const targetTime = String(time).trim();
+
+    // Fast path: one bookings query for the whole date window (works well for monthly precheck).
+    // If this requires an index in some environments, fall back to per-date reads.
+    const sortedDates = [...uniqDates].sort();
+    const minDate = sortedDates[0];
+    const maxDate = sortedDates[sortedDates.length - 1];
+    const dateSet = new Set(uniqDates.map((d) => String(d)));
+
+    try {
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('companyId', '==', String(companyId))
+        .where('date', '>=', String(minDate))
+        .where('date', '<=', String(maxDate))
+        .get();
+
+      const busyWorkersByDate = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByDate = new Map<string, number>();
+
+      bookingsSnapshot.docs.forEach((doc) => {
+        const booking: any = doc.data();
+        const status = String(booking?.status || '');
+        if (!activeStatuses.has(status)) return;
+
+        const t = String(booking?.time || '').trim();
+        if (!t || t !== targetTime) return;
+
+        const dateISO = String(booking?.date || '').trim();
+        if (!dateISO || !dateSet.has(dateISO)) return;
+
+        const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+        if (!workerId) {
+          const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+          const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+          const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+          if (matchesAll || matchesById || matchesByName) {
+            unassignedActiveForServiceByDate.set(dateISO, (unassignedActiveForServiceByDate.get(dateISO) || 0) + 1);
+          }
+        }
+
+        if (workerId && relevantWorkerSet.has(workerId)) {
+          if (!busyWorkersByDate.has(dateISO)) busyWorkersByDate.set(dateISO, new Set());
+          busyWorkersByDate.get(dateISO)!.add(workerId);
+        }
+      });
+
+      for (const dateISO of uniqDates) {
+        const busyCount = busyWorkersByDate.get(dateISO)?.size || 0;
+        const unassigned = unassignedActiveForServiceByDate.get(dateISO) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByDate[dateISO] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+    } catch {
+      if (__DEV__) {
+        console.warn('[FirestoreService] getCompanyAvailabilityForDatesAtTime: range query failed; trying date-in chunks');
+      }
+    }
+
+    // Fallback A: chunked `in` queries (<=10) to reduce reads for monthly/weekly windows.
+    try {
+      const busyWorkersByDate = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByDate = new Map<string, number>();
+      const chunkSize = 10;
+
+      for (let i = 0; i < sortedDates.length; i += chunkSize) {
+        const chunk = sortedDates.slice(i, i + chunkSize);
+        if (chunk.length === 0) continue;
+
+        const snap = await firestore()
+          .collection('service_bookings')
+          .where('companyId', '==', String(companyId))
+          .where('date', 'in', chunk)
+          .get();
+
+        snap.docs.forEach((doc) => {
+          const booking: any = doc.data();
+          const status = String(booking?.status || '');
+          if (!activeStatuses.has(status)) return;
+
+          const t = String(booking?.time || '').trim();
+          if (!t || t !== targetTime) return;
+
+          const dateISO = String(booking?.date || '').trim();
+          if (!dateISO || !dateSet.has(dateISO)) return;
+
+          const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+          if (!workerId) {
+            const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+            const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+              ? bookingServiceIdsRaw.map((x: any) => String(x))
+              : bookingServiceIdsRaw
+                ? [String(bookingServiceIdsRaw)]
+                : [];
+
+            const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+            const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+            const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+            const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+            if (matchesAll || matchesById || matchesByName) {
+              unassignedActiveForServiceByDate.set(dateISO, (unassignedActiveForServiceByDate.get(dateISO) || 0) + 1);
+            }
+          }
+
+          if (workerId && relevantWorkerSet.has(workerId)) {
+            if (!busyWorkersByDate.has(dateISO)) busyWorkersByDate.set(dateISO, new Set());
+            busyWorkersByDate.get(dateISO)!.add(workerId);
+          }
+        });
+      }
+
+      for (const dateISO of uniqDates) {
+        const busyCount = busyWorkersByDate.get(dateISO)?.size || 0;
+        const unassigned = unassignedActiveForServiceByDate.get(dateISO) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByDate[dateISO] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+    } catch {
+      if (__DEV__) {
+        console.warn('[FirestoreService] getCompanyAvailabilityForDatesAtTime: date-in query failed; falling back to per-date reads');
+      }
+    }
+
+    const maxConcurrency = 4;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < uniqDates.length) {
+        const dateISO = uniqDates[idx++];
+        try {
+          const bookingsSnapshot = await firestore()
+            .collection('service_bookings')
+            .where('companyId', '==', String(companyId))
+            .where('date', '==', String(dateISO))
+            .get();
+
+          const busyWorkers = new Set<string>();
+          let unassignedForService = 0;
+
+          bookingsSnapshot.docs.forEach((doc) => {
+            const booking: any = doc.data();
+            const status = String(booking?.status || '');
+            if (!activeStatuses.has(status)) return;
+
+            const t = String(booking?.time || '').trim();
+            if (!t || t !== targetTime) return;
+
+            const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+            if (!workerId) {
+              const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+              const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+                ? bookingServiceIdsRaw.map((x: any) => String(x))
+                : bookingServiceIdsRaw
+                  ? [String(bookingServiceIdsRaw)]
+                  : [];
+
+              const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+              const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+              const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+              const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+              if (matchesAll || matchesById || matchesByName) {
+                unassignedForService += 1;
+              }
+            }
+
+            if (workerId && relevantWorkerSet.has(workerId)) {
+              busyWorkers.add(workerId);
+            }
+          });
+
+          const busyCount = busyWorkers.size;
+          const consumedRaw = busyCount + unassignedForService;
+          const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+          const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+          availabilityByDate[dateISO] = availableWorkers > 0;
+        } catch {
+          availabilityByDate[dateISO] = false;
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(maxConcurrency, uniqDates.length) }, () => worker()));
+    return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+  }
   private static categoryImageMapCache: Map<string, string> | null = null;
   private static categoryImageMapLoadedAt = 0;
   private static categoryImageMapInFlight: Promise<Map<string, string>> | null = null;
@@ -3396,7 +3943,7 @@ export class FirestoreService {
       let totalRating = 0;
       let count = 0;
 
-      ratingsSnapshot.docs.forEach(doc => {
+      ratingsSnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         if (typeof data.rating === 'number' && data.rating > 0) {
           totalRating += data.rating;
