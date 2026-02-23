@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   Image,
+  ImageBackground,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -233,7 +234,11 @@ export default function AllServicesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={require('../assets/serviceBG.png')}
+      style={styles.container}
+      resizeMode="cover"
+    >
       <FlatList
         data={filteredCategories}
         keyExtractor={(item) => item.id}
@@ -250,7 +255,7 @@ export default function AllServicesScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
-    </View>
+    </ImageBackground>
   );
 }
 
