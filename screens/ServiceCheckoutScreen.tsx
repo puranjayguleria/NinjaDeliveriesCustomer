@@ -593,23 +593,72 @@ export default function ServiceCheckoutScreen() {
       try {
         const selectedAddress = getSelectedAddress();
 
+        const normalizeWorkName = (raw: any, fallback: string) => {
+          if (raw == null) return fallback;
+          if (typeof raw === 'string') {
+            const s = raw.trim();
+            return s.length > 0 ? s : fallback;
+          }
+          if (Array.isArray(raw)) {
+            const parts = raw
+              .map((x) => {
+                if (typeof x === 'string') return x;
+                if (x && typeof x === 'object') return (x as any).name || (x as any).title || '';
+                return '';
+              })
+              .filter(Boolean);
+            return parts.length > 0 ? parts.join(', ') : fallback;
+          }
+          if (typeof raw === 'object') {
+            const n = (raw as any).name || (raw as any).title;
+            if (typeof n === 'string' && n.trim().length > 0) return n.trim();
+          }
+          return fallback;
+        };
+
+        // The server finalize step creates the `service_bookings` doc from this draft.
+        // Ensure all fields are plain JSON (no objects that serialize as "[object Object]").
+        let resolvedCustomerName: string | undefined = selectedAddress?.userName || undefined;
+        let resolvedCustomerPhone: string | undefined = selectedAddress?.userPhone || user.phoneNumber || undefined;
+        if (!resolvedCustomerName || !resolvedCustomerPhone) {
+          try {
+            const currentUser = await FirestoreService.getCurrentUser();
+            if (!resolvedCustomerName) {
+              resolvedCustomerName =
+                currentUser?.name ||
+                (currentUser as any)?.displayName ||
+                (currentUser as any)?.fullName ||
+                undefined;
+            }
+            if (!resolvedCustomerPhone) {
+              resolvedCustomerPhone =
+                currentUser?.phone ||
+                (currentUser as any)?.phoneNumber ||
+                user.phoneNumber ||
+                undefined;
+            }
+          } catch {
+            // Ignore and fall back to address/auth values
+          }
+        }
+
         const draftRaw = {
           // Keep as plain JSON (no functions / class instances)
           customerId: user.uid,
-          customerName: selectedAddress?.userName || undefined,
-          customerPhone: selectedAddress?.userPhone || user.phoneNumber || undefined,
+          customerName: resolvedCustomerName,
+          customerPhone: resolvedCustomerPhone,
           customerAddress: selectedAddress?.fullAddress || location.address || "",
           // Store cart snapshot for server-side booking creation
           services: (services || []).map((service: any) => ({
             serviceId: service?.id,
             serviceName: service?.serviceTitle,
-            workName: Array.isArray(service?.issues) && service.issues.length
-              ? service.issues.join(", ")
-              : service?.serviceTitle,
+            workName: normalizeWorkName(service?.issues, String(service?.serviceTitle || 'Service')),
+            subcategory: normalizeWorkName(service?.issues, String(service?.serviceTitle || 'Service')),
+            categoryId: service?.categoryId,
             totalPrice: service?.totalPrice ?? 0,
             addOns: service?.addOns ?? [],
-            selectedDate: service?.selectedDate,
-            selectedTime: service?.selectedTime,
+            selectedDate: service?.selectedDate || service?.additionalInfo?.occurrences?.[0]?.date,
+            selectedTime: service?.selectedTime || service?.additionalInfo?.occurrences?.[0]?.time,
             companyId: service?.company?.companyId || service?.company?.id,
             companyName: service?.company?.name,
             bookingType: service?.bookingType,
@@ -692,6 +741,178 @@ export default function ServiceCheckoutScreen() {
 
       log("recovery_saved", { razorpayOrderId: String(data.orderId) });
 
+      const enrichFinalizedBookingsBestEffort = async (bookingIds: string[]) => {
+        if (!Array.isArray(bookingIds) || bookingIds.length === 0) return;
+
+        const normalizeWorkName = (raw: any, fallback: string) => {
+          if (raw == null) return fallback;
+          if (typeof raw === 'string') {
+            const s = raw.trim();
+            return s.length > 0 ? s : fallback;
+          }
+          if (Array.isArray(raw)) {
+            const parts = raw
+              .map((x) => {
+                if (typeof x === 'string') return x;
+                if (x && typeof x === 'object') return (x as any).name || (x as any).title || '';
+                return '';
+              })
+              .filter(Boolean);
+            return parts.length > 0 ? parts.join(', ') : fallback;
+          }
+          if (typeof raw === 'object') {
+            const n = (raw as any).name || (raw as any).title;
+            if (typeof n === 'string' && n.trim().length > 0) return n.trim();
+          }
+          return fallback;
+        };
+
+        try {
+          const selectedAddress = getSelectedAddress();
+          const authUser = auth().currentUser;
+          let resolvedCustomerName: string | undefined = selectedAddress?.userName || undefined;
+          let resolvedCustomerPhone: string | undefined = selectedAddress?.userPhone || authUser?.phoneNumber || undefined;
+
+          if (!resolvedCustomerName || !resolvedCustomerPhone) {
+            try {
+              const currentUser = await FirestoreService.getCurrentUser();
+              if (!resolvedCustomerName) {
+                resolvedCustomerName =
+                  currentUser?.name ||
+                  (currentUser as any)?.displayName ||
+                  (currentUser as any)?.fullName ||
+                  undefined;
+              }
+              if (!resolvedCustomerPhone) {
+                resolvedCustomerPhone =
+                  currentUser?.phone ||
+                  (currentUser as any)?.phoneNumber ||
+                  authUser?.phoneNumber ||
+                  undefined;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          const buildUpdateForService = (service: any) => {
+            const fallbackTitle = String(service?.serviceTitle || service?.serviceName || 'Service');
+            const workName = normalizeWorkName(service?.issues, fallbackTitle);
+            const occurrences = Array.isArray(service?.additionalInfo?.occurrences)
+              ? service.additionalInfo.occurrences
+              : [];
+            const firstOcc = occurrences[0];
+            const date = String(service?.selectedDate || firstOcc?.date || '');
+            const time = String(service?.selectedTime || firstOcc?.time || '');
+            const isPackage = !!service?.additionalInfo?.package;
+            const canOverwriteDateTime = occurrences.length <= 1;
+
+            // IMPORTANT: Do NOT run this through stripUndefinedDeep because it would
+            // treat FieldValue objects (e.g., serverTimestamp) as plain objects.
+            const uid = String(authUser?.uid || '');
+            const update: any = {
+              customerId: uid,
+              uid,
+              customerAddress: selectedAddress?.fullAddress || location.address || '',
+              location: {
+                lat: location.lat ?? null,
+                lng: location.lng ?? null,
+                address: selectedAddress?.fullAddress || location.address || '',
+                houseNo: selectedAddress?.houseNo || '',
+                placeLabel: selectedAddress?.addressType || 'Home',
+                notes: '',
+              },
+              serviceAddress: {
+                id: selectedAddress?.id || '',
+                fullAddress: selectedAddress?.fullAddress || '',
+                houseNo: selectedAddress?.houseNo || '',
+                landmark: selectedAddress?.landmark || '',
+                addressType: selectedAddress?.addressType || 'Home',
+                lat: location.lat ?? null,
+                lng: location.lng ?? null,
+              },
+              serviceName: fallbackTitle,
+              workName,
+              subcategory: workName,
+              companyId: service?.company?.companyId || service?.company?.id || '',
+              companyName: service?.company?.name || '',
+              addOns: service?.addOns ?? [],
+              isPackage,
+              isPackageBooking: isPackage,
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            };
+
+            if (resolvedCustomerName) update.customerName = resolvedCustomerName;
+            if (resolvedCustomerPhone) update.customerPhone = resolvedCustomerPhone;
+            if (service?.categoryId) update.categoryId = service.categoryId;
+            if (service?.bookingType) update.bookingType = service.bookingType;
+            if (typeof service?.totalPrice === 'number') update.totalPrice = service.totalPrice;
+            if (canOverwriteDateTime && date) update.date = date;
+            if (canOverwriteDateTime && time) update.time = time;
+
+            return update;
+          };
+
+          const serviceList = Array.isArray(services) ? services : [];
+
+          // Common case: single-service checkout. Safest: apply same update to all bookingIds.
+          if (serviceList.length === 1) {
+            const update = buildUpdateForService(serviceList[0]);
+            await Promise.all(
+              bookingIds.map((id) =>
+                firestore().collection('service_bookings').doc(String(id)).set(update, { merge: true })
+              )
+            );
+            return;
+          }
+
+          // Multi-service checkout: match booking docs by companyId + serviceName.
+          const docs = await Promise.all(
+            bookingIds.map((id) => firestore().collection('service_bookings').doc(String(id)).get())
+          );
+
+          const used = new Set<number>();
+          const updates: Promise<any>[] = [];
+
+          for (const snap of docs) {
+            const data = snap.data() || {};
+            const bCompanyId = String((data as any)?.companyId || '');
+            const bServiceName = String((data as any)?.serviceName || '');
+
+            let pickedIndex = -1;
+            for (let i = 0; i < serviceList.length; i++) {
+              if (used.has(i)) continue;
+              const s = serviceList[i] as any;
+              const sCompanyId = String(s?.company?.companyId || s?.company?.id || '');
+              const sServiceName = String(s?.serviceTitle || s?.serviceName || '');
+              if (sCompanyId && bCompanyId && sCompanyId !== bCompanyId) continue;
+              if (sServiceName && bServiceName && sServiceName !== bServiceName) continue;
+              pickedIndex = i;
+              break;
+            }
+
+            if (pickedIndex === -1) {
+              for (let i = 0; i < serviceList.length; i++) {
+                if (!used.has(i)) {
+                  pickedIndex = i;
+                  break;
+                }
+              }
+            }
+
+            if (pickedIndex >= 0) {
+              used.add(pickedIndex);
+              const update = buildUpdateForService(serviceList[pickedIndex]);
+              updates.push(snap.ref.set(update, { merge: true }));
+            }
+          }
+
+          await Promise.all(updates);
+        } catch (e) {
+          warn('enrich_finalized_bookings_failed', e);
+        }
+      };
+
       const contact = (user.phoneNumber || "").replace("+91", "");
 
       // --- Try Native Razorpay Checkout first ---
@@ -754,6 +975,8 @@ export default function ServiceCheckoutScreen() {
             createdBookingIds = await createBookings('paid', nativeResult);
             log('finalize_no_booking_ids_fallback_to_client_create_done', { bookingIds: createdBookingIds });
           }
+
+          await enrichFinalizedBookingsBestEffort(createdBookingIds);
 
           log("clear_cart_after_verify");
           clearCart();
@@ -830,6 +1053,8 @@ export default function ServiceCheckoutScreen() {
           createdBookingIds = await createBookings('paid', response);
           log('finalize_no_booking_ids_fallback_to_client_create_done', { bookingIds: createdBookingIds });
         }
+
+        await enrichFinalizedBookingsBestEffort(createdBookingIds);
         
         // Clear cart immediately after successful booking creation
         log("clear_cart_after_verify");
