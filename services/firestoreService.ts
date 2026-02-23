@@ -203,6 +203,37 @@ export class FirestoreService {
     'in_progress',
   ];
 
+  // ---- Lightweight in-memory caches (screen-level perf) ----
+  // NOTE: These caches are per JS runtime session (cleared on app restart).
+  // They exist to avoid repeating expensive Firestore reads on every date tap.
+  private static companiesByServiceIdsCache = new Map<
+    string,
+    { ts: number; companies: ServiceCompany[] }
+  >();
+  private static companiesByServiceIdsInFlight = new Map<string, Promise<ServiceCompany[]>>();
+  private static readonly COMPANIES_BY_SERVICE_IDS_CACHE_TTL_MS = 2 * 60 * 1000;
+
+  private static companyAverageRatingCache = new Map<
+    string,
+    { ts: number; data: { averageRating: number; reviewCount: number } }
+  >();
+  private static readonly COMPANY_AVERAGE_RATING_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  private static chunkArray<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    const s = Math.max(1, Math.floor(size || 10));
+    for (let i = 0; i < arr.length; i += s) out.push(arr.slice(i, i + s));
+    return out;
+  }
+
+  private static buildCompaniesByServiceIdsCacheKey(serviceIds: string[], categoryId?: string) {
+    const ids = (Array.isArray(serviceIds) ? serviceIds : [])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .sort();
+    return `${ids.join(',')}|${String(categoryId || '').trim()}`;
+  }
+
   private static serviceServicesIdsCache = new Map<string, { ids: string[]; ts: number }>();
   private static readonly SERVICE_SERVICES_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -3903,7 +3934,16 @@ export class FirestoreService {
    */
   static async getCompanyAverageRating(companyId: string): Promise<{ averageRating: number; reviewCount: number }> {
     try {
-      console.log(`⭐ Calculating average rating for company: ${companyId}`);
+      const key = String(companyId || '').trim();
+      if (!key) return { averageRating: 0, reviewCount: 0 };
+
+      const now = Date.now();
+      const cached = this.companyAverageRatingCache.get(key);
+      if (cached && now - cached.ts < this.COMPANY_AVERAGE_RATING_CACHE_TTL_MS) {
+        return cached.data;
+      }
+
+      if (__DEV__) console.log(`⭐ Calculating average rating for company: ${companyId}`);
 
       // Support both collection names:
       // - `service_rating` (current production in some environments)
@@ -3932,12 +3972,16 @@ export class FirestoreService {
       }
 
       if (!ratingsSnapshot) {
-        return { averageRating: 0, reviewCount: 0 };
+        const empty = { averageRating: 0, reviewCount: 0 };
+        this.companyAverageRatingCache.set(key, { ts: now, data: empty });
+        return empty;
       }
 
       if (ratingsSnapshot.empty) {
-        console.log(`   ℹ️ No ratings found for company ${companyId}`);
-        return { averageRating: 0, reviewCount: 0 };
+        if (__DEV__) console.log(`   ℹ️ No ratings found for company ${companyId}`);
+        const empty = { averageRating: 0, reviewCount: 0 };
+        this.companyAverageRatingCache.set(key, { ts: now, data: empty });
+        return empty;
       }
 
       let totalRating = 0;
@@ -3953,15 +3997,21 @@ export class FirestoreService {
 
       const averageRating = count > 0 ? totalRating / count : 0;
 
-      console.log(`   ✅ Company ${companyId}: ${averageRating.toFixed(2)} stars (${count} reviews)`);
+      if (__DEV__) console.log(`   ✅ Company ${companyId}: ${averageRating.toFixed(2)} stars (${count} reviews)`);
 
-      return {
+      const out = {
         averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
         reviewCount: count
       };
+
+      this.companyAverageRatingCache.set(key, { ts: now, data: out });
+      return out;
     } catch (error: any) {
       console.error(`❌ Error calculating average rating for company ${companyId}:`, error);
-      return { averageRating: 0, reviewCount: 0 };
+      const empty = { averageRating: 0, reviewCount: 0 };
+      const key = String(companyId || '').trim();
+      if (key) this.companyAverageRatingCache.set(key, { ts: Date.now(), data: empty });
+      return empty;
     }
   }
 
@@ -6872,124 +6922,137 @@ export class FirestoreService {
    * This is used when services are selected from PackageSelectionScreen (both packages and direct-price)
    */
   static async getCompaniesByServiceIds(serviceIds: string[], categoryId?: string): Promise<ServiceCompany[]> {
-    try {
-      console.log(`\n🏢 ========== getCompaniesByServiceIds CALLED ==========`);
-      console.log(`🏢 Service IDs to fetch:`, serviceIds);
-      console.log(`🏢 Service IDs count:`, serviceIds.length);
-      console.log(`🏢 Category ID filter:`, categoryId || 'None');
-      console.log(`🏢 ====================================================\n`);
-      
-      const companyMap = new Map<string, ServiceCompany>();
-      let servicesWithoutCompanyId: any[] = [];
-      
-      // For each service ID, fetch the service and its company
-      for (const serviceId of serviceIds) {
-        console.log(`\n🔍 ========== Processing Service ${serviceIds.indexOf(serviceId) + 1}/${serviceIds.length} ==========`);
-        console.log(`🔍 Service ID: "${serviceId}"`);
-        console.log(`🔍 Service ID type: ${typeof serviceId}`);
-        console.log(`🔍 Service ID length: ${serviceId?.length || 0}`);
-        
-        try {
-          console.log(`📡 Querying Firestore: service_services/${serviceId}`);
-          const serviceDoc = await firestore()
-            .collection('service_services')
-            .doc(serviceId)
-            .get();
-          
-          console.log(`📄 Document exists: ${serviceDoc.exists}`);
-          
-          if (!serviceDoc.exists) {
-            console.log(`   ❌ Service document "${serviceId}" not found in service_services collection`);
-            console.log(`   💡 Check if this ID exists in your Firestore database`);
-            continue;
-          }
-          
-          const serviceData = serviceDoc.data();
-          
-          if (!serviceData) {
-            console.log(`   ⚠️ Service ${serviceId} has no data`);
-            continue;
-          }
-          
-          console.log(`   📋 Service data:`, {
-            name: serviceData.name,
-            hasCompanyId: !!serviceData.companyId,
-            companyId: serviceData.companyId,
-            categoryMasterId: serviceData.categoryMasterId,
-            hasPackages: !!(serviceData.packages && Array.isArray(serviceData.packages)),
-            packagesCount: serviceData.packages?.length || 0,
-            price: serviceData.price,
-            allFields: Object.keys(serviceData)
+    const cleanedServiceIds = Array.from(
+      new Set(
+        (Array.isArray(serviceIds) ? serviceIds : [])
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+      )
+    );
+
+    const cacheKey = this.buildCompaniesByServiceIdsCacheKey(cleanedServiceIds, categoryId);
+    const now = Date.now();
+    const cached = this.companiesByServiceIdsCache.get(cacheKey);
+    if (cached && now - cached.ts < this.COMPANIES_BY_SERVICE_IDS_CACHE_TTL_MS) {
+      return cached.companies;
+    }
+
+    const existingInFlight = this.companiesByServiceIdsInFlight.get(cacheKey);
+    if (existingInFlight) {
+      return await existingInFlight;
+    }
+
+    const run = (async () => {
+      try {
+        if (__DEV__) {
+          console.log(`\n🏢 getCompaniesByServiceIds CALLED`, {
+            serviceIdsCount: cleanedServiceIds.length,
+            categoryId: categoryId || null,
           });
-          
-          if (serviceData.isActive === false) {
-            console.log(`   ⚠️ Service ${serviceId} is not active, skipping`);
-            continue;
-          }
-          
-          // Check category filter if provided - but be lenient for service_services
-          // Since we're querying by specific service ID, the category filter is less critical
-          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId && serviceData.categoryMasterId !== categoryId) {
-            console.log(`   ⚠️ Service ${serviceId} category mismatch:`);
-            console.log(`      Service categoryMasterId: ${serviceData.categoryMasterId}`);
-            console.log(`      Filter categoryId: ${categoryId}`);
-            console.log(`   💡 Skipping category filter since we're querying by specific service ID`);
-            // Don't skip - continue processing since we have a specific service ID
-            // continue;
-          }
-          
-          const companyId = serviceData.companyId;
-          
+        }
+
+        const companyMap = new Map<string, ServiceCompany>();
+        const servicesWithoutCompanyId: { id: string; data: any }[] = [];
+
+        if (cleanedServiceIds.length === 0) {
+          return [];
+        }
+
+        // Batch-fetch service docs (Firestore `in` limit: 10)
+        const serviceDataById = new Map<string, any>();
+        const serviceBatches = this.chunkArray(cleanedServiceIds, 10);
+        const serviceSnapshots = await Promise.all(
+          serviceBatches.map((batch) =>
+            firestore().collection('service_services').where('__name__', 'in', batch).get()
+          )
+        );
+        serviceSnapshots.forEach((snap) => {
+          snap.forEach((doc) => serviceDataById.set(doc.id, doc.data()));
+        });
+
+        // Choose one representative service per company (we return unique companies)
+        const representativeServiceByCompanyId = new Map<string, { serviceId: string; serviceData: any }>();
+
+        for (const [serviceId, serviceData] of serviceDataById.entries()) {
+          if (!serviceData) continue;
+          if (serviceData.isActive === false) continue;
+
+          const companyId = String(serviceData.companyId || '').trim();
           if (!companyId) {
-            console.log(`   ⚠️ Service ${serviceId} has NO companyId field - will use fallback approach`);
             servicesWithoutCompanyId.push({ id: serviceId, data: serviceData });
             continue;
           }
-          
-          // Skip if we already have this company
-          if (companyMap.has(companyId)) {
-            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
-            continue;
+
+          if (!representativeServiceByCompanyId.has(companyId)) {
+            representativeServiceByCompanyId.set(companyId, { serviceId, serviceData });
           }
-          
-          // Fetch company details
-          console.log(`   🔍 Fetching company document: ${companyId} from service_company collection`);
-          const companyDoc = await firestore()
-            .collection('service_company')
-            .doc(companyId)
-            .get();
-          
-          console.log(`   📄 Company document exists: ${companyDoc.exists}`);
-          
-          if (!companyDoc.exists) {
-            console.log(`   ⚠️ Company ${companyId} not found in service_company collection`);
-            console.log(`   💡 Trying to use service data as company data (embedded approach)`);
-            
-            // FALLBACK: Use service data as company data if company document doesn't exist
-            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
-            
-            // Try to fetch company logo separately even if company doc doesn't exist
-            let companyLogo = serviceData.imageUrl || null;
-            console.log(`   🖼️ Using service imageUrl as fallback: ${companyLogo ? 'Found' : 'Not found'}`);
-            
-            // ⭐ Fetch real-time rating from serviceRatings collection
-            const ratingData = await this.getCompanyAverageRating(companyId);
-            
+        }
+
+        const companyIds = Array.from(representativeServiceByCompanyId.keys());
+
+        // Batch-fetch company docs by id
+        const companyDataById = new Map<string, any>();
+        const companyBatches = this.chunkArray(companyIds, 10);
+        const companySnapshots = await Promise.all(
+          companyBatches.map((batch) =>
+            firestore().collection('service_company').where(firestore.FieldPath.documentId(), 'in', batch).get()
+          )
+        );
+        companySnapshots.forEach((snap) => {
+          snap.forEach((doc) => companyDataById.set(doc.id, doc.data()));
+        });
+
+        // Preload ratings with bounded concurrency (uses cache internally)
+        const ratingByCompanyId = new Map<string, { averageRating: number; reviewCount: number }>();
+        const maxRatingConcurrency = 4;
+        let ratingIdx = 0;
+        const ratingWorker = async () => {
+          while (ratingIdx < companyIds.length) {
+            const cid = companyIds[ratingIdx++];
+            try {
+              const r = await this.getCompanyAverageRating(cid);
+              ratingByCompanyId.set(cid, r);
+            } catch {
+              ratingByCompanyId.set(cid, { averageRating: 0, reviewCount: 0 });
+            }
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(maxRatingConcurrency, companyIds.length) }, () => ratingWorker())
+        );
+
+        for (const companyId of companyIds) {
+          const rep = representativeServiceByCompanyId.get(companyId);
+          if (!rep) continue;
+
+          const serviceData = rep.serviceData;
+          const serviceId = rep.serviceId;
+          const companyData = companyDataById.get(companyId);
+
+          // Skip inactive companies
+          if (companyData && companyData.isActive === false) continue;
+
+          const hasPackages = !!(serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0);
+          const companyLogo = (companyData?.logoUrl || companyData?.imageUrl || serviceData.imageUrl || null);
+          const ratingData = ratingByCompanyId.get(companyId) || { averageRating: 0, reviewCount: 0 };
+
+          // Company doc missing => fall back to embedded service fields
+          if (!companyData) {
             const company: ServiceCompany = {
-              id: serviceDoc.id,
-              companyId: companyId,
+              id: serviceId,
+              companyId,
               categoryMasterId: serviceData.categoryMasterId,
               serviceName: serviceData.name || 'Unknown Service',
               companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
               price: serviceData.price || 0,
               quantityOffers: (serviceData as any).quantityOffers,
-              isActive: serviceData.isActive !== false, // Use service's isActive status
+              isActive: serviceData.isActive !== false,
               imageUrl: companyLogo,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: serviceData.description,
-              rating: ratingData.averageRating > 0 ? ratingData.averageRating : serviceData.rating, // Use real rating if available
-              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : serviceData.reviewCount, // Use real review count
+              rating: ratingData.averageRating > 0 ? ratingData.averageRating : serviceData.rating,
+              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : serviceData.reviewCount,
               contactInfo: serviceData.contactInfo || {
                 phone: serviceData.phone,
                 email: serviceData.email,
@@ -6999,82 +7062,40 @@ export class FirestoreService {
               updatedAt: serviceData.updatedAt,
               packages: hasPackages ? serviceData.packages : undefined,
             };
-            
             companyMap.set(companyId, company);
-            console.log(`   ✅ Added company from service data: ${company.companyName} (isActive: ${company.isActive})`);
             continue;
           }
-          
-          const companyData = companyDoc.data();
-          
-          if (!companyData) {
-            console.log(`   ⚠️ Company ${companyId} has no data`);
-            continue;
-          }
-          
-          console.log(`   📋 Company data:`, {
-            companyName: companyData.companyName,
-            name: companyData.name,
-            isActive: companyData.isActive,
-            categoryMasterId: companyData.categoryMasterId,
-            allFields: Object.keys(companyData)
-          });
-          
-          // Check if company is active
-          if (companyData.isActive === false) {
-            console.log(`   ⚠️ Company ${companyId} (${companyData.companyName || companyData.name}) is not active (isActive: false), skipping`);
-            continue;
-          }
-          
-          console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
-          
-          // 🖼️ Fetch company logo - prioritize logoUrl from service_company
-          const companyLogo = companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null;
-          console.log(`   🖼️ Company logo URL: ${companyLogo ? 'Found' : 'Not found'}`);
-          if (companyLogo) {
-            console.log(`      Logo source: ${companyData.logoUrl ? 'logoUrl' : companyData.imageUrl ? 'imageUrl (company)' : 'imageUrl (service)'}`);
-          }
-          
-          // Check if service has packages
-          const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
-          
-          // ⭐ Fetch real-time rating from serviceRatings collection
-          const ratingData = await this.getCompanyAverageRating(companyId);
-          
-          // Create company object
+
           const company: ServiceCompany = {
-            id: serviceDoc.id, // Use service_services doc ID
-            companyId: companyId,
+            id: serviceId,
+            companyId,
             categoryMasterId: serviceData.categoryMasterId,
             serviceName: serviceData.name || 'Unknown Service',
             companyName: companyData.companyName || companyData.name || 'Unknown Company',
             price: serviceData.price || 0,
             quantityOffers: (serviceData as any).quantityOffers,
-            isActive: companyData.isActive !== false, // Use company's isActive status
-            imageUrl: companyLogo, // Use the logo from service_company
+            isActive: companyData.isActive !== false,
+            imageUrl: companyLogo,
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
             description: companyData.description,
-            rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating, // Use real rating if available
-            reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount, // Use real review count
+            rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating,
+            reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount,
             contactInfo: companyData.contactInfo,
             createdAt: serviceData.createdAt,
             updatedAt: serviceData.updatedAt,
-            // Include packages if they exist
             packages: hasPackages ? serviceData.packages : undefined,
           };
-          
+
           companyMap.set(companyId, company);
-          
-        } catch (error) {
-          console.error(`   ❌ Error fetching service ${serviceId}:`, error);
         }
-      }
       
-      // FALLBACK: If services don't have companyId, fetch ALL companies for the category
-      if (servicesWithoutCompanyId.length > 0) {
-        console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
-        console.log(`   Fetching ALL companies for category: ${categoryId}`);
+        // FALLBACK: If services don't have companyId, fetch ALL companies for the category
+        if (servicesWithoutCompanyId.length > 0) {
+          if (__DEV__) {
+            console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
+            console.log(`   Fetching ALL companies for category: ${categoryId}`);
+          }
         
         try {
           let companiesQuery = firestore()
@@ -7087,7 +7108,7 @@ export class FirestoreService {
           }
           
           const companiesSnapshot = await companiesQuery.get();
-          console.log(`   Found ${companiesSnapshot.size} companies`);
+          if (__DEV__) console.log(`   Found ${companiesSnapshot.size} companies`);
           
           companiesSnapshot.forEach(companyDoc => {
             const companyData = companyDoc.data();
@@ -7124,32 +7145,35 @@ export class FirestoreService {
             };
             
             companyMap.set(companyId, company);
-            console.log(`   ✅ Added company: ${company.companyName}`);
+            if (__DEV__) console.log(`   ✅ Added company: ${company.companyName}`);
           });
           
         } catch (fallbackError) {
           console.error(`   ❌ Fallback error:`, fallbackError);
         }
+        }
+      
+        const companiesArray = Array.from(companyMap.values());
+
+        if (__DEV__) {
+          console.log(`✅ getCompaniesByServiceIds result: ${companiesArray.length} companies`);
+        }
+
+        return companiesArray;
+      } catch (error) {
+        console.error('❌ Error fetching companies by service IDs:', error);
+        throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
       }
-      
-      // Convert map to array
-      const companiesArray = Array.from(companyMap.values());
-      
-      console.log(`\n✅ FINAL RESULT: Found ${companiesArray.length} unique companies for service IDs`);
-      console.log(`   Companies:`, companiesArray.map(c => ({
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        price: c.price,
-        hasPackages: !!c.packages,
-        packagesCount: c.packages?.length || 0,
-        companyId: c.companyId
-      })));
-      
-      return companiesArray;
-      
-    } catch (error) {
-      console.error('❌ Error fetching companies by service IDs:', error);
-      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
+    })();
+
+    this.companiesByServiceIdsInFlight.set(cacheKey, run);
+
+    try {
+      const companies = await run;
+      this.companiesByServiceIdsCache.set(cacheKey, { ts: Date.now(), companies });
+      return companies;
+    } finally {
+      this.companiesByServiceIdsInFlight.delete(cacheKey);
     }
   }
 
