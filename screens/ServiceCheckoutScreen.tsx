@@ -855,6 +855,49 @@ export default function ServiceCheckoutScreen() {
 
           const serviceList = Array.isArray(services) ? services : [];
 
+          const ensureCreatedAt = async (ids: string[]) => {
+            try {
+              const snaps = await Promise.all(
+                ids.map((id) => firestore().collection('service_bookings').doc(String(id)).get())
+              );
+              const writes: Promise<any>[] = [];
+              for (const snap of snaps) {
+                const data = snap.data() || {};
+                const createdAt = (data as any)?.createdAt;
+                const isFirestoreTimestamp =
+                  !!createdAt &&
+                  typeof createdAt === 'object' &&
+                  typeof (createdAt as any).toDate === 'function';
+
+                // Some server paths accidentally write createdAt as a plain object (map)
+                // instead of a Firestore Timestamp. In that case, overwrite it.
+                if (!createdAt || !isFirestoreTimestamp) {
+                  writes.push(
+                    snap.ref.set(
+                      { createdAt: firestore.FieldValue.serverTimestamp() },
+                      { merge: true }
+                    )
+                  );
+                }
+              }
+              await Promise.all(writes);
+            } catch (e) {
+              // Keep dev-only logs via warn(), but also emit a direct console warning
+              // so the error is visible even if __DEV__ flags/logging differ between builds.
+              warn('ensure_created_at_failed', e);
+              try {
+                const err: any = e;
+                console.warn(LOG_PREFIX, 'ensure_created_at_failed', {
+                  code: err?.code,
+                  message: err?.message,
+                  name: err?.name,
+                });
+              } catch {
+                // ignore
+              }
+            }
+          };
+
           // Common case: single-service checkout. Safest: apply same update to all bookingIds.
           if (serviceList.length === 1) {
             const update = buildUpdateForService(serviceList[0]);
@@ -863,6 +906,7 @@ export default function ServiceCheckoutScreen() {
                 firestore().collection('service_bookings').doc(String(id)).set(update, { merge: true })
               )
             );
+            await ensureCreatedAt(bookingIds);
             return;
           }
 
@@ -908,6 +952,8 @@ export default function ServiceCheckoutScreen() {
           }
 
           await Promise.all(updates);
+
+          await ensureCreatedAt(bookingIds);
         } catch (e) {
           warn('enrich_finalized_bookings_failed', e);
         }
