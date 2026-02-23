@@ -292,6 +292,10 @@ export default function SelectDateTimeScreen() {
   const [availabilityStatusText, setAvailabilityStatusText] = useState<string>('');
   const [blockError, setBlockError] = useState<string | null>(null);
   const [planPickError, setPlanPickError] = useState<string | null>(null);
+  const slotsKey = useMemo(
+    () => (Array.isArray(slots) ? slots.join('|') : ''),
+    [slots]
+  );
 
   // Guards against in-flight async loops / stale completions.
   const seriesValidationReqRef = useRef(0);
@@ -1409,7 +1413,17 @@ export default function SelectDateTimeScreen() {
     }
     computeAvailabilityForDate(selectedDate, slots);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isServiceFlow, selectedDate, selectedCompanyId, JSON.stringify(selectedIssueIds), slots.join('|')]);
+  }, [
+    isServiceFlow,
+    selectedDate,
+    selectedCompanyId,
+    selectedIssueIdsKey,
+    slotsKey,
+    // Service-flow slot-key semantics depend on duration + atomic granularity.
+    // If these change without changing the slot list, we must recompute to avoid false "Booked" labels.
+    requiredDurationMinutes,
+    atomicIntervalMinutes,
+  ]);
 
   // For recurring packages, validate the whole series (all occurrences) for the selected time window.
   // NOTE: For weekly/monthly "day confirmation" plans we still want BOOKED markers to show immediately
@@ -2078,30 +2092,49 @@ export default function SelectDateTimeScreen() {
     return startSlot?.date === date && startSlot?.time === slot;
   };
 
-  const isSlotBooked = (date: string, slot: string) => {
-    if (!isServiceFlow) return false;
-    // In service-flow (dynamic duration), `slot` is a START label like "9:00 AM".
-    // A start time is only usable if *all* atomic windows in its duration block are available.
+  type ServiceSlotStatus = 'available' | 'booked' | 'unknown';
+
+  const getServiceSlotStatus = (date: string, slot: string): ServiceSlotStatus => {
+    if (!isServiceFlow) return 'unknown';
+
+    // While verifying, never show false "Booked".
+    if (loadingAvailability) return 'unknown';
+    if (availabilityFreshByDate?.[date] !== true) return 'unknown';
+    if (!slotAvailability || Object.keys(slotAvailability).length === 0) return 'unknown';
+
+    const hasKey = (k: string) => Object.prototype.hasOwnProperty.call(slotAvailability, k);
+
     const dur = requiredDurationMinutes;
     const atomic = atomicIntervalMinutes ?? 30;
-    // IMPORTANT UX:
-    // While we're still verifying availability for a date, we should NOT label slots as "Booked".
-    // That creates a false impression that the day is fully booked (common on first entry).
-    // The UI already disables interaction via `canInteractWithSlots` and shows a "Verifying" badge.
-    if (loadingAvailability) return false;
-    if (availabilityFreshByDate?.[date] !== true) return false;
-    if (!slotAvailability || Object.keys(slotAvailability).length === 0) return false;
 
+    // If duration isn't ready, fall back to the literal slot label key.
     if (!dur || dur <= 0) {
-      // Legacy fallback: treat the provided label as a single slot key.
-      return slotAvailability[`${date}|${slot}`] === false;
+      const k = `${date}|${slot}`;
+      if (!hasKey(k)) return 'unknown';
+      return (slotAvailability as any)[k] === false ? 'booked' : 'available';
     }
 
     const atomicWindows = buildAtomicIntervalsForDuration(slot, dur, atomic);
-    if (!atomicWindows || atomicWindows.length === 0) return true;
+    if (!atomicWindows || atomicWindows.length === 0) {
+      // Slot label might be a range or otherwise unparsable; treat as unknown (not booked).
+      return 'unknown';
+    }
 
-    // Once availability is fresh for this date, be conservative: any non-true window blocks the start.
-    return atomicWindows.some((w) => slotAvailability[`${date}|${w}`] !== true);
+    const keys = atomicWindows.map((w) => `${date}|${w}`);
+
+    // If any required key isn't computed, it's not safe to call it booked/available.
+    if (keys.some((k) => !hasKey(k))) return 'unknown';
+
+    const anyBooked = keys.some((k) => (slotAvailability as any)[k] === false);
+    if (anyBooked) return 'booked';
+
+    const allAvailable = keys.every((k) => (slotAvailability as any)[k] === true);
+    return allAvailable ? 'available' : 'unknown';
+  };
+
+  const isSlotBooked = (date: string, slot: string) => {
+    if (!isServiceFlow) return false;
+    return getServiceSlotStatus(date, slot) === 'booked';
   };
 
   const isAvailabilityFreshForSelectedDate = !isServiceFlow
@@ -2114,8 +2147,11 @@ export default function SelectDateTimeScreen() {
     if (!isServiceFlow && isRecurringPackage && loadingSeriesAvailability) return false;
     if (isServiceFlow) {
       if (!!blockError) return false;
-      // If the chosen START slot is booked (or verification isn't fresh), block Continue.
-      if (startSlot?.date && startSlot?.time && isSlotBooked(startSlot.date, startSlot.time)) return false;
+      // If the chosen START slot isn't confirmed available, block Continue.
+      if (startSlot?.date && startSlot?.time) {
+        const st = getServiceSlotStatus(startSlot.date, startSlot.time);
+        if (st !== 'available') return false;
+      }
       // For dynamic duration slots, selection should represent the full atomic block for the duration.
       if (requiredDurationMinutes > 0) {
         const atomic = atomicIntervalMinutes ?? 30;
@@ -2781,24 +2817,28 @@ export default function SelectDateTimeScreen() {
             }).map((slot) => {
               const isSelected = isSlotSelected(selectedDate, slot);
               const isFresh = !isServiceFlow ? true : (availabilityFreshByDate?.[selectedDate] === true);
+
               // Booked logic:
-              // - Service flow: use the detailed slotAvailability check (includes freshness/verification guards).
-              // - Package flow (single-day / non-recurring): use computed slotAvailability map if available.
-              //   Here `slotAvailability[key] === false` means no capacity for that slot.
+              // - Service flow: use computed atomic-window availability; treat missing keys as "Verifying".
+              // - Package flow (single-day / non-recurring): use slotAvailability[key] when present.
               const key = `${selectedDate}|${slot}`;
               const hasComputedKey = !!(slotAvailability && Object.prototype.hasOwnProperty.call(slotAvailability, key));
+
+              const serviceStatus = isServiceFlow ? getServiceSlotStatus(selectedDate, slot) : null;
               const booked = isServiceFlow
-                ? isSlotBooked(selectedDate, slot)
+                ? (serviceStatus === 'booked')
                 : (hasComputedKey ? slotAvailability[key] === false : false);
+
               const seriesKnown = isRecurringPackage && seriesAvailability && Object.keys(seriesAvailability).length > 0;
               const seriesOk = !seriesKnown ? true : (seriesAvailability[slot] !== false);
-              // For package/day flow, we do NOT want to lock the UI while verification runs.
-              // Unknown/uncomputed keys should render as Available (optimistic) but show a "Verifying" badge.
-              // Booking is still prevented by the Continue guard + by disabling only the slots we KNOW are full.
-              const verifying = !isServiceFlow && !isRecurringPackage && !hasComputedKey;
-              // Booked slots should never be clickable.
-              // For service flow, booked already includes freshness + atomic-block validation.
+
+              // Unknown/uncomputed keys should show a "Verifying" badge (not "Booked").
+              const verifying = isServiceFlow
+                ? (serviceStatus === 'unknown')
+                : (!isServiceFlow && !isRecurringPackage && !hasComputedKey);
+
               const disabled = !canInteractWithSlots || booked || verifying || (isRecurringPackage && !seriesOk);
+
               if (__DEV__ && !isServiceFlow && !isRecurringPackage && slot === slots[0]) {
                 const keysForDate = Object.keys(slotAvailability || {}).filter((k) => k.startsWith(`${selectedDate}|`));
                 console.log('🧪 UI slot state (package/day):', {
@@ -2808,6 +2848,7 @@ export default function SelectDateTimeScreen() {
                   firstKeyValue: (slotAvailability as any)?.[`${selectedDate}|${slots[0]}`],
                 });
               }
+
               return (
                 <TouchableOpacity
                   key={slot}

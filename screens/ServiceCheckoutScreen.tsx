@@ -23,6 +23,8 @@ import { openRazorpayNative } from "../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
+import firestore from "@react-native-firebase/firestore";
+import { findNearestStore } from "../utils/findNearestStore";
 
 const LOG_PREFIX = "🧾[SvcPay]";
 const log = (...args: any[]) => {
@@ -39,7 +41,7 @@ export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { clearCart, state } = useServiceCart();
-  const { location } = useLocationContext();
+  const { location, updateLocation } = useLocationContext();
   
   const routeServices = route.params?.services;
   // Backward/forward compatible: some entry points (e.g., services search/banner deep-links)
@@ -75,6 +77,103 @@ export default function ServiceCheckoutScreen() {
     isDefault: false
   });
 
+  /**
+   * Returns true if the current time is inside the delivery window.
+   * Reads the window from delivery_timing/timingData in Firestore.
+   * (Same logic as grocery cart.)
+   */
+  const checkDeliveryWindow = async (): Promise<boolean> => {
+    try {
+      const doc = await firestore()
+        .collection("delivery_timing")
+        .doc("timingData")
+        .get();
+
+      if (!doc.exists) return true;
+
+      const { fromTime, toTime } = doc.data() as {
+        fromTime: number | string;
+        toTime: number | string;
+      };
+
+      const from = Number(fromTime);
+      const to = Number(toTime);
+      const now = new Date().getHours();
+
+      if (Number.isNaN(from) || Number.isNaN(to)) return true;
+      if (from === to) return true;
+
+      if (from < to) return now >= from && now < to;
+      return now >= from || now < to;
+    } catch (e) {
+      console.error("[checkDeliveryWindow]", e);
+      return true;
+    }
+  };
+
+  const ensureServiceDeliverableOrAlert = async (): Promise<boolean> => {
+    const lat = Number(location?.lat);
+    const lng = Number(location?.lng);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      Alert.alert(
+        "Location Required",
+        "Please select your location before booking a service.",
+        [
+          {
+            text: "Select Location",
+            onPress: () =>
+              navigation.navigate("LocationSelector", {
+                fromScreen: "ServiceCheckout",
+              }),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+      return false;
+    }
+
+    const ok = await checkDeliveryWindow();
+    if (!ok) {
+      Alert.alert(
+        "Closed for deliveries",
+        "Sorry, we’re not delivering right now. Please try again during our next delivery window."
+      );
+      return false;
+    }
+
+    try {
+      const nearest = await findNearestStore(lat, lng);
+      if (!nearest) {
+        Alert.alert(
+          "Unavailable",
+          "We don’t deliver to that location yet – try another location.",
+          [
+            {
+              text: "Change Location",
+              onPress: () =>
+                navigation.navigate("LocationSelector", {
+                  fromScreen: "ServiceCheckout",
+                }),
+            },
+            { text: "Cancel", style: "cancel" },
+          ]
+        );
+        return false;
+      }
+
+      // Keep storeId in sync with the latest deliverability result.
+      if (location?.storeId !== nearest.id) {
+        updateLocation({ storeId: nearest.id, lat, lng });
+      }
+      return true;
+    } catch (e) {
+      console.error("[findNearestStore]", e);
+      Alert.alert("Error", "Couldn’t validate that location.");
+      return false;
+    }
+  };
+
   // Load saved addresses on component mount
   useEffect(() => {
     loadSavedAddresses();
@@ -102,7 +201,7 @@ export default function ServiceCheckoutScreen() {
     };
     
     restoreCheckoutState();
-  }, []);
+  }, [route.params?.restoreState]);
 
   // On screen mount, try to reconcile any previously paid-but-not-finalized service payments.
   useEffect(() => {
@@ -312,6 +411,10 @@ export default function ServiceCheckoutScreen() {
 
     const selectedAddress = getSelectedAddress();
   if (__DEV__) console.log(`✅ Address validation passed:`, selectedAddress);
+
+    // Validate deliverability (same logic as grocery cart)
+    const canDeliver = await ensureServiceDeliverableOrAlert();
+    if (!canDeliver) return;
     
     // Handle payment based on selected method
     if (paymentMethod === 'online') {
@@ -928,6 +1031,7 @@ export default function ServiceCheckoutScreen() {
             (service as any)?.issues,
             String(service.serviceTitle || 'Service')
           ),
+          categoryId: (service as any)?.categoryId,
           customerName: customerData.name || "Customer",
           customerPhone: customerData.phone || "+91-0000000000", // Fallback phone for users without phone
           customerAddress: selectedAddress?.fullAddress || "", // Use saved address

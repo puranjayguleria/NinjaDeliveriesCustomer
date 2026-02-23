@@ -65,6 +65,7 @@ export default function TrackBookingScreen() {
   // Helper function to determine category ID based on service name
   const determineCategoryId = async (serviceName: string) => {
     try {
+      if (categoryId) return;
       // Fetch all categories and find the one that matches the service
       const categories = await FirestoreService.getServiceCategories();
       
@@ -118,10 +119,11 @@ export default function TrackBookingScreen() {
   };
 
   const handleAddOnServices = () => {
-    if (!categoryId) {
+    const effectiveWorkerId = booking?.workerId || booking?.technicianId;
+    if (!effectiveWorkerId && !categoryId) {
       Alert.alert(
-        "Category Not Found", 
-        "Unable to determine service category for add-on services."
+        "Add-On Services Unavailable",
+        "Unable to load add-on services because the assigned worker or service category is missing."
       );
       return;
     }
@@ -132,6 +134,7 @@ export default function TrackBookingScreen() {
       packageName: booking?.packageName,
       packageId: booking?.packageId,
       bookingType: booking?.bookingType,
+      categoryId,
       workerId: booking?.workerId,
       technicianId: booking?.technicianId,
       workerName: booking?.workerName,
@@ -309,7 +312,12 @@ export default function TrackBookingScreen() {
       });
       
       // Try to determine category ID for add-on services
-      await determineCategoryId(bookingData.serviceName);
+      if ((bookingData as any)?.categoryId) {
+        setCategoryId((bookingData as any).categoryId);
+        console.log(`📱 Using booking.categoryId for add-ons: ${(bookingData as any).categoryId}`);
+      } else {
+        await determineCategoryId(bookingData.serviceName);
+      }
       
       // Check rating status for completed bookings
       await checkRatingStatus(bookingData);
@@ -386,7 +394,12 @@ export default function TrackBookingScreen() {
         });
 
         // Try to determine category ID for add-on services
-        await determineCategoryId(bookingData.serviceName);
+        if ((bookingData as any)?.categoryId) {
+          setCategoryId((bookingData as any).categoryId);
+          console.log(`📱 Using booking.categoryId for add-ons: ${(bookingData as any).categoryId}`);
+        } else {
+          await determineCategoryId(bookingData.serviceName);
+        }
 
         // If this is the first load and booking is already rejected, show modal
         if (previousStatus === null && bookingData.status === 'rejected') {
@@ -659,7 +672,7 @@ export default function TrackBookingScreen() {
       navigation.navigate("CompanySelection", {
         serviceTitle: booking.serviceName,
         // Use the service name to try to find the category
-        categoryId: undefined,
+        categoryId: (booking as any).categoryId,
         issues: [booking.serviceName], // Use service name as the issue
         selectedIssues: [{ name: booking.serviceName }],
         selectedIssueIds: [],
@@ -1042,12 +1055,14 @@ export default function TrackBookingScreen() {
                                    booking?.serviceName?.toLowerCase().includes('gym') ||
                                    booking?.serviceName?.toLowerCase().includes('yoga') ||
                                    booking?.serviceName?.toLowerCase().includes('fitness');
-          
-          const shouldShowAddOn = categoryId && isTechnicianAssigned() && isActive && !isPackageBooking;
+
+          const effectiveWorkerId = booking?.workerId || booking?.technicianId;
+          const shouldShowAddOn = isTechnicianAssigned() && isActive && !isPackageBooking && !!(effectiveWorkerId || categoryId);
           
           // Debug logging
           console.log('🔍 Add-on button visibility check:', {
             categoryId,
+            effectiveWorkerId,
             isTechnicianAssigned: isTechnicianAssigned(),
             isActive,
             'booking.isPackage': booking?.isPackage,
@@ -1140,7 +1155,7 @@ export default function TrackBookingScreen() {
         rejectedBooking={booking ? {
           id: booking.id,
           serviceName: booking.serviceName,
-          categoryId: undefined, // ServiceBooking doesn't have this field
+          categoryId: (booking as any).categoryId,
           selectedIssueIds: undefined, // ServiceBooking doesn't have this field  
           issues: undefined, // ServiceBooking doesn't have this field
           date: booking.date,
