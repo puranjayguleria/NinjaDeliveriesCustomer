@@ -5,12 +5,39 @@ import { ServiceBooking } from '../services/firestoreService';
  * Matches website status flow: pending → assigned → started → completed
  */
 export class BookingUtils {
+
+  static normalizeStatus(raw: any): ServiceBooking['status'] {
+    const v =
+      typeof raw === 'string'
+        ? raw
+        : (raw && typeof raw === 'object')
+          ? ((raw as any).status || (raw as any).state || (raw as any).value || '')
+          : '';
+    const s = String(v || '').trim().toLowerCase();
+    if (!s || s === '[object object]') return 'pending';
+    if (s === 'reject') return 'rejected';
+    if (s === 'canceled' || s === 'cancel') return 'cancelled';
+    if (s === 'confirmed') return 'pending';
+    if (s === 'in_progress' || s === 'in-progress' || s === 'inprogress') return 'started';
+    if (s === 'payment_pending' || s === 'payment-pending' || s === 'pending_payment' || s === 'pending-payment') return 'pending';
+
+    const allowed = new Set([
+      'pending',
+      'assigned',
+      'started',
+      'completed',
+      'rejected',
+      'cancelled',
+      'expired',
+    ]);
+    return (allowed.has(s) ? (s as ServiceBooking['status']) : 'pending');
+  }
   
   /**
    * Get status color for booking status (matches website)
    */
   static getStatusColor(status: ServiceBooking['status']): string {
-    switch (status) {
+    switch (this.normalizeStatus(status)) {
       case 'pending':
         return '#F59E0B'; // Orange - waiting for assignment
       case 'assigned':
@@ -33,7 +60,7 @@ export class BookingUtils {
    * Get status display text (matches website)
    */
   static getStatusText(status: ServiceBooking['status']): string {
-    switch (status) {
+    switch (this.normalizeStatus(status)) {
       case 'pending':
         return 'Assigning Worker';
       case 'assigned':
@@ -57,21 +84,23 @@ export class BookingUtils {
    * Check if booking can be cancelled
    */
   static canCancelBooking(status: ServiceBooking['status']): boolean {
-    return status === 'pending' || status === 'assigned';
+    const s = this.normalizeStatus(status);
+    return s === 'pending' || s === 'assigned';
   }
 
   /**
    * Check if booking is active (not completed, rejected, cancelled, or expired)
    */
   static isActiveBooking(status: ServiceBooking['status']): boolean {
-    return !['completed', 'rejected', 'cancelled', 'expired'].includes(status);
+    const s = this.normalizeStatus(status);
+    return !['completed', 'rejected', 'cancelled', 'expired'].includes(s);
   }
 
   /**
    * Get next possible status transitions (matches website workflow)
    */
   static getNextStatus(currentStatus: ServiceBooking['status']): ServiceBooking['status'][] {
-    switch (currentStatus) {
+    switch (this.normalizeStatus(currentStatus)) {
       case 'pending':
         return ['assigned', 'rejected', 'cancelled', 'expired'];
       case 'assigned':
@@ -130,7 +159,7 @@ export class BookingUtils {
    * Calculate booking progress percentage based on status
    */
   static getProgressPercentage(status: ServiceBooking['status']): number {
-    switch (status) {
+    switch (this.normalizeStatus(status)) {
       case 'pending':
         return 10;
       case 'assigned':
@@ -152,7 +181,7 @@ export class BookingUtils {
    * Get status message for display
    */
   static getStatusMessage(booking: ServiceBooking): string {
-    switch (booking.status) {
+    switch (this.normalizeStatus(booking.status)) {
       case 'pending':
         return `Your ${booking.serviceName} booking is confirmed. We're finding the best technician for your service.`;
       case 'assigned':
@@ -183,7 +212,7 @@ export class BookingUtils {
    * Check if service is overdue (past estimated completion time)
    */
   static isServiceOverdue(booking: ServiceBooking): boolean {
-    if (booking.status !== 'started' || !booking.startedAt) {
+    if (this.normalizeStatus(booking.status) !== 'started' || !booking.startedAt) {
       return false;
     }
 

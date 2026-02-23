@@ -203,6 +203,38 @@ export class FirestoreService {
     'in_progress',
   ];
 
+  private static normalizeServiceBookingStatus(value: any): ServiceBooking['status'] {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? ((value as any).status || (value as any).state || (value as any).value || (value as any).key || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+
+    if (!s || s === '[object object]') return 'pending';
+
+    // Common variants seen across mixed client/server setups
+    if (s === 'reject') return 'rejected';
+    if (s === 'canceled' || s === 'cancel') return 'cancelled';
+    if (s === 'payment_pending' || s === 'payment-pending' || s === 'pending_payment' || s === 'pending-payment') return 'pending';
+    if (s === 'confirmed') return 'pending';
+    if (s === 'in_progress' || s === 'in-progress' || s === 'inprogress') return 'started';
+
+    const allowed: Set<string> = new Set([
+      'pending',
+      'assigned',
+      'started',
+      'completed',
+      'rejected',
+      'cancelled',
+      'expired',
+    ]);
+
+    if (allowed.has(s)) return s as ServiceBooking['status'];
+    return 'pending';
+  }
+
   // ---- Lightweight in-memory caches (screen-level perf) ----
   // NOTE: These caches are per JS runtime session (cleared on app restart).
   // They exist to avoid repeating expensive Firestore reads on every date tap.
@@ -3195,7 +3227,7 @@ export class FirestoreService {
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
@@ -3269,7 +3301,7 @@ export class FirestoreService {
         customerId: data.customerId,
         date: data.date || '',
         time: data.time || '',
-        status: data.status || 'pending',
+        status: this.normalizeServiceBookingStatus(data.status),
         companyId: data.companyId,
         // Use actual database field names first (workerName, workerId), then fallbacks
         workerName: data.workerName || data.worker_name,
@@ -4251,6 +4283,9 @@ export class FirestoreService {
       if (normalizedPaymentStatus) (bookingDataNormalized as any).paymentStatus = normalizedPaymentStatus;
       else if ((bookingDataNormalized as any).paymentStatus != null) delete (bookingDataNormalized as any).paymentStatus;
 
+      // Normalize status to avoid invalid values like "[object Object]".
+      (bookingDataNormalized as any).status = this.normalizeServiceBookingStatus((bookingDataNormalized as any)?.status);
+
       // Clean the booking data to remove undefined values
       const cleanedData = this.cleanBookingData({
         ...bookingDataNormalized,
@@ -4378,6 +4413,10 @@ export class FirestoreService {
         else delete (updatesNormalized as any).paymentStatus;
       }
 
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'status')) {
+        (updatesNormalized as any).status = this.normalizeServiceBookingStatus((updatesNormalized as any).status);
+      }
+
       // Clean the update data to remove undefined values
       const cleanedUpdates = this.cleanBookingData({
         ...updatesNormalized,
@@ -4432,7 +4471,7 @@ export class FirestoreService {
             customerId: data.customerId || '',
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId || '',
             workerName: data.workerName || data.technicianName || '',
             workerId: data.workerId || data.technicianId || '',
@@ -4684,7 +4723,7 @@ export class FirestoreService {
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
@@ -4818,7 +4857,7 @@ export class FirestoreService {
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             technicianName: data.technicianName,
             technicianId: data.technicianId,
@@ -4961,7 +5000,7 @@ export class FirestoreService {
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
@@ -5416,7 +5455,7 @@ export class FirestoreService {
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             // Use actual database field names first (workerName, workerId), then fallbacks
             workerName: data.workerName || data.worker_name,
@@ -5993,7 +6032,7 @@ export class FirestoreService {
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             technicianName: data.technicianName,
             technicianId: data.technicianId,
@@ -6078,10 +6117,23 @@ export class FirestoreService {
         companyName: paymentData.companyName,
         companyId: paymentData.companyId
       });
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const paymentDataNormalized: any = { ...paymentData };
+      const normalizedMethod = this.normalizeBookingPaymentMethod((paymentDataNormalized as any).paymentMethod);
+      const normalizedStatus = this.normalizeBookingPaymentStatus((paymentDataNormalized as any).paymentStatus);
+      const gw = String((paymentDataNormalized as any).paymentGateway || '').trim().toLowerCase();
+      const hasRzpIds = Boolean(
+        String((paymentDataNormalized as any).transactionId || '').trim() ||
+        String((paymentDataNormalized as any).razorpayOrderId || '').trim() ||
+        String((paymentDataNormalized as any).razorpaySignature || '').trim()
+      );
+      (paymentDataNormalized as any).paymentMethod = normalizedMethod || (gw && gw !== 'cash' ? 'online' : 'cash');
+      (paymentDataNormalized as any).paymentStatus = normalizedStatus || (hasRzpIds ? 'paid' : 'pending');
       
       // Filter out undefined values to prevent Firestore errors
       const cleanPaymentData = Object.fromEntries(
-        Object.entries(paymentData).filter(([_, value]) => value !== undefined)
+        Object.entries(paymentDataNormalized).filter(([_, value]) => value !== undefined)
       );
       
       console.log('Clean payment data (no undefined values):', cleanPaymentData);
@@ -6093,7 +6145,7 @@ export class FirestoreService {
           customerId: userId, // Always set the logged-in user ID
           createdAt: new Date(),
           updatedAt: new Date(),
-          paidAt: paymentData.paymentStatus === 'paid' ? new Date() : null,
+          paidAt: (cleanPaymentData as any).paymentStatus === 'paid' ? new Date() : null,
         });
 
       console.log(`✅ Created payment record with ID: ${docRef.id} for user: ${userId}`);
@@ -6126,10 +6178,23 @@ export class FirestoreService {
       }
       
       console.log(`💳 Updating payment record ${paymentId} for user: ${userId}`);
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const updatesNormalized: any = { ...updates };
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentMethod')) {
+        const normalized = this.normalizeBookingPaymentMethod((updatesNormalized as any).paymentMethod);
+        if (normalized) (updatesNormalized as any).paymentMethod = normalized;
+        else delete (updatesNormalized as any).paymentMethod;
+      }
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentStatus')) {
+        const normalized = this.normalizeBookingPaymentStatus((updatesNormalized as any).paymentStatus);
+        if (normalized) (updatesNormalized as any).paymentStatus = normalized;
+        else delete (updatesNormalized as any).paymentStatus;
+      }
       
       // Filter out undefined values to prevent Firestore errors
       const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([_, value]) => value !== undefined)
+        Object.entries(updatesNormalized).filter(([_, value]) => value !== undefined)
       );
       
       const updateData: any = {
@@ -6138,7 +6203,7 @@ export class FirestoreService {
       };
 
       // Set paidAt timestamp when payment status changes to paid
-      if (updates.paymentStatus === 'paid' && !updates.paidAt) {
+      if ((cleanUpdates as any).paymentStatus === 'paid' && !(cleanUpdates as any).paidAt) {
         updateData.paidAt = new Date();
       }
       
