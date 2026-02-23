@@ -105,6 +105,7 @@ export default function PackageSelectionScreen() {
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companyGroups, setCompanyGroups] = useState<CompanyPackageGroup[]>([]);
   const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyPackageGroup | null>(null);
+  const [companyGroupsInitialized, setCompanyGroupsInitialized] = useState(false);
 
   const [reviewTick, setReviewTick] = useState(0);
   const [companyReviewsById, setCompanyReviewsById] = useState<Record<string, any[]>>({});
@@ -147,10 +148,12 @@ export default function PackageSelectionScreen() {
   useEffect(() => {
     const run = async () => {
       try {
+        setCompanyGroupsInitialized(false);
         // Only needed when this category has package-based services.
         if (!Array.isArray(packageBasedServices) || packageBasedServices.length === 0) {
           setCompanyGroups([]);
           setSelectedCompanyGroup(null);
+          setCompanyGroupsInitialized(true);
           return;
         }
 
@@ -292,6 +295,7 @@ export default function PackageSelectionScreen() {
         // Don't auto-select - let user choose
       } finally {
         setCompaniesLoading(false);
+        setCompanyGroupsInitialized(true);
       }
     };
 
@@ -563,16 +567,10 @@ export default function PackageSelectionScreen() {
     Alert.alert("Select Service", "Please select a package or service to continue.");
   };
 
-  // Full-screen loader gif while the initial package/services fetch is in progress.
-  if (loading) {
-    return <ServiceTabLoader />;
-  }
-
-  // Package categories build company-groups after services load.
-  // Show full-screen loader until companies are ready so user doesn't see a blank "Choose a company" section.
-  if (companiesLoading && packageBasedServices.length > 0 && companyGroups.length === 0) {
-    return <ServiceTabLoader />;
-  }
+  // Keep the screen mounted and show a blocking overlay loader to avoid UI flicker
+  // from switching between separate render trees.
+  const showBlockingLoader =
+    loading || (packageBasedServices.length > 0 && !companyGroupsInitialized);
 
   return (
     <View style={styles.container}>
@@ -744,6 +742,12 @@ export default function PackageSelectionScreen() {
           </View>
         )}
       </ScrollView>
+
+      {showBlockingLoader && (
+        <View style={styles.blockingOverlay} pointerEvents="auto">
+          <ServiceTabLoader />
+        </View>
+      )}
 
       {/* Packages Modal */}
       <Modal
@@ -1440,6 +1444,16 @@ priceAmount: {
     minHeight: "70%",
     maxHeight: "70%",
     paddingBottom: 20,
+  },
+
+  blockingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
   },
 
   // Packages Modal - Green Theme

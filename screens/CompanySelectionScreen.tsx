@@ -1052,13 +1052,17 @@ export default function CompanySelectionScreen() {
     setSelectedPackage(null);
   }; 
 
-  // Full-screen loader while the initial companies list is being fetched.
-  if (loading && (!Array.isArray(companies) || companies.length === 0)) {
-    return <ServiceTabLoader />;
-  }
+  // Keep the screen mounted and show a blocking overlay loader to avoid UI flicker
+  // from switching between separate render trees.
+  const showBlockingLoader = loading && (!Array.isArray(companies) || companies.length === 0);
 
   return (
     <View style={styles.container}>
+      {showBlockingLoader && (
+        <View style={styles.blockingOverlay} pointerEvents="auto">
+          <ServiceTabLoader />
+        </View>
+      )}
       {/* Company Description Modal */}
       <Modal
         visible={companyDescriptionModal.visible}
@@ -2312,6 +2316,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#64748b",
     fontWeight: "500",
+  },
+
+  blockingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
   },
 
   emptyContainer: {

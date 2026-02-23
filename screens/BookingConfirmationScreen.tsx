@@ -577,11 +577,7 @@ export default function BookingConfirmationScreen() {
         onClose={() => setShowAddOnModal(false)}
         onAddServices={handleAddServicesConfirm}
         categoryId={categoryId}
-        existingServices={[
-          ...(displayData.serviceName ? [displayData.serviceName] : []),
-          ...(displayData.workName && displayData.workName !== displayData.serviceName ? [displayData.workName] : []),
-          ...(displayData.addOns?.map(addon => addon.name) || [])
-        ]}
+        existingServices={displayData.addOns?.map((addon) => addon.name) || []}
         bookingId={bookingId}
         companyId={displayData.companyId}
         workerId={bookingData?.workerId || bookingData?.technicianId}

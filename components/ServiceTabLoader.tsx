@@ -11,6 +11,7 @@ export default function ServiceTabLoader() {
         source={require("../assets/ninjaServiceLoader3.gif")}
         style={{ width: size, height: size }}
         resizeMode="contain"
+        fadeDuration={0}
       />
     </View>
   );

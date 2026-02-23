@@ -26,7 +26,7 @@ interface AddOnServicesModalProps {
   onClose: () => void;
   onAddServices: (selectedServices: AddOnService[]) => void;
   categoryId?: string;
-  existingServices: string[]; // Services already booked
+  existingServices: string[]; // Add-ons already added (used to avoid duplicates)
   bookingId?: string; // Add booking ID for payment integration
   companyId?: string; // Filter services by specific company
   workerId?: string; // Filter services by specific worker (more specific than companyId)

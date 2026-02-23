@@ -1170,11 +1170,7 @@ export default function TrackBookingScreen() {
         onClose={() => setShowAddOnModal(false)}
         onAddServices={handleAddServicesConfirm}
         categoryId={categoryId}
-        existingServices={[
-          ...(booking?.serviceName ? [booking.serviceName] : []),
-          ...(booking?.workName && booking.workName !== booking.serviceName ? [booking.workName] : []),
-          ...(booking?.addOns?.map(addon => addon.name) || [])
-        ]}
+        existingServices={booking?.addOns?.map((addon) => addon.name) || []}
         bookingId={bookingId}
         companyId={booking?.companyId}
         workerId={booking?.workerId || booking?.technicianId} // Pass worker ID for filtering
