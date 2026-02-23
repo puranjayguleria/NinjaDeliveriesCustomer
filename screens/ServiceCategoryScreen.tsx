@@ -163,8 +163,15 @@ export default function ServiceCategoryScreen() {
           return name.includes(q) || desc.includes(q);
         });
 
-    if (showAll || q.length > 0) return filtered;
-    return filtered.slice(0, 5);
+    // Sort alphabetically by name
+    const sorted = [...filtered].sort((a, b) => {
+      const nameA = String(a?.name || '').toLowerCase();
+      const nameB = String(b?.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    if (showAll || q.length > 0) return sorted;
+    return sorted.slice(0, 5);
   }, [issues, searchQuery, showAll]);
 
   const hasMoreItems = issues.length > 5;
