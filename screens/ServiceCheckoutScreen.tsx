@@ -512,6 +512,51 @@ export default function ServiceCheckoutScreen() {
 
       const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100);
 
+      const extractBookingIdsFromFinalize = (payload: any, orderId: string): string[] => {
+        try {
+          // New backend: createdBookingIdsByOrder: { [orderId]: string[] }
+          const map = payload?.createdBookingIdsByOrder;
+          if (map && typeof map === 'object') {
+            const raw = (map as any)[orderId];
+            if (Array.isArray(raw)) return raw.map((x: any) => String(x)).filter(Boolean);
+          }
+
+          // Alternate shapes
+          const directArrays = [
+            payload?.createdBookingIds,
+            payload?.bookingIds,
+            payload?.createdIds,
+          ];
+          for (const v of directArrays) {
+            if (Array.isArray(v)) return v.map((x: any) => String(x)).filter(Boolean);
+          }
+
+          // Sometimes nested under result
+          const result = payload?.result;
+          if (result && typeof result === 'object') {
+            return extractBookingIdsFromFinalize(result, orderId);
+          }
+        } catch {
+          // Ignore and fall back
+        }
+        return [];
+      };
+
+      const reconcileBookingIds = async (orderId: string, headers: any): Promise<string[]> => {
+        try {
+          const { data: reconcileData } = await postWith404Fallback(
+            'servicePaymentsReconcile',
+            { orderIds: [orderId] },
+            headers
+          );
+          const ids = extractBookingIdsFromFinalize(reconcileData, orderId);
+          return ids;
+        } catch (e) {
+          warn('reconcile_booking_ids_failed', e);
+          return [];
+        }
+      };
+
       // IMPORTANT:
       // Do NOT create service bookings before payment.
       // We only create bookings after payment is verified.
@@ -692,10 +737,23 @@ export default function ServiceCheckoutScreen() {
           await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
           log("recovery_cleared_after_verify");
 
-          // Create bookings only after verified payment
-          log("create_paid_bookings_after_verify_start");
-          const createdBookingIds = await createBookings("paid", nativeResult);
-          log("create_paid_bookings_after_verify_done", { bookingIds: createdBookingIds });
+          // IMPORTANT: The backend finalize step already creates/finalizes bookings.
+          // Do NOT create bookings again on the client; that causes duplicates.
+          const orderId = String(nativeResult?.razorpay_order_id || data?.orderId || '');
+          let createdBookingIds = extractBookingIdsFromFinalize(verifyData, orderId);
+          if (createdBookingIds.length === 0 && orderId) {
+            createdBookingIds = await reconcileBookingIds(orderId, verifyHeaders);
+          }
+          log('finalize_booking_ids', { orderId, bookingIds: createdBookingIds });
+
+          // Backward compatibility fallback:
+          // If backend only verifies payment but doesn't create bookings,
+          // we still need to create bookings client-side.
+          if (createdBookingIds.length === 0) {
+            log('finalize_no_booking_ids_fallback_to_client_create_start');
+            createdBookingIds = await createBookings('paid', nativeResult);
+            log('finalize_no_booking_ids_fallback_to_client_create_done', { bookingIds: createdBookingIds });
+          }
 
           log("clear_cart_after_verify");
           clearCart();
@@ -708,6 +766,13 @@ export default function ServiceCheckoutScreen() {
                 { name: "ServicesHome" },
                 { name: "BookingConfirmation", params: { bookingId: createdBookingIds[0] } },
               ],
+            });
+          } else {
+            // Payment is verified but we couldn't resolve booking ids from server response.
+            // Send the user to history; server reconcile will surface the bookings.
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'ServicesHome' }, { name: 'BookingHistory' }],
             });
           }
           return; // Don't fall through to WebView
@@ -748,10 +813,23 @@ export default function ServiceCheckoutScreen() {
         await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
         log("recovery_cleared_after_verify");
 
-        // Create bookings only after verified payment
-        log("create_paid_bookings_after_verify_start");
-        const createdBookingIds = await createBookings("paid", response);
-        log("create_paid_bookings_after_verify_done", { bookingIds: createdBookingIds });
+        // IMPORTANT: The backend finalize step already creates/finalizes bookings.
+        // Do NOT create bookings again on the client; that causes duplicates.
+        const orderId = String(response?.razorpay_order_id || data?.orderId || '');
+        let createdBookingIds = extractBookingIdsFromFinalize(verifyData, orderId);
+        if (createdBookingIds.length === 0 && orderId) {
+          createdBookingIds = await reconcileBookingIds(orderId, verifyHeaders);
+        }
+        log('finalize_booking_ids', { orderId, bookingIds: createdBookingIds });
+
+        // Backward compatibility fallback:
+        // If backend only verifies payment but doesn't create bookings,
+        // we still need to create bookings client-side.
+        if (createdBookingIds.length === 0) {
+          log('finalize_no_booking_ids_fallback_to_client_create_start');
+          createdBookingIds = await createBookings('paid', response);
+          log('finalize_no_booking_ids_fallback_to_client_create_done', { bookingIds: createdBookingIds });
+        }
         
         // Clear cart immediately after successful booking creation
         log("clear_cart_after_verify");
@@ -769,6 +847,11 @@ export default function ServiceCheckoutScreen() {
                 params: { bookingId: createdBookingIds[0] } 
               }
             ],
+          });
+        } else {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'ServicesHome' }, { name: 'BookingHistory' }],
           });
         }
         
