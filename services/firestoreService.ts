@@ -237,8 +237,22 @@ export class FirestoreService {
   private static serviceServicesIdsCache = new Map<string, { ids: string[]; ts: number }>();
   private static readonly SERVICE_SERVICES_CACHE_TTL_MS = 5 * 60 * 1000;
 
+  private static relevantWorkersCache = new Map<string, { workerIds: string[]; ts: number }>();
+  private static readonly RELEVANT_WORKERS_CACHE_TTL_MS = 3 * 60 * 1000;
+
   private static buildServiceServicesCacheKey(companyId: string, serviceIds: string[], serviceTitle?: string) {
     return `${String(companyId).trim()}|${serviceIds.map((s) => String(s).trim()).sort().join(',')}|${String(serviceTitle || '').trim()}`;
+  }
+
+  private static buildRelevantWorkersCacheKey(
+    companyId: string,
+    serviceServicesIds: string[],
+    serviceIds: string[],
+    serviceTitle?: string
+  ) {
+    const ss = Array.isArray(serviceServicesIds) ? serviceServicesIds.map((x) => String(x).trim()).filter(Boolean).sort() : [];
+    const s = Array.isArray(serviceIds) ? serviceIds.map((x) => String(x).trim()).filter(Boolean).sort() : [];
+    return `${String(companyId).trim()}|ss:${ss.join(',')}|s:${s.join(',')}|t:${String(serviceTitle || '').trim()}`;
   }
 
   private static async resolveServiceServicesIdsForCompany(
@@ -371,42 +385,52 @@ export class FirestoreService {
       serviceTitle
     );
 
-    // Fetch active workers once.
-    const allWorkersSnapshot = await firestore()
-      .collection('service_workers')
-      .where('companyId', '==', companyId)
-      .where('isActive', '==', true)
-      .get();
+    // Fetch active workers once per company+service (cached).
+    const relevantWorkersKey = this.buildRelevantWorkersCacheKey(String(companyId), serviceServicesIds, serviceIdsArray, serviceTitle);
+    const nowWorkers = Date.now();
+    const cachedWorkers = this.relevantWorkersCache.get(relevantWorkersKey);
+    let relevantWorkers: string[] = [];
 
-    const relevantWorkers: string[] = [];
-    allWorkersSnapshot.docs.forEach((doc) => {
-      const worker: any = doc.data();
-      const workerId = doc.id;
+    if (cachedWorkers && nowWorkers - cachedWorkers.ts < this.RELEVANT_WORKERS_CACHE_TTL_MS) {
+      relevantWorkers = cachedWorkers.workerIds;
+    } else {
+      const allWorkersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
 
-      let hasService = false;
+      allWorkersSnapshot.docs.forEach((doc) => {
+        const worker: any = doc.data();
+        const workerId = doc.id;
 
-      if (serviceServicesIds.length > 0) {
-        hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
-      }
+        let hasService = false;
 
-      if (!hasService && serviceIdsArray.length > 0) {
-        hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
-      }
+        if (serviceServicesIds.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+        }
 
-      if (!hasService && serviceTitle) {
-        const title = String(serviceTitle).toLowerCase();
-        hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
-          const raw = String(s || '').toLowerCase();
-          return raw.includes(title) || title.includes(raw);
-        });
-      }
+        if (!hasService && serviceIdsArray.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+        }
 
-      if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
-        hasService = true;
-      }
+        if (!hasService && serviceTitle) {
+          const title = String(serviceTitle).toLowerCase();
+          hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+            const raw = String(s || '').toLowerCase();
+            return raw.includes(title) || title.includes(raw);
+          });
+        }
 
-      if (hasService) relevantWorkers.push(workerId);
-    });
+        if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+          hasService = true;
+        }
+
+        if (hasService) relevantWorkers.push(workerId);
+      });
+
+      this.relevantWorkersCache.set(relevantWorkersKey, { workerIds: relevantWorkers, ts: nowWorkers });
+    }
 
     const totalRelevantWorkers = relevantWorkers.length;
     if (totalRelevantWorkers === 0) {
@@ -473,7 +497,7 @@ export class FirestoreService {
       return { totalWorkers: totalRelevantWorkers, availabilityByTime };
     } catch {
       // Fallback: run the existing single-time check, but without repeating worker/service mapping.
-      // Keep it lightly parallel to avoid long sequential waits.
+      // IMPORTANT: on errors, keep the entry undefined (unknown) so UI can show "Verifying" instead of incorrectly "Booked".
       const next: Record<string, boolean> = {};
       const maxConcurrency = 4;
       let idx = 0;
@@ -484,7 +508,7 @@ export class FirestoreService {
             const res = await this.checkCompanyWorkerAvailability(companyId, date, t, serviceIdsArray, serviceTitle);
             next[t] = res?.available === true;
           } catch {
-            next[t] = false;
+            // leave unknown
           }
         }
       };
@@ -524,41 +548,52 @@ export class FirestoreService {
     );
     const serviceServicesIdSet = new Set(serviceServicesIds.map((x) => String(x)));
 
-    const allWorkersSnapshot = await firestore()
-      .collection('service_workers')
-      .where('companyId', '==', companyId)
-      .where('isActive', '==', true)
-      .get();
+    // Fetch active workers once per company+service (cached).
+    const relevantWorkersKey = this.buildRelevantWorkersCacheKey(String(companyId), serviceServicesIds, serviceIdsArray, serviceTitle);
+    const nowWorkers = Date.now();
+    const cachedWorkers = this.relevantWorkersCache.get(relevantWorkersKey);
+    let relevantWorkers: string[] = [];
 
-    const relevantWorkers: string[] = [];
-    allWorkersSnapshot.docs.forEach((doc) => {
-      const worker: any = doc.data();
-      const workerId = doc.id;
+    if (cachedWorkers && nowWorkers - cachedWorkers.ts < this.RELEVANT_WORKERS_CACHE_TTL_MS) {
+      relevantWorkers = cachedWorkers.workerIds;
+    } else {
+      const allWorkersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
 
-      let hasService = false;
+      allWorkersSnapshot.docs.forEach((doc) => {
+        const worker: any = doc.data();
+        const workerId = doc.id;
 
-      if (serviceServicesIds.length > 0) {
-        hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
-      }
+        let hasService = false;
 
-      if (!hasService && serviceIdsArray.length > 0) {
-        hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
-      }
+        if (serviceServicesIds.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+        }
 
-      if (!hasService && serviceTitle) {
-        const title = String(serviceTitle).toLowerCase();
-        hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
-          const raw = String(s || '').toLowerCase();
-          return raw.includes(title) || title.includes(raw);
-        });
-      }
+        if (!hasService && serviceIdsArray.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+        }
 
-      if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
-        hasService = true;
-      }
+        if (!hasService && serviceTitle) {
+          const title = String(serviceTitle).toLowerCase();
+          hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+            const raw = String(s || '').toLowerCase();
+            return raw.includes(title) || title.includes(raw);
+          });
+        }
 
-      if (hasService) relevantWorkers.push(workerId);
-    });
+        if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+          hasService = true;
+        }
+
+        if (hasService) relevantWorkers.push(workerId);
+      });
+
+      this.relevantWorkersCache.set(relevantWorkersKey, { workerIds: relevantWorkers, ts: nowWorkers });
+    }
 
     const totalRelevantWorkers = relevantWorkers.length;
     if (totalRelevantWorkers === 0) {
