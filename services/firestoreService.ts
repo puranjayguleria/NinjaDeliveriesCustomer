@@ -1468,10 +1468,24 @@ export class FirestoreService {
         console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
         const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
         
-        // Update company names and logos with actual data from service_company collection
+        // ⭐ Fetch ratings for all companies in batch
+        const uniqueCompanyIds = [...new Set(companyIds)];
+        const ratingsMap = new Map<string, { averageRating: number; reviewCount: number }>();
+        
+        console.log(`⭐ Fetching ratings for ${uniqueCompanyIds.length} companies...`);
+        await Promise.all(
+          uniqueCompanyIds.map(async (companyId) => {
+            const ratingData = await this.getCompanyAverageRating(companyId);
+            ratingsMap.set(companyId, ratingData);
+          })
+        );
+        
+        // Update company names, logos, and ratings with actual data from service_company collection
         companies.forEach(company => {
           if (company.companyId) {
             const details = companyDetails.get(company.companyId);
+            const ratingData = ratingsMap.get(company.companyId);
+            
             if (details) {
               company.companyName = details.name;
               // Update imageUrl with logo from service_company if available
@@ -1481,6 +1495,12 @@ export class FirestoreService {
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
               company.companyName = `Company ${company.companyId}`;
+            }
+            
+            // Update rating with real data if available
+            if (ratingData && ratingData.averageRating > 0) {
+              company.rating = ratingData.averageRating;
+              company.reviewCount = ratingData.reviewCount;
             }
           } else {
             company.companyName = 'Unknown Company';
@@ -3030,6 +3050,47 @@ export class FirestoreService {
     } catch (error: any) {
       console.error('❌ Error fetching service ratings:', error);
       throw new Error('Failed to fetch service ratings. Please check your internet connection.');
+    }
+  }
+  /**
+   * Calculate average rating for a company from serviceRatings collection
+   */
+  static async getCompanyAverageRating(companyId: string): Promise<{ averageRating: number; reviewCount: number }> {
+    try {
+      console.log(`⭐ Calculating average rating for company: ${companyId}`);
+
+      const ratingsSnapshot = await firestore()
+        .collection('serviceRatings')
+        .where('companyId', '==', companyId)
+        .get();
+
+      if (ratingsSnapshot.empty) {
+        console.log(`   ℹ️ No ratings found for company ${companyId}`);
+        return { averageRating: 0, reviewCount: 0 };
+      }
+
+      let totalRating = 0;
+      let count = 0;
+
+      ratingsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (typeof data.rating === 'number' && data.rating > 0) {
+          totalRating += data.rating;
+          count++;
+        }
+      });
+
+      const averageRating = count > 0 ? totalRating / count : 0;
+
+      console.log(`   ✅ Company ${companyId}: ${averageRating.toFixed(2)} stars (${count} reviews)`);
+
+      return {
+        averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+        reviewCount: count
+      };
+    } catch (error: any) {
+      console.error(`❌ Error calculating average rating for company ${companyId}:`, error);
+      return { averageRating: 0, reviewCount: 0 };
     }
   }
 
@@ -5782,6 +5843,9 @@ export class FirestoreService {
             
             console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
             
+            // ⭐ Fetch real-time rating from serviceRatings collection
+            const ratingData = await this.getCompanyAverageRating(companyId);
+            
             // Create company object
             const company: ServiceCompany = {
               id: serviceDoc.id, // Use service_services doc ID
@@ -5798,8 +5862,8 @@ export class FirestoreService {
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,
-              rating: companyData.rating,
-              reviewCount: companyData.reviewCount,
+              rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating, // Use real rating if available
+              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount, // Use real review count
               contactInfo: companyData.contactInfo,
               createdAt: serviceData.createdAt,
               updatedAt: serviceData.updatedAt,
@@ -5939,6 +6003,9 @@ export class FirestoreService {
             let companyLogo = serviceData.imageUrl || null;
             console.log(`   🖼️ Using service imageUrl as fallback: ${companyLogo ? 'Found' : 'Not found'}`);
             
+            // ⭐ Fetch real-time rating from serviceRatings collection
+            const ratingData = await this.getCompanyAverageRating(companyId);
+            
             const company: ServiceCompany = {
               id: serviceDoc.id,
               companyId: companyId,
@@ -5952,8 +6019,8 @@ export class FirestoreService {
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: serviceData.description,
-              rating: serviceData.rating,
-              reviewCount: serviceData.reviewCount,
+              rating: ratingData.averageRating > 0 ? ratingData.averageRating : serviceData.rating, // Use real rating if available
+              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : serviceData.reviewCount, // Use real review count
               contactInfo: serviceData.contactInfo || {
                 phone: serviceData.phone,
                 email: serviceData.email,
@@ -6002,6 +6069,9 @@ export class FirestoreService {
           // Check if service has packages
           const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
           
+          // ⭐ Fetch real-time rating from serviceRatings collection
+          const ratingData = await this.getCompanyAverageRating(companyId);
+          
           // Create company object
           const company: ServiceCompany = {
             id: serviceDoc.id, // Use service_services doc ID
@@ -6016,8 +6086,8 @@ export class FirestoreService {
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
             description: companyData.description,
-            rating: companyData.rating,
-            reviewCount: companyData.reviewCount,
+            rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating, // Use real rating if available
+            reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount, // Use real review count
             contactInfo: companyData.contactInfo,
             createdAt: serviceData.createdAt,
             updatedAt: serviceData.updatedAt,

@@ -1135,7 +1135,7 @@ export default function ServicesScreen() {
         
         {/* Header with Background Image */}
         <ImageBackground
-          source={require('../assets/img.png')}
+          source={require('../assets/ninjaVideo.gif')}
           style={styles.topHeader}
           resizeMode="cover"
           imageStyle={{ marginTop: 20 }}

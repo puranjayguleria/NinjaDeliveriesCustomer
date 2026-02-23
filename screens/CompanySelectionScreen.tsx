@@ -968,6 +968,18 @@ export default function CompanySelectionScreen() {
                       <Text style={styles.priceValue}>₹{pkgObj?.price ?? company.price}</Text>
                     </View>
 
+                    {/* Company Rating */}
+                    {company.rating && company.rating > 0 && (
+                      <View style={styles.metaRow}>
+                        <View style={styles.ratingBadge}>
+                          <Text style={styles.ratingBadgeText}>⭐ {company.rating.toFixed(1)}</Text>
+                        </View>
+                        {company.reviewCount && company.reviewCount > 0 && (
+                          <Text style={styles.workerInfo}>{company.reviewCount} reviews</Text>
+                        )}
+                      </View>
+                    )}
+
                     {pkgObj?.description ? (
                       <Text style={styles.packageOptionDesc} numberOfLines={2}>
                         {pkgObj.description}
@@ -998,7 +1010,8 @@ export default function CompanySelectionScreen() {
                 activeOpacity={isBusy ? 0.3 : 0.7}
                 onPress={() => {
                   if (!isBusy) {
-                    setSelectedCompanyId(item.id);
+                    // Toggle selection: if already selected, unselect it
+                    setSelectedCompanyId(item.id === selectedCompanyId ? null : item.id);
                   }
                 }}
                 disabled={isBusy}
@@ -1223,11 +1236,14 @@ export default function CompanySelectionScreen() {
                   ) : null;
                 })()}
                 {/* Additional Info */}
-                {item.rating && (
+                {item.rating && item.rating > 0 && (
                   <View style={styles.metaRow}>
                     <View style={styles.ratingBadge}>
                       <Text style={styles.ratingBadgeText}>⭐ {item.rating.toFixed(1)}</Text>
                     </View>
+                    {item.reviewCount && item.reviewCount > 0 && (
+                      <Text style={styles.workerInfo}>{item.reviewCount} reviews</Text>
+                    )}
                   </View>
                 )}
 
@@ -1239,7 +1255,8 @@ export default function CompanySelectionScreen() {
                   ]}
                   onPress={() => {
                     if (!isBusy) {
-                      setSelectedCompanyId(item.id);
+                      // Toggle selection: if already selected, unselect it
+                      setSelectedCompanyId(item.id === selectedCompanyId ? null : item.id);
                     }
                   }}
                   disabled={isBusy}
