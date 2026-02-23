@@ -9,11 +9,13 @@ import {
   Alert,
   Image,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "../context/CartContext";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import firestore from "@react-native-firebase/firestore";
+import { getLastNonCartTab, navigationRef } from "../navigation/rootNavigation";
 
 type UnifiedCartItem = {
   id: string;
@@ -94,6 +96,80 @@ export default function UnifiedCartScreen() {
 
   const grandTotal = groceryTotal + serviceTotalAmount;
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleBackPress = () => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const lastTab = getLastNonCartTab();
+    if (navigationRef.isReady?.() && lastTab) {
+      try {
+        if (lastTab === "ServicesTab") {
+          navigationRef.navigate(
+            "ServicesTab" as never,
+            { screen: "ServicesHome" } as never
+          );
+          return;
+        }
+        navigationRef.navigate(lastTab as never);
+        return;
+      } catch {
+        // fall through
+      }
+    }
+
+    // Cart screens are often opened via `reset`, so there may be no stack history.
+    // Use the ROOT navigator as the fallback target.
+    const availableRoutes = new Set<string>();
+    const collect = (state: any) => {
+      if (!state) return;
+      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
+      (state.routes ?? []).forEach((r: any) => collect(r.state));
+    };
+    collect(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
+
+    if (navigationRef.isReady?.()) {
+      // If we cannot introspect route names, still attempt a sensible exit.
+      if (availableRoutes.size === 0) {
+        try {
+          navigationRef.navigate("HomeTab" as never);
+          return;
+        } catch {}
+      }
+      if (availableRoutes.has("HomeTab")) {
+        navigationRef.navigate("HomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("NinjaEatsHomeTab")) {
+        navigationRef.navigate("NinjaEatsHomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("ServicesTab")) {
+        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+        return;
+      }
+    }
+  };
+
+  const Header = ({ title, right }: { title: string; right?: React.ReactNode }) => (
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBackPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          {title}
+        </Text>
+        {right ?? <View style={styles.headerSpacer} />}
+      </View>
+    </SafeAreaView>
+  );
 
   const handleRemoveGroceryItem = (productId: string) => {
     Alert.alert(
@@ -272,43 +348,36 @@ export default function UnifiedCartScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top", "left", "right", "bottom"]}>
         <Text>Loading cart...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (unifiedItems.length === 0) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Cart</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <Header title="Cart" />
         
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color="#ccc" />
           <Text style={styles.emptyText}>Your cart is empty</Text>
           <Text style={styles.emptySubText}>Add some items to get started</Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cart ({totalItems} items)</Text>
-        <TouchableOpacity onPress={handleClearAll}>
-          <Text style={styles.clearText}>Clear All</Text>
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <Header
+        title={`Cart (${totalItems} items)`}
+        right={
+          <TouchableOpacity style={styles.clearButton} onPress={handleClearAll}>
+            <Text style={styles.clearText}>Clear All</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <FlatList
         data={unifiedItems}
@@ -338,7 +407,7 @@ export default function UnifiedCartScreen() {
           <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -353,23 +422,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  headerSafeArea: {
+    backgroundColor: '#fff',
+  },
   
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
+  },
+
+  backButton: {
+    padding: 8,
+    width: 44,
+    alignItems: 'flex-start',
+  },
+
+  headerSpacer: {
+    width: 44,
   },
   
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 12,
+  },
+
+  clearButton: {
+    padding: 8,
+    width: 80,
+    alignItems: 'flex-end',
   },
   
   clearText: {

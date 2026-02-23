@@ -2084,11 +2084,12 @@ export default function SelectDateTimeScreen() {
     // A start time is only usable if *all* atomic windows in its duration block are available.
     const dur = requiredDurationMinutes;
     const atomic = atomicIntervalMinutes ?? 30;
-    // If we're still verifying, don't claim a slot is available.
-    // Treat as "booked/disabled" to prevent wrong "slots available" messaging and premature continuation.
-    if (loadingAvailability) return true;
-    // If we haven't completed verification for this date yet, keep slots disabled.
-    if (availabilityFreshByDate?.[date] !== true) return true;
+    // IMPORTANT UX:
+    // While we're still verifying availability for a date, we should NOT label slots as "Booked".
+    // That creates a false impression that the day is fully booked (common on first entry).
+    // The UI already disables interaction via `canInteractWithSlots` and shows a "Verifying" badge.
+    if (loadingAvailability) return false;
+    if (availabilityFreshByDate?.[date] !== true) return false;
     if (!slotAvailability || Object.keys(slotAvailability).length === 0) return false;
 
     if (!dur || dur <= 0) {
@@ -2099,7 +2100,7 @@ export default function SelectDateTimeScreen() {
     const atomicWindows = buildAtomicIntervalsForDuration(slot, dur, atomic);
     if (!atomicWindows || atomicWindows.length === 0) return true;
 
-    // Unknown/uncomputed should be treated as unavailable (conservative) to avoid false positives.
+    // Once availability is fresh for this date, be conservative: any non-true window blocks the start.
     return atomicWindows.some((w) => slotAvailability[`${date}|${w}`] !== true);
   };
 

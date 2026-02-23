@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
 import { openRazorpayNative } from "../utils/razorpayNative";
+import { navigationRef } from "../navigation/rootNavigation";
 
 // WebView Razorpay Integration - No native module needed
 console.log("🚀 Cart Payment system initialized - WebView Razorpay Integration");
@@ -98,7 +99,6 @@ export default function CartPaymentScreen() {
     surgeFee = 0,
     finalTotal = 0,
     selectedLocation,
-    selectedPromo,
     productCgst = 0,
     productSgst = 0,
     productCess = 0,
@@ -315,17 +315,74 @@ export default function CartPaymentScreen() {
   const itemsSubtotal = subtotal + productCgst + productSgst + productCess;
   const deliveryTotal = deliveryCharge + rideCgst + rideSgst;
 
+  const handleBackPress = () => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const availableRoutes = new Set<string>();
+    let nav: any = navigation;
+    while (nav) {
+      const names: string[] = nav.getState?.()?.routeNames ?? [];
+      names.forEach((n) => availableRoutes.add(n));
+      nav = nav.getParent?.();
+    }
+
+    // Prefer ROOT navigation when opened without history.
+    const collectRoot = (state: any) => {
+      if (!state) return;
+      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
+      (state.routes ?? []).forEach((r: any) => collectRoot(r.state));
+    };
+    collectRoot(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
+
+    if (navigationRef.isReady?.() && availableRoutes.size === 0) {
+      try {
+        navigationRef.navigate("CartFlow" as never, { screen: "CartHome" } as never);
+        return;
+      } catch {}
+      try {
+        navigationRef.navigate("HomeTab" as never);
+        return;
+      } catch {}
+    }
+
+    if (availableRoutes.has("CartHome")) {
+      navigation.navigate("CartHome");
+      return;
+    }
+
+    if (availableRoutes.has("CartFlow")) {
+      navigation.navigate("CartFlow", { screen: "CartHome" });
+      return;
+    }
+
+    if (availableRoutes.has("HomeTab")) {
+      navigation.navigate("HomeTab");
+      return;
+    }
+
+    if (availableRoutes.has("NinjaEatsHomeTab")) {
+      navigation.navigate("NinjaEatsHomeTab");
+      return;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={handleBackPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Payment</Text>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          Payment
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 

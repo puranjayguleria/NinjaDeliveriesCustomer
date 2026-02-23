@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { getLastNonCartTab, navigationRef } from "../navigation/rootNavigation";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
 import { getBestActiveQuantityOffer } from "../utils/serviceQuantityOffers";
 
@@ -138,6 +140,63 @@ export default function ServiceCartScreen() {
       services: Object.values(state.items),
       totalAmount: computedTotalAmount,
     });
+  };
+
+  const handleBackPress = () => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const lastTab = getLastNonCartTab();
+    if (navigationRef.isReady?.() && lastTab) {
+      try {
+        if (lastTab === "ServicesTab") {
+          navigationRef.navigate(
+            "ServicesTab" as never,
+            { screen: "ServicesHome" } as never
+          );
+          return;
+        }
+        navigationRef.navigate(lastTab as never);
+        return;
+      } catch {
+        // fall through
+      }
+    }
+
+    const availableRoutes = new Set<string>();
+    const collect = (state: any) => {
+      if (!state) return;
+      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
+      (state.routes ?? []).forEach((r: any) => collect(r.state));
+    };
+    collect(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
+
+    if (navigationRef.isReady?.()) {
+      if (availableRoutes.size === 0) {
+        try {
+          navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+          return;
+        } catch {}
+        try {
+          navigationRef.navigate("HomeTab" as never);
+          return;
+        } catch {}
+      }
+      if (availableRoutes.has("ServicesTab")) {
+        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+        return;
+      }
+      if (availableRoutes.has("HomeTab")) {
+        navigationRef.navigate("HomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("NinjaEatsHomeTab")) {
+        navigationRef.navigate("NinjaEatsHomeTab" as never);
+        return;
+      }
+    }
   };
 
   const renderServiceItem = ({ item }: { item: ServiceCartItem }) => (
@@ -389,16 +448,21 @@ export default function ServiceCartScreen() {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Service Cart</Text>
-          <View style={styles.backButton} />
-        </View>
+        <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBackPress}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+              Service Cart
+            </Text>
+            <View style={styles.backButton} />
+          </View>
+        </SafeAreaView>
         <View style={styles.emptyContainer}>
           <Ionicons name="construct-outline" size={80} color="#ccc" />
           <Text style={styles.emptyTitle}>Your service cart is empty</Text>
@@ -419,21 +483,26 @@ export default function ServiceCartScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Service Cart</Text>
-        <TouchableOpacity
-          style={styles.clearButton}
-          onPress={handleClearCart}
-        >
-          <Text style={styles.clearButtonText}>Clear All</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackPress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+            Service Cart
+          </Text>
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={handleClearCart}
+          >
+            <Text style={styles.clearButtonText}>Clear All</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
       
       <FlatList
         data={Object.values(state.items)}
@@ -465,6 +534,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8f9fa",
+  },
+
+  headerSafeArea: {
+    backgroundColor: "#fff",
   },
   header: {
     flexDirection: "row",

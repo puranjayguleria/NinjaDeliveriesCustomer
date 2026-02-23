@@ -28,6 +28,7 @@ import {
   useRoute,
 } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getLastNonCartTab, navigationRef } from "../navigation/rootNavigation";
 import auth from "@react-native-firebase/auth";
 import firestore, { firebase } from "@react-native-firebase/firestore";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
@@ -198,6 +199,59 @@ const CartScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isFocused = useIsFocused();
+
+  const handleBackPress = () => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const lastTab = getLastNonCartTab();
+    if (navigationRef.isReady?.() && lastTab) {
+      try {
+        if (lastTab === "ServicesTab") {
+          navigationRef.navigate(
+            "ServicesTab" as never,
+            { screen: "ServicesHome" } as never
+          );
+          return;
+        }
+        navigationRef.navigate(lastTab as never);
+        return;
+      } catch {
+        // fall through
+      }
+    }
+
+    const availableRoutes = new Set<string>();
+    const collect = (state: any) => {
+      if (!state) return;
+      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
+      (state.routes ?? []).forEach((r: any) => collect(r.state));
+    };
+    collect(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
+
+    if (navigationRef.isReady?.()) {
+      if (availableRoutes.size === 0) {
+        try {
+          navigationRef.navigate("HomeTab" as never);
+          return;
+        } catch {}
+      }
+      if (availableRoutes.has("HomeTab")) {
+        navigationRef.navigate("HomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("NinjaEatsHomeTab")) {
+        navigationRef.navigate("NinjaEatsHomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("ServicesTab")) {
+        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+        return;
+      }
+    }
+  };
 
   const { location, updateLocation } = useLocationContext();
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
@@ -1604,12 +1658,26 @@ const CartScreen: React.FC = () => {
               </View>
             )}
 
-            <View style={styles.headerBlock}>
-              <Text style={styles.cartItemsHeader}>Your Cart</Text>
-              <Text style={styles.headerSubtitle}>
-                All items you've selected are shown below
-              </Text>
-            </View>
+            <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
+              <View style={styles.headerBlock}>
+                <View style={styles.headerRow}>
+                  <TouchableOpacity
+                    style={styles.headerBackButton}
+                    onPress={handleBackPress}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="arrow-back" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <View style={styles.headerTextWrap}>
+                    <Text style={styles.cartItemsHeader}>Your Cart</Text>
+                    <Text style={styles.headerSubtitle}>
+                      {"All items you've selected are shown below"}
+                    </Text>
+                  </View>
+                  <View style={styles.headerBackButton} />
+                </View>
+              </View>
+            </SafeAreaView>
 
             <ScrollView
               style={styles.scrollView}
@@ -2046,6 +2114,8 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#f2f2f2" },
   container: { flex: 1, backgroundColor: "#fefefe" },
 
+  headerSafeArea: { backgroundColor: pastelGreen },
+
   infoBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -2097,9 +2167,13 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { fontSize: 16, color: "#999" },
 
-  headerBlock: { backgroundColor: pastelGreen, paddingVertical: 20, paddingHorizontal: 16 },
+  headerBlock: { backgroundColor: pastelGreen, paddingVertical: 16, paddingHorizontal: 12 },
   cartItemsHeader: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 5 },
   headerSubtitle: { fontSize: 13, color: "#666" },
+
+  headerRow: { flexDirection: "row", alignItems: "center" },
+  headerBackButton: { padding: 8, width: 44, alignItems: "flex-start" },
+  headerTextWrap: { flex: 1 },
 
   scrollView: { flex: 1, marginBottom: 60 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },

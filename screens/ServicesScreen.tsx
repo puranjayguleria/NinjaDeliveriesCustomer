@@ -1289,44 +1289,22 @@ export default function ServicesScreen() {
           </>
         )}
 
-        {/* Search results (services + categories) */}
-        {searchQuery.length > 0 && (
+        {/* Search results (services only). Categories are shown in the main grid list below. */}
+        {searchQuery.length > 0 && (searchServices || []).length > 0 && (
           <View style={styles.searchResultsCard}>
-            {(searchServices || []).length > 0 && (
-              <>
-                <Text style={styles.searchSectionTitle}>Services</Text>
-                <FlatList
-                  data={searchServices}
-                  keyExtractor={(item) => String(item.id)}
-                  renderItem={renderServiceListItem}
-                  scrollEnabled={false}
-                  ItemSeparatorComponent={() => <View style={styles.searchDivider} />}
-                />
-              </>
-            )}
-
-            {(filteredCategories || []).length > 0 && (
-              <>
-                <Text style={[styles.searchSectionTitle, { marginTop: (searchServices || []).length > 0 ? 14 : 0 }]}>Categories</Text>
-                <FlatList
-                  data={(filteredCategories || []).slice(0, 20)}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderListItem}
-                  numColumns={2}
-                  scrollEnabled={false}
-                  columnWrapperStyle={styles.gridRow}
-                />
-              </>
-            )}
-
-            {(searchServices || []).length === 0 && (filteredCategories || []).length === 0 && (
-              <Text style={styles.searchEmptyText}>No results found</Text>
-            )}
+            <Text style={styles.searchSectionTitle}>Services</Text>
+            <FlatList
+              data={searchServices}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderServiceListItem}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={styles.searchDivider} />}
+            />
           </View>
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderListItem, renderServiceListItem]);
+  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
 
   return (
     <View style={styles.container}>

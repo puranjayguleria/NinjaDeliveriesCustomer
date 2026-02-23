@@ -26,7 +26,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { navigationRef } from "./navigation/rootNavigation";
+import { navigationRef, setLastNonCartTab } from "./navigation/rootNavigation";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -1022,6 +1022,28 @@ const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
 /* ==========================================================
    ROOT APP COMPONENT
    ========================================================== */
+const getActiveRoutePath = (state: any): string[] => {
+  if (!state || !Array.isArray(state.routes) || typeof state.index !== "number") return [];
+  const active = state.routes[state.index];
+  const childState = (active as any)?.state;
+  return [String(active?.name ?? ""), ...(childState ? getActiveRoutePath(childState) : [])].filter(
+    Boolean
+  );
+};
+
+const updateLastNonCartTabFromState = (state: any) => {
+  try {
+    const path = getActiveRoutePath(state);
+    const appTabsIndex = path.indexOf("AppTabs");
+    const activeTab = appTabsIndex >= 0 ? path[appTabsIndex + 1] : null;
+    if (activeTab && activeTab !== "CartFlow") {
+      setLastNonCartTab(activeTab);
+    }
+  } catch {
+    // non-fatal
+  }
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<null | any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -1269,7 +1291,17 @@ const App: React.FC = () => {
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>
-                <NavigationContainer ref={navigationRef}>
+                <NavigationContainer
+                  ref={navigationRef}
+                  onReady={() => {
+                    updateLastNonCartTabFromState(
+                      navigationRef.getRootState?.() ?? (navigationRef as any).getState?.()
+                    );
+                  }}
+                  onStateChange={(state) => {
+                    updateLastNonCartTabFromState(state);
+                  }}
+                >
                   <GlobalCongrats />
                   <RootStack.Navigator
                     initialRouteName={initialRoute}
