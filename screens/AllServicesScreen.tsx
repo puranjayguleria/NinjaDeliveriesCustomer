@@ -238,6 +238,7 @@ export default function AllServicesScreen() {
       source={require('../assets/serviceBG.png')}
       style={styles.container}
       resizeMode="cover"
+      blurRadius={3}
     >
       <FlatList
         data={filteredCategories}
