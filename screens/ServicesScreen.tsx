@@ -205,6 +205,12 @@ interface LiveBooking {
   timestamp: any;
 }
 
+// GIF sources array
+const HEADER_GIFS = [
+  require('../assets/ninjaVideo1.gif'),
+  require('../assets/ninjaVideo.gif'),
+];
+
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
@@ -230,6 +236,7 @@ export default function ServicesScreen() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const [activeGifIndex, setActiveGifIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
@@ -836,6 +843,34 @@ export default function ServicesScreen() {
     return sorted[0] || null;
   }, [liveBookings]);
 
+  // Auto-switch GIFs with different durations for each GIF
+  useEffect(() => {
+    console.log('🎬 GIF Auto-switch started');
+    let gifTimeout: ReturnType<typeof setTimeout>;
+    
+    const scheduleNextSwitch = (currentIndex: number) => {
+      // ninjaVideo1.gif is longer, ninjaVideo.gif is shorter
+      const duration = currentIndex === 0 ? 16000 : 5000; // 20s for first, 5s for second
+      console.log(`🎬 Scheduling next switch in ${duration}ms for GIF index ${currentIndex}`);
+      
+      gifTimeout = setTimeout(() => {
+        setActiveGifIndex((prevIndex) => {
+          const newIndex = prevIndex === 0 ? 1 : 0;
+          console.log('🎬 Switching GIF from', prevIndex, 'to', newIndex);
+          scheduleNextSwitch(newIndex);
+          return newIndex;
+        });
+      }, duration);
+    };
+    
+    scheduleNextSwitch(0);
+
+    return () => {
+      console.log('🎬 GIF Auto-switch cleanup');
+      if (gifTimeout) clearTimeout(gifTimeout);
+    };
+  }, []);
+
   // Blinking animation for View All button (light)
   useEffect(() => {
     const blinkAnimation = Animated.loop(
@@ -1280,7 +1315,8 @@ export default function ServicesScreen() {
         
         {/* Header with Background Image */}
         <ImageBackground
-          source={require('../assets/ninjaVideo1.gif')}
+          key={`gif-${activeGifIndex}`}
+          source={HEADER_GIFS[activeGifIndex]}
           style={styles.topHeader}
           resizeMode="contain"
         >
@@ -1448,10 +1484,14 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
+  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderServiceListItem, activeGifIndex]);
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={require('../assets/serviceBG.png')}
+      style={styles.container}
+      resizeMode="cover"
+    >
       {serviceConfirmedBanner && (
         <View style={styles.serviceConfirmedBanner}>
           <View style={styles.serviceConfirmedBannerLeft}>
@@ -1539,7 +1579,7 @@ export default function ServicesScreen() {
           nestedScrollEnabled
         />
       )}
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -1619,6 +1659,7 @@ const styles = StyleSheet.create({
     paddingTop: 80,
     paddingBottom: 30,
     paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
   },
 
   headerOverlay: {
@@ -1645,6 +1686,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.85)",
     shadowColor: "#0F172A",
+    
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
