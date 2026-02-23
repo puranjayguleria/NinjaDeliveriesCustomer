@@ -110,6 +110,8 @@ export interface ServiceBooking {
   id: string;
   serviceName: string;
   workName: string;
+  // Category ID (from app_categories) to support add-on services lookup
+  categoryId?: string;
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -128,10 +130,10 @@ export interface ServiceBooking {
   technicianName?: string; // Legacy/fallback field name
   technicianId?: string;   // Legacy/fallback field name
   totalPrice?: number;
-  addOns?: Array<{
+  addOns?: {
     name: string;
     price: number;
-  }>;
+  }[];
   // Package information (for monthly/weekly service packages)
   isPackage?: boolean; // Whether this booking is for a package
   // Some backends/clients use isPackageBooking instead of isPackage
@@ -197,6 +199,294 @@ export class FirestoreService {
   private static categoryImageMapLoadedAt = 0;
   private static categoryImageMapInFlight: Promise<Map<string, string>> | null = null;
   private static readonly CATEGORY_IMAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  // Cache for zone -> allowed category ids derived from service_company.
+  private static zoneCategoryIdsCache: Map<string, { ids: string[]; loadedAt: number }> = new Map();
+  private static readonly ZONE_CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  /**
+   * Returns the set of service category IDs allowed for a delivery zone (storeId),
+   * based on mapping stored in `service_company` docs.
+   */
+  static async getServiceCategoryIdsForZone(zoneId: string): Promise<string[]> {
+    try {
+      const zid = String(zoneId || '').trim();
+      if (!zid) return [];
+
+      const cached = this.zoneCategoryIdsCache.get(zid);
+      const now = Date.now();
+      if (cached && cached.ids.length > 0 && (now - cached.loadedAt) < this.ZONE_CATEGORY_CACHE_TTL_MS) {
+        if (__DEV__) {
+          console.log('[ZoneCategories] cache_hit', { zoneId: zid, categoryIds: cached.ids.length });
+        }
+        return cached.ids;
+      }
+
+      // Your schema uses `deliveryZoneId` to map a company to a delivery zone.
+      // Prefer a targeted query to avoid scanning the whole collection.
+      let snapshot = await firestore()
+        .collection('service_company')
+        .where('deliveryZoneId', '==', zid)
+        .get();
+
+      // Fallback: if the app's storeId corresponds to a delivery_zones doc id but service_company
+      // stores a different id, try matching by zone name.
+      if (snapshot.empty) {
+        try {
+          const zoneDoc = await firestore().collection('delivery_zones').doc(zid).get();
+          const zoneName = String(zoneDoc.data()?.name || '').trim();
+          if (zoneName) {
+            snapshot = await firestore()
+              .collection('service_company')
+              .where('deliveryZoneName', '==', zoneName)
+              .get();
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const allowedCategoryIds = new Set<string>();
+      const companyIdsForZone = new Set<string>();
+      const companyNamesForZone = new Set<string>();
+
+      const companyServesZone = (data: any): boolean => {
+        const zoneFields = [
+          'deliveryZones',
+          'deliveryZoneIds',
+          'deliveryZoneId',
+          'serviceZones',
+          'serviceZoneIds',
+          'zoneIds',
+          'zones',
+          'storeIds',
+          'stores',
+          'deliveryZone',
+          'zoneId',
+          'storeId',
+
+          // snake_case variants
+          'delivery_zones',
+          'delivery_zone_ids',
+          'delivery_zone_id',
+          'service_zones',
+          'service_zone_ids',
+          'zone_ids',
+          'store_ids',
+        ];
+
+        for (const field of zoneFields) {
+          const val = data?.[field];
+          if (val === undefined || val === null) continue;
+
+          if (Array.isArray(val)) {
+            // support primitive arrays and arrays of objects
+            for (const v of val) {
+              if (typeof v === 'string' || typeof v === 'number') {
+                if (String(v) === zid) return true;
+                continue;
+              }
+              if (v && typeof v === 'object') {
+                const candidates = [v.id, v.storeId, v.zoneId, v.deliveryZoneId, v.delivery_zone_id, v.store_id, v.zone_id];
+                if (candidates.map((c) => String(c || '')).includes(zid)) return true;
+              }
+            }
+            continue;
+          }
+          if (typeof val === 'string' || typeof val === 'number') {
+            if (String(val) === zid) return true;
+            continue;
+          }
+          if (typeof val === 'object') {
+            // Map-like: { [zoneId]: true }
+            if (Object.prototype.hasOwnProperty.call(val, zid)) {
+              if (Boolean((val as any)[zid])) return true;
+              continue;
+            }
+          }
+        }
+
+        // Strict: if company has no zone mapping fields, treat as not mapped.
+        return false;
+      };
+
+      const collectCategoryIds = (data: any): string[] => {
+        const ids: string[] = [];
+        const pushId = (v: any) => {
+          const s = String(v || '').trim();
+          if (s) ids.push(s);
+        };
+
+        // Common direct fields
+        pushId(data?.categoryId);
+        pushId(data?.masterCategoryId);
+        pushId(data?.categoryMasterId);
+        pushId(data?.category_id);
+        pushId(data?.master_category_id);
+        pushId(data?.category_master_id);
+
+        // Common array fields
+        const arrayFields = [
+          'categoryIds',
+          'categoryMasterIds',
+          'masterCategoryIds',
+          'appCategoryIds',
+          // snake_case variants
+          'category_ids',
+          'category_master_ids',
+          'master_category_ids',
+          'app_category_ids',
+        ];
+        for (const f of arrayFields) {
+          const arr = data?.[f];
+          if (Array.isArray(arr)) arr.forEach(pushId);
+        }
+
+        // Categories array may contain strings or objects
+        const cats = data?.categories;
+        if (Array.isArray(cats)) {
+          cats.forEach((c: any) => {
+            if (typeof c === 'string' || typeof c === 'number') {
+              pushId(c);
+              return;
+            }
+            pushId(c?.id);
+            pushId(c?.categoryId);
+            pushId(c?.masterCategoryId);
+            pushId(c?.categoryMasterId);
+            pushId(c?.category_id);
+            pushId(c?.master_category_id);
+            pushId(c?.category_master_id);
+          });
+        }
+
+        // Some schemas store service objects under services/serviceList
+        const serviceArrays = [data?.services, data?.serviceList, data?.serviceCategories];
+        for (const arr of serviceArrays) {
+          if (!Array.isArray(arr)) continue;
+          arr.forEach((s: any) => {
+            pushId(s?.categoryId);
+            pushId(s?.masterCategoryId);
+            pushId(s?.categoryMasterId);
+          });
+        }
+
+        return ids;
+      };
+
+      snapshot.forEach((doc) => {
+        const data = doc.data() as any;
+
+        if (data?.isActive === false) return;
+
+        // Most setups store the service_company doc id as the companyId referenced by service_services.
+        companyIdsForZone.add(String(doc.id));
+        if (data?.companyId) companyIdsForZone.add(String(data.companyId));
+
+        const companyName = String(data?.companyName || data?.name || '').trim();
+        if (companyName) companyNamesForZone.add(companyName);
+
+        // Optional: some schemas may also store categories directly in service_company.
+        // Keep collecting them as a fallback.
+        if (companyServesZone(data)) {
+          const ids = collectCategoryIds(data);
+          ids.forEach((id) => allowedCategoryIds.add(id));
+        }
+      });
+
+      // Primary source of truth: service_services. CategoryMasterId lives here per service.
+      // We derive zone-specific categories by looking at active services for companies in this zone.
+      const companyIds = Array.from(companyIdsForZone).filter(Boolean);
+      let serviceDocsMatched = 0;
+      if (companyIds.length > 0) {
+        const batchSize = 10; // Firestore 'in' query limit
+        for (let i = 0; i < companyIds.length; i += batchSize) {
+          const batch = companyIds.slice(i, i + batchSize);
+          if (batch.length === 0) continue;
+
+          const svcSnap = await firestore()
+            .collection('service_services')
+            .where('companyId', 'in', batch)
+            .get();
+
+          svcSnap.forEach((svcDoc) => {
+            const s = svcDoc.data() as any;
+            if (s?.isActive === false) return;
+
+            serviceDocsMatched += 1;
+
+            const catCandidates = [
+              s?.categoryMasterId,
+              s?.masterCategoryId,
+              s?.categoryId,
+              s?.category_id,
+              s?.category_master_id,
+              s?.master_category_id,
+            ];
+            catCandidates.forEach((c) => {
+              const id = String(c || '').trim();
+              if (id) allowedCategoryIds.add(id);
+            });
+          });
+        }
+      }
+
+      // Fallback: if the service_company doc ids don't match service_services.companyId
+      // but service_services carries a company name field, try to match by name.
+      // This is best-effort and only used when the primary join yields nothing.
+      if (allowedCategoryIds.size === 0 && companyNamesForZone.size > 0) {
+        const names = Array.from(companyNamesForZone).filter(Boolean);
+        const batchSize = 10;
+        const tryField = async (field: string) => {
+          for (let i = 0; i < names.length; i += batchSize) {
+            const batch = names.slice(i, i + batchSize);
+            if (batch.length === 0) continue;
+            try {
+              const svcSnap = await firestore()
+                .collection('service_services')
+                .where(field, 'in', batch)
+                .get();
+
+              svcSnap.forEach((svcDoc) => {
+                const s = svcDoc.data() as any;
+                if (s?.isActive === false) return;
+                const id = String(s?.categoryMasterId || s?.masterCategoryId || s?.categoryId || '').trim();
+                if (id) allowedCategoryIds.add(id);
+              });
+            } catch (e) {
+              // ignore field mismatch/index issues
+              if (__DEV__) console.log(`[ZoneCategories] fallback '${field}' query failed`, e);
+            }
+          }
+        };
+
+        await tryField('companyName');
+        if (allowedCategoryIds.size === 0) await tryField('company');
+      }
+
+      if (__DEV__) {
+        console.log('[ZoneCategories]', {
+          zoneId: zid,
+          companiesInZone: snapshot.size,
+          companyIdsConsidered: companyIds.length,
+          companyNamesConsidered: companyNamesForZone.size,
+          serviceDocsMatched,
+          categoryIds: allowedCategoryIds.size,
+        });
+      }
+
+      const result = Array.from(allowedCategoryIds).sort();
+      // Only cache non-empty results so a transient mismatch doesn't hide services for TTL.
+      if (result.length > 0) {
+        this.zoneCategoryIdsCache.set(zid, { ids: result, loadedAt: now });
+      }
+      return result;
+    } catch (error) {
+      console.error('❌ Error deriving zone category IDs from service_company:', error);
+      // Fail-safe: return empty so UI shows none rather than wrong-zone categories.
+      return [];
+    }
+  }
   /**
    * Check if a category has any package-based services
    * Returns true if category has at least one service with packages
@@ -2285,6 +2575,7 @@ export class FirestoreService {
           id: doc.id,
           serviceName: data.serviceName || '',
           workName: data.workName || data.serviceName || '',
+          categoryId: data.categoryId,
           customerName: data.customerName || '',
           customerPhone: data.customerPhone || data.phone,
           customerAddress: data.customerAddress || data.address,
@@ -2358,6 +2649,7 @@ export class FirestoreService {
         id: doc.id,
         serviceName: data.serviceName || '',
         workName: data.workName || data.serviceName || '',
+        categoryId: data.categoryId,
         customerName: data.customerName || '',
         customerPhone: data.customerPhone || data.phone,
         customerAddress: data.customerAddress || data.address,
@@ -3066,10 +3358,35 @@ export class FirestoreService {
     try {
       console.log(`⭐ Calculating average rating for company: ${companyId}`);
 
-      const ratingsSnapshot = await firestore()
-        .collection('serviceRatings')
-        .where('companyId', '==', companyId)
-        .get();
+      // Support both collection names:
+      // - `service_rating` (current production in some environments)
+      // - `serviceRatings` (legacy / app-writer path)
+      const tryCollections = ['service_rating', 'serviceRatings'];
+      let ratingsSnapshot: any | null = null;
+
+      for (const col of tryCollections) {
+        try {
+          const snap = await firestore()
+            .collection(col)
+            .where('companyId', '==', companyId)
+            .get();
+
+          if (!snap.empty) {
+            ratingsSnapshot = snap;
+            break;
+          }
+
+          // Keep the snapshot for empty-case logs/handling.
+          ratingsSnapshot = snap;
+        } catch (e) {
+          // Ignore and try the next collection.
+          if (__DEV__) console.warn(`[FirestoreService] getCompanyAverageRating failed for ${col}`, e);
+        }
+      }
+
+      if (!ratingsSnapshot) {
+        return { averageRating: 0, reviewCount: 0 };
+      }
 
       if (ratingsSnapshot.empty) {
         console.log(`   ℹ️ No ratings found for company ${companyId}`);
@@ -3098,6 +3415,52 @@ export class FirestoreService {
     } catch (error: any) {
       console.error(`❌ Error calculating average rating for company ${companyId}:`, error);
       return { averageRating: 0, reviewCount: 0 };
+    }
+  }
+
+  /**
+   * Fetch a small set of reviews for a company (for UI rotators).
+   * Avoids orderBy to reduce index requirements.
+   */
+  static async getCompanyReviews(
+    companyId: string,
+    limit: number = 10
+  ): Promise<{ id: string; customerName?: string; rating?: number; feedback?: string; createdAt?: any }[]> {
+    try {
+      if (!companyId) return [];
+
+      const tryCollections = ['service_rating', 'serviceRatings'];
+      for (const col of tryCollections) {
+        try {
+          const snap = await firestore()
+            .collection(col)
+            .where('companyId', '==', companyId)
+            .limit(limit)
+            .get();
+
+          if (snap.empty) continue;
+
+          return snap.docs.map((d: any) => {
+            const data: any = d.data() || {};
+            return {
+              id: String(d.id),
+              customerName: data.customerName,
+              rating: typeof data.rating === 'number' ? data.rating : undefined,
+              feedback: (typeof data.feedback === 'string' && data.feedback.trim().length > 0)
+                ? data.feedback
+                : (typeof data.customerFeedback === 'string' ? data.customerFeedback : undefined),
+              createdAt: data.createdAt,
+            };
+          });
+        } catch (e) {
+          if (__DEV__) console.warn(`[FirestoreService] getCompanyReviews failed for ${col}`, e);
+        }
+      }
+
+      return [];
+    } catch (e) {
+      console.error('❌ Error fetching company reviews:', e);
+      return [];
     }
   }
 
@@ -3262,7 +3625,7 @@ export class FirestoreService {
           const companyName = await this.getActualCompanyName(cleanedData.companyId);
           cleanedData.companyName = companyName;
           console.log(`✅ Added company name to booking: ${companyName}`);
-        } catch (error) {
+        } catch {
           console.log(`⚠️ Could not fetch company name, using fallback`);
           cleanedData.companyName = `Company ${cleanedData.companyId}`;
         }
@@ -4362,6 +4725,7 @@ export class FirestoreService {
             id: doc.id,
             serviceName: data.serviceName || '',
             workName: data.workName || data.serviceName || '',
+            categoryId: data.categoryId,
             customerName: data.customerName || '',
             customerPhone: data.customerPhone || data.phone,
             customerAddress: data.customerAddress || data.address,
@@ -5262,7 +5626,7 @@ export class FirestoreService {
    * It also deletes any linked `service_payments` documents for deleted bookings.
    */
   static async devDeleteUserServiceBookings(options?: {
-    statuses?: Array<ServiceBooking['status'] | 'reject' | 'rejected'>;
+    statuses?: (ServiceBooking['status'] | 'reject' | 'rejected')[];
     limit?: number;
     includePayments?: boolean;
   }): Promise<{ deletedBookings: number; deletedPayments: number }>
@@ -5299,7 +5663,7 @@ export class FirestoreService {
 
     // Delete payments first (query by bookingId)
     if (includePayments && bookingIds.length > 0) {
-      const paymentDeletes: Array<Promise<void>> = [];
+      const paymentDeletes: Promise<void>[] = [];
       for (const bookingId of bookingIds) {
         const paySnap = await firestore()
           .collection('service_payments')
@@ -5783,7 +6147,6 @@ export class FirestoreService {
       console.log(`🏢 Fetching companies for direct-price services:`, serviceNames);
       console.log(`   Category ID:`, categoryId);
       
-      const companies: ServiceCompany[] = [];
       const companyMap = new Map<string, ServiceCompany>();
       
       // For each service name, find companies in service_services

@@ -86,7 +86,12 @@ export default function BookingConfirmationScreen() {
           }
         }
 
-        await determineCategoryId(booking.serviceName);
+        if (booking.categoryId) {
+          setCategoryId(booking.categoryId);
+          console.log(`📱 Using booking.categoryId for add-ons: ${booking.categoryId}`);
+        } else {
+          await determineCategoryId(booking.serviceName);
+        }
         
         console.log(`🔄 Real-time update: ${booking.serviceName} - Status: ${booking.status}`);
         setLoading(false);
@@ -213,6 +218,7 @@ export default function BookingConfirmationScreen() {
 
   const determineCategoryId = async (serviceName: string) => {
     try {
+      if (categoryId) return;
       const categories = await FirestoreService.getServiceCategories();
       
       const matchingCategory = categories.find(category => 
@@ -343,10 +349,11 @@ export default function BookingConfirmationScreen() {
   };
 
   const handleAddOnServices = () => {
-    if (!categoryId) {
+    const effectiveWorkerId = bookingData?.workerId || bookingData?.technicianId;
+    if (!effectiveWorkerId && !categoryId) {
       Alert.alert(
-        "Category Not Found", 
-        "Unable to determine service category for add-on services."
+        "Add-On Services Unavailable",
+        "Unable to load add-on services because the assigned worker or service category is missing."
       );
       return;
     }
@@ -519,8 +526,9 @@ export default function BookingConfirmationScreen() {
                                      bookingData?.serviceName?.toLowerCase().includes('gym') ||
                                      bookingData?.serviceName?.toLowerCase().includes('yoga') ||
                                      bookingData?.serviceName?.toLowerCase().includes('fitness');
-            
-            const shouldShowAddOn = categoryId && isTechnicianAssigned() && !isPackageBooking;
+
+            const effectiveWorkerId = bookingData?.workerId || bookingData?.technicianId;
+            const shouldShowAddOn = isTechnicianAssigned() && !isPackageBooking && !!(effectiveWorkerId || categoryId);
             
             return shouldShowAddOn ? (
               <TouchableOpacity 

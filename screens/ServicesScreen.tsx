@@ -1,3 +1,4 @@
+import { useLocationContext } from '../context/LocationContext';
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -206,13 +207,19 @@ interface LiveBooking {
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
+  const { location } = useLocationContext();
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [rawServiceCategories, setRawServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
   const [liveBookings, setLiveBookings] = useState<LiveBooking[]>([]);
   const [allServices, setAllServices] = useState<any[]>([]);
+  const [allServicesLoaded, setAllServicesLoaded] = useState(false);
   const [searchServices, setSearchServices] = useState<any[]>([]);
   const [activeServiceCategoryIdsKey, setActiveServiceCategoryIdsKey] = useState('');
+  const [zoneCategoryIdsKey, setZoneCategoryIdsKey] = useState('');
+  const [zoneCompanyIdsKey, setZoneCompanyIdsKey] = useState('');
+  const [zoneCompanyNamesKey, setZoneCompanyNamesKey] = useState('');
+  const [zoneCompaniesLoading, setZoneCompaniesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [bannersLoading, setBannersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -241,6 +248,126 @@ export default function ServicesScreen() {
   const [serviceConfirmedBanner, setServiceConfirmedBanner] = useState<
     null | { razorpayOrderId: string; createdAt: number }
   >(null);
+
+  const isLoading = loading || zoneCompaniesLoading || !allServicesLoaded;
+
+  // Load zone-specific companies from service_company mapping.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const zid = String(location?.storeId || '').trim();
+      setZoneCategoryIdsKey('');
+      setZoneCompanyIdsKey('');
+      setZoneCompanyNamesKey('');
+      setZoneCompaniesLoading(true);
+      try {
+        if (!zid) {
+          // No deliverable zone selected → show none.
+          if (!cancelled) {
+            setZoneCompanyIdsKey('');
+            setZoneCompanyNamesKey('');
+          }
+          return;
+        }
+
+        // 1) Try matching by deliveryZoneId
+        let snap = await firestore()
+          .collection('service_company')
+          .where('deliveryZoneId', '==', zid)
+          .get();
+
+        // 2) Fallback: match by deliveryZoneName (derived from delivery_zones/{storeId}.name)
+        if (snap.empty) {
+          try {
+            const zoneDoc = await firestore().collection('delivery_zones').doc(zid).get();
+            const zoneName = String(zoneDoc.data()?.name || '').trim();
+            if (zoneName) {
+              snap = await firestore()
+                .collection('service_company')
+                .where('deliveryZoneName', '==', zoneName)
+                .get();
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (cancelled) return;
+
+        const ids = new Set<string>();
+        const names = new Set<string>();
+
+        snap.forEach((doc) => {
+          const data = doc.data() as any;
+          if (data?.isActive === false) return;
+
+          ids.add(String(doc.id));
+          if (data?.companyId) ids.add(String(data.companyId));
+
+          const nm = String(data?.companyName || data?.name || '').trim();
+          if (nm) names.add(nm);
+        });
+
+        setZoneCompanyIdsKey(Array.from(ids).filter(Boolean).sort().join('|'));
+        setZoneCompanyNamesKey(Array.from(names).filter(Boolean).sort().join('|'));
+
+        if (__DEV__) {
+          console.log(`[Services][ZoneCompanies] storeId=${zid} companies=${snap.size} ids=${ids.size} names=${names.size}`);
+        }
+      } finally {
+        if (!cancelled) setZoneCompaniesLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.storeId]);
+
+  // Derive zone-specific category IDs from the already-loaded active services list.
+  // This avoids relying on an exact Firestore join between service_company and service_services.
+  useEffect(() => {
+    const zid = String(location?.storeId || '').trim();
+    if (!zid || zoneCompaniesLoading || !allServicesLoaded) {
+      setZoneCategoryIdsKey('');
+      return;
+    }
+
+    const companyIds = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').filter(Boolean) : [];
+    const companyNames = zoneCompanyNamesKey ? zoneCompanyNamesKey.split('|').filter(Boolean) : [];
+    const idSet = new Set(companyIds.map((s) => String(s).trim()).filter(Boolean));
+    const nameSet = new Set(companyNames.map((s) => String(s).trim()).filter(Boolean));
+
+    const catSet = new Set<string>();
+    let matchedServices = 0;
+
+    for (const s of allServices || []) {
+      if ((s as any)?.isActive === false) continue;
+
+      const cid = String((s as any)?.companyId || '').trim();
+      const cname = String((s as any)?.companyName || (s as any)?.company || '').trim();
+
+      const matchesZone = (cid && idSet.has(cid)) || (cname && nameSet.has(cname));
+      if (!matchesZone) continue;
+
+      matchedServices += 1;
+
+      const cat = String(
+        (s as any)?.categoryMasterId ||
+        (s as any)?.masterCategoryId ||
+        (s as any)?.categoryId ||
+        ''
+      ).trim();
+      if (cat) catSet.add(cat);
+    }
+
+    const ids = Array.from(catSet).sort();
+    setZoneCategoryIdsKey(ids.join('|'));
+    if (__DEV__) {
+      console.log(`[Services][ZoneCategoriesFromServices] storeId=${zid} matchedServices=${matchedServices} categoryIds=${ids.length}`);
+    }
+  }, [location?.storeId, zoneCompaniesLoading, allServicesLoaded, zoneCompanyIdsKey, zoneCompanyNamesKey, allServices]);
 
   useEffect(() => {
     let mounted = true;
@@ -383,18 +510,34 @@ export default function ServicesScreen() {
       return;
     }
 
+    // If we don't have a deliverable zone or zone mapping yet, show none.
+    const zoneIds = zoneCategoryIdsKey
+      ? zoneCategoryIdsKey.split('|').filter(Boolean)
+      : [];
+    if (!location?.storeId || zoneIds.length === 0) {
+      setServiceCategories([]);
+      return;
+    }
+
+    const zoneSet = new Set(zoneIds);
+    const zoneFiltered = rawServiceCategories.filter((category) => {
+      const own = zoneSet.has(String(category.id));
+      const master = category.masterCategoryId ? zoneSet.has(String(category.masterCategoryId)) : false;
+      return own || master;
+    });
+
     const ids = activeServiceCategoryIdsKey
       ? activeServiceCategoryIdsKey.split('|').filter(Boolean)
       : [];
 
     // While active services are still loading, show raw categories to keep the screen responsive.
     if (ids.length === 0) {
-      setServiceCategories(rawServiceCategories);
+      setServiceCategories(zoneFiltered);
       return;
     }
 
     const activeSet = new Set(ids);
-    const filtered = rawServiceCategories.filter((category) => {
+    const filtered = zoneFiltered.filter((category) => {
       const hasWorkersWithOwnId = activeSet.has(category.id);
       const hasWorkersWithMasterId = category.masterCategoryId
         ? activeSet.has(String(category.masterCategoryId))
@@ -407,7 +550,7 @@ export default function ServicesScreen() {
     }
 
     setServiceCategories(filtered);
-  }, [activeServiceCategoryIdsKey, rawServiceCategories]);
+  }, [activeServiceCategoryIdsKey, rawServiceCategories, zoneCategoryIdsKey, location?.storeId]);
 
   // Real-time listener for active services (used for client-side search to avoid Firestore index requirements).
   useEffect(() => {
@@ -418,6 +561,7 @@ export default function ServicesScreen() {
         (snap) => {
           const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
           setAllServices(items);
+          setAllServicesLoaded(true);
 
           const ids = new Set<string>();
           for (const s of items) {
@@ -430,6 +574,7 @@ export default function ServicesScreen() {
           if (__DEV__) console.log('❌ Failed to listen to active services', err);
           setAllServices([]);
           setActiveServiceCategoryIdsKey('');
+          setAllServicesLoaded(true);
         }
       );
 
@@ -1338,14 +1483,14 @@ export default function ServicesScreen() {
       )}
 
       {/* Add safety check for initial render */}
-      {!serviceCategories && loading ? (
+      {!serviceCategories && isLoading ? (
         <View style={styles.emptyLoadingContainer}>
           <ActivityIndicator size="large" color="#00b4a0" />
           <Text style={styles.emptyLoadingText}>Loading services...</Text>
         </View>
       ) : (
         <FlatList
-          data={loading ? [] : (listCategories || [])}
+          data={isLoading ? [] : (listCategories || [])}
           keyExtractor={(item, index) => item?.id || `item-${index}`}
           ListHeaderComponent={HeaderUI}
           renderItem={renderListItem}
@@ -1354,7 +1499,7 @@ export default function ServicesScreen() {
           key="two-columns"
           ListFooterComponent={null}
           ListEmptyComponent={
-            loading ? (
+            isLoading ? (
               <View style={styles.emptyLoadingContainer}>
                 <ActivityIndicator size="large" color="#00b4a0" />
                 <Text style={styles.emptyLoadingText}>Loading services...</Text>

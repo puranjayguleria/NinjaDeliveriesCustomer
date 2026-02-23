@@ -1,30 +1,11 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Alert, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from "expo-linking";
 import { consumeRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
-
-interface RazorpayWebViewProps {
-  route: {
-    params: {
-      orderId: string;
-      amount: number;
-      keyId: string;
-      currency: string;
-      name: string;
-      description: string;
-      prefill: {
-        contact: string;
-        email: string;
-        name: string;
-      };
-      sessionId?: string;
-    };
-  };
-}
 
 export default function RazorpayWebView() {
   const route = useRoute<any>();
@@ -54,6 +35,43 @@ export default function RazorpayWebView() {
   const { onSuccess, onFailure } = consumeRazorpayWebViewCallbacks(sessionId);
 
   log("mount", { orderId, amount, currency, name, description });
+
+  const maybeOpenExternal = useCallback((urlRaw: string) => {
+    const url = String(urlRaw || "");
+    if (!url) return false;
+
+    // Never attempt to open internal about:* URLs externally.
+    if (url.startsWith("about:")) return false;
+
+    // Allow http(s) to stay in WebView.
+    if (url.startsWith("http://") || url.startsWith("https://")) return false;
+
+    // Allow data/blob to stay in WebView.
+    if (url.startsWith("data:") || url.startsWith("blob:")) return false;
+
+    // For UPI / intent links, try opening externally.
+    if (
+      url.startsWith("intent:") ||
+      url.startsWith("upi:") ||
+      url.startsWith("tez:") ||
+      url.startsWith("phonepe:") ||
+      url.startsWith("paytmmp:") ||
+      url.startsWith("paytm:") ||
+      url.startsWith("gpay:") ||
+      url.startsWith("bhim:") ||
+      url.startsWith("cred:") ||
+      url.startsWith("mobikwik:") ||
+      url.startsWith("freecharge:")
+    ) {
+      log("nav_open_external", { url });
+      Linking.openURL(url).catch((e) => {
+        console.warn("[RZPWebView] Error opening URL:", e);
+      });
+      return true;
+    }
+
+    return false;
+  }, []);
 
   const razorpayHTML = `
     <!DOCTYPE html>
@@ -356,18 +374,32 @@ export default function RazorpayWebView() {
         onMessage={handleMessage}
         onLoadEnd={() => setLoading(false)}
         onError={handleError}
+        onOpenWindow={(event) => {
+          const targetUrl = String(event?.nativeEvent?.targetUrl || "");
+          log("open_window", { url: targetUrl });
+
+          // Razorpay sometimes opens internal iframe srcdoc in a new window.
+          // If we don't handle this, iOS may try to open it via Linking and show:
+          // "Unable to open URL: about:srcdoc ... LSApplicationQueriesSchemes".
+          if (targetUrl.startsWith("about:")) {
+            log("open_window_block_about", { url: targetUrl });
+            return;
+          }
+
+          // Only open external for known UPI/payment app schemes.
+          const didOpenExternal = maybeOpenExternal(targetUrl);
+          if (!didOpenExternal) {
+            log("open_window_ignored", { url: targetUrl });
+          }
+        }}
         onShouldStartLoadWithRequest={(req) => {
           const url = String(req?.url || "");
 
           // WebView uses about:* internally on iOS.
-          // Allow about:blank (common during initialization), but block about:srcdoc to avoid Linking errors.
-          if (url === "about:blank") {
-            log("nav_allow_about_blank");
+          // Allow all about:* (e.g., about:blank, about:srcdoc) which are internal to the WebView.
+          if (url.startsWith("about:")) {
+            log("nav_allow_about", { url });
             return true;
-          }
-          if (url.startsWith("about:srcdoc")) {
-            log("nav_block_about_srcdoc", { url });
-            return false;
           }
 
           // Allow the initial checkout html and normal web content.
@@ -380,11 +412,7 @@ export default function RazorpayWebView() {
           }
 
           // For UPI / intent links, try opening externally.
-          if (url.startsWith("upi:") || url.startsWith("tez:") || url.startsWith("phonepe:") || url.startsWith("paytmmp:") || url.startsWith("paytm:") || url.startsWith("gpay:") || url.startsWith("bhim:") || url.startsWith("cred:") || url.startsWith("mobikwik:") || url.startsWith("freecharge:")) {
-            log("nav_open_external", { url });
-            Linking.openURL(url).catch((e) => {
-              console.warn("[RZPWebView] Error opening URL:", e);
-            });
+          if (maybeOpenExternal(url)) {
             return false;
           }
 

@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   Alert,
   ScrollView,
   Modal,
+  Pressable,
+  Animated,
+  Easing,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,20 +24,69 @@ type CompanyPackageGroup = {
   packages: (any & { __serviceId?: string; __serviceName?: string })[];
 };
 
-interface Package {
-  id?: string;
-  name: string;
-  price: number;
-  duration?: string;
-  description?: string;
-  features?: string[];
-  isPopular?: boolean;
-}
+const AnimatedCompanyReviewSnippet: React.FC<{
+  header: string;
+  text: string;
+  onPressMore: () => void;
+  moreLabel?: string;
+}> = ({ header, text, onPressMore, moreLabel = 'See more' }) => {
+  const translateY = useRef(new Animated.Value(10)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    translateY.setValue(10);
+    opacity.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [header, text, opacity, translateY]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.companyReviewSnippet,
+        {
+          opacity,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
+      <View style={styles.companyReviewHeaderWrap}>
+        <Text style={styles.companyReviewHeader} numberOfLines={1}>
+          {header}
+        </Text>
+      </View>
+      <View style={styles.companyReviewTextWrap}>
+        <Text style={styles.companyReviewText} numberOfLines={2}>
+          {text}
+        </Text>
+      </View>
+      <View style={styles.companyReviewMoreRow}>
+        <Pressable onPress={onPressMore} hitSlop={8}>
+          <Text style={styles.companyReviewMoreText}>{moreLabel}</Text>
+        </Pressable>
+      </View>
+    </Animated.View>
+  );
+};
 
 export default function PackageSelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const navInFlightRef = useRef(false);
+  const loadKeyRef = useRef<string>("");
 
   const { serviceTitle, categoryId, allCategories, serviceId, serviceName } = route.params;
 
@@ -54,6 +105,21 @@ export default function PackageSelectionScreen() {
   const [companyGroups, setCompanyGroups] = useState<CompanyPackageGroup[]>([]);
   const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyPackageGroup | null>(null);
 
+  const [reviewTick, setReviewTick] = useState(0);
+  const [companyReviewsById, setCompanyReviewsById] = useState<Record<string, any[]>>({});
+
+  const [reviewModal, setReviewModal] = useState<{
+    visible: boolean;
+    title: string;
+    header: string;
+    feedback: string;
+  }>({ visible: false, title: "", header: "", feedback: "" });
+
+  useEffect(() => {
+    const id = setInterval(() => setReviewTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
   // Helper function to close packages modal and deselect company
   const closePackagesModal = () => {
     setShowPackagesModal(false);
@@ -62,6 +128,10 @@ export default function PackageSelectionScreen() {
   };
 
   useEffect(() => {
+    const key = `${String(categoryId || '').trim()}|${String(serviceId || '').trim()}|${String(serviceName || '').trim()}`;
+    if (loadKeyRef.current === key) return;
+    loadKeyRef.current = key;
+
     // If serviceId is provided, fetch only that service's packages
     if (serviceId && serviceName) {
       fetchSingleServicePackages();
@@ -69,7 +139,7 @@ export default function PackageSelectionScreen() {
       // Otherwise, fetch ALL services (both package-based and direct-price) for the category
       fetchAllServices();
     }
-  }, [categoryId, serviceId]);
+  });
 
   // Build company -> packages groups so if multiple package-services belong to the same company,
   // we show one company row and merge all package options across those services.
@@ -127,7 +197,7 @@ export default function PackageSelectionScreen() {
         });
 
         // Only create groups for companies that have valid data (active companies)
-        const groups: CompanyPackageGroup[] = companyIds
+        let groups: CompanyPackageGroup[] = companyIds
           .filter((cid) => companyDataMap.has(cid))
           .map((cid) => {
             const services = byCompany.get(cid) || [];
@@ -157,8 +227,48 @@ export default function PackageSelectionScreen() {
             };
           });
 
+        // Enrich with ratings + reviews (and sort by rating desc)
+        const reviewPairs = await Promise.all(
+          groups.map(async (g) => {
+            const cid = String(g.id);
+            const ratingData = await FirestoreService.getCompanyAverageRating(cid);
+            const reviews = await FirestoreService.getCompanyReviews(cid, 10);
+            const company = {
+              ...(g.company || {}),
+              rating: ratingData?.averageRating || (g.company as any)?.rating || 0,
+              reviewCount: ratingData?.reviewCount || (g.company as any)?.reviewCount || 0,
+            };
+            return { cid, reviews, rating: Number(company.rating || 0), reviewCount: Number(company.reviewCount || 0), company };
+          })
+        );
+
+        const reviewsMap: Record<string, any[]> = {};
+        const enrichedCompanyMap = new Map<string, any>();
+        reviewPairs.forEach((p) => {
+          reviewsMap[p.cid] = p.reviews;
+          enrichedCompanyMap.set(p.cid, p.company);
+        });
+
+        groups = groups.map((g) => ({
+          ...g,
+          company: enrichedCompanyMap.get(String(g.id)) || g.company,
+        }));
+
+        groups.sort((a: any, b: any) => {
+          const ar = Number(a?.company?.rating || 0);
+          const br = Number(b?.company?.rating || 0);
+          if (br !== ar) return br - ar;
+          const ac = Number(a?.company?.reviewCount || 0);
+          const bc = Number(b?.company?.reviewCount || 0);
+          if (bc !== ac) return bc - ac;
+          const an = String(a?.company?.companyName || a?.company?.serviceName || '').toLowerCase();
+          const bn = String(b?.company?.companyName || b?.company?.serviceName || '').toLowerCase();
+          return an.localeCompare(bn);
+        });
+
         console.log(`✅ Created ${groups.length} company groups (filtered out inactive companies)`);
         setCompanyGroups(groups);
+        setCompanyReviewsById(reviewsMap);
         // Don't auto-select any company - let user choose
       } catch (e) {
         console.log('⚠️ Failed to load companies for package selection:', e);
@@ -187,6 +297,10 @@ export default function PackageSelectionScreen() {
     run();
   }, [packageBasedServices, categoryId]);
 
+  const sortedCompanyGroups = useMemo(() => {
+    return Array.isArray(companyGroups) ? [...companyGroups] : [];
+  }, [companyGroups]);
+
   useEffect(() => {
     if (!__DEV__) return;
     console.log('🧩 PackageSelection debug snapshot:', {
@@ -205,20 +319,7 @@ export default function PackageSelectionScreen() {
       companiesLoading,
       selectedPackage,
     });
-  }, [
-    categoryId,
-    serviceId,
-    serviceName,
-    packageBasedServices.length,
-    directPriceServices.length,
-    selectedService?.id,
-    (selectedService as any)?.packages?.length,
-    companyGroups.length,
-    selectedCompanyGroup?.id,
-    selectedCompanyGroup?.packages?.length,
-    companiesLoading,
-    selectedPackage,
-  ]);
+  });
 
   const fetchSingleServicePackages = async () => {
     try {
@@ -461,252 +562,6 @@ export default function PackageSelectionScreen() {
     Alert.alert("Select Service", "Please select a package or service to continue.");
   };
 
-  const renderPackageCard = (pkg: any, service: ServiceIssue, index: number) => {
-    // Handle different package data structures
-    let packageName = pkg.name || pkg.packageName || `Package ${index + 1}`;
-    let packagePrice = pkg.price || 0;
-    let packageDuration = pkg.duration || '';
-    
-    // 🔥 NEW: Check for unit field from Firebase (month, week, year, day)
-    const packageUnit = pkg.unit || pkg.frequency || pkg.type || '';
-    
-    // If package name contains price info like "1 month(s) - ₹998", parse it
-    if (packageName.includes('-') && packageName.includes('₹')) {
-      const parts = packageName.split('-');
-      packageName = parts[0].trim(); // "1 month(s)"
-      const priceMatch = parts[1].match(/₹?(\d+)/);
-      if (priceMatch) {
-        packagePrice = parseInt(priceMatch[1]);
-      }
-    }
-    
-    // Determine proper duration text from unit field, duration field, OR package name
-    let durationText = '';
-    let fullDurationText = ''; // For showing complete duration like "3 months", "2 weeks"
-    
-    // 🔥 PRIORITY 1: Use unit field if available
-    if (packageUnit) {
-      const unitLower = packageUnit.toLowerCase();
-      
-      // Parse duration number
-      let durationCount = 1;
-      if (packageDuration) {
-        const durationNum = parseInt(packageDuration.toString());
-        if (!isNaN(durationNum) && durationNum > 0) {
-          durationCount = durationNum;
-        }
-      }
-      
-      // Determine unit type
-      if (unitLower.includes('month')) {
-        fullDurationText = durationCount === 1 ? '1 month' : `${durationCount} months`;
-      } else if (unitLower.includes('week')) {
-        fullDurationText = durationCount === 1 ? '1 week' : `${durationCount} weeks`;
-      } else if (unitLower.includes('day')) {
-        fullDurationText = durationCount === 1 ? '1 day' : `${durationCount} days`;
-      } else if (unitLower.includes('year')) {
-        fullDurationText = durationCount === 1 ? '1 year' : `${durationCount} years`;
-      } else {
-        // If unit is not recognized, use as-is
-        fullDurationText = `${durationCount} ${packageUnit}`;
-      }
-    }
-    // PRIORITY 2: Try to get from duration field
-    else if (packageDuration) {
-      const durationLower = packageDuration.toString().toLowerCase();
-      
-      // Check for month/monthly
-      if (durationLower.includes('month')) {
-        durationText = 'month';
-        // Try to extract number of months
-        const monthMatch = durationLower.match(/(\d+)\s*month/);
-        if (monthMatch) {
-          const count = parseInt(monthMatch[1]);
-          fullDurationText = count === 1 ? '1 month' : `${count} months`;
-        } else {
-          fullDurationText = packageDuration;
-        }
-      } 
-      // Check for year/yearly
-      else if (durationLower.includes('year')) {
-        durationText = 'year';
-        const yearMatch = durationLower.match(/(\d+)\s*year/);
-        if (yearMatch) {
-          const count = parseInt(yearMatch[1]);
-          fullDurationText = count === 1 ? '1 year' : `${count} years`;
-        } else {
-          fullDurationText = packageDuration;
-        }
-      }
-      // Check for week/weekly
-      else if (durationLower.includes('week')) {
-        durationText = 'week';
-        const weekMatch = durationLower.match(/(\d+)\s*week/);
-        if (weekMatch) {
-          const count = parseInt(weekMatch[1]);
-          fullDurationText = count === 1 ? '1 week' : `${count} weeks`;
-        } else {
-          fullDurationText = packageDuration;
-        }
-      }
-      // Check for day/daily
-      else if (durationLower.includes('day')) {
-        durationText = 'day';
-        const dayMatch = durationLower.match(/(\d+)\s*day/);
-        if (dayMatch) {
-          const count = parseInt(dayMatch[1]);
-          fullDurationText = count === 1 ? '1 day' : `${count} days`;
-        } else {
-          fullDurationText = packageDuration;
-        }
-      }
-      // If it's just a number, try to infer from package name
-      else if (!isNaN(Number(packageDuration))) {
-        const nameLower = packageName.toLowerCase();
-        if (nameLower.includes('month')) {
-          durationText = 'month';
-          fullDurationText = `${packageDuration} month${packageDuration > 1 ? 's' : ''}`;
-        } else if (nameLower.includes('year')) {
-          durationText = 'year';
-          fullDurationText = `${packageDuration} year${packageDuration > 1 ? 's' : ''}`;
-        } else if (nameLower.includes('week')) {
-          durationText = 'week';
-          fullDurationText = `${packageDuration} week${packageDuration > 1 ? 's' : ''}`;
-        } else if (nameLower.includes('day')) {
-          durationText = 'day';
-          fullDurationText = `${packageDuration} day${packageDuration > 1 ? 's' : ''}`;
-        } else {
-          durationText = 'month'; // Default to month
-          fullDurationText = `${packageDuration} month${packageDuration > 1 ? 's' : ''}`;
-        }
-      } else {
-        durationText = packageDuration; // Use as-is if it's already text
-        fullDurationText = packageDuration;
-      }
-    } 
-    // PRIORITY 3: If no duration field, try to extract from package name
-    else {
-      const nameLower = packageName.toLowerCase();
-      
-      // Check for patterns like "3 months", "2 weeks", etc.
-      const durationMatch = nameLower.match(/(\d+)\s*(month|week|day|year)/);
-      if (durationMatch) {
-        const count = parseInt(durationMatch[1]);
-        const unit = durationMatch[2];
-        durationText = unit;
-        fullDurationText = count === 1 ? `1 ${unit}` : `${count} ${unit}s`;
-      }
-      // Check package name for duration keywords without numbers
-      else if (nameLower.includes('month') || nameLower.includes('monthly')) {
-        durationText = 'month';
-        fullDurationText = '1 month';
-      } else if (nameLower.includes('year') || nameLower.includes('yearly') || nameLower.includes('annual')) {
-        durationText = 'year';
-        fullDurationText = '1 year';
-      } else if (nameLower.includes('week') || nameLower.includes('weekly')) {
-        durationText = 'week';
-        fullDurationText = '1 week';
-      } else if (nameLower.includes('day') || nameLower.includes('daily')) {
-        durationText = 'day';
-        fullDurationText = '1 day';
-      } else if (nameLower.includes('quarter') || nameLower.includes('quarterly')) {
-        durationText = 'quarter';
-        fullDurationText = '3 months';
-      } else if (nameLower.includes('half') && nameLower.includes('year')) {
-        durationText = 'half year';
-        fullDurationText = '6 months';
-      }
-    }
-    
-    // Create consistent package ID for selection
-    const packageId = pkg.id || pkg.name || JSON.stringify(pkg);
-    const isSelected = selectedService?.id === service.id && selectedPackage === packageId;
-
-    console.log('🎨 Rendering package card:', {
-      serviceName: service.name,
-      packageName,
-      price: packagePrice,
-      duration: packageDuration,
-      unit: packageUnit,
-      durationText,
-      fullDurationText,
-      isSelected,
-      packageId,
-      selectedPackage,
-      rawPackage: pkg
-    });
-
-    return (
-      <TouchableOpacity
-        key={`${service.id}-${packageId}`}
-        style={[
-          styles.packageCard,
-          isSelected && styles.packageCardSelected,
-          pkg.isPopular && styles.popularPackageCard,
-        ]}
-        onPress={() => {
-          console.log('📦 Package clicked:', packageName);
-          handlePackageSelect(service, { ...pkg, id: packageId, name: packageName, price: packagePrice });
-        }}
-        activeOpacity={0.7}
-      >
-        {pkg.isPopular && (
-          <View style={styles.popularBadge}>
-            <Text style={styles.popularBadgeText}>POPULAR</Text>
-          </View>
-        )}
-
-        <Text style={styles.packageName}>{packageName}</Text>
-        
-        <View style={styles.priceContainer}>
-          <Text style={styles.priceSymbol}>₹</Text>
-          <Text style={styles.priceAmount}>{packagePrice}</Text>
-          {fullDurationText && (
-            <Text style={styles.priceDurationDetail}> ({fullDurationText})</Text>
-          )}
-        </View>
-
-        {pkg.description && (
-          <Text style={styles.packageDescription}>{pkg.description}</Text>
-        )}
-
-        {pkg.features && pkg.features.length > 0 && (
-          <View style={styles.featuresContainer}>
-            {pkg.features.map((feature: string, idx: number) => (
-              <View key={idx} style={styles.featureRow}>
-                <Text style={styles.featureBullet}>✓</Text>
-                <Text style={styles.featureText}>{feature}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-          {isSelected && <Text style={styles.checkmark}>✓</Text>}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderServiceWithPackages = ({ item }: { item: ServiceIssue }) => {
-    if (!item.packages || item.packages.length === 0) return null;
-
-    console.log('📋 Rendering service section:', {
-      serviceName: item.name,
-      packagesCount: item.packages.length,
-      packages: item.packages
-    });
-
-    return (
-      <View style={styles.serviceSection}>
-        <Text style={styles.serviceName}>{item.name}</Text>
-        <View style={styles.packagesGrid}>
-          {item.packages.map((pkg: any, index: number) => renderPackageCard(pkg, item, index))}
-        </View>
-      </View>
-    );
-  };
-
   if (loading) {
     return (
       <View style={styles.container}>
@@ -727,6 +582,36 @@ export default function PackageSelectionScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Review Modal */}
+      <Modal
+        visible={reviewModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReviewModal((p) => ({ ...p, visible: false }))}
+      >
+        <Pressable
+          style={styles.reviewModalBackdrop}
+          onPress={() => setReviewModal((p) => ({ ...p, visible: false }))}
+        >
+          <Pressable style={styles.reviewModalCard} onPress={() => {}}>
+            <View style={styles.reviewModalHeaderRow}>
+              <Text style={styles.reviewModalTitle} numberOfLines={1}>
+                {reviewModal.title || 'Review'}
+              </Text>
+              <Pressable onPress={() => setReviewModal((p) => ({ ...p, visible: false }))} hitSlop={10}>
+                <Text style={styles.reviewModalCloseText}>Close</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.reviewModalSubheader} numberOfLines={2}>
+              {reviewModal.header}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.reviewModalBodyText}>{reviewModal.feedback}</Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -747,11 +632,33 @@ export default function PackageSelectionScreen() {
         {packageBasedServices.length > 0 && companyGroups.length > 0 && (
           <View style={{ marginBottom: 12 }}>
             <Text style={[styles.sectionButtonTitle, { marginBottom: 8, textAlign: 'center' }]}>Choose a company</Text>
-            {companyGroups.map((g) => {
+            {sortedCompanyGroups.map((g) => {
               const isSelected = selectedCompanyGroup?.id === g.id;
               const companyName = g.company?.companyName || g.company?.serviceName || 'Company';
               // Packages are merged across all package-services for this company.
               const pkgCount = Array.isArray(g.packages) ? g.packages.length : 0;
+              const cid = String(g.id);
+              const avg = Number((g.company as any)?.rating || 0);
+              const count = Number((g.company as any)?.reviewCount || 0);
+              const reviews = companyReviewsById[cid] || [];
+              const start = reviews.length > 0 ? (Math.abs(reviewTick) % reviews.length) : 0;
+              let activeReview: any = null;
+              let activeIndex = -1;
+              let reviewText = '';
+              for (let i = 0; i < (reviews.length || 0); i++) {
+                const idx = (start + i) % reviews.length;
+                const cand = reviews[idx];
+                const candFb = String(cand?.feedback || '').trim();
+                if (candFb) {
+                  activeReview = cand;
+                  activeIndex = idx;
+                  reviewText = candFb;
+                  break;
+                }
+              }
+              const reviewCustomer = String(activeReview?.customerName || 'Customer').trim();
+              const reviewRating = Number(activeReview?.rating || 0);
+              const reviewHeader = `${reviewCustomer} • ⭐ ${Number.isFinite(reviewRating) && reviewRating > 0 ? Math.round(reviewRating) : '-'}`;
               return (
                 <TouchableOpacity
                   key={g.id}
@@ -777,6 +684,29 @@ export default function PackageSelectionScreen() {
                       <Text style={styles.sectionButtonSubtitle}>
                         {pkgCount} package{pkgCount === 1 ? '' : 's'} available
                       </Text>
+
+                      {(count > 0 && avg > 0) ? (
+                        <View style={styles.companyMetaRow}>
+                          <Text style={styles.companyMetaText}>⭐ {avg.toFixed(1)}</Text>
+                          <Text style={styles.companyMetaText}>• {count} reviews</Text>
+                        </View>
+                      ) : null}
+
+                      {reviewText ? (
+                        <AnimatedCompanyReviewSnippet
+                          key={`${cid}_${activeIndex}`}
+                          header={reviewHeader}
+                          text={reviewText}
+                          onPressMore={() =>
+                            setReviewModal({
+                              visible: true,
+                              title: String(companyName || 'Company').trim() || 'Company',
+                              header: reviewHeader,
+                              feedback: reviewText,
+                            })
+                          }
+                        />
+                      ) : null}
                     </View>
                     <Text style={styles.sectionButtonArrow}>›</Text>
                   </View>
@@ -815,7 +745,7 @@ export default function PackageSelectionScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>No Services Available</Text>
             <Text style={styles.emptyText}>
-              This category doesn't have any services available at the moment.
+              This category doesn’t have any services available at the moment.
             </Text>
           </View>
         )}
@@ -1391,6 +1321,109 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#64748b",
     fontWeight: "500",
+  },
+
+  companyMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+
+  companyMetaText: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "600",
+  },
+
+  companyReviewSnippet: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#f8fafc",
+  },
+
+  companyReviewHeaderWrap: {
+    height: 18,
+    justifyContent: "flex-start",
+  },
+
+  companyReviewHeader: {
+    fontSize: 12,
+    color: "#334155",
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+
+  companyReviewTextWrap: {
+    height: 32,
+    overflow: "hidden",
+  },
+
+  companyReviewText: {
+    fontSize: 12,
+    color: "#475569",
+    lineHeight: 16,
+  },
+
+  companyReviewMoreRow: {
+    height: 18,
+    marginTop: 4,
+    justifyContent: "flex-start",
+  },
+
+  companyReviewMoreText: {
+    fontSize: 12,
+    color: "#2563eb",
+    fontWeight: "600",
+  },
+
+  reviewModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    padding: 16,
+    justifyContent: "center",
+  },
+
+  reviewModalCard: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    padding: 16,
+    maxHeight: "75%",
+  },
+
+  reviewModalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  reviewModalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    paddingRight: 12,
+  },
+
+  reviewModalCloseText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563eb",
+  },
+
+  reviewModalSubheader: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+
+  reviewModalBodyText: {
+    fontSize: 14,
+    color: "#334155",
+    lineHeight: 20,
   },
 
   sectionButtonArrow: {

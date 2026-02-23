@@ -433,6 +433,10 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       } else if (fromScreen === "ServiceCheckout" || fromScreen === "RestaurantCheckout") {
         // Navigate back to checkout screen
         navigation.goBack();
+      } else if (fromScreen === "Services") {
+        // User came here by tapping Services tab while not deliverable.
+        // After choosing a deliverable location, take them to Services.
+        navigation.navigate("AppTabs", { screen: "Services" });
       } else {
         navigation.navigate("AppTabs", { screen: "Home" });
       }

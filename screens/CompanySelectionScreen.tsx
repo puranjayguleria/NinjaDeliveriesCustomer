@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   computeQuantityOfferPricing,
   getBestActiveQuantityOffer,
@@ -11,6 +11,11 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
+  Modal,
+  Pressable,
+  Animated,
+  Easing,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -18,6 +23,64 @@ import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
 import ServiceAddedModal from "../components/ServiceAddedModal";
+
+const AnimatedReviewSnippet: React.FC<{
+  header: string;
+  text: string;
+  onPressMore: () => void;
+  moreLabel?: string;
+}> = ({ header, text, onPressMore, moreLabel = 'See more' }) => {
+  const translateY = useRef(new Animated.Value(10)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    translateY.setValue(10);
+    opacity.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [header, text, opacity, translateY]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.reviewSnippet,
+        {
+          opacity,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
+      <View style={styles.reviewSnippetHeaderWrap}>
+        <Text style={styles.reviewSnippetHeader} numberOfLines={1}>
+          {header}
+        </Text>
+      </View>
+      <View style={styles.reviewSnippetTextWrap}>
+        <Text style={styles.reviewSnippetText} numberOfLines={2}>
+          {text}
+        </Text>
+      </View>
+      <View style={styles.reviewSnippetMoreRow}>
+        <Pressable onPress={onPressMore} hitSlop={8}>
+          <Text style={styles.reviewSnippetMoreText}>{moreLabel}</Text>
+        </Pressable>
+      </View>
+    </Animated.View>
+  );
+};
 
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
@@ -27,6 +90,19 @@ export default function CompanySelectionScreen() {
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
   const [offerCelebrationText, setOfferCelebrationText] = useState<string | null>(null);
   const navInFlightRef = useRef(false);
+
+  const [companyDescriptionModal, setCompanyDescriptionModal] = useState<{
+    visible: boolean;
+    title: string;
+    description: string;
+  }>({ visible: false, title: "", description: "" });
+
+  const [reviewModal, setReviewModal] = useState<{
+    visible: boolean;
+    title: string;
+    header: string;
+    feedback: string;
+  }>({ visible: false, title: "", header: "", feedback: "" });
 
   const getOfferPreviewText = (quantityOffers: any, qty: unknown, baseUnitPrice: unknown) => {
     if (!Array.isArray(quantityOffers) || quantityOffers.length === 0) return null;
@@ -55,6 +131,54 @@ export default function CompanySelectionScreen() {
   const [loading, setLoading] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [logoErrorIds, setLogoErrorIds] = useState<Record<string, true>>({});
+
+  // Reviews rotator: advance one step every 5 seconds.
+  const [reviewTick, setReviewTick] = useState(0);
+  const [companyReviewsById, setCompanyReviewsById] = useState<Record<string, any[]>>({});
+
+  useEffect(() => {
+    const id = setInterval(() => setReviewTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        if (!Array.isArray(companies) || companies.length === 0) {
+          if (!cancelled) setCompanyReviewsById({});
+          return;
+        }
+
+        const ids = Array.from(
+          new Set(
+            companies
+              .map((c: any) => String(c?.companyId || c?.id || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const pairs = await Promise.all(
+          ids.map(async (cid) => {
+            const reviews = await FirestoreService.getCompanyReviews(cid, 10);
+            return [cid, reviews] as const;
+          })
+        );
+
+        if (cancelled) return;
+        const map: Record<string, any[]> = {};
+        for (const [cid, reviews] of pairs) map[cid] = reviews;
+        setCompanyReviewsById(map);
+      } catch (e) {
+        if (__DEV__) console.warn('[CompanySelection] failed to load reviews', e);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [companies]);
 
   const getCompanyLogoUrl = (c: any) => {
     const raw = c?.imageUrl ?? c?.logoUrl ?? c?.photoUrl ?? c?.companyLogoUrl;
@@ -117,20 +241,65 @@ export default function CompanySelectionScreen() {
   // Package flow UX: show a single list of (company + package + price) options,
   // so user doesn't have to pick a company in a separate step.
   type PackageOption = { id: string; company: ServiceCompany; pkg: any };
-  const packageOptions: PackageOption[] = (isPackageBooking === true)
-    ? companies.flatMap((company) => {
-        const pkgs = (company as any).packages;
-        if (!Array.isArray(pkgs) || pkgs.length === 0) return [];
-        return pkgs.map((pkg: any) => {
-          const pkgId = String(pkg?.id ?? pkg?.name ?? 'pkg');
-          return {
-            id: `${company.id}::${pkgId}`,
-            company,
-            pkg,
-          };
-        });
-      })
-    : [];
+  const packageOptions = useMemo<PackageOption[]>(() => {
+    if (isPackageBooking !== true) return [];
+    return (Array.isArray(companies) ? companies : []).flatMap((company) => {
+      const pkgs = (company as any).packages;
+      if (!Array.isArray(pkgs) || pkgs.length === 0) return [];
+      return pkgs.map((pkg: any) => {
+        const pkgId = String(pkg?.id ?? pkg?.name ?? 'pkg');
+        return {
+          id: `${company.id}::${pkgId}`,
+          company,
+          pkg,
+        };
+      });
+    });
+  }, [isPackageBooking, companies]);
+
+  const sortedCompanies = useMemo(() => {
+    const list = Array.isArray(companies) ? [...companies] : [];
+    list.sort((a: any, b: any) => {
+      const aBusy = (a as any)?.isBusy === true || (a as any)?.isAllWorkersBusy === true;
+      const bBusy = (b as any)?.isBusy === true || (b as any)?.isAllWorkersBusy === true;
+      if (aBusy !== bBusy) return aBusy ? 1 : -1;
+
+      const ar = Number((a as any)?.rating || 0);
+      const br = Number((b as any)?.rating || 0);
+      if (br !== ar) return br - ar;
+
+      const ac = Number((a as any)?.reviewCount || 0);
+      const bc = Number((b as any)?.reviewCount || 0);
+      if (bc !== ac) return bc - ac;
+
+      const an = String((a as any)?.companyName || (a as any)?.serviceName || '').toLowerCase();
+      const bn = String((b as any)?.companyName || (b as any)?.serviceName || '').toLowerCase();
+      return an.localeCompare(bn);
+    });
+    return list;
+  }, [companies]);
+
+  const sortedPackageOptions = useMemo(() => {
+    const list = Array.isArray(packageOptions) ? [...packageOptions] : [];
+    list.sort((a, b) => {
+      const ac = a.company as any;
+      const bc = b.company as any;
+      const aBusy = ac?.isBusy === true || ac?.isAllWorkersBusy === true;
+      const bBusy = bc?.isBusy === true || bc?.isAllWorkersBusy === true;
+      if (aBusy !== bBusy) return aBusy ? 1 : -1;
+
+      const ar = Number(ac?.rating || 0);
+      const br = Number(bc?.rating || 0);
+      if (br !== ar) return br - ar;
+
+      const acount = Number(ac?.reviewCount || 0);
+      const bcount = Number(bc?.reviewCount || 0);
+      if (bcount !== acount) return bcount - acount;
+
+      return String(a.id).localeCompare(String(b.id));
+    });
+    return list;
+  }, [packageOptions]);
 
   useEffect(() => {
     let isActive = true;
@@ -884,6 +1053,69 @@ export default function CompanySelectionScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Company Description Modal */}
+      <Modal
+        visible={companyDescriptionModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCompanyDescriptionModal((p) => ({ ...p, visible: false }))}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setCompanyDescriptionModal((p) => ({ ...p, visible: false }))}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {companyDescriptionModal.title}
+              </Text>
+              <Pressable
+                onPress={() => setCompanyDescriptionModal((p) => ({ ...p, visible: false }))}
+                hitSlop={10}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
+              <Text style={styles.modalDescription}>{companyDescriptionModal.description}</Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Review Modal */}
+      <Modal
+        visible={reviewModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReviewModal((p) => ({ ...p, visible: false }))}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setReviewModal((p) => ({ ...p, visible: false }))}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {reviewModal.title || 'Review'}
+              </Text>
+              <Pressable
+                onPress={() => setReviewModal((p) => ({ ...p, visible: false }))}
+                hitSlop={10}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.modalReviewHeader} numberOfLines={2}>
+              {reviewModal.header}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
+              <Text style={styles.modalDescription}>{reviewModal.feedback}</Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Header */}
       <View style={styles.headerSection}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -932,7 +1164,7 @@ export default function CompanySelectionScreen() {
             </View>
           ) : isPackageBooking === true ? (
             <FlatList
-              data={packageOptions}
+              data={sortedPackageOptions}
               keyExtractor={(opt) => opt.id}
               renderItem={({ item: opt }) => {
                 const company = opt.company;
@@ -993,9 +1225,23 @@ export default function CompanySelectionScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.providerName}>{company.companyName || company.serviceName}</Text>
                           {(typeof (company as any)?.description === 'string' && String((company as any).description).trim().length > 0) ? (
-                            <Text style={styles.companyDescription} numberOfLines={2}>
-                              {String((company as any).description).trim()}
-                            </Text>
+                            <View style={styles.companyDescriptionBlock}>
+                              <Text style={styles.companyDescription} numberOfLines={2}>
+                                {String((company as any).description).trim()}
+                              </Text>
+                              <Pressable
+                                onPress={() =>
+                                  setCompanyDescriptionModal({
+                                    visible: true,
+                                    title: String(company.companyName || company.serviceName || 'Company'),
+                                    description: String((company as any).description).trim(),
+                                  })
+                                }
+                                hitSlop={8}
+                              >
+                                <Text style={styles.seeMoreText}>See more</Text>
+                              </Pressable>
+                            </View>
                           ) : null}
                           <Text style={styles.packageOptionName} numberOfLines={1}>
                             {pkgObj?.name ?? 'Package'}
@@ -1021,6 +1267,47 @@ export default function CompanySelectionScreen() {
                       </View>
                     )}
 
+                    {(() => {
+                      const cid = String((company as any)?.companyId || (company as any)?.id || '').trim();
+                      const reviews = cid ? (companyReviewsById[cid] || []) : [];
+                      if (!reviews || reviews.length === 0) return null;
+                      const start = Math.abs(reviewTick) % reviews.length;
+                      let picked: any = null;
+                      let pickedIndex = -1;
+                      let fb = '';
+                      for (let i = 0; i < reviews.length; i++) {
+                        const idx = (start + i) % reviews.length;
+                        const cand = reviews[idx];
+                        const candFb = String(cand?.feedback || '').trim();
+                        if (candFb) {
+                          picked = cand;
+                          pickedIndex = idx;
+                          fb = candFb;
+                          break;
+                        }
+                      }
+                      if (!picked || !fb) return null;
+                      const cn = String(picked?.customerName || 'Customer').trim();
+                      const rr = Number(picked?.rating || 0);
+                      const header = `${cn} • ⭐ ${Number.isFinite(rr) && rr > 0 ? Math.round(rr) : '-'}`;
+                      const title = String(company.companyName || company.serviceName || 'Company').trim() || 'Company';
+                      return (
+                        <AnimatedReviewSnippet
+                          key={`${cid}_${pickedIndex}`}
+                          header={header}
+                          text={fb}
+                          onPressMore={() =>
+                            setReviewModal({
+                              visible: true,
+                              title,
+                              header,
+                              feedback: fb,
+                            })
+                          }
+                        />
+                      );
+                    })()}
+
                     {pkgObj?.description ? (
                       <Text style={styles.packageOptionDesc} numberOfLines={2}>
                         {pkgObj.description}
@@ -1034,7 +1321,7 @@ export default function CompanySelectionScreen() {
             />
           ) : (
             <FlatList
-              data={companies}
+              data={sortedCompanies}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
                 const isSelected = item.id === selectedCompanyId;
@@ -1077,11 +1364,25 @@ export default function CompanySelectionScreen() {
                     )}
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                   </View>
-                  {(typeof (item as any)?.description === 'string' && String((item as any).description).trim().length > 0) ? (
-                    <Text style={styles.companyDescription} numberOfLines={2}>
-                      {String((item as any).description).trim()}
-                    </Text>
-                  ) : null}
+                    {(typeof (item as any)?.description === 'string' && String((item as any).description).trim().length > 0) ? (
+                      <View style={styles.companyDescriptionBlock}>
+                        <Text style={styles.companyDescription} numberOfLines={2}>
+                          {String((item as any).description).trim()}
+                        </Text>
+                        <Pressable
+                          onPress={() =>
+                            setCompanyDescriptionModal({
+                              visible: true,
+                              title: String(item.companyName || item.serviceName || 'Company'),
+                              description: String((item as any).description).trim(),
+                            })
+                          }
+                          hitSlop={8}
+                        >
+                          <Text style={styles.seeMoreText}>See more</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                 </View>
 
                 {/* Availability Status */}
@@ -1288,6 +1589,47 @@ export default function CompanySelectionScreen() {
                   </View>
                 )}
 
+                {(() => {
+                  const cid = String((item as any)?.companyId || (item as any)?.id || '').trim();
+                  const reviews = cid ? (companyReviewsById[cid] || []) : [];
+                  if (!reviews || reviews.length === 0) return null;
+                  const start = Math.abs(reviewTick) % reviews.length;
+                  let picked: any = null;
+                  let pickedIndex = -1;
+                  let fb = '';
+                  for (let i = 0; i < reviews.length; i++) {
+                    const idx = (start + i) % reviews.length;
+                    const cand = reviews[idx];
+                    const candFb = String(cand?.feedback || '').trim();
+                    if (candFb) {
+                      picked = cand;
+                      pickedIndex = idx;
+                      fb = candFb;
+                      break;
+                    }
+                  }
+                  if (!picked || !fb) return null;
+                  const cn = String(picked?.customerName || 'Customer').trim();
+                  const rr = Number(picked?.rating || 0);
+                  const header = `${cn} • ⭐ ${Number.isFinite(rr) && rr > 0 ? Math.round(rr) : '-'}`;
+                  const title = String(item.companyName || item.serviceName || 'Company').trim() || 'Company';
+                  return (
+                    <AnimatedReviewSnippet
+                      key={`${cid}_${pickedIndex}`}
+                      header={header}
+                      text={fb}
+                      onPressMore={() =>
+                        setReviewModal({
+                          visible: true,
+                          title,
+                          header,
+                          feedback: fb,
+                        })
+                      }
+                    />
+                  );
+                })()}
+
                 {/* Select Button at Bottom */}
                 <TouchableOpacity
                   style={[
@@ -1478,6 +1820,70 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginLeft: 12,
     lineHeight: 16,
+  },
+
+  companyDescriptionBlock: {
+    marginTop: 2,
+  },
+
+  seeMoreText: {
+    fontSize: 12,
+    color: "#2563eb",
+    fontWeight: "600",
+    marginLeft: 12,
+    marginTop: 2,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    padding: 16,
+    justifyContent: "center",
+  },
+
+  modalCard: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    padding: 16,
+    maxHeight: "75%",
+  },
+
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  modalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    paddingRight: 12,
+  },
+
+  modalCloseText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563eb",
+  },
+
+  modalBodyScroll: {
+    flexGrow: 0,
+  },
+
+  modalDescription: {
+    fontSize: 14,
+    color: "#334155",
+    lineHeight: 20,
+  },
+
+  modalReviewHeader: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "700",
+    marginBottom: 10,
   },
 
   companyLogo: {
@@ -1775,6 +2181,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748b",
     fontWeight: "500",
+  },
+
+  reviewSnippet: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#f8fafc",
+  },
+
+  reviewSnippetHeader: {
+    fontSize: 12,
+    color: "#334155",
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+
+  reviewSnippetText: {
+    fontSize: 12,
+    color: "#475569",
+    lineHeight: 16,
+  },
+
+  reviewSnippetHeaderWrap: {
+    height: 18,
+    justifyContent: "flex-start",
+  },
+
+  reviewSnippetTextWrap: {
+    height: 32,
+    overflow: "hidden",
+  },
+
+  reviewSnippetMoreRow: {
+    height: 18,
+    marginTop: 4,
+    justifyContent: "flex-start",
+  },
+
+  reviewSnippetMoreText: {
+    fontSize: 12,
+    color: "#2563eb",
+    fontWeight: "600",
   },
 
   // Loading & Empty States
