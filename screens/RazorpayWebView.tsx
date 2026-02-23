@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, Alert, BackHandler } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,12 @@ export default function RazorpayWebView() {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [webViewKey, setWebViewKey] = useState(0);
+
+  const webViewRef = useRef<WebView>(null);
+  const lastNavUrlRef = useRef<string>("about:blank");
+  const allowExitRef = useRef(false);
+  const lastReloadAtRef = useRef<number>(0);
 
   // IMPORTANT:
   // This screen is used in multiple stacks. Some show a native header/back button.
@@ -49,6 +55,15 @@ export default function RazorpayWebView() {
     // Allow data/blob to stay in WebView.
     if (url.startsWith("data:") || url.startsWith("blob:")) return false;
 
+    // Common external schemes.
+    if (url.startsWith("tel:") || url.startsWith("mailto:")) {
+      log("nav_open_external", { url });
+      Linking.openURL(url).catch((e) => {
+        console.warn("[RZPWebView] Error opening URL:", e);
+      });
+      return true;
+    }
+
     // For UPI / intent links, try opening externally.
     if (
       url.startsWith("intent:") ||
@@ -71,6 +86,76 @@ export default function RazorpayWebView() {
     }
 
     return false;
+  }, []);
+
+  useEffect(() => {
+    // Prevent accidental exits while payment is in progress.
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      // If we are already in an error state, allow leaving.
+      if (error) return;
+
+      // Allow programmatic exits (success/failure/cancel flows).
+      if (allowExitRef.current) return;
+
+      e.preventDefault();
+      Alert.alert(
+        'Cancel payment?',
+        'Are you sure you want to go back? Your payment may not be completed.',
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      );
+    });
+
+    const onHardwareBack = () => {
+      // Let react-navigation handle it (and trigger beforeRemove).
+      navigation.goBack();
+      return true;
+    };
+
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+
+    return () => {
+      unsubscribe?.();
+      backSub.remove();
+    };
+  }, [navigation, error]);
+
+  const reloadWebView = useCallback((reason: string) => {
+    const now = Date.now();
+    if (now - lastReloadAtRef.current < 5000) {
+      log('reload_throttled', { reason });
+      return;
+    }
+
+    lastReloadAtRef.current = now;
+    log('reload_webview', { reason });
+    setLoading(true);
+    setWebViewKey((k) => k + 1);
+  }, []);
+
+  const injectDomProbe = useCallback(() => {
+    // Probe whether the current document is actually blank.
+    // This avoids relying on URL values like about:blank which can be valid for html sources.
+    const js = `
+(function () {
+  try {
+    var body = document.body;
+    var text = body && body.innerText ? String(body.innerText) : '';
+    var isBlank = !body || ((body.children ? body.children.length : 0) === 0 && text.trim().length === 0);
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dom_probe', isBlank: isBlank }));
+  } catch (e) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dom_probe', isBlank: true, error: String(e) }));
+  }
+})();
+true;
+`;
+    webViewRef.current?.injectJavaScript(js);
   }, []);
 
   const razorpayHTML = `
@@ -289,8 +374,15 @@ export default function RazorpayWebView() {
       log("message", data);
       
       switch (data.type) {
+        case 'dom_probe': {
+          if (data?.isBlank && (lastNavUrlRef.current === 'about:blank' || !lastNavUrlRef.current)) {
+            reloadWebView('dom_blank');
+          }
+          break;
+        }
         case 'success':
           log('success', data.data);
+          allowExitRef.current = true;
           navigation.goBack();
           if (onSuccess) {
             log('calling_onSuccess');
@@ -300,6 +392,7 @@ export default function RazorpayWebView() {
           
         case 'failed':
           log('failed', data.data);
+          allowExitRef.current = true;
           navigation.goBack();
           if (onFailure) {
             log('calling_onFailure_failed');
@@ -309,6 +402,7 @@ export default function RazorpayWebView() {
           
         case 'cancelled':
           log('cancelled', data.data);
+          allowExitRef.current = true;
           navigation.goBack();
           if (onFailure) {
             log('calling_onFailure_cancelled');
@@ -318,6 +412,7 @@ export default function RazorpayWebView() {
       }
     } catch (error) {
       log('parse_error', error);
+      allowExitRef.current = true;
       navigation.goBack();
       if (onFailure) {
         onFailure({ error: 'Payment processing error' });
@@ -370,10 +465,20 @@ export default function RazorpayWebView() {
       
       {/* WebView */}
       <WebView
+        ref={webViewRef}
+        key={webViewKey}
         source={{ html: razorpayHTML }}
         onMessage={handleMessage}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          injectDomProbe();
+        }}
         onError={handleError}
+        onNavigationStateChange={(navState) => {
+          const url = String(navState?.url || '');
+          lastNavUrlRef.current = url || 'about:blank';
+        }}
+        setSupportMultipleWindows={false}
         onOpenWindow={(event) => {
           const targetUrl = String(event?.nativeEvent?.targetUrl || "");
           log("open_window", { url: targetUrl });
@@ -409,6 +514,11 @@ export default function RazorpayWebView() {
 
           if (url.startsWith("data:") || url.startsWith("blob:")) {
             return true;
+          }
+
+          if (url.startsWith("tel:") || url.startsWith("mailto:")) {
+            maybeOpenExternal(url);
+            return false;
           }
 
           // For UPI / intent links, try opening externally.

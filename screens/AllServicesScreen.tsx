@@ -7,11 +7,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   TextInput,
-  Image,
   ImageBackground,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
 import { FirestoreService, ServiceCategory } from '../services/firestoreService';
 
 // Function to get icon based on service category name
@@ -158,11 +158,13 @@ export default function AllServicesScreen() {
     >
       <View style={styles.categoryMedia}>
         <View style={styles.categoryIconContainer}>
-          {item.imageUrl ? (
-            <Image
-              source={{ uri: item.imageUrl }}
+          {typeof item.imageUrl === 'string' && item.imageUrl.trim().length > 0 ? (
+            <ExpoImage
+              source={{ uri: item.imageUrl.trim() }}
               style={styles.categoryImage}
-              resizeMode="cover"
+              contentFit="cover"
+              cachePolicy="disk"
+              recyclingKey={String(item.id)}
               onError={() => {
                 console.log(`⚠️ Failed to load image for ${item.name} in AllServices, falling back to icon`);
               }}
