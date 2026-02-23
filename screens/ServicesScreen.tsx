@@ -1491,6 +1491,7 @@ export default function ServicesScreen() {
       source={require('../assets/serviceBG.png')}
       style={styles.container}
       resizeMode="cover"
+      blurRadius={3}
     >
       {serviceConfirmedBanner && (
         <View style={styles.serviceConfirmedBanner}>
