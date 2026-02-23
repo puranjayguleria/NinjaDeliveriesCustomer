@@ -258,6 +258,27 @@ export default function ServicesScreen() {
 
   const isLoading = loading || zoneCompaniesLoading || !allServicesLoaded;
 
+  const zoneCompanyIdSet = React.useMemo(() => {
+    const ids = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
+    return new Set(ids);
+  }, [zoneCompanyIdsKey]);
+
+  const zoneCompanyNameSet = React.useMemo(() => {
+    const names = zoneCompanyNamesKey ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
+    return new Set(names);
+  }, [zoneCompanyNamesKey]);
+
+  const visibleCategoryIdSet = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of serviceCategories || []) {
+      const own = String((c as any)?.id || '').trim();
+      const master = String((c as any)?.masterCategoryId || '').trim();
+      if (own) ids.add(own);
+      if (master) ids.add(master);
+    }
+    return ids;
+  }, [serviceCategories]);
+
   // Load zone-specific companies from service_company mapping.
   useEffect(() => {
     let cancelled = false;
@@ -596,9 +617,37 @@ export default function ServicesScreen() {
       return;
     }
 
+    // IMPORTANT: search must respect delivery zone.
+    // Categories are already filtered by zone; search results must not show services
+    // from other zones just because they are active.
+    const zid = String(location?.storeId || '').trim();
+    const zoneReady = !!zid && !zoneCompaniesLoading && allServicesLoaded && visibleCategoryIdSet.size > 0;
+    if (!zoneReady) {
+      setSearchServices([]);
+      return;
+    }
+
     const t = setTimeout(() => {
       const raw = (allServices || [])
-        .filter((s) => String(s?.name || '').toLowerCase().includes(q));
+        .filter((s) => {
+          if ((s as any)?.isActive === false) return false;
+
+          const cat = String(
+            (s as any)?.categoryMasterId ||
+            (s as any)?.masterCategoryId ||
+            (s as any)?.categoryId ||
+            ''
+          ).trim();
+          // Only allow services for categories currently visible in this zone.
+          if (!cat || !visibleCategoryIdSet.has(cat)) return false;
+
+          const cid = String((s as any)?.companyId || '').trim();
+          const cname = String((s as any)?.companyName || (s as any)?.company || '').trim();
+          const matchesZone = (cid && zoneCompanyIdSet.has(cid)) || (cname && zoneCompanyNameSet.has(cname));
+          // Company matching is an extra safety check; category filtering is the primary gate.
+          if (!matchesZone) return false;
+          return String(s?.name || '').toLowerCase().includes(q);
+        });
 
       // Deduplicate ONLY direct-price services. If a service has packages, keep multiple
       // entries because packages/prices can differ by company.
@@ -625,7 +674,7 @@ export default function ServicesScreen() {
     }, 250);
 
     return () => clearTimeout(t);
-  }, [searchQuery, allServices]);
+  }, [searchQuery, allServices, location?.storeId, zoneCompaniesLoading, allServicesLoaded, zoneCompanyIdSet, zoneCompanyNameSet, visibleCategoryIdSet]);
 
   // Real-time listener for service banners
   useEffect(() => {

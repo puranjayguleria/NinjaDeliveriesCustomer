@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Animated,
+  Easing,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,8 +47,8 @@ export default function SelectDateTimeScreen() {
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(slotsFabFloatY, { toValue: -4, duration: 900, useNativeDriver: true }),
-        Animated.timing(slotsFabFloatY, { toValue: 0, duration: 900, useNativeDriver: true }),
+        Animated.timing(slotsFabFloatY, { toValue: -9, duration: 950, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(slotsFabFloatY, { toValue: 0, duration: 950, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
     anim.start();
