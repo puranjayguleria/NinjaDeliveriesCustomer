@@ -1,5 +1,11 @@
 import { firestore, auth } from '../firebase.native';
 
+const console = {
+  log: (..._args: any[]) => {},
+  warn: (..._args: any[]) => {},
+  error: (..._args: any[]) => {},
+} as const;
+
 export interface ServiceCategory {
   id: string;
   name: string;
@@ -703,9 +709,6 @@ export class FirestoreService {
 
       return { totalWorkers: totalRelevantWorkers, availabilityByDate };
     } catch {
-      if (__DEV__) {
-        console.warn('[FirestoreService] getCompanyAvailabilityForDatesAtTime: range query failed; trying date-in chunks');
-      }
     }
 
     // Fallback A: chunked `in` queries (<=10) to reduce reads for monthly/weekly windows.
@@ -773,9 +776,6 @@ export class FirestoreService {
 
       return { totalWorkers: totalRelevantWorkers, availabilityByDate };
     } catch {
-      if (__DEV__) {
-        console.warn('[FirestoreService] getCompanyAvailabilityForDatesAtTime: date-in query failed; falling back to per-date reads');
-      }
     }
 
     const maxConcurrency = 4;
@@ -6993,26 +6993,16 @@ export class FirestoreService {
             companyMap.set(companyId, company);
             
           } catch (error) {
-            console.error(`   ❌ Error fetching company ${companyId}:`, error);
           }
         }
       }
       
       // Convert map to array
       const companiesArray = Array.from(companyMap.values());
-      
-      console.log(`✅ Found ${companiesArray.length} unique companies for direct-price services`);
-      console.log(`   Companies:`, companiesArray.map(c => ({
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        price: c.price,
-        companyId: c.companyId
-      })));
-      
+
       return companiesArray;
       
     } catch (error) {
-      console.error('❌ Error fetching companies by service names:', error);
       throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
     }
   }
@@ -7044,13 +7034,6 @@ export class FirestoreService {
 
     const run = (async () => {
       try {
-        if (__DEV__) {
-          console.log(`\n🏢 getCompaniesByServiceIds CALLED`, {
-            serviceIdsCount: cleanedServiceIds.length,
-            categoryId: categoryId || null,
-          });
-        }
-
         const companyMap = new Map<string, ServiceCompany>();
         const servicesWithoutCompanyId: { id: string; data: any }[] = [];
 
@@ -7192,11 +7175,7 @@ export class FirestoreService {
       
         // FALLBACK: If services don't have companyId, fetch ALL companies for the category
         if (servicesWithoutCompanyId.length > 0) {
-          if (__DEV__) {
-            console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
-            console.log(`   Fetching ALL companies for category: ${categoryId}`);
-          }
-        
+
         try {
           let companiesQuery = firestore()
             .collection('service_company')
@@ -7208,7 +7187,7 @@ export class FirestoreService {
           }
           
           const companiesSnapshot = await companiesQuery.get();
-          if (__DEV__) console.log(`   Found ${companiesSnapshot.size} companies`);
+          
           
           companiesSnapshot.forEach(companyDoc => {
             const companyData = companyDoc.data();
@@ -7245,23 +7224,16 @@ export class FirestoreService {
             };
             
             companyMap.set(companyId, company);
-            if (__DEV__) console.log(`   ✅ Added company: ${company.companyName}`);
           });
           
         } catch (fallbackError) {
-          console.error(`   ❌ Fallback error:`, fallbackError);
         }
         }
       
         const companiesArray = Array.from(companyMap.values());
 
-        if (__DEV__) {
-          console.log(`✅ getCompaniesByServiceIds result: ${companiesArray.length} companies`);
-        }
-
         return companiesArray;
       } catch (error) {
-        console.error('❌ Error fetching companies by service IDs:', error);
         throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
       }
     })();
@@ -7357,14 +7329,6 @@ export class FirestoreService {
     busyWorkers: string[];
   }> {
     try {
-      if (__DEV__) {
-        console.log(`🔍 SERVICE-SPECIFIC AVAILABILITY CHECK:`);
-        console.log(`   Company: ${companyId}`);
-        console.log(`   Date: ${date}, Time: ${time}`);
-        console.log(`   Service IDs (from app_services):`, serviceIds, `(type: ${typeof serviceIds})`);
-        console.log(`   Service Title:`, serviceTitle);
-      }
-      
       // 🔥 CRITICAL: Ensure serviceIds is always an array
       let serviceIdsArray: string[] = [];
       if (serviceIds) {
@@ -7373,10 +7337,6 @@ export class FirestoreService {
         } else if (typeof serviceIds === 'string') {
           serviceIdsArray = [serviceIds];
         }
-      }
-      
-      if (__DEV__) {
-        console.log(`   Processed Service IDs Array:`, serviceIdsArray);
       }
       
       // 🔥 NEW: Get service_services IDs for this company and service
@@ -7392,18 +7352,11 @@ export class FirestoreService {
           .get();
         if (!snapshotByIds.empty) {
           snapshotByIds.forEach(doc => serviceServicesIds.push(doc.id));
-          if (__DEV__) {
-            console.log(`   ✅ Using provided service_services doc IDs (matched ${snapshotByIds.size})`);
-          }
         }
       }
       
       if (serviceServicesIds.length === 0 && serviceTitle) {
         try {
-          if (__DEV__) {
-            console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
-          }
-
           // 1) Most reliable when titles match exactly.
           const serviceServicesSnapshot = await firestore()
             .collection('service_services')
@@ -7468,20 +7421,8 @@ export class FirestoreService {
 
           // Dedupe
           serviceServicesIds = Array.from(new Set(serviceServicesIds));
-
-          if (__DEV__) {
-            for (const id of serviceServicesIds) {
-              console.log(`   ✅ Using service_services ID: ${id} for "${serviceTitle}"`);
-            }
-          }
-
-          if (__DEV__) {
-            console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);
-          }
         } catch (error) {
-          if (__DEV__) {
-            console.log(`   ⚠️ Error fetching service_services IDs:`, error);
-          }
+          // ignore
         }
       }
       
@@ -7493,16 +7434,10 @@ export class FirestoreService {
         .where('companyId', '==', companyId)
         .get();
       
-      if (__DEV__) {
-        console.log(`📊 Total workers in company: ${allWorkersSnapshot.size}`);
-      }
-      
       // ================================
       // STEP 2: Filter for ACTIVE workers with SPECIFIC SERVICE
       // ================================
       const relevantWorkers: string[] = [];
-      const inactiveWorkers: string[] = [];
-      const workersWithoutService: string[] = [];
       
       allWorkersSnapshot.docs.forEach(doc => {
         const worker = doc.data();
@@ -7519,12 +7454,6 @@ export class FirestoreService {
           hasService = worker.assignedServices && 
                       Array.isArray(worker.assignedServices) && 
                       serviceServicesIds.some(serviceServiceId => worker.assignedServices.includes(serviceServiceId));
-          
-          if (hasService) {
-            if (__DEV__) {
-              console.log(`   ✅ CORRECT MATCH: Worker has service_services ID`);
-            }
-          }
         }
         
         // Strategy 2: Fallback to app_services IDs (legacy)
@@ -7532,12 +7461,6 @@ export class FirestoreService {
           hasService = worker.assignedServices && 
                       Array.isArray(worker.assignedServices) && 
                       serviceIdsArray.some(serviceId => worker.assignedServices.includes(serviceId));
-          
-          if (hasService) {
-            if (__DEV__) {
-              console.log(`   ✅ LEGACY MATCH: Worker has app_services ID`);
-            }
-          }
         }
         
         // Strategy 3: Service title matching
@@ -7548,66 +7471,19 @@ export class FirestoreService {
                         service.toLowerCase().includes(serviceTitle.toLowerCase()) ||
                         serviceTitle.toLowerCase().includes(service.toLowerCase())
                       );
-          
-          if (hasService) {
-            if (__DEV__) {
-              console.log(`   ✅ TITLE MATCH: Worker matched via service title`);
-            }
-          }
         }
         
         // Strategy 4: If no specific service filtering, accept all active workers
         if (!hasService && !serviceIdsArray.length && !serviceServicesIds.length && !serviceTitle) {
           hasService = true;
-          if (__DEV__) {
-            console.log(`   ✅ NO FILTER: Accepting all active workers`);
-          }
         }
 
-        if (__DEV__) {
-          console.log(`👷 Worker ${worker.name || workerId}:`, {
-            isActive: worker.isActive,
-            isTrulyActive,
-            assignedServices: worker.assignedServices,
-            hasRequiredService: hasService,
-            requiredAppServicesIds: serviceIdsArray,
-            requiredServiceServicesIds: serviceServicesIds,
-            matchStrategy: hasService ? 'matched' : 'no_match'
-          });
-        }
-        
-        if (!isTrulyActive) {
-          inactiveWorkers.push(workerId);
-          if (__DEV__) {
-            console.log(`   ❌ INACTIVE - isActive: ${worker.isActive}`);
-          }
-        } else if (!hasService) {
-          workersWithoutService.push(workerId);
-          if (__DEV__) {
-            console.log(`   ⚠️ ACTIVE but doesn't have required service(s)`);
-          }
-        } else {
-          relevantWorkers.push(workerId);
-          if (__DEV__) {
-            console.log(`   ✅ ACTIVE and has required service`);
-          }
-        }
+        if (isTrulyActive && hasService) relevantWorkers.push(workerId);
       });
       
       const totalRelevantWorkers = relevantWorkers.length;
       
-      if (__DEV__) {
-        console.log(`📊 WORKER BREAKDOWN:`);
-        console.log(`   Total workers: ${allWorkersSnapshot.size}`);
-        console.log(`   Active with required service: ${totalRelevantWorkers}`);
-        console.log(`   Inactive: ${inactiveWorkers.length}`);
-        console.log(`   Active but no required service: ${workersWithoutService.length}`);
-      }
-      
       if (totalRelevantWorkers === 0) {
-        if (__DEV__) {
-          console.log(`❌ NO WORKERS with required service(s)`);
-        }
         return {
           available: false,
           status: 'no_workers',
@@ -7628,10 +7504,6 @@ export class FirestoreService {
         .get();
       
       const busyWorkers: string[] = [];
-      
-      if (__DEV__) {
-        console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
-      }
       
   let unassignedActiveForServiceCount = 0;
 
@@ -7670,28 +7542,11 @@ export class FirestoreService {
 
           if (matchesService) {
             unassignedActiveForServiceCount += 1;
-            if (__DEV__) {
-              console.log(
-                `   ⏳ Counting UNASSIGNED booking as capacity (booking: ${doc.id})`,
-                {
-                  companyId: bookingCompanyId,
-                  status: booking.status,
-                  date: booking.date,
-                  time: booking.time,
-                  bookingServiceIds,
-                  bookingServiceName,
-                  matchedBy: matchesById ? "id" : "name",
-                }
-              );
-            }
           }
         }
 
         if (workerId && relevantWorkers.includes(workerId)) {
           busyWorkers.push(workerId);
-          if (__DEV__) {
-            console.log(`   🚫 Worker ${workerId} is BUSY (booking: ${doc.id}, status: ${booking.status})`);
-          }
         }
       });
       
@@ -7703,16 +7558,7 @@ export class FirestoreService {
   const consumedCapacity = Math.min(consumedCapacityRaw, totalRelevantWorkers);
   const availableWorkers = Math.max(0, totalRelevantWorkers - consumedCapacity);
       
-      if (__DEV__) {
-        console.log(`📊 FINAL RESULT:`);
-        console.log(`   Total relevant workers: ${totalRelevantWorkers}`);
-        console.log(`   Busy workers (assigned): ${busyWorkers.length}`);
-        console.log(`   Pending/unassigned (same service): ${unassignedActiveForServiceCount}`);
-        console.log(`   Available workers: ${availableWorkers}`);
-      }
-      
       if (availableWorkers <= 0) {
-        if (__DEV__) console.log(`❌ SLOT FULL: consumedCapacity=${consumedCapacity} / capacity=${totalRelevantWorkers}`);
         return {
           available: false,
           status: 'all_busy',
@@ -7721,8 +7567,6 @@ export class FirestoreService {
           busyWorkers
         };
       }
-      
-      if (__DEV__) console.log(`✅ ${availableWorkers} WORKERS AVAILABLE for this service`);
       return {
         available: true,
         status: 'available',
@@ -7763,59 +7607,26 @@ export class FirestoreService {
     }
   })[]> {
     try {
-      console.log(`🏢 Fetching companies with slot availability for ${date} at ${time}`);
-      console.log(`📋 Selected service IDs:`, selectedIssueIds);
-      console.log(`🏷️ Service type:`, serviceType);
-      console.log(`📂 Category ID:`, categoryId);
-      console.log(`🔍 From service_services:`, fromServiceServices);
-      
       // Get companies based on selected issues
       let companies: ServiceCompany[];
       if (selectedIssueIds && selectedIssueIds.length > 0) {
         // 🔥 CRITICAL FIX: Use correct method based on data source
         if (fromServiceServices) {
-          console.log(`🔍 Using getCompaniesByServiceIds for service_services IDs:`, selectedIssueIds);
           companies = await this.getCompaniesByServiceIds(selectedIssueIds, categoryId);
-          console.log(`📊 getCompaniesByServiceIds returned ${companies.length} companies`);
         } else {
-          console.log(`🔍 Using getCompaniesWithDetailedPackages for app_services IDs:`, selectedIssueIds);
           companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
-          console.log(`📊 getCompaniesWithDetailedPackages returned ${companies.length} companies`);
         }
       } else if (categoryId) {
-        console.log(`🔍 Using getCompaniesByCategory for category:`, categoryId);
         companies = await this.getCompaniesByCategory(categoryId);
-        console.log(`📊 getCompaniesByCategory returned ${companies.length} companies`);
         companies = await this.getDetailedPackagesForCompanies(companies);
-        console.log(`📊 After package enhancement: ${companies.length} companies`);
       } else {
-        console.log(`🔍 Using getServiceCompanies (fallback)`);
         companies = await this.getServiceCompanies();
-        console.log(`📊 getServiceCompanies returned ${companies.length} companies`);
         companies = await this.getDetailedPackagesForCompanies(companies);
-        console.log(`📊 After package enhancement: ${companies.length} companies`);
       }
-
-      console.log(`🏢 COMPANIES FOUND:`, companies.map(c => ({
-        id: c.id,
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        companyId: c.companyId,
-        isActive: c.isActive
-      })));
 
       if (companies.length === 0) {
-        console.log(`❌ NO COMPANIES FOUND - This is why nothing is showing in the app`);
-        console.log(`💡 Possible reasons:`);
-        console.log(`   1. No companies provide the selected service`);
-        console.log(`   2. Service IDs don't match between app_services and service_services`);
-        console.log(`   3. All companies are inactive`);
-        console.log(`   4. Category mapping issue`);
-        
         return [];
       }
-      
-      console.log(`🏢 Found ${companies.length} companies, checking availability...`);
       
       // Check availability for each company with SERVICE-SPECIFIC filtering
       const companiesWithAvailability = await Promise.all(
@@ -7864,28 +7675,6 @@ export class FirestoreService {
         const { status } = company.availabilityInfo;
         return status === 'available'; // Only show companies with available workers
       });
-      
-      console.log(`🏢 After slot filtering: ${filteredCompanies.length}/${companies.length} companies shown (only available workers)`);
-      console.log('Available companies only:', filteredCompanies.map(c => ({
-        name: c.companyName || c.serviceName,
-        status: c.availabilityInfo.status,
-        message: c.availabilityInfo.statusMessage,
-        availableWorkers: c.availabilityInfo.availableWorkers
-      })));
-      
-      // Log hidden companies for debugging
-      const hiddenCompanies = companiesWithAvailability.filter(company => {
-        const { status } = company.availabilityInfo;
-        return status !== 'available';
-      });
-      
-      if (hiddenCompanies.length > 0) {
-        console.log(`🚫 Hidden ${hiddenCompanies.length} companies:`, hiddenCompanies.map(c => ({
-          name: c.companyName || c.serviceName,
-          reason: c.availabilityInfo.status,
-          message: c.availabilityInfo.statusMessage
-        })));
-      }
       
       return filteredCompanies;
       

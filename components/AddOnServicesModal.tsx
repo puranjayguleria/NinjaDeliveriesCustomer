@@ -166,7 +166,7 @@ export default function AddOnServicesModal({
                       price: servicePrice,
                       imageUrl: serviceData?.imageUrl ?? null,
                       masterCategoryId:
-                        String(serviceData?.categoryMasterId || serviceData?.masterCategoryId || ""),
+                        String(serviceData?.categoryMasterId || serviceData?.masterCategoryId || serviceData?.categoryId || ""),
                       companyId: serviceData?.companyId,
                       description: serviceData?.description,
                       serviceKey: serviceData?.serviceKey,
@@ -260,7 +260,7 @@ export default function AddOnServicesModal({
                   name: String(name),
                   price: d?.price,
                   imageUrl: d?.imageUrl ?? null,
-                  masterCategoryId: String(d?.categoryMasterId || d?.masterCategoryId || ''),
+                  masterCategoryId: String(d?.categoryMasterId || d?.masterCategoryId || d?.categoryId || ''),
                   companyId: d?.companyId,
                   description: d?.description,
                   serviceKey: d?.serviceKey,
@@ -286,9 +286,11 @@ export default function AddOnServicesModal({
         }
       }
 
-      // Worker-first behavior: show ALL services the assigned worker can provide (across categories)
+      // Worker-first behavior: show services the assigned worker can provide.
+      // If categoryId is provided (current booking category), restrict add-ons to that category.
       if (workerId && workerAssignedServices.length > 0) {
         console.log(`✅ Using worker-first add-on listing (workerId=${workerId})`);
+        const normalizedCategoryId = String(categoryId || '').trim();
         const uniqueById = new Map<string, any>();
         for (const service of workerAssignedServices) {
           if (!service?.id) continue;
@@ -297,6 +299,11 @@ export default function AddOnServicesModal({
         }
 
         const workerServicesList = Array.from(uniqueById.values())
+          .filter((service) => {
+            if (!normalizedCategoryId) return true;
+            const serviceCategoryId = String(service?.masterCategoryId || '').trim();
+            return serviceCategoryId === normalizedCategoryId;
+          })
           .filter((service) => !isAlreadyBookedService(service.name))
           .map((service) => {
             const fallbackPrice =

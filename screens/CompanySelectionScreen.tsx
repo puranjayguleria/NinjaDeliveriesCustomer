@@ -170,8 +170,8 @@ export default function CompanySelectionScreen() {
         const map: Record<string, any[]> = {};
         for (const [cid, reviews] of pairs) map[cid] = reviews;
         setCompanyReviewsById(map);
-      } catch (e) {
-        if (__DEV__) console.warn('[CompanySelection] failed to load reviews', e);
+      } catch {
+        // ignore
       }
     };
 
@@ -195,17 +195,7 @@ export default function CompanySelectionScreen() {
     return u;
   };
 
-  // Log the raw/resolved logo URLs whenever the companies list changes.
-  useEffect(() => {
-    if (!Array.isArray(companies) || companies.length === 0) return;
-    console.log('🖼️ Company logos (debug):', companies.map((c: any) => ({
-      id: c?.id,
-      companyId: c?.companyId,
-      name: c?.companyName,
-      raw: c?.imageUrl ?? c?.logoUrl,
-      resolved: getCompanyLogoUrl(c),
-    })));
-  }, [companies]);
+  // (Removed noisy logo debug logs)
 
   // When service_services documents don't include a `price` in the objects passed via navigation,
   // we fetch the authoritative `price` by id so cart totals don't end up as ₹0.
@@ -350,8 +340,7 @@ export default function CompanySelectionScreen() {
         const enriched = enrichedFromIds.length > 0 ? enrichedFromIds : baseIssues;
 
         if (isActive) setPricedSelectedIssues(enriched);
-      } catch (e) {
-        console.log('⚠️ Failed to enrich selectedIssues with prices:', e);
+      } catch {
         if (isActive) setPricedSelectedIssues(Array.isArray(selectedIssues) ? selectedIssues : null);
       }
     };
@@ -362,24 +351,7 @@ export default function CompanySelectionScreen() {
     };
   }, [selectedIssueIds, selectedIssues]);
 
-  // 🔍 DEBUG: Log all params on mount
-  useEffect(() => {
-    console.log('🚀 ========== CompanySelectionScreen MOUNTED ==========');
-    console.log('📋 All Route Params:', JSON.stringify(route.params, null, 2));
-    console.log('📋 Extracted Params:', {
-      serviceTitle,
-      categoryId,
-      issues,
-      selectedIssueIds,
-      selectedIssues: selectedIssues?.map((s: any) => ({ id: s.id, name: s.name })),
-      selectedDate,
-      selectedTime,
-      fromServiceServices,
-      isPackageBooking,
-      hasRouteSelectedPackage: !!routeSelectedPackage
-    });
-    console.log('========================================\n');
-  }, [categoryId, fromServiceServices, isPackageBooking, issues, route.params, routeSelectedPackage, selectedDate, selectedIssueIds, selectedIssues, selectedTime, serviceTitle]);
+  // (Removed mount debug logs)
 
   // NOTE: Effects that call `fetchServiceCompanies` are declared after the callback is defined
   // to avoid “used before declaration” errors.
@@ -394,11 +366,9 @@ export default function CompanySelectionScreen() {
         .get();
       
       const activeWorkers = workersQuery.docs.length;
-      console.log(`👷 Company ${companyId} has ${activeWorkers} active workers`);
       
       return activeWorkers > 0;
-    } catch (error) {
-      console.error(`❌ Error checking active workers for company ${companyId}:`, error);
+    } catch {
       return false; // If error, assume no active workers to be safe
     }
   };
@@ -406,11 +376,6 @@ export default function CompanySelectionScreen() {
   // Check real-time availability for a specific date and time
   const checkRealTimeAvailability = useCallback(async (companyId: string, date: string, time: string, serviceIds?: string[]): Promise<boolean> => {
     try {
-      console.log(`🔍 DETAILED CHECK - Company ${companyId}:`);
-      console.log(`   Date: ${date}, Time: ${time}`);
-      console.log(`   Selected Service IDs:`, serviceIds);
-      console.log(`   Service Title:`, serviceTitle);
-      
       // 🔥 CRITICAL: Pass service IDs for proper worker filtering
       const result: any = await FirestoreService.checkCompanyWorkerAvailability(
         companyId, 
@@ -422,21 +387,11 @@ export default function CompanySelectionScreen() {
       
       // Ensure we have the expected object structure
       if (typeof result === 'boolean') {
-        console.warn('⚠️ Got boolean result instead of object, using fallback');
         return result;
       }
-      
-      console.log(`📊 RESULT - Company ${companyId}:`, {
-        available: result.available,
-        status: result.status,
-        availableWorkers: result.availableWorkers,
-        totalWorkers: result.totalWorkers,
-        serviceIds: serviceIds || selectedIssueIds
-      });
-      
+
       return result.available;
-    } catch (error) {
-      console.error(`❌ Error checking real-time availability for company ${companyId}:`, error);
+    } catch {
       return false; // If error, assume not available to be safe
     }
   }, [selectedIssueIds, serviceTitle]);
@@ -518,14 +473,11 @@ export default function CompanySelectionScreen() {
         active === false;
       
       if (isInactive) {
-        console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - company is inactive/offline (isActive: ${isActive}, status: ${status}, active: ${active})`);
         return false;
       }
       
       return true;
     });
-
-    console.log(`✅ After isActive filter: ${activeCompanies.length}/${companies.length} companies are active`);
 
     if (!checkTimeSlot || !selectedDate || !selectedTime) {
       // If not checking time slots, use the old logic for backward compatibility
@@ -537,7 +489,6 @@ export default function CompanySelectionScreen() {
         // Check if company has any active workers
         const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
         if (!hasActiveWorkers) {
-          console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - no active workers`);
           continue;
         }
         
@@ -558,26 +509,12 @@ export default function CompanySelectionScreen() {
         ? []
         : (Array.isArray(selectedSlots) ? selectedSlots : []);
     
-    // Use new slot-based availability system
-    if (__DEV__) {
-      console.log(`🎯 Using slot-based availability for ${selectedDate} at ${selectedTime}`);
-      console.log(`🔍 Service filtering details:`, {
-        serviceTitle,
-        selectedIssues: Array.isArray(selectedIssues) ? selectedIssues.map(s => s.name || s) : selectedIssues,
-        issues: Array.isArray(issues) ? issues : [issues],
-        selectedIssueIds,
-        routeParams: { serviceTitle, categoryId, issues, selectedIssueIds, selectedIssues }
-      });
-    }
     
     // Determine the exact service name to use for worker filtering
     const exactServiceName = (Array.isArray(selectedIssues) && selectedIssues.length > 0 && selectedIssues[0].name) 
       ? selectedIssues[0].name 
       : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
     
-    if (__DEV__) {
-      console.log(`🎯 Using exact service name for worker filtering: "${exactServiceName}"`);
-    }
     
     try {
       // If a slot-block is present (predefined services), we require a company to be available for ALL.
@@ -634,9 +571,7 @@ export default function CompanySelectionScreen() {
         totalWorkerCount: company.availabilityInfo.totalWorkers
       }));
 
-    } catch (error) {
-      console.error('❌ Error using slot-based availability, falling back to basic check:', error);
-      
+    } catch {
       // Fallback to basic availability check
       const availableCompanies: ServiceCompany[] = [];
       
@@ -648,14 +583,6 @@ export default function CompanySelectionScreen() {
         if (hasActiveWorkers) {
           // Additional check: verify workers are actually available for the time slot
           if (selectedDate && selectedTime) {
-            const exactServiceName = (Array.isArray(selectedIssues) && selectedIssues.length > 0 && selectedIssues[0].name) 
-              ? selectedIssues[0].name 
-              : (Array.isArray(issues) && issues.length > 0 ? issues[0] : serviceTitle);
-            
-            if (__DEV__) {
-              console.log(`🔍 Fallback check using service name: "${exactServiceName}"`);
-            }
-            
             // If multi-slot flow, require all selected pairs; else just the single selectedDate/selectedTime.
             const requiredPairs = (multiSlotPairs.length > 0)
               ? multiSlotPairs
@@ -695,113 +622,42 @@ export default function CompanySelectionScreen() {
   const fetchServiceCompanies = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('🏢 ========== FETCHING COMPANIES ==========');
-      console.log('🏢 Service Title:', serviceTitle);
-      console.log('🏢 Category ID:', categoryId);
-      console.log('🏢 Selected Issue IDs:', selectedIssueIds);
-      console.log('🏢 Issues:', issues);
-      console.log('🏢 All Route Params:', JSON.stringify(route.params, null, 2));
       
       let fetchedCompanies: ServiceCompany[];
       
       // Check if this is from service_services collection (both packages and direct-price)
       const fromServiceServices = route.params?.fromServiceServices === true;
       
-      console.log('🔍 ========== ROUTE PARAMS CHECK ==========');
-      console.log('🔍 fromServiceServices:', fromServiceServices);
-      console.log('🔍 fromServiceServicesRaw:', route.params?.fromServiceServices);
-      console.log('🔍 hasIssues:', !!issues);
-      console.log('🔍 issuesLength:', issues?.length);
-      console.log('🔍 issuesValue:', issues);
-      console.log('🔍 hasSelectedIssueIds:', !!selectedIssueIds);
-      console.log('🔍 selectedIssueIdsLength:', selectedIssueIds?.length);
-      console.log('🔍 selectedIssueIdsValue:', selectedIssueIds);
       
       if (fromServiceServices) {
-        console.log('✅ ========== USING SERVICE_SERVICES FLOW ==========');
-        console.log('✅ This is from service_services collection');
         
         // For services from service_services, we need to use service IDs
         if (selectedIssueIds && selectedIssueIds.length > 0) {
-          console.log('🏢 Strategy: Using service IDs:', selectedIssueIds);
-          console.log('🏢 Calling: FirestoreService.getCompaniesByServiceIds()');
           // Fetch companies by service IDs from service_services
           fetchedCompanies = await FirestoreService.getCompaniesByServiceIds(selectedIssueIds, categoryId);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else if (issues && issues.length > 0) {
-          console.log('🏢 Strategy: Using service names (fallback):', issues);
-          console.log('🏢 Calling: FirestoreService.getCompaniesByServiceNames()');
           // Fallback: fetch by service names
           const validCategoryId = categoryId && categoryId.trim() !== '' ? categoryId : undefined;
           fetchedCompanies = await FirestoreService.getCompaniesByServiceNames(issues, validCategoryId);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else {
-          console.error('❌ ERROR: No service IDs or names provided');
-          console.error('❌ Cannot fetch companies without service identifiers');
           fetchedCompanies = [];
         }
       } else {
-        console.log('❌ ========== USING OLD FLOW (APP_SERVICES) ==========');
-        console.log('❌ This is from app_services collection (legacy)');
         
         if (selectedIssueIds && selectedIssueIds.length > 0) {
-          console.log('🏢 Strategy: Fetching companies with detailed packages by selected issue IDs:', selectedIssueIds);
-          console.log('🏢 Calling: FirestoreService.getCompaniesWithDetailedPackages()');
           // For app_services (old flow)
           fetchedCompanies = await FirestoreService.getCompaniesWithDetailedPackages(selectedIssueIds);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies');
         } else if (categoryId) {
-          console.log('🏢 Strategy: Fetching companies by category ID:', categoryId);
-          console.log('🏢 Calling: FirestoreService.getCompaniesByCategory()');
           // Fetch companies that provide services in this category
           fetchedCompanies = await FirestoreService.getCompaniesByCategory(categoryId);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (before enhancement)');
           // Enhance with detailed packages
-          console.log('🏢 Enhancing with detailed packages...');
           fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (after enhancement)');
         } else {
-          console.log('🏢 Strategy: Fetching all companies as fallback');
-          console.log('🏢 Calling: FirestoreService.getServiceCompanies()');
           // Fallback to all companies
           fetchedCompanies = await FirestoreService.getServiceCompanies();
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (before enhancement)');
           // Enhance with detailed packages
-          console.log('🏢 Enhancing with detailed packages...');
           fetchedCompanies = await FirestoreService.getDetailedPackagesForCompanies(fetchedCompanies);
-          console.log('🏢 Result: Got', fetchedCompanies.length, 'companies (after enhancement)');
         }
-      }
-      
-      console.log(`\n🏢 ========== INITIAL FETCH COMPLETE ==========`);
-      console.log(`🏢 Found ${fetchedCompanies.length} companies BEFORE filtering:`, 
-        fetchedCompanies.map(c => ({ 
-          id: c.id, 
-          companyName: c.companyName,
-          serviceName: c.serviceName, 
-          price: c.price, 
-          serviceType: c.serviceType,
-          companyId: c.companyId,
-          isActive: c.isActive,
-          isActiveType: typeof c.isActive,
-          packagesCount: c.packages?.length || 0,
-          packageDetails: c.packages?.slice(0, 2).map(p => ({
-            name: typeof p === 'string' ? p : p.name,
-            price: typeof p === 'object' ? p.price : c.price
-          }))
-        }))
-      );
-      
-      // 🔍 DEBUG: Check which companies are inactive
-      const inactiveCompanies = fetchedCompanies.filter(c => c.isActive === false);
-      if (inactiveCompanies.length > 0) {
-        console.log(`⚠️ Found ${inactiveCompanies.length} INACTIVE companies:`, 
-          inactiveCompanies.map(c => ({
-            id: c.id,
-            name: c.companyName || c.serviceName,
-            isActive: c.isActive
-          }))
-        );
       }
       
       // Sort packages within each company: monthly first, then weekly, then others
@@ -832,52 +688,27 @@ export default function CompanySelectionScreen() {
         return company;
       });
       
-      console.log(`📦 ========== SORTING PACKAGES ==========`);
-      console.log(`📦 Packages sorted by frequency (monthly, weekly first)`);
-      
       // Filter companies to only show those with active workers and check slot availability
-      console.log(`\n🔍 ========== FILTERING FOR AVAILABILITY ==========`);
-      console.log(`🔍 Selected Date: ${selectedDate}`);
-      console.log(`🔍 Selected Time: ${selectedTime}`);
-      console.log(`🔍 Will check slot-based availability: ${!!selectedDate && !!selectedTime}`);
       
       const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
-      console.log(`\n✅ ========== FINAL RESULT ==========`);
-      console.log(`✅ After filtering: ${companiesWithActiveWorkers.length} companies with worker availability:`, 
-        companiesWithActiveWorkers.map(c => ({ 
-          id: c.id, 
-          companyName: c.companyName,
-          serviceName: c.serviceName,
-          companyId: c.companyId,
-          availability: c.availability
-        }))
-      );
-      console.log(`✅ ========== COMPANIES SET TO STATE ==========\n`);
-      
       setCompanies(companiesWithActiveWorkers);
-    } catch (error) {
-      console.error('❌ ========== ERROR FETCHING COMPANIES ==========');
-      console.error('❌ Error details:', error);
-      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
-      console.error('❌ ========================================\n');
+    } catch {
       setCompanies([]);
     } finally {
       setLoading(false);
     }
-  }, [categoryId, filterCompaniesWithAvailability, issues, route.params, selectedDate, selectedIssueIds, selectedTime, serviceTitle]);
+  }, [categoryId, filterCompaniesWithAvailability, issues, route.params, selectedIssueIds]);
 
   // Fetch companies from Firestore based on selected issues
   useEffect(() => {
     // Validate required params
     if (!serviceTitle) {
-      console.error('❌ Missing required param: serviceTitle');
       setLoading(false);
       return;
     }
 
     if (!selectedIssueIds?.length && !issues?.length && !categoryId) {
-      console.error('❌ Missing required params: Need at least one of selectedIssueIds, issues, or categoryId');
       setLoading(false);
       return;
     }
@@ -1423,16 +1254,6 @@ export default function CompanySelectionScreen() {
                             : pkg;
                           const isPkgSelected = selectedPackage && selectedPackage.id === pkgObj.id;
                           
-                          // 🔍 DEBUG: Log package data to verify unit field
-                          console.log(`📦 Package ${idx} data:`, {
-                            name: pkgObj.name,
-                            price: pkgObj.price,
-                            unit: pkgObj.unit,
-                            frequency: pkgObj.frequency,
-                            type: pkgObj.type,
-                            fullObject: pkgObj
-                          });
-                          
                           // Determine frequency type from package data
                           // Priority: 1. unit field, 2. frequency field, 3. type field, 4. name parsing
                           let frequencyBadge = null;
@@ -1441,14 +1262,6 @@ export default function CompanySelectionScreen() {
                           // Check if package has explicit unit, frequency or type field
                           const explicitFrequency = pkgObj.unit || pkgObj.frequency || pkgObj.type || pkgObj.subscriptionType;
                           const duration = pkgObj.duration; // Get duration (e.g., 2, 3, 6, 12)
-                          
-                          console.log(`🔍 Frequency detection for "${pkgObj.name}":`, {
-                            explicitFrequency,
-                            duration,
-                            unit: pkgObj.unit,
-                            frequency: pkgObj.frequency,
-                            type: pkgObj.type
-                          });
                           
                           if (explicitFrequency) {
                             const freqLower = explicitFrequency.toLowerCase();
@@ -1500,9 +1313,7 @@ export default function CompanySelectionScreen() {
                             }
                           }
                           
-                          if (__DEV__) {
-                            console.log(`✅ Final badge for "${pkgObj.name}": ${frequencyBadge || 'None'}`);
-                          }
+                          
                           
                           return (
                             <TouchableOpacity
@@ -1570,16 +1381,6 @@ export default function CompanySelectionScreen() {
                           // Get quantity from selectedIssues array which has quantity per service
                           let quantity = 1;
                           
-                          // Debug logs
-                          console.log('💰 Price Calculation Debug:', {
-                            itemId: item.id,
-                            itemServiceName: item.serviceName,
-                            itemName: (item as any)?.name,
-                            itemPrice: item.price,
-                            selectedIssuesCount: selectedIssues?.length,
-                            serviceQuantitiesKeys: serviceQuantities ? Object.keys(serviceQuantities) : []
-                          });
-                          
                           // Try to find quantity from selectedIssues first
                           if (Array.isArray(selectedIssues) && selectedIssues.length > 0) {
                             const matchingService = selectedIssues.find((s: any) => 
@@ -1589,7 +1390,6 @@ export default function CompanySelectionScreen() {
                             );
                             if (matchingService && matchingService.quantity) {
                               quantity = matchingService.quantity;
-                              console.log('✅ Found quantity from selectedIssues:', quantity);
                             }
                           }
                           
@@ -1601,12 +1401,10 @@ export default function CompanySelectionScreen() {
                                       (serviceQuantities as any)?.[(item as any)?.name] ||
                                       1;
                             if (quantity > 1) {
-                              console.log('✅ Found quantity from serviceQuantities:', quantity);
                             }
                           }
                           
                           const totalPrice = item.price * quantity;
-                          console.log('💰 Final calculation:', { quantity, basePrice: item.price, totalPrice });
                           return totalPrice;
                         })()}
                         {(() => {
