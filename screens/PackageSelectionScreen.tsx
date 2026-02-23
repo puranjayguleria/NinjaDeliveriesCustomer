@@ -16,6 +16,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 import { firestore } from "../firebase.native";
+import ServiceTabLoader from "../components/ServiceTabLoader";
 
 type CompanyPackageGroup = {
   id: string;
@@ -562,22 +563,15 @@ export default function PackageSelectionScreen() {
     Alert.alert("Select Service", "Please select a package or service to continue.");
   };
 
+  // Full-screen loader gif while the initial package/services fetch is in progress.
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color="#0f172a" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{serviceTitle}</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </View>
-    );
+    return <ServiceTabLoader />;
+  }
+
+  // Package categories build company-groups after services load.
+  // Show full-screen loader until companies are ready so user doesn't see a blank "Choose a company" section.
+  if (companiesLoading && packageBasedServices.length > 0 && companyGroups.length === 0) {
+    return <ServiceTabLoader />;
   }
 
   return (

@@ -23,6 +23,7 @@ import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
 import ServiceAddedModal from "../components/ServiceAddedModal";
+import ServiceTabLoader from "../components/ServiceTabLoader";
 
 const AnimatedReviewSnippet: React.FC<{
   header: string;
@@ -1050,6 +1051,11 @@ export default function CompanySelectionScreen() {
     // Reset package selection after adding
     setSelectedPackage(null);
   }; 
+
+  // Full-screen loader while the initial companies list is being fetched.
+  if (loading && (!Array.isArray(companies) || companies.length === 0)) {
+    return <ServiceTabLoader />;
+  }
 
   return (
     <View style={styles.container}>
