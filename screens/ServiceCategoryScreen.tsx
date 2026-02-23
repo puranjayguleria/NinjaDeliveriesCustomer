@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  Image,
   Alert,
   ActivityIndicator,
   Modal,
@@ -14,6 +13,7 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
 import { dedupeServicesByCategoryAndName } from "../utils/serviceDedupe";
 import { firestore } from "../firebase.native";
@@ -306,7 +306,8 @@ export default function ServiceCategoryScreen() {
           <Image 
             source={{ uri: item.imageUrl }} 
             style={styles.serviceImage}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="disk"
           />
         ) : (
           <View style={styles.serviceImagePlaceholder}>
