@@ -35,7 +35,7 @@ export class BookingUtils {
   static getStatusText(status: ServiceBooking['status']): string {
     switch (status) {
       case 'pending':
-        return 'Pending';
+        return 'Assigning Worker';
       case 'assigned':
         return 'Assigned';
       case 'started':

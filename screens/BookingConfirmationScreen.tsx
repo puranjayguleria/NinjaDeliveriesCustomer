@@ -107,7 +107,7 @@ export default function BookingConfirmationScreen() {
   const getStatusInfo = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'pending':
-        return { color: '#F59E0B', icon: 'time-outline', text: 'Pending' };
+        return { color: '#F59E0B', icon: 'time-outline', text: 'Assigning Worker' };
       case 'assigned':
         return { color: '#3B82F6', icon: 'person-outline', text: 'Assigned' };
       case 'started':
