@@ -187,7 +187,18 @@ export default function ServiceCheckoutScreen() {
           
           // Restore form state
           if (restoreState.notes) setNotes(restoreState.notes);
-          if (restoreState.paymentMethod) setPaymentMethod(restoreState.paymentMethod);
+          if (restoreState.paymentMethod) {
+            const raw = restoreState.paymentMethod;
+            const candidate =
+              typeof raw === 'string'
+                ? raw
+                : (raw && typeof raw === 'object')
+                  ? (raw.value || raw.method || raw.type || raw.key || '')
+                  : '';
+
+            const normalized = String(candidate).trim().toLowerCase();
+            setPaymentMethod(normalized === 'online' ? 'online' : 'cash');
+          }
           
           // If there was a pending address, restore it and show the modal
           if (restoreState.pendingAddress) {

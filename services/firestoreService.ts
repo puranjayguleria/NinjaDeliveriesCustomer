@@ -4157,9 +4157,18 @@ export class FirestoreService {
         }
       }
       
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const bookingDataNormalized: any = { ...bookingData };
+      const normalizedPaymentMethod = this.normalizeBookingPaymentMethod((bookingDataNormalized as any)?.paymentMethod);
+      const normalizedPaymentStatus = this.normalizeBookingPaymentStatus((bookingDataNormalized as any)?.paymentStatus);
+      if (normalizedPaymentMethod) (bookingDataNormalized as any).paymentMethod = normalizedPaymentMethod;
+      else if ((bookingDataNormalized as any).paymentMethod != null) delete (bookingDataNormalized as any).paymentMethod;
+      if (normalizedPaymentStatus) (bookingDataNormalized as any).paymentStatus = normalizedPaymentStatus;
+      else if ((bookingDataNormalized as any).paymentStatus != null) delete (bookingDataNormalized as any).paymentStatus;
+
       // Clean the booking data to remove undefined values
       const cleanedData = this.cleanBookingData({
-        ...bookingData,
+        ...bookingDataNormalized,
         customerId: userId, // Always set the logged-in user ID
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -4228,6 +4237,36 @@ export class FirestoreService {
     return cleaned;
   }
 
+  private static normalizeBookingPaymentMethod(value: any): string | undefined {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? (value.value || value.method || value.type || value.key || value.name || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+    if (!s || s === '[object object]') return undefined;
+    if (s === 'cash' || s === 'cod' || s.includes('cash')) return 'cash';
+    if (s === 'online' || s.includes('razorpay') || s.includes('upi') || s.includes('card')) return 'online';
+    return undefined;
+  }
+
+  private static normalizeBookingPaymentStatus(value: any): string | undefined {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? (value.value || value.status || value.state || value.key || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+    if (!s || s === '[object object]') return undefined;
+    if (s === 'pending') return 'pending';
+    if (s === 'paid' || s === 'success' || s === 'captured' || s === 'completed') return 'paid';
+    if (s === 'failed' || s === 'failure') return 'failed';
+    if (s === 'refunded' || s === 'refund') return 'refunded';
+    return undefined;
+  }
+
   /**
    * Update an existing service booking
    */
@@ -4240,10 +4279,23 @@ export class FirestoreService {
       }
       
       console.log(`🔥 Updating service booking ${bookingId} for user: ${userId}`);
-      
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const updatesNormalized: any = { ...updates };
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentMethod')) {
+        const normalized = this.normalizeBookingPaymentMethod((updatesNormalized as any).paymentMethod);
+        if (normalized) (updatesNormalized as any).paymentMethod = normalized;
+        else delete (updatesNormalized as any).paymentMethod;
+      }
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentStatus')) {
+        const normalized = this.normalizeBookingPaymentStatus((updatesNormalized as any).paymentStatus);
+        if (normalized) (updatesNormalized as any).paymentStatus = normalized;
+        else delete (updatesNormalized as any).paymentStatus;
+      }
+
       // Clean the update data to remove undefined values
       const cleanedUpdates = this.cleanBookingData({
-        ...updates,
+        ...updatesNormalized,
         updatedAt: new Date(),
       });
       
