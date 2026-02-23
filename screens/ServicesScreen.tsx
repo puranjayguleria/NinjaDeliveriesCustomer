@@ -1280,10 +1280,9 @@ export default function ServicesScreen() {
         
         {/* Header with Background Image */}
         <ImageBackground
-          source={require('../assets/ninjaVideo.gif')}
+          source={require('../assets/ninjaVideo1.gif')}
           style={styles.topHeader}
-          resizeMode="cover"
-          imageStyle={{ marginTop: 20 }}
+          resizeMode="contain"
         >
           <View style={styles.headerOverlay} pointerEvents="box-none">
             <View style={styles.headerContent}>
@@ -1615,6 +1614,8 @@ const styles = StyleSheet.create({
 
   // Header Styles
   topHeader: {
+    height: 200,
+    marginTop: 20,
     paddingTop: 80,
     paddingBottom: 30,
     paddingHorizontal: 16,
@@ -1630,7 +1631,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    marginTop: 20,
+    marginTop: 50,
   },
 
   historyButton: {
@@ -1640,7 +1641,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 20,
-    gap: 8,
+    gap: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.85)",
     shadowColor: "#0F172A",
