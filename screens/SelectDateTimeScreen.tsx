@@ -100,7 +100,7 @@ export default function SelectDateTimeScreen() {
   const selectedPackageDurationKey = String(selectedPackageDuration ?? "");
 
   const selectedPackageUnit = String((selectedPackage as any)?.unit || '').toLowerCase();
-  const isMonthlyPackage = isPackageBooking === true && selectedPackageUnit === 'month';
+  const isMonthlyPackage = isPackageBooking === true && (selectedPackageUnit === 'month' || selectedPackageUnit === 'monthly');
   // IMPORTANT:
   // “Day” packages are *single-day* bookings in our UX (pick exactly 1 day within next 7 days).
   // Only week/month should generate multiple occurrences.
@@ -302,9 +302,15 @@ export default function SelectDateTimeScreen() {
   const monthlyPrecheckReqRef = useRef(0);
   const fetchSlotsReqRef = useRef(0);
 
-  // Keep the *screen-blocking* modal only for service/day slot availability checks.
-  // Recurring series validation and monthly precheck can take a while and should not freeze scrolling.
-  const isBlockingAvailabilityModal = loadingAvailability;
+  // For plan flows, keep a stable anchor per time slot label so monthly/weekly
+  // availability prechecks don't rerun on every date tap.
+  const planWindowAnchorBySlotRef = useRef<Record<string, string>>({});
+
+  // Screen-blocking modal:
+  // - Service/day slot availability checks: block (existing behavior)
+  // - Monthly precheck: user requested full-screen loader while verifying
+  // Weekly recurring validation remains non-blocking (inline spinner) to keep the calendar usable.
+  const isBlockingAvailabilityModal = loadingAvailability || loadingMonthlyPrecheck;
   const isVerifyingAvailability = isBlockingAvailabilityModal || loadingSeriesAvailability || loadingMonthlyPrecheck;
 
   // Predefined slots for services (non-package bookings)
@@ -336,6 +342,13 @@ export default function SelectDateTimeScreen() {
     const d = String(tomorrow.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   });
+
+  // Keep a ref for selectedDate so long-running effects can read the latest
+  // value without forcing re-runs on every calendar tap.
+  const selectedDateRef = useRef<string>(selectedDate);
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
 
   const isServiceFlow = isPackageBooking !== true;
 
@@ -1517,7 +1530,8 @@ export default function SelectDateTimeScreen() {
     const today = new Date();
     const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const minISO = addDaysISO(todayISO, 1);
-    const anchor = selectedDate && selectedDate >= minISO ? selectedDate : minISO;
+    const selectedDateAtStart = selectedDateRef.current;
+    const anchor = selectedDateAtStart && selectedDateAtStart >= minISO ? selectedDateAtStart : minISO;
   // Check a reasonable future window so we can find 7 available days even if some are booked.
   const windowDays = 21;
   const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
@@ -1636,14 +1650,26 @@ export default function SelectDateTimeScreen() {
     const today = new Date();
     const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const minISO = addDaysISO(todayISO, 1);
-    const anchor = selectedDate && selectedDate >= minISO ? selectedDate : minISO;
+    const selectedDateAtStart = selectedDateRef.current;
+    const anchor = selectedDateAtStart && selectedDateAtStart >= minISO ? selectedDateAtStart : minISO;
 
     const windowDays = 30;
-    const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(anchor, i));
+    // IMPORTANT: monthly verification should be stable while the user is tapping dates.
+    // Cache a per-slot anchor date so we don't re-verify the whole window on every tap.
+    const stableAnchor = (() => {
+      const cached = planWindowAnchorBySlotRef.current?.[slotLabel];
+      if (cached) return cached;
+      const next = anchor;
+      planWindowAnchorBySlotRef.current = { ...(planWindowAnchorBySlotRef.current || {}), [slotLabel]: next };
+      return next;
+    })();
+
+    const windowISOs = Array.from({ length: windowDays }, (_, i) => addDaysISO(stableAnchor, i));
 
     const reqId = ++monthlyPrecheckReqRef.current;
     setLoadingMonthlyPrecheck(true);
     setAvailabilityError(null);
+    setAvailabilityStatusText(`Checking monthly availability (0/${windowDays})…`);
 
     const selectedIds = (() => {
       try {
@@ -1656,13 +1682,28 @@ export default function SelectDateTimeScreen() {
 
     (async () => {
       try {
-        // Older per-date checks (no batching).
-        const results: { dateISO: string; available: boolean }[] = [];
-        const maxConcurrency = 4;
-        let idx = 0;
+        // Per-date checks (no batching), but with:
+        // - safe, deterministic result ordering
+        // - bounded concurrency
+        // - progress text updates
+        const total = windowISOs.length;
+        const results: { dateISO: string; available: boolean }[] = new Array(total);
+        const maxConcurrency = 6;
+        let nextIndex = 0;
+        let done = 0;
+
+        const updateProgress = () => {
+          if (monthlyPrecheckReqRef.current !== reqId) return;
+          setAvailabilityStatusText(`Checking monthly availability (${done}/${windowDays})…`);
+        };
+
         const worker = async () => {
-          while (idx < windowISOs.length) {
-            const dateISO = String(windowISOs[idx++]);
+          while (true) {
+            if (monthlyPrecheckReqRef.current !== reqId) return;
+            const i = nextIndex++;
+            if (i >= total) return;
+
+            const dateISO = String(windowISOs[i]);
             try {
               const res: any = await FirestoreService.checkCompanyWorkerAvailability(
                 selectedCompanyId,
@@ -1671,14 +1712,18 @@ export default function SelectDateTimeScreen() {
                 selectedIds,
                 serviceTitle
               );
-              results.push({ dateISO, available: res?.available === true });
+              results[i] = { dateISO, available: res?.available === true };
             } catch {
-              results.push({ dateISO, available: false });
+              results[i] = { dateISO, available: false };
+            } finally {
+              done += 1;
+              // Throttle UI updates.
+              if (done === total || done % 5 === 0) updateProgress();
             }
           }
         };
-        await Promise.all(Array.from({ length: Math.min(maxConcurrency, windowISOs.length) }, () => worker()));
-        results.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+        await Promise.all(Array.from({ length: Math.min(maxConcurrency, total) }, () => worker()));
 
         if (monthlyPrecheckReqRef.current !== reqId) return;
 
@@ -1703,7 +1748,7 @@ export default function SelectDateTimeScreen() {
         if (__DEV__) {
           console.log('🗓️ Monthly autopick results', {
             slotLabel,
-            anchor,
+            anchor: stableAnchor,
             windowDays,
             checked: results.length,
             availableCount: available.length,
@@ -1741,10 +1786,11 @@ export default function SelectDateTimeScreen() {
       } finally {
         if (monthlyPrecheckReqRef.current === reqId) {
           setLoadingMonthlyPrecheck(false);
+          setAvailabilityStatusText('');
         }
       }
     })();
-  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedDate, selectedIssueIdsKey, serviceTitle]);
+  }, [needsDayConfirmation, selectedPackageUnit, selectedCompanyId, time, selectedIssueIdsKey, serviceTitle]);
 
   // IMPORTANT UX:
   // For weekly/monthly "day confirmation" plans we should NEVER mutate the user's selection
@@ -2290,7 +2336,11 @@ export default function SelectDateTimeScreen() {
           <View style={styles.blockingModalCard}>
             <ActivityIndicator size="large" color="#4CAF50" />
             <Text style={styles.blockingModalTitle}>Verifying availability</Text>
-            <Text style={styles.blockingModalSub}>Please wait…</Text>
+            <Text style={styles.blockingModalSub}>
+              {(availabilityStatusText && availabilityStatusText.trim().length > 0)
+                ? availabilityStatusText
+                : 'Please wait…'}
+            </Text>
           </View>
         </View>
       </Modal>
@@ -2413,7 +2463,11 @@ export default function SelectDateTimeScreen() {
                 // 3) conflicts exist
                 // 4) needs more days
                 if (planPickError) msg = planPickError;
-                else if (isMonthlyPlan && loadingMonthlyPrecheck) msg = 'Checking availability for this time slot…';
+                else if (isMonthlyPlan && loadingMonthlyPrecheck) {
+                  msg = (availabilityStatusText && availabilityStatusText.trim().length > 0)
+                    ? availabilityStatusText
+                    : 'Checking monthly availability…';
+                }
                 else if (monthlyNotEnoughDaysMessage) msg = monthlyNotEnoughDaysMessage;
                 else if (isRecurringPackage && loadingSeriesAvailability) msg = 'Validating recurring availability…';
                 else if (slotLabel && fullSeriesOk === false) msg = 'This time slot is currently full. Try selecting a different time slot.';
@@ -2798,7 +2852,11 @@ export default function SelectDateTimeScreen() {
           {!isServiceFlow && isMonthlyPlan && loadingMonthlyPrecheck && (
             <View style={styles.availabilityRow}>
               <ActivityIndicator size="small" color="#64748b" />
-              <Text style={styles.availabilityText}>Checking availability for this time slot…</Text>
+              <Text style={styles.availabilityText}>
+                {(availabilityStatusText && availabilityStatusText.trim().length > 0)
+                  ? availabilityStatusText
+                  : 'Checking monthly availability…'}
+              </Text>
             </View>
           )}
 
