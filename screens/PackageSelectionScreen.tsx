@@ -101,7 +101,17 @@ export default function PackageSelectionScreen() {
             if (!cid || cid === 'any') return { id: cid, data: null };
             try {
               const doc = await firestore().collection('service_company').doc(cid).get();
-              return { id: cid, data: doc.exists ? doc.data() : null };
+              if (!doc.exists) return { id: cid, data: null };
+              
+              const companyData = doc.data();
+              
+              // Skip inactive companies
+              if (companyData?.isActive === false) {
+                console.log(`🚫 Skipping inactive company ${cid} (${companyData?.companyName || companyData?.name})`);
+                return { id: cid, data: null };
+              }
+              
+              return { id: cid, data: companyData };
             } catch {
               return { id: cid, data: null };
             }
@@ -109,36 +119,45 @@ export default function PackageSelectionScreen() {
         );
 
         const companyDataMap = new Map<string, any>();
-        companyDocs.forEach((d) => companyDataMap.set(String(d.id), d.data));
-
-        const groups: CompanyPackageGroup[] = companyIds.map((cid) => {
-          const services = byCompany.get(cid) || [];
-          const companyData = companyDataMap.get(cid);
-          const company = companyData
-            ? { id: cid, ...companyData }
-            : { id: cid, companyName: 'Available Providers', serviceName: 'Available Providers' };
-
-          // Merge packages across all services, but keep the originating service context.
-          const mergedPackages: (any & { __serviceId?: string; __serviceName?: string })[] = [];
-          for (const svc of services) {
-            const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
-            pkgs.forEach((p: any) => {
-              mergedPackages.push({
-                ...p,
-                __serviceId: svc.id,
-                __serviceName: svc.name,
-              });
-            });
+        companyDocs.forEach((d) => {
+          // Only add companies that have valid data (active companies)
+          if (d.data) {
+            companyDataMap.set(String(d.id), d.data);
           }
-
-          return {
-            id: String(cid),
-            company,
-            services,
-            packages: mergedPackages,
-          };
         });
 
+        // Only create groups for companies that have valid data (active companies)
+        const groups: CompanyPackageGroup[] = companyIds
+          .filter((cid) => companyDataMap.has(cid))
+          .map((cid) => {
+            const services = byCompany.get(cid) || [];
+            const companyData = companyDataMap.get(cid);
+            const company = companyData
+              ? { id: cid, ...companyData }
+              : { id: cid, companyName: 'Available Providers', serviceName: 'Available Providers' };
+
+            // Merge packages across all services, but keep the originating service context.
+            const mergedPackages: (any & { __serviceId?: string; __serviceName?: string })[] = [];
+            for (const svc of services) {
+              const pkgs = Array.isArray((svc as any)?.packages) ? (svc as any).packages : [];
+              pkgs.forEach((p: any) => {
+                mergedPackages.push({
+                  ...p,
+                  __serviceId: svc.id,
+                  __serviceName: svc.name,
+                });
+              });
+            }
+
+            return {
+              id: String(cid),
+              company,
+              services,
+              packages: mergedPackages,
+            };
+          });
+
+        console.log(`✅ Created ${groups.length} company groups (filtered out inactive companies)`);
         setCompanyGroups(groups);
         // Don't auto-select any company - let user choose
       } catch (e) {

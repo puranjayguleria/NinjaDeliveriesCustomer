@@ -329,11 +329,39 @@ export default function CompanySelectionScreen() {
 
   // Filter companies that have active workers and are available for the selected time
   const filterCompaniesWithAvailability = useCallback(async (companies: ServiceCompany[], checkTimeSlot: boolean = false): Promise<ServiceCompany[]> => {
+    // First filter: Remove inactive/offline companies
+    const activeCompanies = companies.filter(company => {
+      // Check multiple possible fields for active status
+      const isActive = company.isActive;
+      const status = (company as any).status;
+      const active = (company as any).active;
+      
+      // Company is considered inactive if:
+      // - isActive is explicitly false
+      // - status is 'inactive', 'offline', or 'disabled'
+      // - active is explicitly false
+      const isInactive = 
+        isActive === false || 
+        status === 'inactive' || 
+        status === 'offline' || 
+        status === 'disabled' ||
+        active === false;
+      
+      if (isInactive) {
+        console.log(`🚫 Filtering out company ${company.companyName || company.serviceName} - company is inactive/offline (isActive: ${isActive}, status: ${status}, active: ${active})`);
+        return false;
+      }
+      
+      return true;
+    });
+
+    console.log(`✅ After isActive filter: ${activeCompanies.length}/${companies.length} companies are active`);
+
     if (!checkTimeSlot || !selectedDate || !selectedTime) {
       // If not checking time slots, use the old logic for backward compatibility
       const availableCompanies: ServiceCompany[] = [];
       
-      for (const company of companies) {
+      for (const company of activeCompanies) {
         const companyId = company.companyId || company.id;
         
         // Check if company has any active workers
@@ -389,7 +417,7 @@ export default function CompanySelectionScreen() {
 
         const limit = pLimit(6);
         const results = await Promise.all(
-          companies.map(company =>
+          activeCompanies.map(company =>
             limit(async () => {
               const companyId = company.companyId || company.id;
               const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
@@ -442,7 +470,7 @@ export default function CompanySelectionScreen() {
       // Fallback to basic availability check
       const availableCompanies: ServiceCompany[] = [];
       
-      for (const company of companies) {
+      for (const company of activeCompanies) {
         const companyId = company.companyId || company.id;
         const hasActiveWorkers = await checkCompanyHasActiveWorkersCached(companyId);
         
@@ -585,6 +613,7 @@ export default function CompanySelectionScreen() {
           serviceType: c.serviceType,
           companyId: c.companyId,
           isActive: c.isActive,
+          isActiveType: typeof c.isActive,
           packagesCount: c.packages?.length || 0,
           packageDetails: c.packages?.slice(0, 2).map(p => ({
             name: typeof p === 'string' ? p : p.name,
@@ -592,6 +621,18 @@ export default function CompanySelectionScreen() {
           }))
         }))
       );
+      
+      // 🔍 DEBUG: Check which companies are inactive
+      const inactiveCompanies = fetchedCompanies.filter(c => c.isActive === false);
+      if (inactiveCompanies.length > 0) {
+        console.log(`⚠️ Found ${inactiveCompanies.length} INACTIVE companies:`, 
+          inactiveCompanies.map(c => ({
+            id: c.id,
+            name: c.companyName || c.serviceName,
+            isActive: c.isActive
+          }))
+        );
+      }
       
       // Sort packages within each company: monthly first, then weekly, then others
       fetchedCompanies = fetchedCompanies.map(company => {

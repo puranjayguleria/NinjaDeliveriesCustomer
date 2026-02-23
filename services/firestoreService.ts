@@ -1212,6 +1212,13 @@ export class FirestoreService {
           
           snapshot.forEach(doc => {
             const data = doc.data();
+            
+            // Skip inactive companies
+            if (data?.isActive === false) {
+              console.log(`🚫 Skipping inactive company ${doc.id} (${data?.companyName || data?.name})`);
+              return;
+            }
+            
             const companyName = data?.companyName || data?.name || `Company ${doc.id}`;
             // Check multiple possible logo field names: logoUrl, logo, imageUrl
             const companyLogo = data?.logoUrl || data?.logo || data?.imageUrl || null;
@@ -5856,7 +5863,7 @@ export class FirestoreService {
               price: serviceData.price || 0,
               duration: serviceData.duration,
               durationUnit: serviceData.durationUnit,
-              isActive: true,
+              isActive: companyData.isActive !== false, // Use company's isActive status
               // 🖼️ Company logos live in service_company.logoUrl (direct-price flow)
               imageUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null,
               serviceType: serviceData.serviceType,
@@ -6014,7 +6021,7 @@ export class FirestoreService {
               companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
               price: serviceData.price || 0,
               quantityOffers: (serviceData as any).quantityOffers,
-              isActive: true,
+              isActive: serviceData.isActive !== false, // Use service's isActive status
               imageUrl: companyLogo,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
@@ -6032,7 +6039,7 @@ export class FirestoreService {
             };
             
             companyMap.set(companyId, company);
-            console.log(`   ✅ Added company from service data: ${company.companyName}`);
+            console.log(`   ✅ Added company from service data: ${company.companyName} (isActive: ${company.isActive})`);
             continue;
           }
           
@@ -6081,7 +6088,7 @@ export class FirestoreService {
             companyName: companyData.companyName || companyData.name || 'Unknown Company',
             price: serviceData.price || 0,
             quantityOffers: (serviceData as any).quantityOffers,
-            isActive: true,
+            isActive: companyData.isActive !== false, // Use company's isActive status
             imageUrl: companyLogo, // Use the logo from service_company
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
@@ -6141,7 +6148,7 @@ export class FirestoreService {
               serviceName: serviceData.name || 'Unknown Service',
               companyName: companyData.companyName || companyData.name || 'Unknown Company',
               price: serviceData.price || 0,
-              isActive: true,
+              isActive: companyData.isActive !== false, // Use company's isActive status
               imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
