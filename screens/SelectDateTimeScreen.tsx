@@ -2572,9 +2572,16 @@ export default function SelectDateTimeScreen() {
                   });
                 };
 
+                const formatMonthKey = (monthKey: string): string => {
+                  const [year, month] = monthKey.split('-');
+                  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                  const monthIndex = parseInt(month, 10) - 1;
+                  return `${monthNames[monthIndex]} ${year}`;
+                };
+
                 const renderMonth = (monthKey: string, cells: { iso: string | null; dayNumber: number | null; isSunday: boolean }[], prefix: string) => (
                   <View style={{ marginTop: 10 }}>
-                    <Text style={styles.calendarMonthTitle}>{monthKey}</Text>
+                    <Text style={styles.calendarMonthTitle}>{formatMonthKey(monthKey)}</Text>
                     <View style={styles.calendarHeaderRow}>
                       {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
                         <Text key={`${prefix}-dow-${d}-${i}`} style={styles.calendarDowText}>{d}</Text>
