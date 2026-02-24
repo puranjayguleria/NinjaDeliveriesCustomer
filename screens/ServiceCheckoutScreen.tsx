@@ -741,6 +741,89 @@ export default function ServiceCheckoutScreen() {
 
       log("recovery_saved", { razorpayOrderId: String(data.orderId) });
 
+      // If the backend finalize endpoint only creates a single booking for a recurring plan
+      // (weekly/monthly), we must create the remaining occurrences client-side.
+      // We de-dupe by comparing existing booking docs' (date,time) pairs.
+      const maybeCreateMissingPlanBookings = async (
+        bookingIds: string[],
+        paymentStatus: string,
+        razorpayResponse: any
+      ): Promise<string[]> => {
+        try {
+          const serviceList = Array.isArray(services) ? services : [];
+          const planServices = serviceList.filter((s: any) => Array.isArray(s?.additionalInfo?.occurrences) && s.additionalInfo.occurrences.length > 1);
+          if (planServices.length === 0) return bookingIds;
+
+          // Keep this conservative: if multiple plan services exist, don't attempt smart splitting.
+          // (We can extend later if needed.)
+          if (planServices.length !== 1) return bookingIds;
+
+          const planService: any = planServices[0];
+          const fullOccurrences: { date: string; time: string }[] = Array.isArray(planService?.additionalInfo?.occurrences)
+            ? planService.additionalInfo.occurrences
+            : [];
+          if (fullOccurrences.length <= 1) return bookingIds;
+          if (!Array.isArray(bookingIds) || bookingIds.length === 0) return bookingIds;
+
+          const snaps = await Promise.all(
+            bookingIds.map((id) => firestore().collection('service_bookings').doc(String(id)).get())
+          );
+
+          const existingPairs = new Set<string>();
+          for (const snap of snaps) {
+            const data = snap.data() || {};
+            const d = String((data as any)?.date || '');
+            const t = String((data as any)?.time || '');
+            if (d && t) existingPairs.add(`${d}|${t}`);
+          }
+
+          const missingOccurrences = fullOccurrences.filter((o) => {
+            const d = String(o?.date || '');
+            const t = String(o?.time || '');
+            if (!d || !t) return false;
+            return !existingPairs.has(`${d}|${t}`);
+          });
+
+          // If backend already created all occurrences, nothing to do.
+          if (missingOccurrences.length === 0) return bookingIds;
+
+          const uid = String(auth().currentUser?.uid || '');
+          const computedPlanGroupId = (() => {
+            const first = fullOccurrences[0];
+            const serviceKey = planService?.id || planService?.serviceTitle || 'service';
+            const companyKey = planService?.company?.companyId || planService?.company?.id || 'company';
+            return `plan:${uid}:${serviceKey}:${companyKey}:${String(first?.date || '')}:${String(first?.time || '')}`;
+          })();
+
+          if (__DEV__) {
+            console.log(LOG_PREFIX, 'plan_finalize_missing_occurrences_client_create', {
+              serverBookingIds: bookingIds.length,
+              totalOccurrences: fullOccurrences.length,
+              missingOccurrences: missingOccurrences.length,
+              planGroupId: computedPlanGroupId,
+              packageUnit: String(planService?.additionalInfo?.package?.unit || planService?.additionalInfo?.package?.frequency || ''),
+            });
+          }
+
+          const clonedService: any = {
+            ...planService,
+            selectedDate: missingOccurrences[0]?.date || planService.selectedDate,
+            selectedTime: missingOccurrences[0]?.time || planService.selectedTime,
+            additionalInfo: {
+              ...(planService.additionalInfo || {}),
+              occurrences: missingOccurrences,
+              planGroupId: computedPlanGroupId,
+            },
+          };
+
+          const newIds = await createBookings(paymentStatus, razorpayResponse, [clonedService]);
+          return [...bookingIds, ...newIds];
+        } catch (e) {
+          warn('plan_finalize_missing_occurrences_client_create_failed', e);
+          return bookingIds;
+        }
+      };
+
       const enrichFinalizedBookingsBestEffort = async (bookingIds: string[]) => {
         if (!Array.isArray(bookingIds) || bookingIds.length === 0) return;
 
@@ -804,7 +887,8 @@ export default function ServiceCheckoutScreen() {
             const firstOcc = occurrences[0];
             const date = String(service?.selectedDate || firstOcc?.date || '');
             const time = String(service?.selectedTime || firstOcc?.time || '');
-            const isPackage = !!service?.additionalInfo?.package;
+            const packageObj = service?.additionalInfo?.package;
+            const isPackage = !!packageObj;
             const canOverwriteDateTime = occurrences.length <= 1;
 
             // IMPORTANT: Do NOT run this through stripUndefinedDeep because it would
@@ -841,6 +925,28 @@ export default function ServiceCheckoutScreen() {
               isPackageBooking: isPackage,
               updatedAt: firestore.FieldValue.serverTimestamp(),
             };
+
+            if (isPackage && packageObj) {
+              const rawUnit = String(packageObj?.unit || packageObj?.frequency || packageObj?.type || '').toLowerCase().trim();
+              const packageUnit = rawUnit === 'monthly' ? 'month' : rawUnit === 'weekly' ? 'week' : rawUnit === 'daily' ? 'day' : rawUnit;
+              const isPlanUnit = ['day', 'week', 'month'].includes(packageUnit);
+              const isPlanBooking = isPlanUnit && occurrences.length > 1;
+
+              update.selectedPackage = packageObj;
+              update.packageId = String(packageObj?.id || '');
+              update.packageName = String(packageObj?.name || '');
+              update.packageType = String(packageObj?.type || packageObj?.frequency || packageObj?.unit || '');
+              update.packagePrice = typeof packageObj?.price === 'number' ? packageObj.price : (typeof service?.totalPrice === 'number' ? service.totalPrice : undefined);
+
+              if (isPlanBooking) {
+                const explicitPlanGroupId = String(service?.additionalInfo?.planGroupId || '').trim();
+                const computedPlanGroupId = `plan:${uid}:${service?.id || fallbackTitle || 'service'}:${service?.company?.companyId || service?.company?.id || 'company'}:${String(firstOcc?.date || '')}:${String(firstOcc?.time || '')}`;
+                update.planGroupId = explicitPlanGroupId || computedPlanGroupId;
+                update.packageUnit = packageUnit;
+                update.isPackage = true;
+                update.isPackageBooking = true;
+              }
+            }
 
             if (resolvedCustomerName) update.customerName = resolvedCustomerName;
             if (resolvedCustomerPhone) update.customerPhone = resolvedCustomerPhone;
@@ -898,9 +1004,26 @@ export default function ServiceCheckoutScreen() {
             }
           };
 
-          // Common case: single-service checkout. Safest: apply same update to all bookingIds.
+          // Common case: single-service checkout.
+          // Special case: recurring plans where backend created only 1 booking.
+          // In that scenario, we want that server-created booking to represent the first user-selected occurrence,
+          // so we DO overwrite date/time from the first occurrence.
           if (serviceList.length === 1) {
-            const update = buildUpdateForService(serviceList[0]);
+            const svc = serviceList[0];
+            const occ = Array.isArray((svc as any)?.additionalInfo?.occurrences)
+              ? (svc as any).additionalInfo.occurrences
+              : [];
+            const firstOcc = occ[0];
+
+            const update = buildUpdateForService(svc);
+
+            const allowOverwriteDateTimeForSingleBackendBooking = (bookingIds.length === 1) && (occ.length > 1);
+            if (allowOverwriteDateTimeForSingleBackendBooking) {
+              const d = String(firstOcc?.date || (svc as any)?.selectedDate || '').trim();
+              const t = String(firstOcc?.time || (svc as any)?.selectedTime || '').trim();
+              if (d) update.date = d;
+              if (t) update.time = t;
+            }
             await Promise.all(
               bookingIds.map((id) =>
                 firestore().collection('service_bookings').doc(String(id)).set(update, { merge: true })
@@ -1024,6 +1147,9 @@ export default function ServiceCheckoutScreen() {
 
           await enrichFinalizedBookingsBestEffort(createdBookingIds);
 
+          // Recurring plan safety: if backend created only 1 booking, create the remaining occurrences.
+          createdBookingIds = await maybeCreateMissingPlanBookings(createdBookingIds, 'paid', nativeResult);
+
           log("clear_cart_after_verify");
           clearCart();
 
@@ -1101,6 +1227,9 @@ export default function ServiceCheckoutScreen() {
         }
 
         await enrichFinalizedBookingsBestEffort(createdBookingIds);
+
+        // Recurring plan safety: if backend created only 1 booking, create the remaining occurrences.
+        createdBookingIds = await maybeCreateMissingPlanBookings(createdBookingIds, 'paid', response);
         
         // Clear cart immediately after successful booking creation
         log("clear_cart_after_verify");
@@ -1176,13 +1305,17 @@ export default function ServiceCheckoutScreen() {
     }
   };
 
-  const createBookings = async (paymentStatus: string = "pending", razorpayResponse?: any): Promise<string[]> => {
+  const createBookings = async (
+    paymentStatus: string = "pending",
+    razorpayResponse?: any,
+    servicesToBook: ServiceCartItem[] = services
+  ): Promise<string[]> => {
     setLoading(true);
     try {
       if (__DEV__) {
         console.log(`🔍 Starting booking creation process...`);
         console.log(` Payment status: ${paymentStatus}, method: ${paymentMethod}`);
-        console.log(`🛒 Services to book: ${services.length}`);
+        console.log(`🛒 Services to book: ${servicesToBook.length}`);
         // Avoid dumping full location JSON each time (very noisy)
         console.log(`📍 Location:`, {
           hasAddress: !!location?.address,
@@ -1192,13 +1325,13 @@ export default function ServiceCheckoutScreen() {
       }
       
       // Validate services array first
-      if (!services || services.length === 0) {
+      if (!servicesToBook || servicesToBook.length === 0) {
         throw new Error('No services to book');
       }
       
       // Log each service for debugging
       if (__DEV__) {
-        services.forEach((service: ServiceCartItem, index: number) => {
+        servicesToBook.forEach((service: ServiceCartItem, index: number) => {
           console.log(`🔧 Service ${index + 1}:`, {
             id: service.id,
             title: service.serviceTitle,
@@ -1243,7 +1376,7 @@ export default function ServiceCheckoutScreen() {
       }
 
       // Create bookings in Firebase service_bookings collection
-      const bookingPromises = services.flatMap((service: ServiceCartItem, index: number) => {
+      const bookingPromises = servicesToBook.flatMap((service: ServiceCartItem, index: number) => {
         if (__DEV__) {
           console.log(`\n🔄 Processing service ${index + 1}/${services.length}: ${service.serviceTitle}`);
         }
@@ -1303,8 +1436,9 @@ export default function ServiceCheckoutScreen() {
 
         // Deterministic-ish group id per plan purchase from the context we have.
         // (If you have a real orderId/payment sessionId available, pass that instead.)
+        const explicitPlanGroupId = String((service as any)?.additionalInfo?.planGroupId || '').trim();
         const planGroupId = isPlanBooking
-          ? `plan:${customerId}:${service.id || service.serviceTitle || 'service'}:${service.company?.companyId || service.company?.id || 'company'}:${String(expandedOccurrences[0]?.date || '')}:${String(expandedOccurrences[0]?.time || '')}`
+          ? (explicitPlanGroupId || `plan:${customerId}:${service.id || service.serviceTitle || 'service'}:${service.company?.companyId || service.company?.id || 'company'}:${String(expandedOccurrences[0]?.date || '')}:${String(expandedOccurrences[0]?.time || '')}`)
           : '';
 
         if (__DEV__ && isPlanBooking) {
