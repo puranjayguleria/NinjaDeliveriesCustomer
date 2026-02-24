@@ -378,14 +378,39 @@ export default function PackageSelectionScreen() {
 
       console.log(`📦 Found ${data.packages.length} packages for "${serviceName}"`);
 
-      // Enrich packages with service-level description and imageUrl
-      const enrichedPackages = data.packages.map((pkg: any) => ({
-        ...pkg,
-        // Add service-level description and imageUrl to each package if not already present
-        description: pkg.description || data.description,
-        imageUrl: pkg.imageUrl || data.imageUrl,
-        message: pkg.message || data.message,
-      }));
+      // Debug: Log service data to check duration fields
+      console.log('🔍 Service data:', {
+        duration: data.duration,
+        durationUnit: data.durationUnit,
+        durationDays: data.durationDays,
+      });
+
+      // Enrich packages with service-level description, imageUrl, and duration
+      const enrichedPackages = data.packages.map((pkg: any, idx: number) => {
+        const enriched = {
+          ...pkg,
+          // For description and imageUrl, use service-level as fallback
+          description: pkg.description || data.description,
+          imageUrl: pkg.imageUrl || data.imageUrl,
+          message: pkg.message || data.message,
+          // For duration, prefer package-level (each package can have different duration)
+          // Firebase uses "unit" field, not "durationUnit"
+          duration: pkg.duration !== undefined ? pkg.duration : data.duration,
+          durationUnit: pkg.unit || pkg.durationUnit || data.unit || data.durationUnit,
+          durationDays: pkg.durationDays !== undefined ? pkg.durationDays : data.durationDays,
+        };
+        
+        // Debug: Log enriched package
+        console.log(`📦 Package ${idx + 1} enriched:`, {
+          name: enriched.name,
+          duration: enriched.duration,
+          unit: pkg.unit,
+          durationUnit: enriched.durationUnit,
+          durationDays: enriched.durationDays,
+        });
+        
+        return enriched;
+      });
 
       const serviceWithPackages = {
         id: serviceDoc.id,
@@ -454,15 +479,41 @@ export default function PackageSelectionScreen() {
         
         console.log(`📋 Service: "${data.name}" - Has packages: ${hasPackages}`);
         
-        // Enrich packages with service-level description and imageUrl
+        // Debug: Log service duration data
+        if (hasPackages) {
+          console.log(`🔍 Service "${data.name}" duration:`, {
+            duration: data.duration,
+            durationUnit: data.durationUnit,
+            durationDays: data.durationDays,
+          });
+        }
+        
+        // Enrich packages with service-level description, imageUrl, and duration
         const enrichedPackages = hasPackages 
-          ? data.packages.map((pkg: any) => ({
-              ...pkg,
-              // Add service-level description and imageUrl to each package if not already present
-              description: pkg.description || data.description,
-              imageUrl: pkg.imageUrl || data.imageUrl,
-              message: pkg.message || data.message,
-            }))
+          ? data.packages.map((pkg: any, idx: number) => {
+              const enriched = {
+                ...pkg,
+                // For description and imageUrl, use service-level as fallback
+                description: pkg.description || data.description,
+                imageUrl: pkg.imageUrl || data.imageUrl,
+                message: pkg.message || data.message,
+                // For duration, prefer package-level (each package can have different duration)
+                // Firebase uses "unit" field, not "durationUnit"
+                duration: pkg.duration !== undefined ? pkg.duration : data.duration,
+                durationUnit: pkg.unit || pkg.durationUnit || data.unit || data.durationUnit,
+                durationDays: pkg.durationDays !== undefined ? pkg.durationDays : data.durationDays,
+              };
+              
+              // Debug: Log enriched package
+              console.log(`📦 "${data.name}" Package ${idx + 1}:`, {
+                name: enriched.name,
+                duration: enriched.duration,
+                unit: pkg.unit,
+                durationUnit: enriched.durationUnit,
+              });
+              
+              return enriched;
+            })
           : data.packages;
         
         const serviceObj = {
@@ -904,6 +955,63 @@ export default function PackageSelectionScreen() {
                       const pkgName = baseName || svcLabel || 'Package';
                       const pkgPrice = pkg?.price ?? 0;
 
+                      // Debug: Print entire package object to see structure
+                      if (__DEV__ && index === 0) {
+                        console.log('🔍 RAW Package Object:', JSON.stringify(pkg, null, 2));
+                        console.log('🔍 Package Keys:', Object.keys(pkg));
+                      }
+
+                      // Format duration properly
+                      const formatDuration = () => {
+                        // First try to get duration from package fields
+                        let duration = pkg?.duration || pkg?.durationDays;
+                        let unit = String(pkg?.durationUnit || '').toLowerCase().trim();
+                        
+                        // If no duration in fields, try to extract from package name
+                        // Format: "2 week(s) - ₹2" or "1 month(s) (30 days) - ₹1"
+                        if (!duration && pkg?.name) {
+                          const nameMatch = String(pkg.name).match(/^(\d+)\s*(day|week|month|hour|year)s?\s*\(/i);
+                          if (nameMatch) {
+                            duration = parseInt(nameMatch[1]);
+                            unit = nameMatch[2].toLowerCase();
+                            console.log(`📝 Extracted from name: ${duration} ${unit}`);
+                          }
+                        }
+                        
+                        // Debug log
+                        console.log(`⏱ Formatting duration for "${pkgName}":`, {
+                          duration,
+                          unit,
+                          rawDurationUnit: pkg?.durationUnit,
+                          packageName: pkg?.name,
+                        });
+                        
+                        if (!duration) return null;
+                        
+                        const count = Number(duration);
+                        
+                        // Remove "(s)" from unit if present (e.g., "week(s)" -> "week")
+                        unit = unit.replace(/\(s\)/g, '');
+                        
+                        // Singular or plural based on count
+                        if (unit === 'day' || unit === 'days') {
+                          return `${count} ${count === 1 ? 'day' : 'days'}`;
+                        } else if (unit === 'week' || unit === 'weeks') {
+                          return `${count} ${count === 1 ? 'week' : 'weeks'}`;
+                        } else if (unit === 'month' || unit === 'months') {
+                          return `${count} ${count === 1 ? 'month' : 'months'}`;
+                        } else if (unit === 'hour' || unit === 'hours') {
+                          return `${count} ${count === 1 ? 'hour' : 'hours'}`;
+                        } else if (unit === 'year' || unit === 'years') {
+                          return `${count} ${count === 1 ? 'year' : 'years'}`;
+                        } else {
+                          // Fallback: use unit as-is
+                          return `${count} ${unit}`;
+                        }
+                      };
+
+                      const formattedDuration = formatDuration();
+
                       return (
                         <TouchableOpacity
                           key={`${selectedCompanyGroup.id}::${String(pkgId)}`}
@@ -934,11 +1042,11 @@ export default function PackageSelectionScreen() {
                               <Text style={styles.packageName}>{pkgName}</Text>
                               
                               {/* Duration */}
-                              {(pkg?.duration || pkg?.durationDays) ? (
+                              {formattedDuration ? (
                                 <View style={styles.packageDurationContainer}>
                                   <Ionicons name="time-outline" size={14} color="#64748b" />
                                   <Text style={styles.packageDuration}>
-                                    {pkg?.duration || pkg?.durationDays} {pkg?.durationUnit || 'days'}
+                                    {formattedDuration}
                                   </Text>
                                 </View>
                               ) : null}
