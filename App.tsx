@@ -1049,7 +1049,7 @@ const App: React.FC = () => {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
-  const checkingOta = useOtaUpdate();
+  useOtaUpdate();
 
   useEffect(() => {
     (async () => {
@@ -1074,18 +1074,48 @@ const App: React.FC = () => {
     }
   }, []);
 
-   useEffect(() => {
+  useEffect(() => {
     if (!firebaseReady) return;
-    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
+
+    const unsub = auth().onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
-      if (firebaseUser) {
-        const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
-        // ... your terms logic
-      }
+      // Do NOT block app startup on a Firestore round-trip.
       setLoadingAuth(false);
+
+      if (!firebaseUser) {
+        setTermsAccepted(null);
+        return;
+      }
+
+      (async () => {
+        try {
+          const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
+          setTermsAccepted(doc.exists ? doc.data()?.hasAcceptedTerms === true : false);
+        } catch (e) {
+          console.log('[Auth] termsAccepted fetch failed (non-fatal):', e);
+          // Keep as null so we don't accidentally block the user on a transient network error.
+          setTermsAccepted(null);
+        }
+      })();
     });
+
     return () => unsub();
   }, [firebaseReady]);
+
+  // If we learn later that terms are not accepted, push the user to Terms.
+  useEffect(() => {
+    if (!user) return;
+    if (termsAccepted !== false) return;
+    try {
+      if ((navigationRef as any)?.isReady?.()) {
+        navigationRef.dispatch(
+          CommonActions.navigate({ name: 'TermsAndConditions' as never } as any)
+        );
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [user, termsAccepted]);
 
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
@@ -1095,6 +1125,7 @@ const App: React.FC = () => {
   useEffect(() => {
     (async () => {
       // (optional) prove the plist is bundled
+      if (!__DEV__) return;
       const p = FileSystem.bundleDirectory + "GoogleService-Info.plist";
       const info = await FileSystem.getInfoAsync(p);
       console.log("[RNFB] Plist in bundle?", info.exists, p);
@@ -1163,23 +1194,7 @@ const App: React.FC = () => {
     return () => sub.remove();
   }, []);
 
-  /* auth listener */
-  useEffect(() => {
-    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        const doc = await firestore()
-          .collection("users")
-          .doc(firebaseUser.uid)
-          .get();
-        setTermsAccepted(
-          doc.exists ? doc.data()?.hasAcceptedTerms === true : false
-        );
-      }
-      setLoadingAuth(false);
-    });
-    return () => unsub();
-  }, []);
+  // NOTE: auth listener is handled above (gated by firebaseReady)
 
   /* Check for pending payments on app startup - SILENT RECOVERY */
   useEffect(() => {
@@ -1262,7 +1277,9 @@ const App: React.FC = () => {
   }, [user, firebaseReady]);
 
 
-  if (!firebaseReady || loadingAuth || checkingOta) {
+  // IMPORTANT: do not block UI on OTA checks (network can take 10s+).
+  // OTA checks run in the background and will reload when an update is fetched.
+  if (!firebaseReady || loadingAuth) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00C853" />
