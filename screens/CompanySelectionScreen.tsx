@@ -182,7 +182,8 @@ export default function CompanySelectionScreen() {
   }, [companies]);
 
   const getCompanyLogoUrl = (c: any) => {
-    const raw = c?.imageUrl ?? c?.logoUrl ?? c?.photoUrl ?? c?.companyLogoUrl;
+    // Check logoUrl first as it's the primary field in service_company collection
+    const raw = c?.logoUrl ?? c?.imageUrl ?? c?.photoUrl ?? c?.companyLogoUrl;
     let u = typeof raw === 'string' ? raw.trim() : '';
     if (!u) return null;
 

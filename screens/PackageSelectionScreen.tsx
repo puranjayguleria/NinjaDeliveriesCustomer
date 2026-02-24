@@ -11,6 +11,7 @@ import {
   Pressable,
   Animated,
   Easing,
+  Image,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -109,6 +110,7 @@ export default function PackageSelectionScreen() {
 
   const [reviewTick, setReviewTick] = useState(0);
   const [companyReviewsById, setCompanyReviewsById] = useState<Record<string, any[]>>({});
+  const [logoErrorIds, setLogoErrorIds] = useState<Record<string, true>>({});
 
   const [reviewModal, setReviewModal] = useState<{
     visible: boolean;
@@ -117,10 +119,32 @@ export default function PackageSelectionScreen() {
     feedback: string;
   }>({ visible: false, title: "", header: "", feedback: "" });
 
+  const [packageDescriptionModal, setPackageDescriptionModal] = useState<{
+    visible: boolean;
+    title: string;
+    description: string;
+  }>({ visible: false, title: "", description: "" });
+
   useEffect(() => {
     const id = setInterval(() => setReviewTick((t) => t + 1), 5000);
     return () => clearInterval(id);
   }, []);
+
+  // Helper function to get company logo URL
+  const getCompanyLogoUrl = (company: any) => {
+    // Check logoUrl first as it's the primary field in service_company collection
+    const raw = company?.logoUrl ?? company?.imageUrl ?? company?.photoUrl ?? company?.companyLogoUrl;
+    let u = typeof raw === 'string' ? raw.trim() : '';
+    if (!u) return null;
+
+    // React Native <Image> can't load gs:// URIs
+    if (/^gs:\/\//i.test(u)) return null;
+
+    // Android often blocks cleartext HTTP by default; prefer https if possible
+    if (/^http:\/\//i.test(u)) u = u.replace(/^http:\/\//i, 'https://');
+
+    return u;
+  };
 
   // Helper function to close packages modal and deselect company
   const closePackagesModal = () => {
@@ -354,6 +378,15 @@ export default function PackageSelectionScreen() {
 
       console.log(`📦 Found ${data.packages.length} packages for "${serviceName}"`);
 
+      // Enrich packages with service-level description and imageUrl
+      const enrichedPackages = data.packages.map((pkg: any) => ({
+        ...pkg,
+        // Add service-level description and imageUrl to each package if not already present
+        description: pkg.description || data.description,
+        imageUrl: pkg.imageUrl || data.imageUrl,
+        message: pkg.message || data.message,
+      }));
+
       const serviceWithPackages = {
         id: serviceDoc.id,
         name: data.name || serviceName,
@@ -361,7 +394,7 @@ export default function PackageSelectionScreen() {
         companyId: data.companyId,
         isActive: data.isActive || false,
         imageUrl: data.imageUrl || null,
-        packages: data.packages,
+        packages: enrichedPackages,
         price: data.price,
         serviceType: data.serviceType,
         createdAt: data.createdAt,
@@ -421,6 +454,17 @@ export default function PackageSelectionScreen() {
         
         console.log(`📋 Service: "${data.name}" - Has packages: ${hasPackages}`);
         
+        // Enrich packages with service-level description and imageUrl
+        const enrichedPackages = hasPackages 
+          ? data.packages.map((pkg: any) => ({
+              ...pkg,
+              // Add service-level description and imageUrl to each package if not already present
+              description: pkg.description || data.description,
+              imageUrl: pkg.imageUrl || data.imageUrl,
+              message: pkg.message || data.message,
+            }))
+          : data.packages;
+        
         const serviceObj = {
           id: doc.id,
           name: data.name || '',
@@ -428,7 +472,7 @@ export default function PackageSelectionScreen() {
           companyId: data.companyId,
           isActive: data.isActive || false,
           imageUrl: data.imageUrl || null,
-          packages: data.packages,
+          packages: enrichedPackages,
           price: data.price,
           serviceType: data.serviceType,
           createdAt: data.createdAt,
@@ -604,6 +648,33 @@ export default function PackageSelectionScreen() {
         </Pressable>
       </Modal>
 
+      {/* Package Description Modal */}
+      <Modal
+        visible={packageDescriptionModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPackageDescriptionModal((p) => ({ ...p, visible: false }))}
+      >
+        <Pressable
+          style={styles.reviewModalBackdrop}
+          onPress={() => setPackageDescriptionModal((p) => ({ ...p, visible: false }))}
+        >
+          <Pressable style={styles.reviewModalCard} onPress={() => {}}>
+            <View style={styles.reviewModalHeaderRow}>
+              <Text style={styles.reviewModalTitle} numberOfLines={1}>
+                {packageDescriptionModal.title || 'Package Details'}
+              </Text>
+              <Pressable onPress={() => setPackageDescriptionModal((p) => ({ ...p, visible: false }))} hitSlop={10}>
+                <Text style={styles.reviewModalCloseText}>Close</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+              <Text style={styles.reviewModalBodyText}>{packageDescriptionModal.description}</Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -670,7 +741,20 @@ export default function PackageSelectionScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={styles.sectionButtonContent}>
-                    <Text style={styles.sectionButtonIcon}>🏢</Text>
+                    {getCompanyLogoUrl(g.company) && !logoErrorIds[g.id] ? (
+                      <Image
+                        source={{ uri: getCompanyLogoUrl(g.company) as string }}
+                        style={styles.companyLogo}
+                        resizeMode="contain"
+                        onError={() => setLogoErrorIds((p) => ({ ...p, [g.id]: true }))}
+                      />
+                    ) : (
+                      <View style={styles.companyLogoPlaceholder}>
+                        <Text style={styles.companyLogoText}>
+                          {companyName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.sectionButtonTextContainer}>
                       <Text style={styles.sectionButtonTitle}>{companyName}</Text>
                       <Text style={styles.sectionButtonSubtitle}>
@@ -790,9 +874,25 @@ export default function PackageSelectionScreen() {
                 </View>
               ) : selectedCompanyGroup?.packages && Array.isArray(selectedCompanyGroup.packages) && selectedCompanyGroup.packages.length > 0 ? (
                 <View style={styles.serviceSection}>
-                  <Text style={styles.serviceName}>
-                    {(selectedCompanyGroup.company?.companyName || selectedCompanyGroup.company?.serviceName || 'Company')}
-                  </Text>
+                  <View style={styles.modalCompanyHeader}>
+                    {getCompanyLogoUrl(selectedCompanyGroup.company) && !logoErrorIds[selectedCompanyGroup.id] ? (
+                      <Image
+                        source={{ uri: getCompanyLogoUrl(selectedCompanyGroup.company) as string }}
+                        style={styles.modalCompanyLogo}
+                        resizeMode="contain"
+                        onError={() => setLogoErrorIds((p) => ({ ...p, [selectedCompanyGroup.id]: true }))}
+                      />
+                    ) : (
+                      <View style={styles.modalCompanyLogoPlaceholder}>
+                        <Text style={styles.modalCompanyLogoText}>
+                          {(selectedCompanyGroup.company?.companyName || selectedCompanyGroup.company?.serviceName || 'C').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.serviceName}>
+                      {(selectedCompanyGroup.company?.companyName || selectedCompanyGroup.company?.serviceName || 'Company')}
+                    </Text>
+                  </View>
                   <View style={styles.packagesGrid}>
                     {selectedCompanyGroup.packages.map((pkg: any, index: number) => {
                       const pkgId = pkg?.id || pkg?.name || JSON.stringify(pkg);
@@ -820,18 +920,64 @@ export default function PackageSelectionScreen() {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text style={styles.packageName}>{pkgName}</Text>
-                          <View style={styles.priceContainer}>
-                            <Text style={styles.priceSymbol}>₹</Text>
-                            <Text style={styles.priceAmount}>{pkgPrice}</Text>
+                          <View style={styles.packageCardHeader}>
+                            {/* Package Image/Logo */}
+                            {(pkg?.imageUrl || pkg?.image) ? (
+                              <Image
+                                source={{ uri: pkg?.imageUrl || pkg?.image }}
+                                style={styles.packageImage}
+                                resizeMode="cover"
+                              />
+                            ) : null}
+                            
+                            <View style={styles.packageHeaderText}>
+                              <Text style={styles.packageName}>{pkgName}</Text>
+                              
+                              {/* Duration */}
+                              {(pkg?.duration || pkg?.durationDays) ? (
+                                <View style={styles.packageDurationContainer}>
+                                  <Ionicons name="time-outline" size={14} color="#64748b" />
+                                  <Text style={styles.packageDuration}>
+                                    {pkg?.duration || pkg?.durationDays} {pkg?.durationUnit || 'days'}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+
+                            {/* Checkbox */}
                             <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
                               {isSelected && <Text style={styles.checkmark}>✓</Text>}
                             </View>
                           </View>
 
-                          <Text style={styles.packageDescription} numberOfLines={2}>
-                            {String(pkg?.description || '').trim() ? String(pkg.description) : ' '}
-                          </Text>
+                          {/* Description/Message */}
+                          {(pkg?.description || pkg?.message) ? (
+                            <View style={styles.packageDescriptionBlock}>
+                              <Text style={styles.packageDescription} numberOfLines={3}>
+                                {pkg?.description || pkg?.message}
+                              </Text>
+                              {(String(pkg?.description || pkg?.message || '').length > 100) && (
+                                <Pressable
+                                  onPress={() =>
+                                    setPackageDescriptionModal({
+                                      visible: true,
+                                      title: pkgName,
+                                      description: String(pkg?.description || pkg?.message || ''),
+                                    })
+                                  }
+                                  hitSlop={8}
+                                >
+                                  <Text style={styles.seeMoreText}>See more</Text>
+                                </Pressable>
+                              )}
+                            </View>
+                          ) : null}
+
+                          {/* Price */}
+                          <View style={styles.priceContainer}>
+                            <Text style={styles.priceSymbol}>₹</Text>
+                            <Text style={styles.priceAmount}>{pkgPrice}</Text>
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
@@ -1036,17 +1182,57 @@ const styles = StyleSheet.create({
 
   packageCard: {
     backgroundColor: "white",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 2,
     borderColor: "#e2e8f0",
     position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   packageCardSelected: {
     borderColor: "#4CAF50",
     backgroundColor: "#f0fdf4",
+    shadowColor: "#4CAF50",
+    shadowOpacity: 0.1,
+    elevation: 2,
+  },
+
+  packageCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+
+  packageImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    marginRight: 12,
+    backgroundColor: "#f1f5f9",
+  },
+
+  packageHeaderText: {
+    flex: 1,
+    paddingRight: 32,
+  },
+
+  packageDurationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    gap: 4,
+  },
+
+  packageDuration: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
   },
 
   popularPackageCard: {
@@ -1074,14 +1260,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#0f172a",
-    marginBottom: 6,
-    paddingRight: 32,
+    marginBottom: 2,
   },
 
   priceContainer: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginBottom: 6,
+    marginTop: 8,
   },
 priceSymbol: {
   fontSize: 16,
@@ -1110,10 +1295,22 @@ priceAmount: {
   },
 
   packageDescription: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#64748b",
-    marginBottom: 0,
-    lineHeight: 16,
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+
+  packageDescriptionBlock: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  seeMoreText: {
+    fontSize: 12,
+    color: "#2563eb",
+    fontWeight: "600",
+    marginTop: 4,
   },
 
   featuresContainer: {
@@ -1295,6 +1492,30 @@ priceAmount: {
   sectionButtonIcon: {
     fontSize: 32,
     marginRight: 16,
+  },
+
+  companyLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 16,
+    backgroundColor: "#f1f5f9",
+  },
+
+  companyLogoPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 16,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  companyLogoText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#64748b",
   },
 
   sectionButtonTextContainer: {
@@ -1521,6 +1742,37 @@ priceAmount: {
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 16,
+  },
+
+  modalCompanyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+
+  modalCompanyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: "#f1f5f9",
+  },
+
+  modalCompanyLogoPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalCompanyLogoText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#64748b",
   },
 
   modalFooter: {

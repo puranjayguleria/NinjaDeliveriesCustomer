@@ -45,6 +45,7 @@ export interface ServiceCompany {
   quantityOffers?: any[]; // Quantity-based offers from service_services
   isActive: boolean;
   imageUrl?: string | null;
+  logoUrl?: string | null; // Company logo URL from service_company collection
   packages?: any[];
   serviceType?: string;
   adminServiceId?: string;
@@ -1987,9 +1988,10 @@ export class FirestoreService {
             const details = companyDetails.get(company.companyId);
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
@@ -2328,9 +2330,10 @@ export class FirestoreService {
             const details = companyDetails.get(company.companyId);
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
@@ -2430,9 +2433,10 @@ export class FirestoreService {
             
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
@@ -6978,6 +6982,7 @@ export class FirestoreService {
               isActive: companyData.isActive !== false, // Use company's isActive status
               // 🖼️ Company logos live in service_company.logoUrl (direct-price flow)
               imageUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null,
+              logoUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null, // Explicitly set logoUrl
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,
@@ -7131,6 +7136,7 @@ export class FirestoreService {
               quantityOffers: (serviceData as any).quantityOffers,
               isActive: serviceData.isActive !== false,
               imageUrl: companyLogo,
+              logoUrl: companyLogo, // Explicitly set logoUrl for easy access
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: serviceData.description,
@@ -7159,6 +7165,7 @@ export class FirestoreService {
             quantityOffers: (serviceData as any).quantityOffers,
             isActive: companyData.isActive !== false,
             imageUrl: companyLogo,
+            logoUrl: companyLogo, // Explicitly set logoUrl for easy access
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
             description: companyData.description,
