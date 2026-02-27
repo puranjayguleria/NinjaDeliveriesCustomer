@@ -19,6 +19,7 @@ import { openRazorpayNative } from "../utils/razorpayNative";
 interface AddOnService extends ServiceIssue {
   selected: boolean;
   price: number;
+  quantity?: number;
 }
 
 interface AddOnServicesModalProps {
@@ -677,9 +678,34 @@ export default function AddOnServicesModal({
     setServices(prevServices =>
       prevServices.map(service =>
         service.id === serviceId
-          ? { ...service, selected: !service.selected }
+          ? { ...service, selected: !service.selected, quantity: service.selected ? 0 : 1 }
           : service
       )
+    );
+  };
+
+  const addServiceQuantity = (serviceId: string) => {
+    setServices(prevServices =>
+      prevServices.map(service =>
+        service.id === serviceId
+          ? { ...service, selected: true, quantity: (service.quantity || 1) + 1 }
+          : service
+      )
+    );
+  };
+
+  const removeServiceQuantity = (serviceId: string) => {
+    setServices(prevServices =>
+      prevServices.map(service => {
+        if (service.id === serviceId) {
+          const newQuantity = (service.quantity || 1) - 1;
+          if (newQuantity <= 0) {
+            return { ...service, selected: false, quantity: 0 };
+          }
+          return { ...service, quantity: newQuantity };
+        }
+        return service;
+      })
     );
   };
 
@@ -912,10 +938,12 @@ export default function AddOnServicesModal({
       }
 
       // Prepare updated add-ons
-      const newAddOns = selectedAddOns.map(service => ({
-        name: service.name,
-        price: service.price
-      }));
+      const newAddOns = selectedAddOns.flatMap(service => 
+        Array.from({ length: service.quantity || 1 }, () => ({
+          name: service.name,
+          price: service.price
+        }))
+      );
 
       const updatedAddOns = [
         ...(currentBooking.addOns || []),
@@ -960,11 +988,13 @@ export default function AddOnServicesModal({
   const getTotalPrice = () => {
     return services
       .filter(service => service.selected)
-      .reduce((total, service) => total + service.price, 0);
+      .reduce((total, service) => total + (service.price * (service.quantity || 1)), 0);
   };
 
   const getSelectedCount = () => {
-    return services.filter(service => service.selected).length;
+    return services
+      .filter(service => service.selected)
+      .reduce((total, service) => total + (service.quantity || 1), 0);
   };
 
   const renderServiceItem = ({ item }: { item: AddOnService }) => (
@@ -984,11 +1014,40 @@ export default function AddOnServicesModal({
             <Text style={styles.priceLabel}>/ service</Text>
           </View>
         </View>
-        <View style={[styles.checkbox, item.selected && styles.checkboxSelected]}>
-          {item.selected && (
-            <Ionicons name="checkmark" size={18} color="#fff" />
-          )}
-        </View>
+        
+        {item.selected ? (
+          <View style={styles.quantityControls}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                removeServiceQuantity(item.id);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="remove" size={20} color="#10B981" />
+            </TouchableOpacity>
+            
+            <Text style={styles.quantityText}>{item.quantity || 1}</Text>
+            
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                addServiceQuantity(item.id);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={20} color="#10B981" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.checkbox, item.selected && styles.checkboxSelected]}>
+            {item.selected && (
+              <Ionicons name="checkmark" size={18} color="#fff" />
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -1063,9 +1122,14 @@ export default function AddOnServicesModal({
             {getSelectedCount() > 0 && (
               <View style={styles.summaryContainer}>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryText}>
-                    {getSelectedCount()} service{getSelectedCount() > 1 ? 's' : ''} selected
-                  </Text>
+                  <View>
+                    <Text style={styles.summaryText}>
+                      {getSelectedCount()} service{getSelectedCount() > 1 ? 's' : ''} selected
+                    </Text>
+                    <Text style={styles.summarySubtext}>
+                      {services.filter(s => s.selected).length} type{services.filter(s => s.selected).length > 1 ? 's' : ''}
+                    </Text>
+                  </View>
                   <Text style={styles.summaryPrice}>₹{getTotalPrice()}</Text>
                 </View>
               </View>
@@ -1090,7 +1154,7 @@ export default function AddOnServicesModal({
                 <View style={styles.loadingButtonContent}>
                   <Ionicons name="card" size={20} color="#fff" />
                   <Text style={styles.addButtonText}>
-                    Pay ₹{getTotalPrice()} & Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''}
+                    Pay ₹{getTotalPrice()} & Add Service{getSelectedCount() > 1 ? 's' : ''}
                   </Text>
                 </View>
               )}
@@ -1330,10 +1394,41 @@ const styles = StyleSheet.create({
     color: "#374151",
     fontWeight: "600",
   },
+  summarySubtext: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
   summaryPrice: {
     fontSize: 22,
     color: "#10B981",
     fontWeight: "800",
+  },
+  quantityControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#10B981",
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  quantityButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quantityText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#10B981",
+    minWidth: 24,
+    textAlign: "center",
   },
   addButton: {
     backgroundColor: "#10B981",
