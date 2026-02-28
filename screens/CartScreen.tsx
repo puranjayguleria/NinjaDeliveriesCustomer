@@ -36,7 +36,7 @@ import ConfettiCannon from "react-native-confetti-cannon";
 import { useCart } from "../context/CartContext";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal";
-import { findNearestStore } from "../utils/findNearestStore";
+import { findNearestStore, prefetchNearestStoreZones } from "../utils/findNearestStore";
 import { useLocationContext } from "@/context/LocationContext";
 import NotificationModal from "../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
@@ -80,25 +80,53 @@ const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPaymen
  * Returns true if the current time is inside the delivery window.
  * Reads the window from delivery_timing/timingData in Firestore.
  */
+const DELIVERY_WINDOW_CACHE_TTL_MS = 60 * 1000;
+let deliveryWindowCache: { ts: number; from: number | null; to: number | null } | null = null;
+let deliveryWindowInFlight: Promise<{ from: number | null; to: number | null }> | null = null;
+
+const getDeliveryWindow = async (): Promise<{ from: number | null; to: number | null }> => {
+  const now = Date.now();
+  if (deliveryWindowCache && now - deliveryWindowCache.ts < DELIVERY_WINDOW_CACHE_TTL_MS) {
+    return { from: deliveryWindowCache.from, to: deliveryWindowCache.to };
+  }
+
+  if (deliveryWindowInFlight) return deliveryWindowInFlight;
+
+  deliveryWindowInFlight = (async () => {
+    try {
+      const doc = await firestore().collection("delivery_timing").doc("timingData").get();
+      if (!doc.exists) {
+        deliveryWindowCache = { ts: Date.now(), from: null, to: null };
+        return { from: null, to: null };
+      }
+
+      const { fromTime, toTime } = doc.data() as { fromTime: number | string; toTime: number | string };
+      const from = Number(fromTime);
+      const to = Number(toTime);
+      deliveryWindowCache = {
+        ts: Date.now(),
+        from: Number.isNaN(from) ? null : from,
+        to: Number.isNaN(to) ? null : to,
+      };
+      return { from: deliveryWindowCache.from, to: deliveryWindowCache.to };
+    } catch (e) {
+      console.error("[getDeliveryWindow]", e);
+      deliveryWindowCache = { ts: Date.now(), from: null, to: null };
+      return { from: null, to: null };
+    } finally {
+      deliveryWindowInFlight = null;
+    }
+  })();
+
+  return deliveryWindowInFlight;
+};
+
 const checkDeliveryWindow = async (): Promise<boolean> => {
   try {
-    const doc = await firestore()
-      .collection("delivery_timing")
-      .doc("timingData")
-      .get();
-
-    if (!doc.exists) return true;
-
-    const { fromTime, toTime } = doc.data() as {
-      fromTime: number | string;
-      toTime: number | string;
-    };
-
-    const from = Number(fromTime);
-    const to = Number(toTime);
+    const { from, to } = await getDeliveryWindow();
+    if (from == null || to == null) return true;
     const now = new Date().getHours();
 
-    if (Number.isNaN(from) || Number.isNaN(to)) return true;
     if (from === to) return true;
 
     if (from < to) return now >= from && now < to;
@@ -343,6 +371,8 @@ const CartScreen: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
 
   const [navigating, setNavigating] = useState<boolean>(false);
+  const onlinePaymentInFlightRef = useRef<boolean>(false);
+  const [validatingLocation, setValidatingLocation] = useState<boolean>(false);
 
   const colorAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -488,20 +518,30 @@ const CartScreen: React.FC = () => {
    * Fetch Data On Mount
    ***************************************/
   useEffect(() => {
+    // Warm caches so CTA taps don't block on the first Firestore read.
+    getDeliveryWindow().catch(() => {});
+    prefetchNearestStoreZones().catch(() => {});
+
     fetchFareData(location.storeId ?? null);
     fetchHotspots(location.storeId ?? null);
     fetchCartItems(true);
     watchPromos();
     const unsubscribe = watchUserLocations();
-    setLoading(false);
     return () => {
       if (unsubscribe) unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const prevCartCountRef = useRef<number>(Object.keys(cart).length);
   useEffect(() => {
-    fetchCartItems(false);
+    const nextCount = Object.keys(cart).length;
+    const prevCount = prevCartCountRef.current;
+    prevCartCountRef.current = nextCount;
+
+    // If cart is being hydrated (0 -> non-zero), show loader so items don't look missing.
+    const shouldShowLoader = prevCount === 0 && nextCount > 0;
+    fetchCartItems(shouldShowLoader);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart]);
 
@@ -641,30 +681,35 @@ const CartScreen: React.FC = () => {
 
       const snapshots = await Promise.all(batchPromises);
 
-      const productsData: Product[] = [];
-      snapshots.forEach((snap) => {
-        snap.forEach((doc) => {
+      const byId = new Map<string, Product>();
+      snapshots.forEach((snap: any) => {
+        snap.forEach((doc: any) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) > 0) {
-            const existing = productsData.find((p) => p.id === doc.id);
-            if (!existing) {
-              productsData.push({ id: doc.id, ...data });
-            } else {
-              if (doc.ref.parent.path.includes("saleProducts") && data.discount) {
-                productsData[productsData.indexOf(existing)] = {
-                  id: doc.id,
-                  ...data,
-                };
-              }
-            }
+          if ((data.quantity ?? 0) <= 0) return;
+
+          const { id: _ignoredId, ...rest } = (data as any) ?? {};
+          const next = { id: doc.id, ...rest } as Product;
+          const existing = byId.get(doc.id);
+          if (!existing) {
+            byId.set(doc.id, next);
+            return;
+          }
+
+          // Prefer saleProducts doc when it contains discount data.
+          if (doc.ref.parent.path.includes("saleProducts") && data.discount) {
+            byId.set(doc.id, next);
           }
         });
       });
 
-      const visible = productsData.filter((p) => (cart[p.id] ?? 0) > 0);
+      // Preserve cart ordering so UI feels stable.
+      const visible = productIds.map((id) => byId.get(id)).filter(Boolean) as Product[];
       setCartItems(visible);
 
-      await fetchRecommended(visible);
+      // Don't block cart rendering on recommendations.
+      fetchRecommended(visible).catch((e) => {
+        console.warn('fetchRecommended failed:', e);
+      });
     } catch (error) {
       console.error("Error fetching cart items:", error);
       Alert.alert("Error", "Failed to fetch cart items.");
@@ -679,6 +724,9 @@ const CartScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       maybeShowNotice();
+      // If we returned from payment (or any navigation), never keep a full-screen loader stuck.
+      setNavigating(false);
+      onlinePaymentInFlightRef.current = false;
       return () => setNotificationModalVisible(false);
     }, [showLocationSheet])
   );
@@ -998,29 +1046,14 @@ const CartScreen: React.FC = () => {
       return;
     }
 
-    // delivery timing check (kept)
-    try {
-      const timingDoc = await firestore()
-        .collection("delivery_timing")
-        .doc("timingData")
-        .get();
-
-      if (timingDoc.exists) {
-        const { fromTime, toTime } = timingDoc.data() as {
-          fromTime: number;
-          toTime: number;
-        };
-        const currentHour = new Date().getHours();
-        if (currentHour < fromTime || currentHour >= toTime) {
-          setErrorModalMessage(
-            "Sorry this is out of my delivering hours. How about you try tomorrow morning?"
-          );
-          setErrorModalVisible(true);
-          return;
-        }
-      }
-    } catch (err) {
-      console.error("Error checking delivery timing:", err);
+    // delivery timing check (kept, but cached)
+    const okWindow = await checkDeliveryWindow();
+    if (!okWindow) {
+      setErrorModalMessage(
+        "Sorry this is out of my delivering hours. How about you try tomorrow morning?"
+      );
+      setErrorModalVisible(true);
+      return;
     }
 
     if (cartItems.length === 0) {
@@ -1052,6 +1085,14 @@ const CartScreen: React.FC = () => {
   };
 
   const handleOnlinePayment = async () => {
+    // Guard against double-taps which can push Razorpay screen twice.
+    // Use a ref (sync) in addition to state (async).
+    if (onlinePaymentInFlightRef.current) return;
+    onlinePaymentInFlightRef.current = true;
+    if (navigating) {
+      onlinePaymentInFlightRef.current = false;
+      return;
+    }
     try {
       setShowPaymentModal(false);
       
@@ -1092,6 +1133,7 @@ const CartScreen: React.FC = () => {
         await verifyRazorpayPaymentOnServer(razorpayMeta);
         await handlePaymentComplete("online", razorpayMeta, serverOrder);
         setNavigating(false);
+        onlinePaymentInFlightRef.current = false;
         return; // don't fall through to WebView
       } catch (nativeErr: any) {
         // If native isn't available / fails, fall back to WebView.
@@ -1125,6 +1167,7 @@ const CartScreen: React.FC = () => {
             Alert.alert("Error", "Payment verification failed. Please contact support.");
           } finally {
             setNavigating(false);
+            onlinePaymentInFlightRef.current = false;
           }
         },
         onFailure: (error: any) => {
@@ -1134,6 +1177,7 @@ const CartScreen: React.FC = () => {
             error.description || "Payment was not completed. Please try again."
           );
           setNavigating(false);
+          onlinePaymentInFlightRef.current = false;
         },
       });
 
@@ -1160,6 +1204,7 @@ const CartScreen: React.FC = () => {
         Alert.alert("Payment Failed", error.message || "Failed to initiate payment. Please try again.");
       }
       setNavigating(false);
+      onlinePaymentInFlightRef.current = false;
     }
   };
 
@@ -1555,6 +1600,8 @@ const CartScreen: React.FC = () => {
       <TouchableOpacity
         style={styles.addressItemLeft}
         onPress={async () => {
+          if (validatingLocation) return;
+          setValidatingLocation(true);
           try {
             const ok = await checkDeliveryWindow();
             if (!ok) {
@@ -1565,7 +1612,9 @@ const CartScreen: React.FC = () => {
               return;
             }
 
-            const nearest = await findNearestStore(item.lat, item.lng);
+            const nearest = item?.storeId
+              ? { id: String(item.storeId) }
+              : await findNearestStore(item.lat, item.lng);
             if (!nearest) {
               Alert.alert(
                 "Unavailable",
@@ -1597,6 +1646,8 @@ const CartScreen: React.FC = () => {
           } catch (e) {
             console.error("[findNearestStore]", e);
             Alert.alert("Error", "Couldn’t validate that address.");
+          } finally {
+            setValidatingLocation(false);
           }
         }}
       >
@@ -1642,7 +1693,7 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {loading || navigating ? (
+        {loading || navigating || validatingLocation ? (
           <View style={styles.loaderContainer}>
             <Loader />
           </View>
@@ -2167,8 +2218,8 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { fontSize: 16, color: "#999" },
 
-  headerBlock: { backgroundColor: pastelGreen, paddingVertical: 16, paddingHorizontal: 12 },
-  cartItemsHeader: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 5 },
+  headerBlock: { backgroundColor: pastelGreen, paddingVertical: 10, paddingHorizontal: 12 },
+  cartItemsHeader: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 2 },
   headerSubtitle: { fontSize: 13, color: "#666" },
 
   headerRow: { flexDirection: "row", alignItems: "center" },

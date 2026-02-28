@@ -10,13 +10,60 @@ type DeliveryZone = {
   radius: number;        // km
 };
 
+const ZONES_TTL_MS = 5 * 60 * 1000;
+const NEAREST_TTL_MS = 30 * 60 * 1000;
+
+let zonesCache: { ts: number; zones: DeliveryZone[] } | null = null;
+let zonesInFlight: Promise<DeliveryZone[]> | null = null;
+
+const nearestCache = new Map<string, { ts: number; id: string | null }>();
+
+const coordKey = (lat: number, lng: number) => {
+  // Round to reduce cache cardinality while staying accurate enough for zone selection.
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+};
+
+async function getZones(): Promise<DeliveryZone[]> {
+  const now = Date.now();
+  if (zonesCache && now - zonesCache.ts < ZONES_TTL_MS) return zonesCache.zones;
+
+  if (zonesInFlight) return zonesInFlight;
+  zonesInFlight = (async () => {
+    const snap = await firestore().collection('delivery_zones').get();
+    const zones: DeliveryZone[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+    zonesCache = { ts: Date.now(), zones };
+    zonesInFlight = null;
+    return zones;
+  })();
+
+  try {
+    return await zonesInFlight;
+  } finally {
+    // zonesInFlight is cleared in the promise above; keep this to be safe.
+  }
+}
+
+export async function prefetchNearestStoreZones(): Promise<void> {
+  try {
+    await getZones();
+  } catch {
+    // non-fatal
+  }
+}
+
 export async function findNearestStore(
   lat: number,
   lng: number
 ): Promise<{ id: string } | null> {
-  // ── 1. get all zones
-  const snap = await firestore().collection('delivery_zones').get();
-  const zones: DeliveryZone[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+  const key = coordKey(lat, lng);
+  const now = Date.now();
+  const cached = nearestCache.get(key);
+  if (cached && now - cached.ts < NEAREST_TTL_MS) {
+    return cached.id ? { id: cached.id } : null;
+  }
+
+  // ── 1. get all zones (cached)
+  const zones = await getZones();
 
   if (!zones.length) return null;
 
@@ -37,6 +84,7 @@ export async function findNearestStore(
 
   if (data.status !== 'OK') {
     console.warn('[findNearestStore] Distance-Matrix error:', data.status);
+    nearestCache.set(key, { ts: Date.now(), id: null });
     return null;
   }
 
@@ -53,9 +101,15 @@ export async function findNearestStore(
     }
   });
 
-  if (!eligible.length) return null;
+  if (!eligible.length) {
+    nearestCache.set(key, { ts: Date.now(), id: null });
+    return null;
+  }
 
   // ── 4. pick closest
   eligible.sort((a, b) => a.km - b.km);
-  return { id: eligible[0].id };
+
+  const winner = eligible[0].id;
+  nearestCache.set(key, { ts: Date.now(), id: winner });
+  return { id: winner };
 }

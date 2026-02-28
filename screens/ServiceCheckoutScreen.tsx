@@ -55,6 +55,9 @@ export default function ServiceCheckoutScreen() {
   const [notes, setNotes] = useState("");
   const paymentMethod = "online" as const;
   const [loading, setLoading] = useState(false);
+  const [paymentOverlayText, setPaymentOverlayText] = useState<string | null>(null);
+  const [paymentVerifySlow, setPaymentVerifySlow] = useState(false);
+  const paymentVerifySlowTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // const [showConfirmModal, setShowConfirmModal] = useState(false);
   // Legacy state (kept to avoid risky refactors). Online flow now uses a server-side intent
   // so we do NOT create pending bookings before payment.
@@ -62,6 +65,34 @@ export default function ServiceCheckoutScreen() {
 
   // Persist the last service Razorpay attempt so we can reconcile after app restart.
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
+
+  useEffect(() => {
+    const t = String(paymentOverlayText || '').toLowerCase();
+    const isVerifyingPayment = t.includes('verifying payment');
+
+    if (paymentVerifySlowTimerRef.current) {
+      clearTimeout(paymentVerifySlowTimerRef.current);
+      paymentVerifySlowTimerRef.current = null;
+    }
+
+    if (!isVerifyingPayment) {
+      if (paymentVerifySlow) setPaymentVerifySlow(false);
+      return;
+    }
+
+    setPaymentVerifySlow(false);
+    paymentVerifySlowTimerRef.current = setTimeout(() => {
+      setPaymentVerifySlow(true);
+    }, 5000);
+
+    return () => {
+      if (paymentVerifySlowTimerRef.current) {
+        clearTimeout(paymentVerifySlowTimerRef.current);
+        paymentVerifySlowTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentOverlayText]);
   
   // Address management states
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
@@ -414,16 +445,22 @@ export default function ServiceCheckoutScreen() {
   if (__DEV__) console.log(`✅ Address validation passed:`, selectedAddress);
 
     // Validate deliverability (same logic as grocery cart)
+    setPaymentOverlayText('Checking service availability…');
     const canDeliver = await ensureServiceDeliverableOrAlert();
-    if (!canDeliver) return;
+    if (!canDeliver) {
+      setPaymentOverlayText(null);
+      return;
+    }
     
     // Handle payment based on selected method
     if (__DEV__) console.log(`💳 Processing online payment...`);
+    setPaymentOverlayText('Opening payment gateway…');
     await handleRazorpayPayment();
   };
 
   const handleRazorpayPayment = async () => {
     log("razorpay_start", { computedTotalAmount, servicesCount: services?.length ?? 0 });
+    setPaymentOverlayText('Initializing payment…');
     setLoading(true);
     try {
       // API Configuration for Razorpay
@@ -563,6 +600,7 @@ export default function ServiceCheckoutScreen() {
       // This avoids cluttering history with pending bookings when users cancel.
 
     // Create Razorpay order
+    setPaymentOverlayText('Creating payment order…');
     log("rzp_order_create_start", { amountRupees: computedTotalAmount });
       const user = auth().currentUser;
       if (!user) throw new Error("Not logged in");
@@ -591,6 +629,7 @@ export default function ServiceCheckoutScreen() {
       // IMPORTANT: This does NOT create bookings yet.
       let intentCreated = false;
       try {
+        setPaymentOverlayText('Preparing booking…');
         const selectedAddress = getSelectedAddress();
 
         const normalizeWorkName = (raw: any, fallback: string) => {
@@ -1086,6 +1125,7 @@ export default function ServiceCheckoutScreen() {
 
       // --- Try Native Razorpay Checkout first ---
       try {
+        setPaymentOverlayText('Opening payment gateway…');
         log("native_checkout_attempt", { orderId: String(data.orderId), amountPaise });
         const nativeResult = await openRazorpayNative({
           key: String(data.keyId),
@@ -1106,6 +1146,7 @@ export default function ServiceCheckoutScreen() {
         log("native_checkout_success", nativeResult);
 
           // Verify payment + finalize bookings on server (crash-safe)
+          setPaymentOverlayText('Verifying payment…');
           const verifyHeaders = await getAuthHeaders();
           log("verify_and_finalize_start", {
             razorpayOrderId: nativeResult?.razorpay_order_id,
@@ -1150,6 +1191,7 @@ export default function ServiceCheckoutScreen() {
           // Recurring plan safety: if backend created only 1 booking, create the remaining occurrences.
           createdBookingIds = await maybeCreateMissingPlanBookings(createdBookingIds, 'paid', nativeResult);
 
+          setPaymentOverlayText('Confirming booking…');
           log("clear_cart_after_verify");
           clearCart();
 
@@ -1184,6 +1226,8 @@ export default function ServiceCheckoutScreen() {
     onSuccess: async (response: any) => {
       try {
         log("webview_success_callback", response);
+
+        setPaymentOverlayText('Verifying payment…');
         
         // Verify payment + finalize bookings on server (crash-safe)
         const verifyHeaders = await getAuthHeaders();
@@ -1232,6 +1276,7 @@ export default function ServiceCheckoutScreen() {
         createdBookingIds = await maybeCreateMissingPlanBookings(createdBookingIds, 'paid', response);
         
         // Clear cart immediately after successful booking creation
+        setPaymentOverlayText('Confirming booking…');
         log("clear_cart_after_verify");
         clearCart();
         
@@ -1261,12 +1306,14 @@ export default function ServiceCheckoutScreen() {
       } finally {
         // WebView flow has finished (success path attempted). Stop showing loading on this screen.
         setLoading(false);
+        setPaymentOverlayText(null);
       }
     },
     onFailure: (error: any) => {
       warn("webview_failure_callback", error);
       Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
       setLoading(false);
+      setPaymentOverlayText(null);
     },
   });
 
@@ -1302,6 +1349,7 @@ export default function ServiceCheckoutScreen() {
         { text: "OK" }
       ]);
       setLoading(false);
+      setPaymentOverlayText(null);
     }
   };
 
@@ -2016,6 +2064,20 @@ export default function ServiceCheckoutScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Full-screen payment loader (clearer than button spinner) */}
+      {!!paymentOverlayText && (
+        <View style={styles.paymentOverlay}>
+          <View style={styles.paymentOverlayCard}>
+            <ActivityIndicator size="large" color="#4CAF50" />
+            <Text style={styles.paymentOverlayText}>
+              {paymentVerifySlow
+                ? 'It is taking longer than expected please wait.'
+                : paymentOverlayText}
+            </Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -2049,6 +2111,34 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+
+  paymentOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+    elevation: 999,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  paymentOverlayCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  paymentOverlayText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'center',
   },
   sectionTitle: {
     fontSize: 18,

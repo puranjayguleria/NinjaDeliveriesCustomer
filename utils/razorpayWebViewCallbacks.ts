@@ -28,9 +28,13 @@ export function registerRazorpayWebViewCallbacks(entry: {
   return sessionId;
 }
 
-export function consumeRazorpayWebViewCallbacks(sessionId?: string | null): Entry {
+export function getRazorpayWebViewCallbacks(sessionId?: string | null): Entry {
   if (!sessionId) return { createdAt: Date.now() };
-  const entry = store.get(sessionId);
-  if (entry) store.delete(sessionId);
-  return entry ?? { createdAt: Date.now() };
+  cleanup();
+  return store.get(sessionId) ?? { createdAt: Date.now() };
+}
+
+export function finalizeRazorpayWebViewCallbacks(sessionId?: string | null): void {
+  if (!sessionId) return;
+  store.delete(sessionId);
 }

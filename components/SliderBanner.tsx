@@ -1,5 +1,5 @@
 // components/SliderBanner.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 import { Image } from "expo-image";
 import firestore from "@react-native-firebase/firestore";
 import Video from "react-native-video";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { useLocationContext } from "@/context/LocationContext";
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
@@ -28,23 +28,21 @@ const isMp4 = (url?: string) =>
   !!url &&
   (url.endsWith(".mp4") || url.includes(".mp4?") || /\.mp4(\?|$)/i.test(url));
 
-const isImageLike = (url?: string) =>
-  !!url && (/\.(gif|jpe?g|png|webp)(\?|$)/i.test(url) || !isMp4(url));
-
 const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   const { location } = useLocationContext();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
 
   const [banners, setBanners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedMap, setLoadedMap] = useState<Record<string, boolean>>({});
 
   const flatListRef = useRef<FlatList<any> | null>(null);
-  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentIndexRef = useRef(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const userInteractingRef = useRef(false);
-  const resumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Firestore listener
   useEffect(() => {
@@ -78,15 +76,14 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
-  useEffect(() => {
-    startAutoPlayIfNeeded();
-    return () => {
-      stopAutoPlay();
-      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
-    };
-  }, [banners.length]);
+  const stopAutoPlay = useCallback(() => {
+    if (autoPlayRef.current) {
+      clearInterval(autoPlayRef.current);
+      autoPlayRef.current = null;
+    }
+  }, []);
 
-  const startAutoPlayIfNeeded = () => {
+  const startAutoPlayIfNeeded = useCallback(() => {
     stopAutoPlay();
     if (banners.length <= 1) return;
     autoPlayRef.current = setInterval(() => {
@@ -95,14 +92,15 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
       scrollToIndex(next);
       setCurrentIndex(next);
     }, AUTO_PLAY_INTERVAL);
-  };
+  }, [banners.length, stopAutoPlay]);
 
-  const stopAutoPlay = () => {
-    if (autoPlayRef.current) {
-      clearInterval(autoPlayRef.current);
-      autoPlayRef.current = null;
-    }
-  };
+  useEffect(() => {
+    startAutoPlayIfNeeded();
+    return () => {
+      stopAutoPlay();
+      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    };
+  }, [banners.length, startAutoPlayIfNeeded, stopAutoPlay]);
 
   const pauseAutoPlayForInteraction = () => {
     userInteractingRef.current = true;
@@ -151,11 +149,12 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   const renderItem = ({ item, index }: { item: any; index: number }) => {
     const url = item.image || item.mediaUrl || item.introGifUrl;
     const loaded = !!loadedMap[item.id];
+    const shouldPlay = isFocused && index === currentIndex;
 
     return (
       <TouchableWithoutFeedback
         onPressIn={pauseAutoPlayForInteraction}
-        onPressOut={resumeAutoPlayAfterDelay}
+        onPressOut={() => resumeAutoPlayAfterDelay()}
       >
         <Pressable
           style={[
@@ -171,7 +170,16 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
               resizeMode="cover"
               muted
               repeat
-              paused={index !== currentIndex}
+              paused={!shouldPlay}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
               onLoad={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
               onError={() => setLoadedMap((m) => ({ ...m, [item.id]: true }))}
             />
@@ -248,7 +256,7 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
           setCurrentIndex(idx);
         }}
         onScrollBeginDrag={pauseAutoPlayForInteraction}
-        onScrollEndDrag={resumeAutoPlayAfterDelay}
+        onScrollEndDrag={() => resumeAutoPlayAfterDelay()}
       />
 
       <View style={styles.pagination}>

@@ -33,6 +33,8 @@ export default function PaymentScreen() {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slowTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showSlowText, setShowSlowText] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -40,8 +42,31 @@ export default function PaymentScreen() {
         clearTimeout(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
+
+      if (slowTextTimerRef.current) {
+        clearTimeout(slowTextTimerRef.current);
+        slowTextTimerRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (slowTextTimerRef.current) {
+      clearTimeout(slowTextTimerRef.current);
+      slowTextTimerRef.current = null;
+    }
+
+    if (!loading) {
+      if (showSlowText) setShowSlowText(false);
+      return;
+    }
+
+    setShowSlowText(false);
+    slowTextTimerRef.current = setTimeout(() => {
+      setShowSlowText(true);
+    }, 5000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // Handle both old single booking format and new multiple bookings format
   const {
@@ -514,7 +539,7 @@ export default function PaymentScreen() {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
               <Text style={styles.loadingText}>
-                Processing payment...
+                {showSlowText ? 'It is taking longer than expected please wait.' : 'Processing payment...'}
               </Text>
             </View>
           </View>

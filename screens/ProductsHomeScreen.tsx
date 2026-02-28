@@ -31,7 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Video from "react-native-video";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Image } from "expo-image";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
@@ -302,7 +302,8 @@ type IntroProps = { url: string | null; title: string | null };
 const MemoIntroCard = React.memo(
   ({ url, title }: IntroProps) => {
     const nav = useNavigation<any>();
-    const ref = useRef<Video>(null);
+    const isFocused = useIsFocused();
+    const ref = useRef<any>(null);
     const [dur, setDur] = useState(0);
     const [spin, setSpin] = useState(true);
     const isMp4 = !!url && /\.mp4(\?|$)/i.test(url);
@@ -330,6 +331,16 @@ const MemoIntroCard = React.memo(
               resizeMode="cover"
               muted
               repeat
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
               onLoad={({ duration }) => setDur(duration)}
               onProgress={onProgress}
               onReadyForDisplay={() => setSpin(false)}
@@ -698,6 +709,8 @@ const HomeMessageBar = ({
   msg: any;
   onClose?: () => void;
 }) => {
+  const isFocused = useIsFocused();
+
   if (!msg?.text) return null;
 
   // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
@@ -800,6 +813,16 @@ if (isMessageActive) {
               resizeMode="cover"
               muted
               repeat
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
               onError={(err) => console.log("Video error:", err)}
             />
           ) : hasImage ? (
@@ -861,6 +884,7 @@ if (isMessageActive) {
 
 export default function ProductsHomeScreen() {
   const nav = useNavigation<any>();
+  const isFocused = useIsFocused();
   const { location, updateLocation } = useLocationContext();
 
   const [lastOrder, setLastOrder] = useState<any | null>(null);
@@ -2094,6 +2118,16 @@ export default function ProductsHomeScreen() {
               resizeMode="cover"
               rate={1.0}
               ignoreSilentSwitch="obey"
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
             />
           </Animated.View>
 

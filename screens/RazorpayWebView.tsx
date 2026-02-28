@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, Alert, BackHandler } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, StackActions } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from "expo-linking";
-import { consumeRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
+import { finalizeRazorpayWebViewCallbacks, getRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 
 export default function RazorpayWebView() {
   const route = useRoute<any>();
@@ -18,6 +18,7 @@ export default function RazorpayWebView() {
   const lastNavUrlRef = useRef<string>("about:blank");
   const allowExitRef = useRef(false);
   const lastReloadAtRef = useRef<number>(0);
+  const didFinalizeRef = useRef(false);
 
   // IMPORTANT:
   // In this app, navigators typically hide the native header for this screen.
@@ -38,7 +39,40 @@ export default function RazorpayWebView() {
     sessionId,
   } = route.params;
 
-  const { onSuccess, onFailure } = consumeRazorpayWebViewCallbacks(sessionId);
+  const { onSuccess, onFailure } = getRazorpayWebViewCallbacks(sessionId);
+
+  const finalizeOnce = useCallback(() => {
+    if (didFinalizeRef.current) return;
+    didFinalizeRef.current = true;
+    finalizeRazorpayWebViewCallbacks(sessionId);
+  }, [sessionId]);
+
+  const popAllRazorpayScreens = useCallback(() => {
+    try {
+      const state = navigation.getState?.();
+      const routes: { name?: string }[] = (state?.routes ?? []) as any;
+      let popCount = 0;
+      for (let i = routes.length - 1; i >= 0; i--) {
+        if (routes[i]?.name === 'RazorpayWebView') popCount++;
+        else break;
+      }
+      if (popCount > 0) {
+        navigation.dispatch(StackActions.pop(popCount));
+        return true;
+      }
+    } catch (e) {
+      console.warn('[RZPWebView] popAllRazorpayScreens failed:', e);
+    }
+    return false;
+  }, [navigation]);
+
+  const exitPaymentScreen = useCallback(() => {
+    allowExitRef.current = true;
+    // Pop all consecutive RazorpayWebView screens, so we never reveal another Razorpay screen underneath.
+    if (!popAllRazorpayScreens()) {
+      navigation.goBack();
+    }
+  }, [navigation, popAllRazorpayScreens]);
 
   log("mount", { orderId, amount, currency, name, description });
 
@@ -91,8 +125,23 @@ export default function RazorpayWebView() {
   useEffect(() => {
     // Prevent accidental exits while payment is in progress.
     const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
-      // If we are already in an error state, allow leaving.
-      if (error) return;
+      // If we are already in an error state, allow leaving, but still notify the parent
+      // so it can stop any loaders.
+      if (error && !allowExitRef.current) {
+        allowExitRef.current = true;
+        try {
+          onFailure?.({
+            code: 'PAYMENT_WEBVIEW_ERROR',
+            error: 'Payment gateway failed to load',
+            description: 'Payment gateway failed to load',
+            source: 'webview_error',
+          });
+        } catch (cbErr) {
+          console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+        }
+        finalizeOnce();
+        return;
+      }
 
       // Allow programmatic exits (success/failure/cancel flows).
       if (allowExitRef.current) return;
@@ -106,7 +155,22 @@ export default function RazorpayWebView() {
           {
             text: 'Yes',
             style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
+            onPress: () => {
+              // Treat explicit user exit as a cancellation so the parent screen can
+              // stop any loaders and remain usable.
+              try {
+                onFailure?.({
+                  code: 'PAYMENT_CANCELLED',
+                  error: 'Payment cancelled by user',
+                  description: 'Payment cancelled by user',
+                  source: 'user_exit',
+                });
+              } catch (cbErr) {
+                console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+              }
+              finalizeOnce();
+              exitPaymentScreen();
+            },
           },
         ]
       );
@@ -124,7 +188,7 @@ export default function RazorpayWebView() {
       unsubscribe?.();
       backSub.remove();
     };
-  }, [navigation, error]);
+  }, [navigation, error, onFailure, finalizeOnce, exitPaymentScreen]);
 
   const reloadWebView = useCallback((reason: string) => {
     const now = Date.now();
@@ -382,41 +446,57 @@ true;
         }
         case 'success':
           log('success', data.data);
-          allowExitRef.current = true;
-          navigation.goBack();
           if (onSuccess) {
             log('calling_onSuccess');
-            onSuccess(data.data);
+            try {
+              onSuccess(data.data);
+            } catch (cbErr) {
+              console.warn('[RZPWebView] onSuccess callback threw:', cbErr);
+            }
           }
+          finalizeOnce();
+          exitPaymentScreen();
           break;
           
         case 'failed':
           log('failed', data.data);
-          allowExitRef.current = true;
-          navigation.goBack();
           if (onFailure) {
             log('calling_onFailure_failed');
-            onFailure(data.data);
+            try {
+              onFailure(data.data);
+            } catch (cbErr) {
+              console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+            }
           }
+          finalizeOnce();
+          exitPaymentScreen();
           break;
           
         case 'cancelled':
           log('cancelled', data.data);
-          allowExitRef.current = true;
-          navigation.goBack();
           if (onFailure) {
             log('calling_onFailure_cancelled');
-            onFailure(data.data);
+            try {
+              onFailure(data.data);
+            } catch (cbErr) {
+              console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+            }
           }
+          finalizeOnce();
+          exitPaymentScreen();
           break;
       }
     } catch (error) {
       log('parse_error', error);
-      allowExitRef.current = true;
-      navigation.goBack();
       if (onFailure) {
-        onFailure({ error: 'Payment processing error' });
+        try {
+          onFailure({ error: 'Payment processing error' });
+        } catch (cbErr) {
+          console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+        }
       }
+      finalizeOnce();
+      exitPaymentScreen();
     }
   };
 
@@ -434,7 +514,24 @@ true;
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              allowExitRef.current = true;
+              try {
+                onFailure?.({
+                  code: 'PAYMENT_WEBVIEW_ERROR',
+                  error: 'Payment gateway failed to load',
+                  description: 'Payment gateway failed to load',
+                  source: 'webview_error',
+                });
+              } catch (cbErr) {
+                console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+              }
+              finalizeOnce();
+              exitPaymentScreen();
+            }}
+          >
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Payment</Text>
@@ -449,7 +546,24 @@ true;
           <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => {
+              allowExitRef.current = true;
+              try {
+                onFailure?.({
+                  code: 'PAYMENT_WEBVIEW_ERROR',
+                  error: 'Payment gateway failed to load',
+                  description: 'Payment gateway failed to load',
+                  source: 'webview_error',
+                });
+              } catch (cbErr) {
+                console.warn('[RZPWebView] onFailure callback threw:', cbErr);
+              }
+              finalizeOnce();
+              exitPaymentScreen();
+            }}
+          >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         </View>

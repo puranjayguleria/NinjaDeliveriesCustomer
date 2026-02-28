@@ -15,6 +15,7 @@ import {
   Animated,
   RefreshControl,
   Platform,
+  Alert,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +26,29 @@ import { firestore } from '../firebase.native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get('window');
+
+// Lightweight in-memory cache so returning to Services doesn't refetch everything.
+// Kept intentionally small/short-lived to avoid stale zone mapping.
+const ZONE_MAPPING_CACHE_TTL_MS = 2 * 60 * 1000;
+// Persisted mapping is safe to keep longer; if it drifts, we refresh in background.
+const ZONE_MAPPING_STORAGE_TTL_MS = 6 * 60 * 60 * 1000;
+const zoneMappingStorageKey = (zoneId: string) => `services_zone_mapping_v1_${zoneId}`;
+const zoneMappingCache = new Map<
+  string,
+  {
+    ts: number;
+    zoneCompanyIdsKey: string;
+    zoneCompanyNamesKey: string;
+    zoneCategoryIdsKey: string;
+  }
+>();
+
+// Cache for zone-scoped services used by search (avoid loading ALL services across all zones).
+const ZONE_SERVICES_CACHE_TTL_MS = 2 * 60 * 1000;
+const zoneServicesCache = new Map<string, { ts: number; services: any[] }>();
+
+const CACHED_CATEGORIES_KEY = 'services_cached_categories_v1';
+const CACHED_CATEGORIES_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
 // Function to get icon and colors based on service category name
 const getCategoryStyle = (categoryName: string, index: number) => {
@@ -211,9 +235,117 @@ const HEADER_GIFS = [
   require('../assets/ninjaVideo.gif'),
 ];
 
+const SERVICES_HEADER_MEDIA_HEIGHT = 200;
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 90;
+const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
+const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
+// Solid, very light + friendly header colors (no transparency).
+// Soft off-white to a subtle mint/teal tint feels calmer during scroll.
+const SERVICES_HEADER_GRADIENT_COLORS = ['#f8fafc', '#f0fdfa'] as const;
+// Sticky header should only reserve space until the search bar (not the full media height).
+// Keep this compact; history is inline with the search bar.
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 190 : 175;
+
+const SERVICES_SEARCH_PLACEHOLDERS = [
+  'electrician',
+  'plumber',
+  'car wash',
+  'home cleaning',
+  'astrology',
+  'painter',
+] as const;
+
+const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
+const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
+
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
+
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const headerMediaHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 120],
+        outputRange: [SERVICES_HEADER_MEDIA_HEIGHT, SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const headerMediaOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 120],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const headerGradientOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [60, 120],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const headerTopPadding = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 120],
+        outputRange: [SERVICES_HEADER_PADDING_TOP_INITIAL, SERVICES_HEADER_PADDING_TOP_COLLAPSED],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+
+  const hasSelectedLocation =
+    (typeof location?.address === 'string' && location.address.trim().length > 0) ||
+    (typeof location?.storeId === 'string' && location.storeId.trim().length > 0) ||
+    (location?.lat != null && location?.lng != null);
+
+  const locationDisplayText = React.useMemo(() => {
+    const placeLabel = String((location as any)?.placeLabel || '').trim();
+    const houseNo = String((location as any)?.houseNo || '').trim();
+    const address = String((location as any)?.address || '').trim();
+
+    const combined = [houseNo, address].filter(Boolean).join(' ');
+    const best = placeLabel || combined || address;
+    return best || 'your location';
+  }, [location]);
+
+  const locationPromptShownRef = React.useRef(false);
+
+  useEffect(() => {
+    if (hasSelectedLocation) locationPromptShownRef.current = false;
+  }, [hasSelectedLocation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasSelectedLocation) return;
+      if (locationPromptShownRef.current) return;
+      locationPromptShownRef.current = true;
+
+      Alert.alert(
+        'Select location',
+        'Please select your location to see services available in your area.',
+        [
+          {
+            text: 'Select Location',
+            onPress: () => navigation.navigate('LocationSelector', { fromScreen: 'Services' }),
+          },
+          { text: 'Not now', style: 'cancel' },
+        ],
+        { cancelable: true }
+      );
+    }, [hasSelectedLocation, navigation])
+  );
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [rawServiceCategories, setRawServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
@@ -234,6 +366,9 @@ export default function ServicesScreen() {
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchPlaceholderIndex, setSearchPlaceholderIndex] = useState(0);
+  const placeholderTranslateY = React.useRef(new Animated.Value(6)).current;
+  const placeholderOpacity = React.useRef(new Animated.Value(0)).current;
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [activeGifIndex, setActiveGifIndex] = useState(0);
@@ -248,6 +383,8 @@ export default function ServicesScreen() {
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
 
+  const categorySnapshotSeqRef = React.useRef(0);
+
   const prefetchedUrlsRef = React.useRef<string>('');
 
   // One-time banner shown after backend/webhook finalized a service payment.
@@ -256,7 +393,9 @@ export default function ServicesScreen() {
     null | { razorpayOrderId: string; createdAt: number }
   >(null);
 
-  const isLoading = loading || zoneCompaniesLoading || !allServicesLoaded;
+  // Important: do NOT block the initial UI on loading the full `service_services` dataset.
+  // That collection can be large and may take a long time to stream the first snapshot.
+  const isLoading = loading || zoneCompaniesLoading;
 
   const zoneCompanyIdSet = React.useMemo(() => {
     const ids = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
@@ -284,10 +423,29 @@ export default function ServicesScreen() {
     let cancelled = false;
     const run = async () => {
       const zid = String(location?.storeId || '').trim();
-      setZoneCategoryIdsKey('');
-      setZoneCompanyIdsKey('');
-      setZoneCompanyNamesKey('');
-      setZoneCompaniesLoading(true);
+
+      let appliedPersistedMapping = false;
+
+      const cached = zid ? zoneMappingCache.get(zid) : undefined;
+      const hasFreshCache =
+        !!cached &&
+        (Date.now() - cached.ts) < ZONE_MAPPING_CACHE_TTL_MS &&
+        (!!cached.zoneCompanyIdsKey || !!cached.zoneCompanyNamesKey || !!cached.zoneCategoryIdsKey);
+
+      if (hasFreshCache && cached) {
+        setZoneCompanyIdsKey(cached.zoneCompanyIdsKey);
+        setZoneCompanyNamesKey(cached.zoneCompanyNamesKey);
+        setZoneCategoryIdsKey(cached.zoneCategoryIdsKey);
+        setActiveServiceCategoryIdsKey(cached.zoneCategoryIdsKey);
+        setZoneCompaniesLoading(false);
+        return;
+      } else {
+        setZoneCategoryIdsKey('');
+        setZoneCompanyIdsKey('');
+        setZoneCompanyNamesKey('');
+        setZoneCompaniesLoading(true);
+      }
+
       try {
         if (!zid) {
           // No deliverable zone selected → show none.
@@ -297,6 +455,57 @@ export default function ServicesScreen() {
           }
           return;
         }
+
+        // Try persisted zone mapping (survives app restart). This keeps Android cold starts snappy.
+        try {
+          const raw = await AsyncStorage.getItem(zoneMappingStorageKey(zid));
+          if (raw) {
+            const payload = JSON.parse(raw);
+            const ts = Number(payload?.ts || 0);
+            const zoneCompanyIdsKey = String(payload?.zoneCompanyIdsKey || '');
+            const zoneCompanyNamesKey = String(payload?.zoneCompanyNamesKey || '');
+            const zoneCategoryIdsKey = String(payload?.zoneCategoryIdsKey || '');
+
+            const hasAny = !!(zoneCompanyIdsKey || zoneCompanyNamesKey || zoneCategoryIdsKey);
+
+            const fresh = ts > 0 && (Date.now() - ts) < ZONE_MAPPING_STORAGE_TTL_MS;
+            if (fresh && hasAny) {
+              setZoneCompanyIdsKey(zoneCompanyIdsKey);
+              setZoneCompanyNamesKey(zoneCompanyNamesKey);
+              setZoneCategoryIdsKey(zoneCategoryIdsKey);
+              setActiveServiceCategoryIdsKey(zoneCategoryIdsKey);
+              setZoneCompaniesLoading(false);
+
+              zoneMappingCache.set(zid, {
+                ts: Date.now(),
+                zoneCompanyIdsKey,
+                zoneCompanyNamesKey,
+                zoneCategoryIdsKey,
+              });
+
+              return;
+            }
+
+            // Stale-while-revalidate: even if the mapping is older than our TTL,
+            // it is still far better UX to show something immediately and then
+            // refresh in the background.
+            if (!fresh && hasAny) {
+              appliedPersistedMapping = true;
+              setZoneCompanyIdsKey(zoneCompanyIdsKey);
+              setZoneCompanyNamesKey(zoneCompanyNamesKey);
+              setZoneCategoryIdsKey(zoneCategoryIdsKey);
+              setActiveServiceCategoryIdsKey(zoneCategoryIdsKey);
+              setZoneCompaniesLoading(false);
+
+              // Yield so the UI can render before doing heavier refresh work.
+              await new Promise((r) => setTimeout(r, 0));
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        const t0 = __DEV__ ? Date.now() : 0;
 
         // 1) Try matching by deliveryZoneId
         let snap = await firestore()
@@ -324,26 +533,204 @@ export default function ServicesScreen() {
 
         const ids = new Set<string>();
         const names = new Set<string>();
+        const companyIdsForQuery = new Set<string>();
+        const allowedCatIds = new Set<string>();
+
+        const collectCategoryIdsFromCompany = (data: any) => {
+          const push = (v: any) => {
+            const s = String(v || '').trim();
+            if (s) allowedCatIds.add(s);
+          };
+
+          // Common direct fields
+          push(data?.categoryId);
+          push(data?.masterCategoryId);
+          push(data?.categoryMasterId);
+          push(data?.category_id);
+          push(data?.master_category_id);
+          push(data?.category_master_id);
+
+          // Common array fields
+          const arrayFields = [
+            'categoryIds',
+            'categoryMasterIds',
+            'masterCategoryIds',
+            'appCategoryIds',
+            'category_ids',
+            'category_master_ids',
+            'master_category_ids',
+            'app_category_ids',
+          ];
+          for (const f of arrayFields) {
+            const arr = data?.[f];
+            if (Array.isArray(arr)) arr.forEach(push);
+          }
+
+          // Categories array may contain strings or objects
+          const cats = data?.categories;
+          if (Array.isArray(cats)) {
+            cats.forEach((c: any) => {
+              if (typeof c === 'string' || typeof c === 'number') {
+                push(c);
+                return;
+              }
+              push(c?.id);
+              push(c?.categoryId);
+              push(c?.masterCategoryId);
+              push(c?.categoryMasterId);
+              push(c?.category_id);
+              push(c?.master_category_id);
+              push(c?.category_master_id);
+            });
+          }
+
+          // Some schemas store service/category objects under services/serviceList
+          const serviceArrays = [data?.services, data?.serviceList, data?.serviceCategories];
+          for (const arr of serviceArrays) {
+            if (!Array.isArray(arr)) continue;
+            arr.forEach((s: any) => {
+              push(s?.categoryId);
+              push(s?.masterCategoryId);
+              push(s?.categoryMasterId);
+            });
+          }
+        };
 
         snap.forEach((doc) => {
           const data = doc.data() as any;
           if (data?.isActive === false) return;
 
-          ids.add(String(doc.id));
-          if (data?.companyId) ids.add(String(data.companyId));
+          const docId = String(doc.id || '').trim();
+          if (docId) ids.add(docId);
+          const dataCompanyId = String(data?.companyId || '').trim();
+          if (dataCompanyId) ids.add(dataCompanyId);
+
+          // Prefer explicit companyId when available for service_services joins.
+          if (dataCompanyId) companyIdsForQuery.add(dataCompanyId);
+          else if (docId) companyIdsForQuery.add(docId);
 
           const nm = String(data?.companyName || data?.name || '').trim();
           if (nm) names.add(nm);
+
+          // Fast-path: if the zone mapping already stores category IDs, use them.
+          // This avoids extra service_services reads on initial load.
+          collectCategoryIdsFromCompany(data);
         });
 
-        setZoneCompanyIdsKey(Array.from(ids).filter(Boolean).sort().join('|'));
-        setZoneCompanyNamesKey(Array.from(names).filter(Boolean).sort().join('|'));
+        const zoneIdsKey = Array.from(ids).filter(Boolean).sort().join('|');
+        const zoneNamesKey = Array.from(names).filter(Boolean).sort().join('|');
+        setZoneCompanyIdsKey(zoneIdsKey);
+        setZoneCompanyNamesKey(zoneNamesKey);
+
+        // Derive allowed category IDs for this zone by querying service_services for these companies.
+        // Only do this if the mapping docs didn't already provide category IDs.
+        const companyIds = Array.from(companyIdsForQuery).filter(Boolean);
+
+        if (allowedCatIds.size === 0 && companyIds.length > 0) {
+          const batchSize = 10; // Firestore 'in' limit
+          for (let i = 0; i < companyIds.length; i += batchSize) {
+            if (cancelled) return;
+            const batch = companyIds.slice(i, i + batchSize);
+            if (batch.length === 0) continue;
+
+            const svcSnap = await firestore()
+              .collection('service_services')
+              .where('companyId', 'in', batch)
+              .get();
+
+            svcSnap.forEach((svcDoc) => {
+              const s = svcDoc.data() as any;
+              if (s?.isActive === false) return;
+
+              const candidates = [
+                s?.categoryMasterId,
+                s?.masterCategoryId,
+                s?.categoryId,
+                s?.category_master_id,
+                s?.master_category_id,
+                s?.category_id,
+              ];
+
+              for (const c of candidates) {
+                const id = String(c || '').trim();
+                if (id) allowedCatIds.add(id);
+              }
+            });
+          }
+        }
+
+        // Best-effort fallback: some schemas join services by company name.
+        if (allowedCatIds.size === 0 && names.size > 0) {
+          const allNames = Array.from(names).filter(Boolean);
+          const batchSize = 10;
+          const tryField = async (field: string) => {
+            for (let i = 0; i < allNames.length; i += batchSize) {
+              if (cancelled) return;
+              const batch = allNames.slice(i, i + batchSize);
+              if (batch.length === 0) continue;
+              try {
+                const svcSnap = await firestore()
+                  .collection('service_services')
+                  .where(field, 'in', batch)
+                  .get();
+
+                svcSnap.forEach((svcDoc) => {
+                  const s = svcDoc.data() as any;
+                  if (s?.isActive === false) return;
+                  const id = String(s?.categoryMasterId || s?.masterCategoryId || s?.categoryId || '').trim();
+                  if (id) allowedCatIds.add(id);
+                });
+              } catch {
+                // ignore index/field issues
+              }
+            }
+          };
+
+          await tryField('companyName');
+          if (allowedCatIds.size === 0) await tryField('company');
+        }
+
+        const catIdsKey = Array.from(allowedCatIds).filter(Boolean).sort().join('|');
+        setZoneCategoryIdsKey(catIdsKey);
+        // We now derive category ids directly from service_services for this zone,
+        // so this is also a good proxy for “categories that have active services”.
+        setActiveServiceCategoryIdsKey(catIdsKey);
+
+        if (zid) {
+          zoneMappingCache.set(zid, {
+            ts: Date.now(),
+            zoneCompanyIdsKey: zoneIdsKey,
+            zoneCompanyNamesKey: zoneNamesKey,
+            zoneCategoryIdsKey: catIdsKey,
+          });
+
+          // Persist for cold-start performance.
+          try {
+            await AsyncStorage.setItem(
+              zoneMappingStorageKey(zid),
+              JSON.stringify({
+                ts: Date.now(),
+                zoneCompanyIdsKey: zoneIdsKey,
+                zoneCompanyNamesKey: zoneNamesKey,
+                zoneCategoryIdsKey: catIdsKey,
+              })
+            );
+          } catch {
+            // ignore
+          }
+        }
+
+        if (__DEV__ && t0) {
+          console.log(`[Services][ZoneMapping] storeId=${zid} ms=${Date.now() - t0}`);
+        }
 
         if (__DEV__) {
-          console.log(`[Services][ZoneCompanies] storeId=${zid} companies=${snap.size} ids=${ids.size} names=${names.size}`);
+          console.log(
+            `[Services][ZoneCompanies] storeId=${zid} companies=${snap.size} ids=${ids.size} names=${names.size} zoneCategoryIds=${allowedCatIds.size}`
+          );
         }
       } finally {
-        if (!cancelled) setZoneCompaniesLoading(false);
+        if (!cancelled && !appliedPersistedMapping) setZoneCompaniesLoading(false);
       }
     };
 
@@ -353,49 +740,140 @@ export default function ServicesScreen() {
     };
   }, [location?.storeId]);
 
-  // Derive zone-specific category IDs from the already-loaded active services list.
-  // This avoids relying on an exact Firestore join between service_company and service_services.
+  // Zone-scoped services fetch for search.
+  // We DO NOT subscribe to the full `service_services` collection (too large / slow).
+  // Instead, fetch only services for companies that serve the current zone, and filter client-side.
   useEffect(() => {
     const zid = String(location?.storeId || '').trim();
-    if (!zid || zoneCompaniesLoading || !allServicesLoaded) {
-      setZoneCategoryIdsKey('');
-      return;
-    }
+    const shouldLoadForSearch = isSearchFocused || searchQuery.trim().length > 0;
 
-    const companyIds = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').filter(Boolean) : [];
-    const companyNames = zoneCompanyNamesKey ? zoneCompanyNamesKey.split('|').filter(Boolean) : [];
-    const idSet = new Set(companyIds.map((s) => String(s).trim()).filter(Boolean));
-    const nameSet = new Set(companyNames.map((s) => String(s).trim()).filter(Boolean));
+    // Don't waste work when user isn't searching.
+    if (!shouldLoadForSearch) return;
 
-    const catSet = new Set<string>();
-    let matchedServices = 0;
+    // Need zone mapping first.
+    if (!zid || zoneCompaniesLoading) return;
 
-    for (const s of allServices || []) {
-      if ((s as any)?.isActive === false) continue;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const cached = zoneServicesCache.get(zid);
+        const now = Date.now();
+        if (cached && (now - cached.ts) < ZONE_SERVICES_CACHE_TTL_MS) {
+          setAllServices(cached.services);
+          setAllServicesLoaded(true);
+          return;
+        }
 
-      const cid = String((s as any)?.companyId || '').trim();
-      const cname = String((s as any)?.companyName || (s as any)?.company || '').trim();
+        setAllServicesLoaded(false);
 
-      const matchesZone = (cid && idSet.has(cid)) || (cname && nameSet.has(cname));
-      if (!matchesZone) continue;
+        const companyIds = zoneCompanyIdsKey
+          ? Array.from(
+              new Set(
+                zoneCompanyIdsKey
+                  .split('|')
+                  .map((s) => String(s).trim())
+                  .filter(Boolean)
+              )
+            )
+          : [];
 
-      matchedServices += 1;
+        const companyNames = zoneCompanyNamesKey
+          ? Array.from(
+              new Set(
+                zoneCompanyNamesKey
+                  .split('|')
+                  .map((s) => String(s).trim())
+                  .filter(Boolean)
+              )
+            )
+          : [];
 
-      const cat = String(
-        (s as any)?.categoryMasterId ||
-        (s as any)?.masterCategoryId ||
-        (s as any)?.categoryId ||
-        ''
-      ).trim();
-      if (cat) catSet.add(cat);
-    }
+        if (companyIds.length === 0 && companyNames.length === 0) {
+          setAllServices([]);
+          setAllServicesLoaded(true);
+          zoneServicesCache.set(zid, { ts: now, services: [] });
+          return;
+        }
 
-    const ids = Array.from(catSet).sort();
-    setZoneCategoryIdsKey(ids.join('|'));
-    if (__DEV__) {
-      console.log(`[Services][ZoneCategoriesFromServices] storeId=${zid} matchedServices=${matchedServices} categoryIds=${ids.length}`);
-    }
-  }, [location?.storeId, zoneCompaniesLoading, allServicesLoaded, zoneCompanyIdsKey, zoneCompanyNamesKey, allServices]);
+        const t0 = __DEV__ ? Date.now() : 0;
+
+        const services: any[] = [];
+        const seenServiceId = new Set<string>();
+
+        const pushDocs = (snap: any) => {
+          snap.forEach((doc: any) => {
+            const id = String(doc.id || '').trim();
+            if (!id || seenServiceId.has(id)) return;
+            seenServiceId.add(id);
+            services.push({ id, ...(doc.data() as any) });
+          });
+        };
+
+        // Primary join: service_services.companyId in zoneCompanyIdsKey
+        const batchSize = 10;
+        for (let i = 0; i < companyIds.length; i += batchSize) {
+          if (cancelled) return;
+          const batch = companyIds.slice(i, i + batchSize);
+          if (batch.length === 0) continue;
+          try {
+            const snap = await firestore()
+              .collection('service_services')
+              .where('companyId', 'in', batch)
+              .get();
+            pushDocs(snap);
+          } catch (e) {
+            if (__DEV__) console.log('[Services][ZoneSearchServices] companyId batch failed', e);
+          }
+        }
+
+        // Fallback join by company name fields.
+        const tryField = async (field: string) => {
+          for (let i = 0; i < companyNames.length; i += batchSize) {
+            if (cancelled) return;
+            const batch = companyNames.slice(i, i + batchSize);
+            if (batch.length === 0) continue;
+            try {
+              const snap = await firestore()
+                .collection('service_services')
+                .where(field, 'in', batch)
+                .get();
+              pushDocs(snap);
+            } catch (e) {
+              if (__DEV__) console.log(`[Services][ZoneSearchServices] '${field}' batch failed`, e);
+            }
+          }
+        };
+
+        if (services.length === 0 && companyNames.length > 0) {
+          await tryField('companyName');
+          if (services.length === 0) await tryField('company');
+        }
+
+        // Client-side filter for active services (avoid composite index requirements).
+        const activeOnly = services.filter((s) => (s as any)?.isActive !== false);
+
+        zoneServicesCache.set(zid, { ts: Date.now(), services: activeOnly });
+        if (!cancelled) {
+          setAllServices(activeOnly);
+          setAllServicesLoaded(true);
+        }
+
+        if (__DEV__ && t0) {
+          console.log(`[Services][ZoneSearchServices] storeId=${zid} services=${activeOnly.length} ms=${Date.now() - t0}`);
+        }
+      } catch {
+        if (!cancelled) {
+          setAllServices([]);
+          setAllServicesLoaded(true);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSearchFocused, searchQuery, location?.storeId, zoneCompaniesLoading, zoneCompanyIdsKey, zoneCompanyNamesKey]);
 
   useEffect(() => {
     let mounted = true;
@@ -469,11 +947,33 @@ export default function ServicesScreen() {
     setLoading(true);
     setError(null);
 
+    // Load cached categories first (fast initial paint on Android).
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(CACHED_CATEGORIES_KEY);
+        if (!raw) return;
+        const payload = JSON.parse(raw);
+        const ts = Number(payload?.ts || 0);
+        const categories = Array.isArray(payload?.categories) ? payload.categories : [];
+        const fresh = ts > 0 && (Date.now() - ts) < CACHED_CATEGORIES_TTL_MS;
+        if (!fresh || categories.length === 0) return;
+
+        // Only apply cache if we don't already have categories.
+        setRawServiceCategories((prev) => {
+          if (Array.isArray(prev) && prev.length > 0) return prev;
+          return categories as ServiceCategory[];
+        });
+        setLoading(false);
+      } catch {
+        // ignore
+      }
+    })();
+
     const unsubscribe = firestore()
       .collection('app_categories')
       .where('isActive', '==', true)
       .onSnapshot(
-        async (snapshot) => {
+        (snapshot) => {
           try {
             if (__DEV__) {
               console.log(`📊 Real-time categories: ${snapshot.size} active @ ${new Date().toLocaleTimeString()}`);
@@ -498,14 +998,28 @@ export default function ServicesScreen() {
             // Sort by name
             allCategories.sort((a, b) => a.name.localeCompare(b.name));
 
-            // Populate images from service_categories_master
-            await FirestoreService.populateCategoryImages(allCategories);
-
-            // Store raw categories immediately; we filter using the already-running
-            // active services listener (see activeServiceCategoryIdsKey effect below).
+            // Store raw categories immediately so the UI can render fast.
+            // Populate images in the background to avoid blocking initial paint.
+            const seq = ++categorySnapshotSeqRef.current;
             setRawServiceCategories(allCategories);
             setLoading(false);
             if (__DEV__) console.log('✅ Real-time categories updated (raw):', allCategories.length);
+
+            FirestoreService.populateCategoryImages(allCategories)
+              .then(() => {
+                if (categorySnapshotSeqRef.current !== seq) return;
+                // Trigger re-render with the now-populated imageUrl fields.
+                setRawServiceCategories([...allCategories]);
+
+                // Persist for next cold start.
+                AsyncStorage.setItem(
+                  CACHED_CATEGORIES_KEY,
+                  JSON.stringify({ ts: Date.now(), categories: allCategories })
+                ).catch(() => {});
+              })
+              .catch(() => {
+                // ignore
+              });
           } catch (error) {
             console.error('❌ Error processing real-time category update:', error);
             setError('Failed to load services. Pull down to refresh.');
@@ -580,34 +1094,7 @@ export default function ServicesScreen() {
     setServiceCategories(filtered);
   }, [activeServiceCategoryIdsKey, rawServiceCategories, zoneCategoryIdsKey, location?.storeId]);
 
-  // Real-time listener for active services (used for client-side search to avoid Firestore index requirements).
-  useEffect(() => {
-    const unsub = firestore()
-      .collection('service_services')
-      .where('isActive', '==', true)
-      .onSnapshot(
-        (snap) => {
-          const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-          setAllServices(items);
-          setAllServicesLoaded(true);
-
-          const ids = new Set<string>();
-          for (const s of items) {
-            const catId = String((s as any)?.categoryMasterId || '').trim();
-            if (catId) ids.add(catId);
-          }
-          setActiveServiceCategoryIdsKey(Array.from(ids).sort().join('|'));
-        },
-        (err) => {
-          if (__DEV__) console.log('❌ Failed to listen to active services', err);
-          setAllServices([]);
-          setActiveServiceCategoryIdsKey('');
-          setAllServicesLoaded(true);
-        }
-      );
-
-    return () => unsub();
-  }, []);
+  // NOTE: we intentionally do not subscribe to all active services.
 
   // Client-side service search (debounced) to avoid Firestore index errors and reduce load.
   useEffect(() => {
@@ -1091,15 +1578,82 @@ export default function ServicesScreen() {
     navigation.navigate('BookingHistory');
   }, [navigation]);
 
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-  };
+  useEffect(() => {
+    // Rotate placeholder text only when user isn't interacting.
+    if (isSearchFocused) return;
+    if (searchQuery.trim().length > 0) return;
 
-  const clearSearch = () => {
+    const tick = () => {
+      // Fade out then slide in from bottom.
+      Animated.parallel([
+        Animated.timing(placeholderOpacity, {
+          toValue: 0,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(placeholderTranslateY, {
+          toValue: -4,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setSearchPlaceholderIndex((prev) => (prev + 1) % SERVICES_SEARCH_PLACEHOLDERS.length);
+
+        placeholderTranslateY.setValue(6);
+        placeholderOpacity.setValue(0);
+
+        Animated.parallel([
+          Animated.timing(placeholderOpacity, {
+            toValue: 1,
+            duration: SERVICES_SEARCH_PLACEHOLDER_ANIM_MS,
+            useNativeDriver: true,
+          }),
+          Animated.timing(placeholderTranslateY, {
+            toValue: 0,
+            duration: SERVICES_SEARCH_PLACEHOLDER_ANIM_MS,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    };
+
+    // Start with an intro animation.
+    placeholderTranslateY.setValue(6);
+    placeholderOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(placeholderOpacity, {
+        toValue: 1,
+        duration: SERVICES_SEARCH_PLACEHOLDER_ANIM_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(placeholderTranslateY, {
+        toValue: 0,
+        duration: SERVICES_SEARCH_PLACEHOLDER_ANIM_MS,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const id = setInterval(tick, SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS);
+
+    return () => clearInterval(id);
+  }, [isSearchFocused, placeholderOpacity, placeholderTranslateY, searchQuery]);
+
+  const searchPlaceholderText = React.useMemo(() => {
+    const word = SERVICES_SEARCH_PLACEHOLDERS[searchPlaceholderIndex] || 'services';
+    return `Search for ${word}...`;
+  }, [searchPlaceholderIndex]);
+
+  const showAnimatedSearchPlaceholder = !isSearchFocused && searchQuery.trim().length === 0;
+
+  const handleSearch = useCallback((text: string) => {
+    setSearchQuery(text);
+  }, []);
+
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
     setSearchServices([]);
     searchInputRef.current?.focus();
-  };
+  }, []);
 
   // Data slices with null checks - Show only 6 categories in main view
   const listCategories = searchQuery 
@@ -1356,59 +1910,132 @@ export default function ServicesScreen() {
     );
   }, [onServicePress]);
 
-  const HeaderUI = React.useMemo(() => {
+  const StickyHeaderUI = React.useMemo(() => {
     return (
-      <View>
-        {/* Status Bar */}
+      <Animated.View
+        style={[
+          styles.stickyHeaderWrapper,
+          {
+            paddingTop: headerTopPadding,
+            height: SERVICES_STICKY_HEADER_HEIGHT,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
         <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
-        
-        {/* Header with Background Image */}
-        <ImageBackground
-          key={`gif-${activeGifIndex}`}
-          source={HEADER_GIFS[activeGifIndex]}
-          style={styles.topHeader}
-          resizeMode="contain"
+
+        {/* Scroll background (BEHIND the GIF, not on top of it) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { opacity: headerGradientOpacity }]}
         >
-          <View style={styles.headerOverlay} pointerEvents="box-none">
-            <View style={styles.headerContent}>
-              {/* Booking History Button */}
-              <TouchableOpacity 
-                style={styles.historyButton}
-                onPress={handleHistoryPress}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="receipt-outline" size={20} color="#1D4ED8" />
-                <Text style={styles.historyButtonText}>History</Text>
-              </TouchableOpacity>
+          <LinearGradient
+            colors={[...SERVICES_HEADER_GRADIENT_COLORS]}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
+
+        {/* Background media (GIF) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.stickyHeaderMediaLayer,
+            { height: headerMediaHeight, opacity: headerMediaOpacity },
+          ]}
+        >
+          <ImageBackground
+            key={`gif-${activeGifIndex}`}
+            source={HEADER_GIFS[activeGifIndex]}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="contain"
+          />
+        </Animated.View>
+
+        <View style={styles.stickyHeaderContent} pointerEvents="box-none">
+
+          <View style={styles.headerRow}>
+            {/* Location row (always visible) */}
+            <TouchableOpacity
+              style={[styles.locationRow, styles.locationRowHeader]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Services' })}
+            >
+              <View style={styles.locationRowLeft}>
+                <Ionicons name="location-outline" size={18} color="#00b4a0" />
+                <Text style={[styles.locationRowText, styles.locationRowTextHeader]} numberOfLines={1}>
+                  {hasSelectedLocation
+                    ? `Delivering to ${locationDisplayText}`
+                    : 'Set delivery location'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-down" size={16} color="#64748b" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleHistoryPress}
+              activeOpacity={0.8}
+              style={styles.historyIconButton}
+              accessibilityLabel="Booking history"
+            >
+              <Ionicons name="reader-outline" size={18} color="#0f172a" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Bar */}
+          <View style={[styles.searchContainer, styles.searchContainerHeader]}>
+            <View style={styles.searchHeaderRow}>
+              <View style={[styles.searchBar, styles.searchBarHeader, isSearchFocused && styles.searchBarFocused]}>
+                <Ionicons name="search" size={20} color="#00b4a0" style={styles.searchIcon} />
+                <View style={styles.searchInputWrap}>
+                  {showAnimatedSearchPlaceholder && (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.searchPlaceholderOverlayWrap,
+                        { opacity: placeholderOpacity, transform: [{ translateY: placeholderTranslateY }] },
+                      ]}
+                    >
+                      <Text style={styles.searchPlaceholderOverlayText} numberOfLines={1}>
+                        {searchPlaceholderText}
+                      </Text>
+                    </Animated.View>
+                  )}
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.searchInput}
+                    placeholder={isSearchFocused ? 'Search for services...' : ''}
+                    placeholderTextColor="#94a3b8"
+                    value={searchQuery}
+                    onChangeText={handleSearch}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    returnKeyType="search"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    underlineColorAndroid="transparent"
+                    selectionColor="#00b4a0"
+                    cursorColor="#00b4a0"
+                  />
+                </View>
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+                    <Ionicons name="close-circle" size={20} color="#cbd5e1" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Spacer so search width matches location (which shares row with History) */}
+              <View pointerEvents="none" style={styles.headerRightSpacer} />
             </View>
           </View>
-        </ImageBackground>
-
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
-            <Ionicons name="search" size={20} color="#00b4a0" style={styles.searchIcon} />
-            <TextInput
-              ref={searchInputRef}
-              style={styles.searchInput}
-              placeholder="Search for services..."
-              placeholderTextColor="#94a3b8"
-              value={searchQuery}
-              onChangeText={handleSearch}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              returnKeyType="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color="#cbd5e1" />
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
+      </Animated.View>
+    );
+  }, [activeGifIndex, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, showAnimatedSearchPlaceholder]);
 
+  const ListHeaderUI = React.useMemo(() => {
+    return (
+      <View>
         {/* Show search results header when searching */}
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsHeader}>
@@ -1440,7 +2067,7 @@ export default function ServicesScreen() {
                     setActiveBannerIndex(index);
                   }}
                 />
-                
+
                 {/* Pagination Dots */}
                 {serviceBanners.length > 1 && (
                   <View style={styles.paginationContainer}>
@@ -1462,7 +2089,7 @@ export default function ServicesScreen() {
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>All Services</Text>
               {hasMoreCategories && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.viewAllButtonInline}
                   onPress={handleViewAllCategories}
                   activeOpacity={0.7}
@@ -1533,7 +2160,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, isSearchFocused, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleHistoryPress, handleViewAllCategories, latestLiveBooking, renderServiceListItem, activeGifIndex]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
 
   return (
     <ImageBackground
@@ -1542,6 +2169,7 @@ export default function ServicesScreen() {
       resizeMode="cover"
       blurRadius={3}
     >
+      {StickyHeaderUI}
       {serviceConfirmedBanner && (
         <View style={styles.serviceConfirmedBanner}>
           <View style={styles.serviceConfirmedBannerLeft}>
@@ -1578,10 +2206,10 @@ export default function ServicesScreen() {
           <Text style={styles.emptyLoadingText}>Loading services...</Text>
         </View>
       ) : (
-        <FlatList
+        <Animated.FlatList
           data={isLoading ? [] : (listCategories || [])}
           keyExtractor={(item, index) => item?.id || `item-${index}`}
-          ListHeaderComponent={HeaderUI}
+          ListHeaderComponent={ListHeaderUI}
           renderItem={renderListItem}
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
@@ -1610,8 +2238,13 @@ export default function ServicesScreen() {
               </View>
             )
           }
-          contentContainerStyle={{ paddingBottom: 30 }}
+          contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 30 }}
           showsVerticalScrollIndicator={false}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1703,13 +2336,73 @@ const styles = StyleSheet.create({
   },
 
   // Header Styles
-  topHeader: {
-    height: 200,
-    marginTop: 20,
-    paddingTop: 80,
-    paddingBottom: 30,
+  stickyHeaderWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 1000,
+    overflow: 'hidden',
+  },
+
+  stickyHeaderMediaLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#f8fafc',
+  },
+
+  stickyHeaderContent: {
+    flex: 1,
     paddingHorizontal: 16,
-    backgroundColor: '#ffffff',
+    paddingBottom: 10,
+    justifyContent: 'flex-start',
+  },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  locationRowHeader: {
+    marginTop: 4,
+    marginHorizontal: 0,
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderColor: 'rgba(226,232,240,0.85)',
+  },
+
+  locationRow: {
+    marginTop: 10,
+    marginHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(226,232,240,0.9)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  locationRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 8,
+    paddingRight: 10,
+  },
+  locationRowText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  locationRowTextHeader: {
+    color: '#0f172a',
   },
 
   headerOverlay: {
@@ -1756,6 +2449,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#fdfdfd",
   },
 
+  searchContainerHeader: {
+    paddingHorizontal: 0,
+    paddingVertical: 4,
+    backgroundColor: 'transparent',
+  },
+
+  searchHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  headerRightSpacer: {
+    width: 42,
+    marginLeft: 10,
+  },
+
+  searchBarHeader: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1787,11 +2505,54 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#1e293b",
     fontWeight: "400",
+    backgroundColor: 'transparent',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+    minHeight: 20,
+    lineHeight: 20,
+  },
+
+  searchInputWrap: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+    minHeight: 24,
+  },
+
+  searchPlaceholderOverlayWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+
+  searchPlaceholderOverlayText: {
+    color: '#94a3b8',
+    fontSize: 15,
+    fontWeight: '400',
+    includeFontPadding: false,
   },
 
   clearButton: {
     padding: 4,
     marginLeft: 8,
+  },
+
+  historyIconButton: {
+    marginLeft: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
   },
 
   searchResultsCard: {

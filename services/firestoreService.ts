@@ -4690,31 +4690,45 @@ export class FirestoreService {
         console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
       }
       
-      // Direct query to service_bookings collection
-      const snapshot = await firestore()
-        .collection('service_bookings')
-        .where('customerId', '==', userId)
-        .get();
+      // IMPORTANT: apply `limit` in the query to avoid downloading the user's full history.
+      // Prefer server-side sort (fast + stable). Fallback to unordered limit if an index is missing.
+      let snapshot;
+      try {
+        snapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', userId)
+          .orderBy('createdAt', 'desc')
+          .limit(limit)
+          .get();
+      } catch (e: any) {
+        const isIndexError =
+          e?.code === 'firestore/failed-precondition' &&
+          typeof e?.message === 'string' &&
+          e.message.toLowerCase().includes('index');
+
+        if (__DEV__) {
+          console.warn('⚠️ SIMPLE FETCH: orderBy(createdAt) failed, falling back to unordered limited query', {
+            isIndexError,
+            code: e?.code,
+            message: e?.message,
+          });
+        }
+
+        snapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', userId)
+          .limit(limit)
+          .get();
+      }
 
       if (__DEV__) {
-        console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+        console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId} (limit=${limit})`);
       }
 
       const bookings: ServiceBooking[] = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
-        
-        if (__DEV__) {
-          console.log(`📋 Processing booking ${doc.id}:`, {
-            serviceName: data.serviceName,
-            customerName: data.customerName,
-            status: data.status,
-            date: data.date,
-            time: data.time,
-            customerId: data.customerId
-          });
-        }
         
         // Add ALL bookings for this user (no filtering)
         bookings.push({
@@ -4765,21 +4779,10 @@ export class FirestoreService {
 
       const result = bookings.slice(0, limit);
 
-      console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
-      
-      if (result.length === 0) {
-        console.log(`ℹ️ No bookings found for user ${userId} in service_bookings collection`);
-        console.log(`💡 Check if:`);
-        console.log(`   - User is logged in correctly`);
-        console.log(`   - Bookings have correct customerId field`);
-        console.log(`   - Bookings are in service_bookings collection`);
-      } else {
-        console.log(`📋 Bookings found:`);
-        result.forEach((booking, index) => {
-          console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
-        });
+      if (__DEV__) {
+        console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
       }
-      
+
       return result;
     } catch (error: any) {
       console.error('❌ Error in simple fetch:', error);
@@ -6997,7 +7000,7 @@ export class FirestoreService {
             
             companyMap.set(companyId, company);
             
-          } catch (error) {
+          } catch {
           }
         }
       }
@@ -7007,7 +7010,7 @@ export class FirestoreService {
 
       return companiesArray;
       
-    } catch (error) {
+    } catch {
       throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
     }
   }
@@ -7233,14 +7236,14 @@ export class FirestoreService {
             companyMap.set(companyId, company);
           });
           
-        } catch (fallbackError) {
+        } catch {
         }
         }
       
         const companiesArray = Array.from(companyMap.values());
 
         return companiesArray;
-      } catch (error) {
+      } catch {
         throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
       }
     })();
@@ -7428,7 +7431,7 @@ export class FirestoreService {
 
           // Dedupe
           serviceServicesIds = Array.from(new Set(serviceServicesIds));
-        } catch (error) {
+        } catch {
           // ignore
         }
       }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,6 @@ import { BookingUtils } from "../utils/bookingUtils";
 import ServiceCancellationModal from "../components/ServiceCancellationModal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
 import axios from "axios";
 
 const LOG_PREFIX = "📚[SvcPay]";
@@ -46,6 +45,27 @@ const summarizeBookingForDebug = (b: any) => {
   };
 };
 
+const filterBookingsByStatus = (all: ServiceBooking[], status: FilterStatus): ServiceBooking[] => {
+  if (status === 'all') return all;
+  if (status === 'active') {
+    return all.filter((booking) => ['pending', 'assigned', 'started'].includes(booking.status));
+  }
+  if (status === 'pending') return all.filter((booking) => booking.status === 'pending');
+  if (status === 'completed') return all.filter((booking) => booking.status === 'completed');
+  if (status === 'rejected') {
+    return all.filter((booking) => booking.status === 'rejected' || booking.status === 'reject');
+  }
+  if (status === 'cancelled') return all.filter((booking) => booking.status === 'cancelled');
+  return all.filter((booking) => booking.status === status);
+};
+
+const hasPotentialStatusIssues = (all: ServiceBooking[]): boolean => {
+  return all.some((b: any) => {
+    const status = String(b?.status || '').toLowerCase();
+    return status === 'reject' || status === 'cancel' || status === 'canceled';
+  });
+};
+
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
   const [bookings, setBookings] = useState<ServiceBooking[]>([]);
@@ -68,7 +88,12 @@ export default function BookingHistoryScreen() {
   // On booking history open, reconcile once so pending bookings become confirmed/paid.
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
 
+  const activeFilterRef = useRef<FilterStatus>(activeFilter);
+  useEffect(() => {
+    activeFilterRef.current = activeFilter;
+  }, [activeFilter]);
 
+  const didRunBackgroundFixesRef = useRef(false);
 
   const reconcileServicePayments = async () => {
     try {
@@ -160,32 +185,29 @@ export default function BookingHistoryScreen() {
         return;
       }
 
-      // Keep noise low: history screen should be quiet in dev unless we're debugging grouping.
-      
-  // First, get ALL user bookings for count calculation
-      const allUserBookings = await FirestoreService.getSimpleUserBookings(100);
-      setAllBookings(allUserBookings);
-      
-  // Then get filtered bookings for display
-      const fetchedBookings = await FirestoreService.getUserBookingsByStatus(filter, 50);
-      setBookings(fetchedBookings);
+        // Fetch once, then filter locally for a snappy history screen.
+        const allUserBookings = await FirestoreService.getSimpleUserBookings(100);
+        setAllBookings(allUserBookings);
+
+        const filtered = filterBookingsByStatus(allUserBookings, filter);
+        setBookings(filtered.slice(0, 50));
 
       if (__DEV__) {
-        const planLike = fetchedBookings.filter((b: any) => !!(b as any)?.planGroupId);
+        const planLike = filtered.filter((b: any) => !!(b as any)?.planGroupId);
         console.log('🧪 DEBUG(history): fetched bookings sample', {
           filter,
-          fetchedCount: fetchedBookings.length,
+          fetchedCount: filtered.length,
           planGroupIdCount: planLike.length,
           uniquePlanGroupIds: Array.from(new Set(planLike.map((b: any) => String((b as any).planGroupId || '')))).filter(Boolean).length,
-          sample0: summarizeBookingForDebug(fetchedBookings[0]),
-          sample1: summarizeBookingForDebug(fetchedBookings[1]),
+          sample0: summarizeBookingForDebug(filtered[0]),
+          sample1: summarizeBookingForDebug(filtered[1]),
         });
       }
       
       if (__DEV__) {
         console.log(`🧪 DEBUG(history): loaded bookings`, {
           filter,
-          fetched: fetchedBookings.length,
+          fetched: filtered.length,
           total: allUserBookings.length,
         });
       }
@@ -203,30 +225,48 @@ export default function BookingHistoryScreen() {
     }
   };
 
+  // Initial load
   useEffect(() => {
-    // Fix any inconsistent booking statuses first
-    const fixStatusesAndFetch = async () => {
+    fetchBookings(false, activeFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Filter switching should be instant (no network)
+  useEffect(() => {
+    if (allBookings.length === 0) return;
+    const filtered = filterBookingsByStatus(allBookings, activeFilter);
+    setBookings(filtered.slice(0, 50));
+  }, [activeFilter, allBookings]);
+
+  // Background reconcile/status fix should not block first paint.
+  useEffect(() => {
+    if (didRunBackgroundFixesRef.current) return;
+    if (allBookings.length === 0) return;
+    didRunBackgroundFixesRef.current = true;
+
+    const run = async () => {
       try {
-        // First reconcile any paid-but-not-finalized online service payments
         await reconcileServicePayments();
 
-        // Fix inconsistent statuses
-        await FirestoreServiceExtensions.fixInconsistentBookingStatuses();
-        
-        // Debug booking statuses
-        await FirestoreServiceExtensions.debugBookingStatusesDetailed();
-        
-        // Then fetch bookings
-        fetchBookings(false, activeFilter);
-      } catch (error) {
-        console.error('Error fixing statuses:', error);
-        // Still try to fetch bookings even if fix fails
-        fetchBookings(false, activeFilter);
+        const shouldFix = hasPotentialStatusIssues(allBookings);
+        if (shouldFix) {
+          await FirestoreServiceExtensions.fixInconsistentBookingStatuses();
+          // Refresh list after fixes so user sees corrected statuses.
+          await fetchBookings(false, activeFilterRef.current);
+        }
+
+        // Very noisy; keep off unless actively debugging.
+        if (__DEV__ && false) {
+          await FirestoreServiceExtensions.debugBookingStatusesDetailed();
+        }
+      } catch (e) {
+        console.error('Error running background booking fixes:', e);
       }
     };
 
-    fixStatusesAndFetch();
-  }, [activeFilter]);
+    // Defer so UI can render first.
+    setTimeout(run, 0);
+  }, [allBookings]);
 
   const onRefresh = () => {
     fetchBookings(true, activeFilter);
@@ -501,82 +541,6 @@ export default function BookingHistoryScreen() {
 
     return list;
   }, [groupedBookingsBase, timeFilter, sortOrder]);
-
-  const normalizeStatus = (raw: any) => {
-    const s = String(raw || '').trim().toLowerCase();
-    // Handle common variants seen in mixed client/server setups
-    if (s === 'reject') return 'rejected';
-    if (s === 'canceled') return 'cancelled';
-    if (s === 'payment_pending' || s === 'payment-pending' || s === 'pending_payment') return 'pending';
-    if (s === 'unassigned') return 'pending';
-    return s;
-  };
-
-  const canDeleteBooking = (b: ServiceBooking) => {
-    const s = normalizeStatus((b as any)?.status);
-    // Safety: allow only non-finalized bookings from the client UI.
-    // If you want to allow deleting completed/confirmed, we can extend this list.
-    return ['pending', 'cancelled', 'rejected'].includes(s);
-  };
-
-  const deleteBookings = async (bookingsToDelete: ServiceBooking[]) => {
-    if (!bookingsToDelete?.length) return;
-
-    const notAllowed = bookingsToDelete.filter((b) => !canDeleteBooking(b));
-    if (notAllowed.length > 0) {
-      const statusSummary = notAllowed
-        .map((b) => ({ id: String((b as any)?.id || ''), status: String((b as any)?.status || ''), normalized: normalizeStatus((b as any)?.status) }))
-        .slice(0, 8);
-      Alert.alert(
-        'Can\'t delete',
-        `Some bookings in this group are not deletable.\n\nAllowed: Pending / Cancelled / Rejected.\n\nBlocked sample: ${statusSummary
-          .map((x) => `${x.status}→${x.normalized}`)
-          .join(', ')}`
-      );
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Delete in chunks (Firestore batch max 500 ops)
-      const ids = bookingsToDelete.map((b) => String(b.id));
-      const chunkSize = 450;
-      for (let i = 0; i < ids.length; i += chunkSize) {
-        const chunk = ids.slice(i, i + chunkSize);
-        const batch = firestore().batch();
-        chunk.forEach((id) => {
-          batch.delete(firestore().collection('service_bookings').doc(id));
-        });
-        await batch.commit();
-      }
-
-      Alert.alert('Deleted', `Deleted ${ids.length} booking${ids.length === 1 ? '' : 's'}.`, [
-        { text: 'OK', onPress: () => fetchBookings(false, activeFilter) },
-      ]);
-    } catch (e) {
-      console.error('Error deleting bookings:', e);
-      Alert.alert('Error', 'Failed to delete booking(s). Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const confirmDelete = (title: string, bookingsToDelete: ServiceBooking[]) => {
-    Alert.alert(
-      'Delete booking',
-      `Delete ${title}?\n\nThis will permanently remove it from your history.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteBookings(bookingsToDelete),
-        },
-      ]
-    );
-  };
-
 
   useEffect(() => {
     if (!__DEV__) return;
