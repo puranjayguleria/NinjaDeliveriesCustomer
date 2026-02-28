@@ -1018,13 +1018,12 @@ export default function CompanySelectionScreen() {
                 const isBusy = (company as any).isBusy === true;
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     style={[
                       styles.providerCard,
                       isSelected && styles.providerCardSelected,
                       isBusy && styles.providerCardBusy,
                     ]}
-                    activeOpacity={isBusy ? 0.3 : 0.7}
                     disabled={isBusy}
                     onPress={() => {
                       if (isBusy) return;
@@ -1071,18 +1070,19 @@ export default function CompanySelectionScreen() {
                               <Text style={styles.companyDescription} numberOfLines={2}>
                                 {String((company as any).description).trim()}
                               </Text>
-                              <Pressable
-                                onPress={() =>
+                              <TouchableOpacity
+                                onPress={() => {
                                   setCompanyDescriptionModal({
                                     visible: true,
                                     title: String(company.companyName || company.serviceName || 'Company'),
                                     description: String((company as any).description).trim(),
-                                  })
-                                }
+                                  });
+                                }}
                                 hitSlop={8}
+                                activeOpacity={0.6}
                               >
                                 <Text style={styles.seeMoreText}>See more</Text>
-                              </Pressable>
+                              </TouchableOpacity>
                             </View>
                           ) : null}
                           <Text style={styles.packageOptionName} numberOfLines={1}>
@@ -1155,7 +1155,7 @@ export default function CompanySelectionScreen() {
                         {pkgObj.description}
                       </Text>
                     ) : null}
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               }}
               contentContainerStyle={{ paddingBottom: 120 }}
@@ -1211,18 +1211,19 @@ export default function CompanySelectionScreen() {
                         <Text style={styles.companyDescription} numberOfLines={2}>
                           {String((item as any).description).trim()}
                         </Text>
-                        <Pressable
-                          onPress={() =>
+                        <TouchableOpacity
+                          onPress={() => {
                             setCompanyDescriptionModal({
                               visible: true,
                               title: String(item.companyName || item.serviceName || 'Company'),
                               description: String((item as any).description).trim(),
-                            })
-                          }
+                            });
+                          }}
                           hitSlop={8}
+                          activeOpacity={0.6}
                         >
                           <Text style={styles.seeMoreText}>See more</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     ) : null}
                 </View>
