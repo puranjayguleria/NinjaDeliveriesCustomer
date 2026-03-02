@@ -1,7 +1,7 @@
 // navigation/BottomTabNavigator.tsx
 
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Pressable } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import OrdersStack from './OrdersStack';
@@ -13,6 +13,10 @@ import { useLocationContext } from '../context/LocationContext';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const Tab = createBottomTabNavigator();
+
+const TabBarButton = (props: any) => (
+  <Pressable {...props} android_ripple={{ color: 'transparent' }} />
+);
 
 const BottomTabNavigator: React.FC = () => {
   const { location } = useLocationContext();
@@ -44,6 +48,7 @@ const BottomTabNavigator: React.FC = () => {
         },
        tabBarActiveTintColor: "#0d9488",     // Professional teal
 tabBarInactiveTintColor: "#64748b",   // Slate gray
+        tabBarButton: (props) => <TabBarButton {...props} />,
 
         headerShown: false,
       })}
@@ -91,7 +96,7 @@ tabBarInactiveTintColor: "#64748b",   // Slate gray
           },
         })}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarButton: () => null }} />
     </Tab.Navigator>
   );
 };

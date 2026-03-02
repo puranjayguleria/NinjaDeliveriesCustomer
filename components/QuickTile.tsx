@@ -11,9 +11,9 @@ const TILE_W = 120;
 const TILE_H = 210;
 const BLUR = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
-const CART_BAR_H = 30;
-const CART_BAR_MARGIN = 6;
-const RESERVED_BOTTOM = CART_BAR_H + CART_BAR_MARGIN + 2;
+const CART_BAR_H = 28;
+const CART_BAR_MARGIN = 4;
+const RESERVED_BOTTOM = CART_BAR_H + CART_BAR_MARGIN + 4;
 
 export type QuickTileProps = {
   p: {
@@ -42,9 +42,10 @@ export type QuickTileProps = {
   guard?: (cb: () => void, isPan: boolean) => void;
   isPan?: boolean;
   ribbonColor?: string;
+  style?: any; // Allow style overrides
 };
 
-function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
+function QuickTileBase({ p, guard, isPan, ribbonColor, style }: QuickTileProps) {
   const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
   const qty = useCartQty(p.id); // ⬅️ subscribe per item — no parent cart prop
   const { location } = useLocationContext();
@@ -104,20 +105,53 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
           {
             width: TILE_W,
             height: TILE_H,
-            backgroundColor: theme.productCardBg,
-            borderColor: (theme as any).productBorder ?? "#e0e0e0",
-            borderWidth: 1,
-            padding: 6,
+            backgroundColor: '#FFF',
+            borderColor: '#E1BEE7', // Light Purple Border
+            borderWidth: 1.5,
+            borderRadius: 16,
+            padding: 8,
             paddingBottom: RESERVED_BOTTOM,
+            shadowColor: '#E91E63', // Festive Pink Shadow
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15,
+            shadowRadius: 6,
+            elevation: 4
           },
+          style // Apply style override here
         ]}
       >
+        {/* Decorative corner flowers (CSS-based approximation) */}
+        {style?.borderWidth === 1 && style?.borderColor === '#DAA520' && (
+          <>
+            <View style={{ position: 'absolute', top: -4, left: -4, zIndex: 10 }}>
+              <Text style={{ fontSize: 16 }}>🌼</Text>
+            </View>
+            <View style={{ position: 'absolute', top: -4, right: -4, zIndex: 10 }}>
+              <Text style={{ fontSize: 16 }}>🌼</Text>
+            </View>
+            <View style={{ position: 'absolute', bottom: 2, left: -4, zIndex: 10 }}>
+              <Text style={{ fontSize: 16 }}>🌼</Text>
+            </View>
+            <View style={{ position: 'absolute', bottom: 2, right: -4, zIndex: 10 }}>
+              <Text style={{ fontSize: 16 }}>🌼</Text>
+            </View>
+          </>
+        )}
         {/* Image */}
         <View
           style={[styles.imageContainer, { backgroundColor: theme.productImageBg }]}
         >
           {discountPercent > 0 && (
-            <View style={[styles.discountTag, { backgroundColor: theme.discountTagBg }]}>
+            <View style={[styles.discountTag, { 
+              backgroundColor: '#FF4081', // Festive Pink
+              borderRadius: 8,
+              transform: [{ rotate: '-12deg' }],
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 2,
+              elevation: 3
+            }]}>
               <Text style={styles.discountTagTxt}>{discountPercent}% OFF</Text>
             </View>
           )}
@@ -135,7 +169,7 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
         {/* Content */}
         <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
 
-        <View style={[styles.ribbon, { backgroundColor: ribbonColor || theme.priceOverlayBg }]}>
+        <View style={[styles.ribbon, { backgroundColor: ribbonColor || '#FF9800', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 }]}>
           <Text style={styles.priceNow}>₹{price}</Text>
           {discountPercent > 0 && <Text style={styles.priceMRP}>₹{mrp}</Text>}
         </View>
@@ -143,44 +177,50 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
         {/* Cart bar */}
         {qty === 0 ? (
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.cartBar,
               {
-                backgroundColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
-                borderColor: stock > 0 ? (ribbonColor || theme.addToCartBg) : "#bdbdbd",
+                backgroundColor: stock > 0 ? (ribbonColor || "#009688") : "#f5f5f5",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
+                opacity: pressed ? 0.9 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
               },
             ]}
             onPress={handleAdd}
             disabled={stock <= 0}
           >
-            <Text style={styles.cartBarAdd}>{stock > 0 ? "ADD" : "OUT OF STOCK"}</Text>
+            <Text style={[styles.cartBarAdd, { color: stock > 0 ? "#fff" : "#aaa" }]}>
+              {stock > 0 ? "ADD" : "SOLD OUT"}
+            </Text>
           </Pressable>
         ) : (
           <View
             style={[
               styles.cartBar,
               {
-                backgroundColor: theme.qtyBarBg,
-                borderColor: (ribbonColor || theme.qtyBtnBorder),
+                backgroundColor: "#fff",
+                borderWidth: 1.5,
+                borderColor: (ribbonColor || "#009688"),
                 flexDirection: "row",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
+                justifyContent: "space-between",
+                paddingHorizontal: 2,
               },
             ]}
           >
-            <Pressable onPress={handleDec} hitSlop={12}>
-              <MaterialIcons name="remove" size={18} color={ribbonColor || theme.qtyBtnBg} />
+            <Pressable onPress={handleDec} hitSlop={12} style={{ padding: 4 }}>
+              <MaterialIcons name="remove" size={16} color={ribbonColor || "#009688"} />
             </Pressable>
 
-            <Text style={[styles.qtyNum, { color: ribbonColor || theme.qtyBtnBg }]}>{qty}</Text>
+            <Text style={[styles.qtyNum, { color: ribbonColor || "#009688", fontSize: 12 }]}>{qty}</Text>
 
-            <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock}>
+            <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock} style={{ padding: 4 }}>
               <MaterialIcons
                 name="add"
-                size={18}
-                color={qty >= stock ? "#bdbdbd" : (ribbonColor || theme.qtyBtnBg)}
+                size={16}
+                color={qty >= stock ? "#e0e0e0" : (ribbonColor || "#009688")}
               />
             </Pressable>
           </View>
@@ -195,6 +235,8 @@ export const QuickTile = memo(QuickTileBase, (prev, next) => {
   if (prev.isPan !== next.isPan) return false;
   if (prev.guard !== next.guard) return false;
   if (prev.ribbonColor !== next.ribbonColor) return false;
+  // If style changes, re-render
+  if (JSON.stringify(prev.style) !== JSON.stringify(next.style)) return false;
 
   const a = prev.p;
   const b = next.p;
@@ -278,14 +320,18 @@ const styles = StyleSheet.create({
   },
   cartBar: {
     position: "absolute",
-    left: 6,
-    right: 6,
-    borderRadius: 16,
+    left: 10,
+    right: 10,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
     zIndex: 3,
   },
-  cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  qtyNum: { fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+  cartBarAdd: { color: "#fff", fontWeight: "800", fontSize: 11, letterSpacing: 0.5 },
+  qtyNum: { fontWeight: "700", fontSize: 12, marginHorizontal: 8 },
 });

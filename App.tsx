@@ -52,6 +52,7 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
 /* ──────────────────────────────────────────────────────────
    Screens
    ────────────────────────────────────────────────────────── */
+import OrdersScreen from "./screens/OrdersScreen";
 import ProductsHomeScreen from "./screens/ProductsHomeScreen";
 import ServicesStack from "./navigation/ServicesStack";
 
@@ -81,6 +82,7 @@ import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
 import LeaderboardScreen from "./screens/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/AllDiscountedProductsScreen";
+import HoliSpecialsScreen from "./screens/HoliSpecialsScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -90,6 +92,7 @@ import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/RewardScreen";
+import ContactUsScreen from "./screens/ContactUsScreen";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
@@ -98,7 +101,6 @@ import CuisinesScreen from './screens/CuisinesScreen';
 import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
 import { RestaurantCartProvider } from './context/RestaurantCartContext';
 import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
-import OrdersScreen from "./screens/OrdersScreen";
 import OrderSummaryScreen from "./screens/OrderSummaryScreen";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -300,6 +302,7 @@ const NinjaEatsTabs = () => (
       component={ProfileScreen}
       options={{
         title: "Profile",
+        tabBarButton: () => null,
         tabBarIcon: ({ color, size }) => (
           <MaterialIcons name="person" size={size} color={color} />
         ),
@@ -433,6 +436,11 @@ function HomeStack() {
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
       />
+      <Stack.Screen
+        name="HoliSpecials"
+        component={HoliSpecialsScreen}
+        options={{ title: "Holi Specials", headerShown: true }}
+      />
 
       {/* Order flow */}
       <Stack.Screen
@@ -545,6 +553,17 @@ const ProfileStack = () => (
       name="RewardScreen"
       component={HiddenCouponCard}
       options={{ title: "Reward Screen", headerShown: false }}
+    />
+    <Stack.Screen name="Orders" component={OrdersScreen} />
+    <Stack.Screen
+      name="ContactUs"
+      component={ContactUsScreen}
+      options={{ title: "Contact Us", headerShown: false }}
+    />
+    <Stack.Screen
+      name="TermsAndConditions"
+      component={TermsAndConditionsScreen}
+      options={{ title: "Terms & Conditions", headerShown: false }}
     />
   </Stack.Navigator>
 );
@@ -744,52 +763,90 @@ function AppTabs() {
           };
           return {
             headerShown: false,
-            tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "grey",
+            tabBarActiveTintColor: "#e91e63", // Holi Pink for active
+            tabBarInactiveTintColor: "#607d8b", // Cool Grey for inactive
+            tabBarActiveBackgroundColor: "rgba(255, 235, 238, 0.5)", // Light pink tint
+            tabBarItemStyle: {
+              marginHorizontal: 0,
+              marginTop: 4,
+              marginBottom: Platform.OS === "android" ? 4 : 10,
+              paddingVertical: 4,
+            },
+            tabBarLabelStyle: {
+              fontSize: 10,
+              fontWeight: "700",
+              marginBottom: 0,
+            },
             tabBarStyle: {
               backgroundColor: "#ffffff",
-              borderTopWidth: 1,
-              borderTopColor: "#f0f0f0",
-              height: Platform.OS === "android" ? 60 : 85,
-              paddingBottom: Platform.OS === "android" ? 10 : 30,
-              elevation: 8,
+              borderTopWidth: 0,
+              height: Platform.OS === "android" ? 60 : 80,
+              paddingBottom: Platform.OS === "android" ? 4 : 20,
+              paddingHorizontal: 0,
+              elevation: 10,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
             },
             // tab bar icon configuration
-            tabBarIcon: ({ color, size }) => {
+            tabBarIcon: ({ color, size, focused }) => {
               const isService = route.name === "ServicesTab";
-              const iconName = iconMap[route.name];
+              let iconName = iconMap[route.name];
+              
+              // Use filled icons for focused state
+              if (focused) {
+                iconName = iconName.replace("-outline", "") as any;
+                if (iconName === "apps") iconName = "grid"; // mapping adjustment
+              }
 
               return (
                 <Animated.View
                   style={{
-                    width: size + 12,
-                    height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
                     transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
-                  {isService && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        backgroundColor: "red",
-                        paddingHorizontal: 4,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-                        NEW
-                      </Text>
-                    </View>
-                  )}
-
                   <Ionicons
                     name={iconName}
-                    size={size}
-                    color={isService ? "red" : color}
+                    size={focused ? size + 2 : size}
+                    color={color}
                   />
+
+                  {route.name === "ServicesTab" && (
+                    <View style={{
+                      position: 'absolute',
+                      top: -8,
+                      alignSelf: 'center',
+                      backgroundColor: '#e71d36', // Bright red
+                      borderRadius: 6,
+                      paddingHorizontal: 4,
+                      paddingVertical: 0.5,
+                      borderWidth: 1,
+                      borderColor: '#fff',
+                      elevation: 5,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 3.84,
+                      zIndex: 10,
+                    }}>
+                      <Text style={{
+                        color: '#fff',
+                        fontSize: 7,
+                        fontWeight: '800',
+                        letterSpacing: 0.2,
+                        textAlign: 'center',
+                      }}>NEW</Text>
+                    </View>
+                  )}
 
                   {route.name === "CartFlow" && totalItems > 0 && (
                     <View style={styles.badgeContainer}>
@@ -817,13 +874,6 @@ function AppTabs() {
           options={{ title: "Categories" }}
         />
         
-        {/* ⿣ Featured Tab */}
-        <Tab.Screen
-          name="FeaturedTab"
-          component={FeaturedStack}
-          options={{ title: "Featured" }}
-        />
-
         {/* ⿣ Services Tab */}
         <Tab.Screen
           name="ServicesTab"
@@ -866,6 +916,13 @@ function AppTabs() {
               }, 800);
             },
           })}
+        />
+
+        {/* ⿣ Featured Tab */}
+        <Tab.Screen
+          name="FeaturedTab"
+          component={FeaturedStack}
+          options={{ title: "Featured" }}
         />
 
         {/* ⿤ Cart (with modal selection) */}
@@ -911,7 +968,11 @@ function AppTabs() {
         <Tab.Screen
           name="Profile"
           component={ProfileStack}
-          options={{ title: "Profile" }}
+          options={{
+            title: "Profile",
+            tabBarButton: () => null,
+            tabBarItemStyle: { display: "none" },
+          }}
           listeners={({ navigation }) => ({
             tabPress: (e) => {
               if (!auth().currentUser) {
@@ -1298,7 +1359,7 @@ const App: React.FC = () => {
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ErrorBoundary>
-        <StatusBar style="dark" translucent backgroundColor="transparent" />
+        <StatusBar style="dark" translucent={false} backgroundColor="#fff" />
 
         <CustomerProvider>
         <CartProvider>

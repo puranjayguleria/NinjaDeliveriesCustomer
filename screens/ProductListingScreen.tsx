@@ -239,7 +239,7 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* ---------- Side nav ---------- */}

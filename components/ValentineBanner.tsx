@@ -41,7 +41,7 @@ const ValentineBanner: React.FC<ValentineBannerProps> = ({ imageUrl }) => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: H,
-    marginBottom: 18,
+    marginBottom: 0, // Reduced gap below Holi banner
     alignItems: "center",
   },
   pressable: {

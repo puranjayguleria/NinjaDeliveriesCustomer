@@ -17,8 +17,10 @@ import auth from "@react-native-firebase/auth";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RFValue } from "react-native-responsive-fontsize";
 import Loader from "@/components/VideoLoader";
+import { useNavigation } from "@react-navigation/native";
 
 export default function HiddenCouponCard() {
+  const navigation = useNavigation<any>();
   const [userId, setUserId] = useState(null);
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -109,7 +111,21 @@ export default function HiddenCouponCard() {
   return (
     <SafeAreaView>
       <View style={styles.headerContainer}>
+        <Pressable
+          style={styles.headerBackButton}
+          onPress={() => {
+            if ((navigation as any)?.canGoBack?.()) {
+              (navigation as any).goBack();
+              return;
+            }
+            (navigation as any).navigate?.("Profile");
+          }}
+          hitSlop={10}
+        >
+          <Feather name="arrow-left" size={22} color="#0F172A" />
+        </Pressable>
         <Text style={styles.header}>Rewards</Text>
+        <View style={styles.headerSpacer} />
       </View>
       <View style={{ height: "85%" }}>
         {loading ? (
@@ -466,10 +482,20 @@ export default function HiddenCouponCard() {
 const styles = StyleSheet.create({
   header: {
     fontSize: RFValue(23),
-    alignSelf: "center",
-    marginTop: "5%",
-    marginBottom: "3%",
+    fontWeight: "800",
+    color: "#0F172A",
+    flex: 1,
+    textAlign: "center",
   },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F1F5F9",
+  },
+  headerSpacer: { width: 40 },
   card: {
     backgroundColor: "rgba(192, 217, 228, 0.28)",
     borderRadius: RFValue(14),
@@ -599,6 +625,9 @@ const styles = StyleSheet.create({
   headerContainer: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: RFValue(16),
+    paddingTop: RFValue(6),
+    paddingBottom: RFValue(8),
   },
 });
