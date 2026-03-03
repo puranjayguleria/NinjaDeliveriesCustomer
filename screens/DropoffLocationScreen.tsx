@@ -442,7 +442,7 @@ const DropoffLocationScreen: React.FC = () => {
 
                 {/* Search Input */}
                 <TextInput
-                  placeholder="Search for drop-off location"
+                  placeholder="Search drop-off location"
                   style={styles.searchInput}
                   value={placeQuery}
                   onChangeText={handlePlaceQueryChange}

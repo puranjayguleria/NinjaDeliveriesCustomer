@@ -148,7 +148,7 @@ export default function HoliSpecialsScreen() {
   }, [userName]);
 
   const onOpenSub = (sub: SubcategoryDoc) => {
-    nav.navigate("ProductListingFromHome", {
+    nav.navigate("HoliSpecialScreen", {
       categoryId: CATEGORY_ID,
       categoryName: String(sub?.name || "Holi Specials"),
       subcategoryId: sub.id,
@@ -157,9 +157,15 @@ export default function HoliSpecialsScreen() {
 
   return (
     <View style={styles.page}>
-      <LinearGradient
-        colors={["#FFF7ED", "#FDF2F8", "#ECFEFF", "#F0FDF4", "#FFFFFF"]}
+      <Image
+        source={{
+          uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/holi%20theme%2Fspecial%20bg.png?alt=media&token=15a5e541-c16e-4f52-8e0b-1d8fee4bccf9",
+        }}
         style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={120}
+        priority="high"
       />
 
       {loading ? (

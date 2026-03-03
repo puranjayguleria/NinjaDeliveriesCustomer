@@ -31,7 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Video from "react-native-video";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Image } from "expo-image";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
@@ -43,6 +43,7 @@ import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
+import HoliBanner from "@/components/HoliBanner";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 import { Colors } from "@/constants/colors";
 
@@ -58,9 +59,9 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 160;
+const INITIAL_VIDEO_HEIGHT = 120;
 const COLLAPSED_VIDEO_HEIGHT = 80;
-const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 42 : 28;
+const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 30 : 10;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 36 : 24;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
 
@@ -133,6 +134,30 @@ const latlng = (c?: { latitude?: number; longitude?: number }) =>
   c?.latitude != null && c?.longitude != null
     ? `${Number(c.latitude).toFixed(4)}, ${Number(c.longitude).toFixed(4)}`
     : "";
+
+const shortcutLabel = (name?: string, shortName?: string) => {
+  const direct = String(shortName || "").trim();
+  if (direct) return direct;
+
+  const n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n) return "";
+
+  const exactMap: Record<string, string> = {
+    "Pooja Essentials": "Pooja Ess..",
+    "Water Gun": "Water Gun",
+    "Spray colors": "Sprays",
+    "Color Spray": "Color Spr..",
+    "Dairy, Bread & Eggs": "Dairy",
+    "Fresh Flowers": "Flowers",
+  };
+
+  if (exactMap[n]) return exactMap[n];
+
+  const words = n.split(" ");
+  if (words.length === 1) return n;
+  if (n.length <= 10) return n;
+  return words[0];
+};
 
 /* ------------------------------------------------------------------ types */
 
@@ -281,16 +306,29 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
 
   return (
     <Pressable
-      style={[styles.searchWrapper]}
+      style={[styles.searchWrapper, { paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent', overflow: 'hidden' }]}
       onPress={() => nav.navigate("Search")}
     >
-      <MaterialIcons
-        name="search"
-        size={20}
-        color={Colors.text.secondary}
-        style={{ marginRight: 6 }}
-      />
-      <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
+      <LinearGradient
+        colors={["#F8BBD0", "#FFF9C4", "#B2DFDB", "#DCEDC8"]} // Holi spread: Light Pink, Yellow, Teal, Green
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          paddingHorizontal: 16,
+          width: '100%',
+        }}
+      >
+        <MaterialIcons
+          name="search"
+          size={20}
+          color={Colors.text.secondary}
+          style={{ marginRight: 6 }}
+        />
+        <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
+      </LinearGradient>
     </Pressable>
   );
 });
@@ -302,7 +340,8 @@ type IntroProps = { url: string | null; title: string | null };
 const MemoIntroCard = React.memo(
   ({ url, title }: IntroProps) => {
     const nav = useNavigation<any>();
-    const ref = useRef<Video>(null);
+    const isFocused = useIsFocused();
+    const ref = useRef<any>(null);
     const [dur, setDur] = useState(0);
     const [spin, setSpin] = useState(true);
     const isMp4 = !!url && /\.mp4(\?|$)/i.test(url);
@@ -330,6 +369,16 @@ const MemoIntroCard = React.memo(
               resizeMode="cover"
               muted
               repeat
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
               onLoad={({ duration }) => setDur(duration)}
               onProgress={onProgress}
               onReadyForDisplay={() => setSpin(false)}
@@ -762,6 +811,8 @@ const HomeMessageBar = ({
   msg: any;
   onClose?: () => void;
 }) => {
+  const isFocused = useIsFocused();
+
   if (!msg?.text) return null;
 
   // Map semantic icon names to MaterialIcons glyphs. Icons must be lower‑case.
@@ -864,6 +915,16 @@ if (isMessageActive) {
               resizeMode="cover"
               muted
               repeat
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
+              }}
+              maxBitRate={1500000}
               onError={(err) => console.log("Video error:", err)}
             />
           ) : hasImage ? (
@@ -925,6 +986,7 @@ if (isMessageActive) {
 
 export default function ProductsHomeScreen() {
   const nav = useNavigation<any>();
+  const isFocused = useIsFocused();
   const { location, updateLocation } = useLocationContext();
 
   const [lastOrder, setLastOrder] = useState<any | null>(null);
@@ -1353,6 +1415,37 @@ export default function ProductsHomeScreen() {
       )
       .catch((e) => console.warn("fetch zones", e));
   }, []);
+
+  const [holiBannerEnabled, setHoliBannerEnabled] = useState(false);
+  const [holiBannerUrl, setHoliBannerUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!location.storeId) {
+      setHoliBannerEnabled(false);
+      setHoliBannerUrl(null);
+      return;
+    }
+    const unsub = firestore()
+      .collection("banner")
+      .where("storeId", "==", location.storeId)
+      .limit(1)
+      .onSnapshot(
+        (snap) => {
+          const d = snap.docs[0]?.data() as any;
+          const en = !!d?.showHoliBanner;
+          const url =
+            typeof d?.holiBannerUrl === "string"
+              ? d.holiBannerUrl.replace(/`/g, "").trim()
+              : null;
+          setHoliBannerEnabled(en);
+          setHoliBannerUrl(url);
+        },
+        () => {
+          setHoliBannerEnabled(false);
+          setHoliBannerUrl(null);
+        }
+      );
+    return unsub;
+  }, [location.storeId]);
 
   const mapCoordsToStore = useCallback(
     async (lat: number, lng: number) => {
@@ -1950,8 +2043,8 @@ export default function ProductsHomeScreen() {
                   key={item.id}
                   style={{
                     alignItems: "center",
-                    marginRight: 4,
-                    width: 68,
+                    marginRight: 6,
+                    width: 72,
                   }}
                   onPress={() => {
                     void handleCategoryShortcut(item.name);
@@ -1981,8 +2074,12 @@ export default function ProductsHomeScreen() {
                       placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
                     />
                   </View>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
-                    {item.name}
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}
+                  >
+                    {shortcutLabel(item.name, (item as any)?.shortName)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1992,21 +2089,21 @@ export default function ProductsHomeScreen() {
       )}
 
       {/* Promotional banners - Pass flag to control Valentine sections only */}
-      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
+      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} showHoliInside={false} />
       
       {/* Holi Category Shortcuts */}
-      <View style={{ marginHorizontal: H, marginBottom: 12, marginTop: -22, zIndex: 1 }}>
+      <View style={{ marginHorizontal: H, marginBottom: 12, marginTop: -28, zIndex: 1 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 16 }}>
           {[
             { id: '1', name: 'Gulal', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433173204_gulal.webp?alt=media&token=39e727ce-557e-4b1c-a0be-f6fd31fb5eb0', ringColor: '#f8b3caff' },
             { id: '2', name: 'Water Gun', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433332589_gun%20pichkari.jpg?alt=media&token=d1e5c7e6-06b0-44a2-b6f8-ee40e8dcdc98', ringColor: '#bfdef7ff' },
-            { id: '3', name: 'Color Spray', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433086837_COLOR%20SPRAYS.jpg?alt=media&token=86e5e3d8-f586-416e-a01a-a4153e5f296c', ringColor: '#f8e1c0ff' },
+            { id: '3', name: 'Spray colors', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433086837_COLOR%20SPRAYS.jpg?alt=media&token=86e5e3d8-f586-416e-a01a-a4153e5f296c', ringColor: '#f8e1c0ff' },
             { id: '4', name: 'Pooja Essentials', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15', ringColor: '#f4ccfbff' },
             { id: '5', name: 'Dairy', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af', ringColor: '#cfe9ffff' }
           ].map((item) => (
             <TouchableOpacity 
               key={item.id} 
-              style={{ alignItems: 'center', marginRight: 16 }}
+              style={{ alignItems: "center", marginRight: 8, width: 72 }}
               onPress={() => {
                 void (async () => {
                   const storeId = location.storeId || "0oS7Zig2gxj2MJesvlC2";
@@ -2130,28 +2227,21 @@ export default function ProductsHomeScreen() {
                   />
                 )}
               </View>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#2D3436' }}>{item.name}</Text>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={{ fontSize: 12, fontWeight: "700", color: "#2D3436", textAlign: "center" }}
+              >
+                {shortcutLabel(item.name)}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
-      
-      {/* Holli Banner */}
-      <Pressable
-        onPress={() =>
-          nav.navigate("HoliSpecials", {
-            storeId: location.storeId || "0oS7Zig2gxj2MJesvlC2",
-            fromBanner: true,
-          })
-        }
-        style={{ marginHorizontal: H, marginBottom: 1, borderRadius: 15, overflow: 'hidden', backgroundColor: '#fff' }}
-      >
-        <Image
-          source={require("../assets/holli banner.png")}
-          style={{ width: "100%", height: 180, transform: [{ scaleX: 1.2 }, { scaleY: 1.45}] }}
-          contentFit="cover"
-        />
-      </Pressable>
+
+      {holiBannerEnabled ? (
+        <HoliBanner imageUrl={holiBannerUrl} storeId={location.storeId} />
+      ) : null}
 
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
@@ -2359,10 +2449,20 @@ export default function ProductsHomeScreen() {
             ]}
           >
             <LinearGradient
-              colors={headerGradientColors}
+              colors={["#f1b4d5ff", "#f7eba5ff", "#9ae0f8ff", "#b9f8b9ff"]} // DeepPink, Gold, DeepSkyBlue, LimeGreen
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFill}
-            />
+            >
+               {/* Optional: Add a subtle overlay for texture/depth if desired */}
+               <LinearGradient
+                  colors={["rgba(255,255,255,0.15)", "transparent", "rgba(0,0,0,0.05)"]}
+                  style={StyleSheet.absoluteFill}
+               />
+            </LinearGradient>
           </Animated.View>
+
+          {/* Gradient overlay removed to show Holi colors */}
 
           <View style={styles.topBg}>
             <Header />
@@ -2709,7 +2809,7 @@ labelActive: { color: '#fff' },
   locationRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginBottom: 10,
+  marginBottom: 4,
   // no paddingHorizontal here – topBg already has it
 },
 
@@ -2732,7 +2832,7 @@ labelActive: { color: '#fff' },
   shadowOffset: { width: 0, height: 4 },
   elevation: 3,
 },
-searchTxt: { color: "#555", fontSize: 14 },
+searchTxt: { color: "#555", fontSize: 13, flexShrink: 1, minWidth: 0 },
   quizCard: {
     margin: H,
     borderRadius: 12,
@@ -2929,7 +3029,7 @@ chipTxt: {
     paddingVertical: 1,
   },
   badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 14, fontWeight: "900", lineHeight: 18 },
+  cardTitle: { color: "#fff", fontSize: 10, fontWeight: "900", lineHeight: 13 },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -3186,7 +3286,7 @@ searchSwitchRow: {
 
 searchFlex: {
   flex: 1,
-  marginRight: 22,
+  marginRight: 10,
 },
   homeMsgBar: {
     marginHorizontal: H,

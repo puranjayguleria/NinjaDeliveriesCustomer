@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
@@ -86,6 +87,7 @@ const AnimatedReviewSnippet: React.FC<{
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
@@ -1018,13 +1020,12 @@ export default function CompanySelectionScreen() {
                 const isBusy = (company as any).isBusy === true;
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     style={[
                       styles.providerCard,
                       isSelected && styles.providerCardSelected,
                       isBusy && styles.providerCardBusy,
                     ]}
-                    activeOpacity={isBusy ? 0.3 : 0.7}
                     disabled={isBusy}
                     onPress={() => {
                       if (isBusy) return;
@@ -1071,18 +1072,19 @@ export default function CompanySelectionScreen() {
                               <Text style={styles.companyDescription} numberOfLines={2}>
                                 {String((company as any).description).trim()}
                               </Text>
-                              <Pressable
-                                onPress={() =>
+                              <TouchableOpacity
+                                onPress={() => {
                                   setCompanyDescriptionModal({
                                     visible: true,
                                     title: String(company.companyName || company.serviceName || 'Company'),
                                     description: String((company as any).description).trim(),
-                                  })
-                                }
+                                  });
+                                }}
                                 hitSlop={8}
+                                activeOpacity={0.6}
                               >
                                 <Text style={styles.seeMoreText}>See more</Text>
-                              </Pressable>
+                              </TouchableOpacity>
                             </View>
                           ) : null}
                           <Text style={styles.packageOptionName} numberOfLines={1}>
@@ -1155,10 +1157,10 @@ export default function CompanySelectionScreen() {
                         {pkgObj.description}
                       </Text>
                     ) : null}
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               }}
-              contentContainerStyle={{ paddingBottom: 120 }}
+              contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
               showsVerticalScrollIndicator={false}
             />
           ) : (
@@ -1211,18 +1213,19 @@ export default function CompanySelectionScreen() {
                         <Text style={styles.companyDescription} numberOfLines={2}>
                           {String((item as any).description).trim()}
                         </Text>
-                        <Pressable
-                          onPress={() =>
+                        <TouchableOpacity
+                          onPress={() => {
                             setCompanyDescriptionModal({
                               visible: true,
                               title: String(item.companyName || item.serviceName || 'Company'),
                               description: String((item as any).description).trim(),
-                            })
-                          }
+                            });
+                          }}
                           hitSlop={8}
+                          activeOpacity={0.6}
                         >
                           <Text style={styles.seeMoreText}>See more</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     ) : null}
                 </View>
@@ -1532,7 +1535,7 @@ export default function CompanySelectionScreen() {
               </TouchableOpacity>
             );
           }}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 140 }]}
               showsVerticalScrollIndicator={false}
               refreshing={loading}
               onRefresh={fetchServiceCompanies}
@@ -1543,7 +1546,7 @@ export default function CompanySelectionScreen() {
       {/* Modern Bottom Action Bar */}
       {isPackageBooking === true ? (
         effectiveSelectedPackage && selectedCompanyId ? (
-          <View style={styles.bottomActionBar}>
+          <View style={[styles.bottomActionBar, { bottom: tabBarHeight }]}>
             <View style={styles.selectedSummary}>
               <Text style={styles.selectedLabel}>Selected Package</Text>
               <Text style={styles.selectedProviderName} numberOfLines={1}>
@@ -1562,7 +1565,7 @@ export default function CompanySelectionScreen() {
         ) : null
       ) : (
         selectedCompany && (
-        <View style={styles.bottomActionBar}>
+        <View style={[styles.bottomActionBar, { bottom: tabBarHeight }]}>
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedLabel}>Selected Provider</Text>
             <Text style={styles.selectedProviderName}>

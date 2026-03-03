@@ -269,7 +269,7 @@ const ProductListingScreen: React.FC<Props> = () => {
           />
           <TextInput
             style={styles.searchBar}
-            placeholder="Search for products…"
+            placeholder="Search products…"
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#999"

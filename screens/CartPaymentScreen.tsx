@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -78,6 +78,33 @@ export default function CartPaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
+  const [showSlowText, setShowSlowText] = useState(false);
+  const slowTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (slowTextTimerRef.current) {
+      clearTimeout(slowTextTimerRef.current);
+      slowTextTimerRef.current = null;
+    }
+
+    if (!loading) {
+      if (showSlowText) setShowSlowText(false);
+      return;
+    }
+
+    setShowSlowText(false);
+    slowTextTimerRef.current = setTimeout(() => {
+      setShowSlowText(true);
+    }, 5000);
+
+    return () => {
+      if (slowTextTimerRef.current) {
+        clearTimeout(slowTextTimerRef.current);
+        slowTextTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const paymentData: PaymentData = route.params?.paymentData || {};
   const onPaymentComplete = route.params?.onPaymentComplete;
@@ -546,7 +573,9 @@ export default function CartPaymentScreen() {
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#00C853" />
-            <Text style={styles.loadingText}>Processing payment...</Text>
+            <Text style={styles.loadingText}>
+              {showSlowText ? 'It is taking longer than expected please wait.' : 'Processing payment...'}
+            </Text>
           </View>
         </View>
       )}

@@ -354,7 +354,7 @@ const PickupLocationScreen: React.FC = () => {
 
             {/* Search Input */}
             <TextInput
-              placeholder="Search nearby places in Himachal"
+              placeholder="Search places in Himachal"
               style={styles.searchInput}
               value={placeQuery}
               onChangeText={handlePlaceQueryChange}

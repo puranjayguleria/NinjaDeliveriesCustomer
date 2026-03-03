@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
@@ -31,8 +32,11 @@ const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100)
 export default function PaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const [loading, setLoading] = useState(false);
   const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slowTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showSlowText, setShowSlowText] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -40,8 +44,31 @@ export default function PaymentScreen() {
         clearTimeout(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
+
+      if (slowTextTimerRef.current) {
+        clearTimeout(slowTextTimerRef.current);
+        slowTextTimerRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (slowTextTimerRef.current) {
+      clearTimeout(slowTextTimerRef.current);
+      slowTextTimerRef.current = null;
+    }
+
+    if (!loading) {
+      if (showSlowText) setShowSlowText(false);
+      return;
+    }
+
+    setShowSlowText(false);
+    slowTextTimerRef.current = setTimeout(() => {
+      setShowSlowText(true);
+    }, 5000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // Handle both old single booking format and new multiple bookings format
   const {
@@ -491,7 +518,7 @@ export default function PaymentScreen() {
         </ScrollView>
 
         {/* Fixed Bottom Section */}
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, { marginBottom: tabBarHeight }]}>
           <TouchableOpacity
             style={[styles.payBtn, loading && styles.disabledBtn]}
             activeOpacity={0.7}
@@ -514,7 +541,7 @@ export default function PaymentScreen() {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#4CAF50" />
               <Text style={styles.loadingText}>
-                Processing payment...
+                {showSlowText ? 'It is taking longer than expected please wait.' : 'Processing payment...'}
               </Text>
             </View>
           </View>

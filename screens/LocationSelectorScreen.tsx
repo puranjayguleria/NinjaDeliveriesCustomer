@@ -23,7 +23,7 @@ import axios from "axios";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { RouteProp } from "@react-navigation/native";
+import { RouteProp, CommonActions } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { RootStackParamList, LocationData } from "../types/navigation";
 import { GOOGLE_PLACES_API_KEY } from "@env";
@@ -78,7 +78,62 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const serviceCart = useServiceCart();
   const mapRef = useRef<MapView>(null);
 
-  const fromScreen = route.params?.fromScreen || "Category";
+  const fromScreenRaw = (route.params as any)?.fromScreen;
+  const fromScreen = (typeof fromScreenRaw === "string" ? fromScreenRaw : String(fromScreenRaw ?? "Category")) || "Category";
+  const fromScreenKey = fromScreen.trim().toLowerCase();
+
+  const resetToServicesHome = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: "AppTabs" as any,
+            state: {
+              index: 0,
+              routes: [
+                {
+                  name: "ServicesTab",
+                  state: {
+                    index: 0,
+                    routes: [{ name: "ServicesHome" }],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      })
+    );
+  };
+
+  const wasOpenedFromServicesTab = () => {
+    try {
+      const state: any = navigation.getState?.();
+      const prevRoute = state?.routes?.[typeof state?.index === "number" ? state.index - 1 : -1];
+      if (!prevRoute || prevRoute.name !== "AppTabs") return false;
+
+      const tabsState: any = prevRoute?.state;
+      const tabIndex = typeof tabsState?.index === "number" ? tabsState.index : -1;
+      const activeTab = tabsState?.routes?.[tabIndex]?.name;
+      return activeTab === "ServicesTab";
+    } catch {
+      return false;
+    }
+  };
+
+  const returnToServices = () => {
+    // If user opened LocationSelector while already on Services tab,
+    // just go back so they land exactly where they were.
+    if (wasOpenedFromServicesTab() && navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    // If they tried to enter Services but were blocked (e.g. non-deliverable),
+    // force-switch to Services tab after a deliverable location is chosen.
+    resetToServicesHome();
+  };
 
   /**
    * Check if all carts are empty
@@ -418,27 +473,27 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
 
       updateLocation(newLocationData);
 
-      if (fromScreen === "Cart") {
+      if (fromScreenKey === "cart") {
         const allCartsEmpty = isAllCartsEmpty();
         
         if (allCartsEmpty) {
           // If cart is empty, navigate to home screen instead of cart
-          navigation.navigate("AppTabs", { screen: "Home" });
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
         } else {
           // If cart has items, collect delivery details
           setHouseNo("");
           setPlaceLabel("");
           setShowSaveForm(true);
         }
-      } else if (fromScreen === "ServiceCheckout" || fromScreen === "RestaurantCheckout") {
+      } else if (fromScreenKey === "servicecheckout" || fromScreenKey === "restaurantcheckout") {
         // Navigate back to checkout screen
         navigation.goBack();
-      } else if (fromScreen === "Services") {
+      } else if (fromScreenKey === "services") {
         // User came here by tapping Services tab while not deliverable.
         // After choosing a deliverable location, take them to Services.
-        navigation.navigate("AppTabs", { screen: "Services" });
+        returnToServices();
       } else {
-        navigation.navigate("AppTabs", { screen: "Home" });
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
       }
     } catch (err) {
       console.error("confirmLocation:", err);
@@ -537,7 +592,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       await saveLocationForUser(newLoc, houseNo, placeLabel);
 
       setShowSaveForm(false);
-      if (fromScreen === "Cart") {
+      if (fromScreenKey === "cart") {
         navigation.navigate("AppTabs", {
           screen: "CartFlow",
           params: {
@@ -545,11 +600,16 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
             params: { selectedLocation: newLoc },
           },
         });
-      } else if (fromScreen === "ServiceCheckout" || fromScreen === "RestaurantCheckout") {
+      } else if (fromScreenKey === "servicecheckout" || fromScreenKey === "restaurantcheckout") {
         // Navigate back to checkout screen
         navigation.goBack();
+      } else if (fromScreenKey === "services") {
+        returnToServices();
       } else {
-        navigation.navigate("CategoriesTab", { selectedLocation: newLoc });
+        navigation.navigate("AppTabs", {
+          screen: "CategoriesTab",
+          params: { selectedLocation: newLoc },
+        });
       }
     } catch (err) {
       console.error("Error in handleSaveLocationForm:", err);

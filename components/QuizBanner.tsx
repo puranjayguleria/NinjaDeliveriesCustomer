@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import Video from "react-native-video";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
 const H = 16;
@@ -27,6 +27,7 @@ const QuizBanner: React.FC<QuizBannerProps> = ({ storeId }) => {
   const [dur, setDur] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const nav = useNavigation();
+  const isFocused = useIsFocused();
   const ref = useRef<Video>(null);
 
   useEffect(() => {
@@ -113,6 +114,16 @@ const QuizBanner: React.FC<QuizBannerProps> = ({ storeId }) => {
             resizeMode="cover"
             muted
             repeat
+            paused={!isFocused}
+            playInBackground={false}
+            playWhenInactive={false}
+            bufferConfig={{
+              minBufferMs: 1500,
+              maxBufferMs: 6000,
+              bufferForPlaybackMs: 750,
+              bufferForPlaybackAfterRebufferMs: 1500,
+            }}
+            maxBitRate={1500000}
             onLoad={({ duration }) => {
               setDur(duration);
               setIsReady(true);
