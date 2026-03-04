@@ -11,6 +11,7 @@ import {
   Easing,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { firestore } from "../firebase.native";
@@ -39,6 +40,7 @@ export default function SelectDateTimeScreen() {
   const navigation = useNavigation<any>();
   const { addService } = useServiceCart();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   const scrollRef = useRef<ScrollView>(null);
   const slotsSectionYRef = useRef(0);
@@ -2590,7 +2592,10 @@ export default function SelectDateTimeScreen() {
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
           scrollEventThrottle={16}
-          contentContainerStyle={[styles.slotsContent, { paddingBottom: 24 + 96 }]}
+          contentContainerStyle={[
+            styles.slotsContent,
+            { paddingBottom: 24 + 96 + tabBarHeight },
+          ]}
         >
           {/* Summary Card */}
           <View style={styles.summaryCard}>
@@ -3353,7 +3358,7 @@ export default function SelectDateTimeScreen() {
         </ScrollView>
 
       {/* Bottom Continue Button */}
-  <View style={styles.bottomBar} pointerEvents="box-none">
+  <View style={[styles.bottomBar, { paddingBottom: 16 + tabBarHeight }]} pointerEvents="box-none">
         {showSlotsFab && (
           <Animated.View style={[styles.slotsFab, { transform: [{ translateY: slotsFabFloatY }] }]}>
             <TouchableOpacity

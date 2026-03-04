@@ -1640,7 +1640,7 @@ export default function ServicesScreen() {
 
   const searchPlaceholderText = React.useMemo(() => {
     const word = SERVICES_SEARCH_PLACEHOLDERS[searchPlaceholderIndex] || 'services';
-    return `Search for ${word}...`;
+    return `Search ${word}`;
   }, [searchPlaceholderIndex]);
 
   const showAnimatedSearchPlaceholder = !isSearchFocused && searchQuery.trim().length === 0;
@@ -2003,7 +2003,7 @@ export default function ServicesScreen() {
                   <TextInput
                     ref={searchInputRef}
                     style={styles.searchInput}
-                    placeholder={isSearchFocused ? 'Search for services...' : ''}
+                    placeholder={isSearchFocused ? 'Search services' : ''}
                     placeholderTextColor="#94a3b8"
                     value={searchQuery}
                     onChangeText={handleSearch}

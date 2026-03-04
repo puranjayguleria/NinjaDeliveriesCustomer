@@ -13,6 +13,7 @@ import {
   StatusBar,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
@@ -41,6 +42,7 @@ const errorLog = (...args: any[]) => {
 export default function ServiceCheckoutScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const { clearCart, state } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
   
@@ -1752,7 +1754,11 @@ export default function ServiceCheckoutScreen() {
         <View style={styles.backButton} />
       </View>
       
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 24 + tabBarHeight + 96 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.sectionTitle}>Services ({services.length})</Text>
         
         <FlatList
@@ -1915,7 +1921,7 @@ export default function ServiceCheckoutScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: tabBarHeight }]}>
         <View style={styles.totalContainer}>
           <Text style={styles.footerTotalLabel}>Total: ₹{computedTotalAmount}</Text>
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>

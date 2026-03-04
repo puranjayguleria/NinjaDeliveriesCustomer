@@ -197,7 +197,8 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 16,
+    marginTop: 0,
+    marginBottom: 0, // Reduced gap above Best Seller banner
     paddingHorizontal: 16,
   },
   header: {

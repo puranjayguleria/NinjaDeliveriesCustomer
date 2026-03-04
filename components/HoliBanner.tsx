@@ -7,19 +7,22 @@ const { width } = Dimensions.get("window");
 const H = 16;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
-interface ValentineBannerProps {
-  imageUrl: string | null;
-}
+type Props = {
+  imageUrl: string | null | undefined;
+  storeId: string | null | undefined;
+};
 
-const ValentineBanner: React.FC<ValentineBannerProps> = ({ imageUrl }) => {
-  const navigation = useNavigation<any>();
-
-  const handlePress = () => {
-    navigation.navigate("ValentineSpecials");
-  };
-
+const HoliBanner: React.FC<Props> = ({ imageUrl, storeId }) => {
+  const nav = useNavigation<any>();
   const src = typeof imageUrl === "string" ? imageUrl.replace(/`/g, "").trim() : "";
   if (!src) return null;
+
+  const handlePress = () => {
+    nav.navigate("HoliSpecials", {
+      storeId: storeId || "0oS7Zig2gxj2MJesvlC2",
+      fromBanner: true,
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -41,7 +44,7 @@ const ValentineBanner: React.FC<ValentineBannerProps> = ({ imageUrl }) => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: H,
-    marginBottom: 0, // Reduced gap below Holi banner
+    marginBottom: 5,
     alignItems: "center",
   },
   pressable: {
@@ -62,4 +65,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ValentineBanner;
+export default HoliBanner;
+

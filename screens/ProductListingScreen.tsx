@@ -239,7 +239,7 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* ---------- Side nav ---------- */}
@@ -269,7 +269,7 @@ const ProductListingScreen: React.FC<Props> = () => {
           />
           <TextInput
             style={styles.searchBar}
-            placeholder="Search for products…"
+            placeholder="Search products…"
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#999"

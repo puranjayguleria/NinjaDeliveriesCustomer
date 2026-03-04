@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, Alert, BackHandler } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation, StackActions } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from "expo-linking";
@@ -10,6 +11,7 @@ import { finalizeRazorpayWebViewCallbacks, getRazorpayWebViewCallbacks } from ".
 export default function RazorpayWebView() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
@@ -512,7 +514,7 @@ true;
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { paddingBottom: tabBarHeight }]}>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
@@ -581,7 +583,7 @@ true;
         <View style={styles.backButton} />
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: tabBarHeight }]}>
         {/* Loading Overlay (only covers WebView area, not the header) */}
         {loading && (
           <View style={styles.loadingOverlay}>

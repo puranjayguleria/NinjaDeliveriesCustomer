@@ -12,6 +12,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Image,
   Alert,
@@ -20,6 +21,9 @@ import {
   Modal,
   Animated,
   InteractionManager,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from "react-native";
 import {
   useFocusEffect,
@@ -27,7 +31,8 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { getLastNonCartTab, navigationRef } from "../navigation/rootNavigation";
 import auth from "@react-native-firebase/auth";
 import firestore, { firebase } from "@react-native-firebase/firestore";
@@ -227,6 +232,23 @@ const CartScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const footerLift = tabBarHeight;
+  const scrollViewBottomGap = 84 + footerLift;
+
+  useEffect(() => {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const animateNext = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, []);
 
   const handleBackPress = () => {
     if (navigation.canGoBack?.()) {
@@ -1472,42 +1494,76 @@ const CartScreen: React.FC = () => {
     return (
       <View style={styles.cartItemContainer}>
         <Image source={{ uri: item.image }} style={styles.cartItemImage} />
+
         <View style={styles.cartItemDetails}>
-          <Text style={styles.cartItemName}>{item.name}</Text>
-          <Text style={styles.cartItemPrice}>₹{realPrice.toFixed(2)}</Text>
+          <View style={styles.cartItemTopRow}>
+            <View style={styles.cartItemTextCol}>
+              <Text style={styles.cartItemName} numberOfLines={2}>
+                {item.name}
+              </Text>
+              <Text style={styles.cartItemPrice}>₹{realPrice.toFixed(2)}</Text>
+            </View>
 
-          <View style={styles.quantityControl}>
-            <TouchableOpacity
-              onPress={() => decreaseQuantity(item.id)}
-              style={styles.controlButton}
-            >
-              <MaterialIcons name="remove" size={18} color="#fff" />
-            </TouchableOpacity>
-
-            <Text style={styles.quantityText}>{quantity}</Text>
-
-            <TouchableOpacity
+            <Pressable
               onPress={() => {
-                increaseQuantity(item.id, item.quantity);
-                fetchCartItems(false);
+                animateNext();
+                removeFromCart(item.id);
               }}
-              style={styles.controlButton}
+              style={styles.removeButton}
+              android_ripple={{ color: "rgba(0,0,0,0.08)", borderless: true }}
+              hitSlop={10}
             >
-              <MaterialIcons name="add" size={18} color="#fff" />
-            </TouchableOpacity>
+              <MaterialIcons name="delete" size={16} color="#e74c3c" />
+            </Pressable>
           </View>
 
-          <Text style={styles.cartItemTotal}>
-            Item: ₹{totalPrice.toFixed(2)}
-          </Text>
-        </View>
+          <View style={styles.cartItemBottomRow}>
+            <View style={styles.quantityControl}>
+              <Pressable
+                onPress={() => {
+                  animateNext();
+                  decreaseQuantity(item.id);
+                }}
+                style={({ pressed }) => [
+                  styles.controlButton,
+                  pressed && styles.controlButtonPressed,
+                ]}
+                android_ripple={{
+                  color: "rgba(255,107,0,0.18)",
+                  borderless: false,
+                }}
+                hitSlop={8}
+              >
+                <MaterialIcons name="remove" size={14} color={PRIMARY} />
+              </Pressable>
 
-        <TouchableOpacity
-          onPress={() => removeFromCart(item.id)}
-          style={styles.removeButton}
-        >
-          <MaterialIcons name="delete" size={22} color="#e74c3c" />
-        </TouchableOpacity>
+              <View style={styles.quantityPill}>
+                <Text style={styles.quantityText}>{quantity}</Text>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  animateNext();
+                  increaseQuantity(item.id, item.quantity);
+                  fetchCartItems(false);
+                }}
+                style={({ pressed }) => [
+                  styles.controlButton,
+                  pressed && styles.controlButtonPressed,
+                ]}
+                android_ripple={{
+                  color: "rgba(255,107,0,0.18)",
+                  borderless: false,
+                }}
+                hitSlop={8}
+              >
+                <MaterialIcons name="add" size={14} color={PRIMARY} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.cartItemTotal}>₹{totalPrice.toFixed(2)}</Text>
+          </View>
+        </View>
       </View>
     );
   };
@@ -1676,6 +1732,15 @@ const CartScreen: React.FC = () => {
   const checkoutDisabled =
     isOrderAcceptancePaused === null || isOrderAcceptancePaused === true;
 
+  const checkoutLabel =
+    isOrderAcceptancePaused === null
+      ? "Loading..."
+      : isOrderAcceptancePaused
+      ? "Orders Paused"
+      : selectedLocation
+      ? "Proceed to Payment"
+      : "Proceed to Checkout";
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -1698,9 +1763,43 @@ const CartScreen: React.FC = () => {
             <Loader />
           </View>
         ) : Object.keys(cart).length === 0 ? (
-          <View style={styles.loaderContainer}>
-            <Loader />
-          </View>
+          <>
+            <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
+              <View style={styles.headerBlock}>
+                <View style={styles.headerRow}>
+                  <TouchableOpacity
+                    style={styles.headerBackButton}
+                    onPress={handleBackPress}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="arrow-back" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <View style={styles.headerTextWrap}>
+                    <Text style={styles.cartItemsHeader}>Your Cart</Text>
+                    <Text style={styles.headerSubtitle}>
+                      {"Add items to place an order"}
+                    </Text>
+                  </View>
+                  <View style={styles.headerBackButton} />
+                </View>
+              </View>
+            </SafeAreaView>
+
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cart-outline" size={80} color="#c6c6c6" />
+              <Text style={styles.emptyTitle}>Your cart is empty</Text>
+              <Text style={styles.emptySubtitle}>
+                Start shopping and your items will show up here.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyCta}
+                onPress={handleAddMoreItems}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyCtaText}>Start Shopping</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         ) : (
           <>
             {loadingCartUpdate && (
@@ -1731,7 +1830,7 @@ const CartScreen: React.FC = () => {
             </SafeAreaView>
 
             <ScrollView
-              style={styles.scrollView}
+              style={[styles.scrollView, { marginBottom: scrollViewBottomGap }]}
               contentContainerStyle={styles.scrollContent}
             >
               <FlatList
@@ -1995,14 +2094,12 @@ const CartScreen: React.FC = () => {
               </View>
             </ScrollView>
 
-            <View style={styles.footerBar}>
-              <View style={styles.footerLeft}>
-                <Text style={styles.footerTotalLabel}>Total:</Text>
-                <Text style={styles.footerTotalValue}>
-                  ₹{finalTotal.toFixed(2)}
-                </Text>
-              </View>
-
+            <View
+              style={[
+                styles.footerBar,
+                { bottom: footerLift, paddingBottom: 14 + insets.bottom },
+              ]}
+            >
               <AnimatedTouchable
                 disabled={checkoutDisabled} // ✅ REAL disable
                 style={[
@@ -2018,21 +2115,20 @@ const CartScreen: React.FC = () => {
                 ]}
                 onPress={checkoutDisabled ? undefined : handleCheckout} // ✅ no-op when disabled
               >
-                <Ionicons
-                  name={selectedLocation ? "cash-outline" : "cart-outline"}
-                  size={16}
-                  color="#ffffffff"
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.footerCheckoutText}>
-                  {isOrderAcceptancePaused === null
-                    ? "Loading..."
-                    : isOrderAcceptancePaused
-                    ? "Orders Paused"
-                    : selectedLocation
-                    ? "Proceed to Payment"
-                    : "Checkout"}
-                </Text>
+                <View style={styles.footerButtonContent}>
+                  <View style={styles.footerButtonLeft}>
+                    <Ionicons
+                      name={selectedLocation ? "cash-outline" : "cart-outline"}
+                      size={18}
+                      color="#ffffffff"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.footerCheckoutText}>{checkoutLabel}</Text>
+                  </View>
+                  <Text style={styles.footerCheckoutAmount}>
+                    ₹{finalTotal.toFixed(2)}
+                  </Text>
+                </View>
               </AnimatedTouchable>
             </View>
           </>
@@ -2159,13 +2255,18 @@ const CartScreen: React.FC = () => {
  *                   STYLES
  **********************************************/
 const pastelGreen = "#e7f8f6";
+const PRIMARY = "#FF6B00";
+const SECONDARY = "#4CAF50";
+const BG = "#F7F7F7";
+const TEXT_PRIMARY = "#222222";
+const BORDER_CLR = "#EEEEEE";
 const { width } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#f2f2f2" },
-  container: { flex: 1, backgroundColor: "#fefefe" },
+  safeArea: { flex: 1, backgroundColor: BG },
+  container: { flex: 1, backgroundColor: BG },
 
-  headerSafeArea: { backgroundColor: pastelGreen },
+  headerSafeArea: { backgroundColor: "#fff" },
 
   infoBanner: {
     flexDirection: "row",
@@ -2186,14 +2287,14 @@ const styles = StyleSheet.create({
   recoBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#00C853",
+    backgroundColor: SECONDARY,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 12,
     marginRight: 6,
   },
   recoBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700", marginLeft: 2 },
-  recoTitle: { fontSize: 14, fontWeight: "700", color: "#333" },
+  recoTitle: { fontSize: 14, fontWeight: "700", color: TEXT_PRIMARY },
   recoList: { paddingVertical: 6, paddingLeft: 2, columnGap: RECO_GAP },
 
   confettiContainer: {
@@ -2215,90 +2316,127 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 16, color: "#999" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 18 },
+  emptyTitle: { marginTop: 12, fontSize: 18, fontWeight: "800", color: TEXT_PRIMARY, textAlign: "center" },
+  emptySubtitle: { marginTop: 6, fontSize: 13, fontWeight: "600", color: "#666", textAlign: "center", lineHeight: 18 },
+  emptyCta: { marginTop: 16, backgroundColor: PRIMARY, paddingVertical: 12, paddingHorizontal: 18, borderRadius: 999 },
+  emptyCtaText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 
+  headerBlock: {
+    backgroundColor: "#fff",
+    paddingTop: 10,
+    paddingBottom: 1,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_CLR,
+  },
+  cartItemsHeader: { fontSize: 20, fontWeight: "800", color: TEXT_PRIMARY, marginBottom: 5 },
   headerBlock: { backgroundColor: pastelGreen, paddingVertical: 10, paddingHorizontal: 12 },
   cartItemsHeader: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 2 },
   headerSubtitle: { fontSize: 13, color: "#666" },
 
   headerRow: { flexDirection: "row", alignItems: "center" },
-  headerBackButton: { padding: 8, width: 44, alignItems: "flex-start" },
+  headerBackButton: { padding: 4, width: 44, alignItems: "flex-start" },
   headerTextWrap: { flex: 1 },
 
-  scrollView: { flex: 1, marginBottom: 60 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
-  itemListContainer: { paddingBottom: 8 },
+  scrollView: { flex: 1, marginBottom: 84 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
+  itemListContainer: { paddingBottom: 12 },
 
   cartItemContainer: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: "#fff",
-    marginBottom: 10,
-    borderRadius: 6,
+    marginBottom: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#eee",
-    padding: 8,
+    borderColor: BORDER_CLR,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  cartItemImage: { width: 50, height: 50, borderRadius: 6, marginRight: 8, backgroundColor: "#f9f9f9" },
+  cartItemImage: { width: 60, height: 60, borderRadius: 12, marginRight: 10, backgroundColor: "#f3f3f3" },
   cartItemDetails: { flex: 1 },
-  cartItemName: { fontSize: 14, fontWeight: "700", color: "#333" },
-  cartItemPrice: { marginTop: 2, fontSize: 12, color: "#555" },
-  cartItemTotal: { marginTop: 4, fontSize: 12, fontWeight: "600", color: "#333" },
+  cartItemTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  cartItemTextCol: { flex: 1, paddingRight: 10 },
+  cartItemBottomRow: { marginTop: 6, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  cartItemName: { fontSize: 16, fontWeight: "800", color: TEXT_PRIMARY },
+  cartItemPrice: { marginTop: 4, fontSize: 14, fontWeight: "800", color: PRIMARY },
+  cartItemTotal: { fontSize: 13, fontWeight: "800", color: TEXT_PRIMARY },
 
-  quantityControl: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  controlButton: { backgroundColor: "#E67E22", borderRadius: 8, padding: 5, marginHorizontal: 2 },
-  quantityText: { fontSize: 13, fontWeight: "600", marginHorizontal: 4, color: "#333" },
+  quantityControl: { flexDirection: "row", alignItems: "center" },
+  controlButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  controlButtonPressed: { opacity: 0.6 },
+  quantityPill: {
+    minWidth: 34,
+    height: 28,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    marginHorizontal: 6,
+    backgroundColor: "#f1f3f5",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  quantityText: { fontSize: 13, fontWeight: "900", color: TEXT_PRIMARY },
 
-  removeButton: { padding: 5 },
+  removeButton: { padding: 6, borderRadius: 999, overflow: "hidden" },
 
-  dottedDivider: { marginVertical: 10, borderWidth: 1, borderColor: "#ccc", borderStyle: "dotted", borderRadius: 1 },
+  dottedDivider: { marginVertical: 24, borderWidth: 1, borderColor: "#e2e2e2", borderStyle: "dotted", borderRadius: 1 },
 
-  missedSomethingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  missedText: { fontSize: 14, fontWeight: "600", color: "#333" },
-  addMoreRowButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#3498db", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
+  missedSomethingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  missedText: { fontSize: 14, fontWeight: "800", color: TEXT_PRIMARY },
+  addMoreRowButton: { flexDirection: "row", alignItems: "center", backgroundColor: PRIMARY, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   addIcon: { marginRight: 4 },
-  addMoreRowText: { fontSize: 12, fontWeight: "600", color: "#fff" },
+  addMoreRowText: { fontSize: 12, fontWeight: "800", color: "#fff" },
 
-  locationSection: { backgroundColor: "#fff", borderRadius: 6, padding: 10, marginBottom: 20, borderColor: "#eee", borderWidth: 1 },
-  locationTitle: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 6 },
+  locationSection: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 24, borderColor: BORDER_CLR, borderWidth: 1, elevation: 3, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 3 } },
+  locationTitle: { fontSize: 14, fontWeight: "800", color: TEXT_PRIMARY, marginBottom: 10 },
 
-  selectAddressButton: { backgroundColor: "#FF7043", borderRadius: 8, paddingVertical: 8, alignItems: "center" },
-  selectAddressButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  changeLocationButton: { marginTop: 4, alignSelf: "flex-start", backgroundColor: "#f39c12", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
-  changeLocationText: { color: "#fff", fontSize: 12, fontWeight: "600" },
-  selectedLocationHighlight: { backgroundColor: "#e1f8e6", borderColor: "#2ecc71", borderWidth: 1 },
+  selectAddressButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 12, alignItems: "center" },
+  selectAddressButtonText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  changeLocationButton: { marginTop: 6, alignSelf: "flex-start", backgroundColor: PRIMARY, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14 },
+  changeLocationText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  selectedLocationHighlight: { backgroundColor: "rgba(76, 175, 80, 0.10)", borderColor: "rgba(76, 175, 80, 0.30)", borderWidth: 1 },
 
-  promoSection: { backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 10, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: "#333", marginBottom: 6 },
+  promoSection: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: BORDER_CLR, padding: 16, marginBottom: 24, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
+  sectionTitle: { fontSize: 15, fontWeight: "800", color: TEXT_PRIMARY, marginBottom: 10 },
   selectedPromoContainer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f5f5f5", borderRadius: 6, padding: 8 },
-  selectedPromoLabel: { fontSize: 13, fontWeight: "600", color: "#333" },
+  selectedPromoLabel: { fontSize: 13, fontWeight: "800", color: TEXT_PRIMARY },
   selectedPromoDescription: { fontSize: 11, color: "#555", marginTop: 3 },
-  promoTypeText: { marginTop: 3, fontSize: 11, color: "#2ecc71" },
+  promoTypeText: { marginTop: 3, fontSize: 11, color: SECONDARY },
   clearPromoText: { fontSize: 12, color: "#e74c3c", fontWeight: "600" },
   promoListWrapper: { marginTop: 4 },
   promoHorizontalList: { paddingRight: 6 },
-  promoCard: { width: 120, backgroundColor: "#fafafa", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 6, marginRight: 10, alignItems: "flex-start", shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  promoCard: { width: 140, backgroundColor: "#fafafa", borderRadius: 14, borderWidth: 1, borderColor: BORDER_CLR, padding: 10, marginRight: 10, alignItems: "flex-start", shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   promoHeader: { flexDirection: "row", alignItems: "center", marginBottom: 2, width: "100%" },
   promoIcon: { marginRight: 4 },
-  promoLabel: { fontSize: 12, fontWeight: "600", color: "#2c3e50", flexShrink: 1, flexWrap: "wrap" },
+  promoLabel: { fontSize: 12, fontWeight: "800", color: TEXT_PRIMARY, flexShrink: 1, flexWrap: "wrap" },
   promoDescription: { fontSize: 10, color: "#555", marginTop: 2, flexWrap: "wrap" },
   noPromoText: { fontSize: 12, color: "#999", textAlign: "center" },
 
-  summaryCard: { backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#eee", padding: 10, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  summaryTitle: { fontSize: 15, fontWeight: "700", color: "#333", marginBottom: 8 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-  summaryLabel: { fontSize: 13, fontWeight: "600", color: "#333" },
-  summaryValue: { fontSize: 13, fontWeight: "600", color: "#333" },
+  summaryCard: { backgroundColor: "#fff", borderRadius: 20, borderWidth: 1, borderColor: BORDER_CLR, padding: 16, marginBottom: 24, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 8 },
+  summaryTitle: { fontSize: 16, fontWeight: "900", color: TEXT_PRIMARY, marginBottom: 12 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+  summaryLabel: { fontSize: 13, fontWeight: "700", color: "#555" },
+  summaryValue: { fontSize: 13, fontWeight: "800", color: TEXT_PRIMARY },
   discountValue: { fontSize: 13, fontWeight: "600", color: "#e74c3c" },
-  grandTotalRow: { marginTop: 8, paddingTop: 8, borderTopColor: "#ccc", borderTopWidth: 1 },
-  grandTotalLabel: { fontSize: 14, color: "#000" },
-  grandTotalValue: { fontSize: 15, fontWeight: "bold", color: "#000" },
+  grandTotalRow: { marginTop: 12, paddingTop: 12, borderTopColor: "#e9ecef", borderTopWidth: 1 },
+  grandTotalLabel: { fontSize: 14, fontWeight: "900", color: TEXT_PRIMARY },
+  grandTotalValue: { fontSize: 20, fontWeight: "900", color: PRIMARY },
 
   disabledButton: {
     backgroundColor: "#95a5a6",
@@ -2313,33 +2451,31 @@ const styles = StyleSheet.create({
   footerBar: {
     position: "absolute",
     bottom: 0, left: 0, right: 0,
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    padding: 12,
+    backgroundColor: BG,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: "#ddd",
-    alignItems: "center",
-    justifyContent: "space-between",
+    borderTopColor: "#e9ecef",
     elevation: 4,
   },
-  footerLeft: { flexDirection: "row", alignItems: "center" },
-  footerTotalLabel: { fontSize: 15, fontWeight: "700", color: "#333", marginRight: 6 },
-  footerTotalValue: { fontSize: 16, fontWeight: "700", color: "#16a085" },
   footerCheckoutButton: {
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderRadius: 30,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 130,
+    width: "100%",
     elevation: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
     shadowRadius: 6,
   },
-  footerCheckoutText: { fontSize: 15, color: "#fff", fontWeight: "700", textAlign: "center" },
+  footerButtonContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" },
+  footerButtonLeft: { flexDirection: "row", alignItems: "center", flex: 1, paddingRight: 10 },
+  footerCheckoutText: { fontSize: 15, color: "#fff", fontWeight: "900" },
+  footerCheckoutAmount: { fontSize: 16, color: "#fff", fontWeight: "900" },
 
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center" },
   bottomSheet: {

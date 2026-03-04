@@ -8,9 +8,12 @@ import {
   ScrollView,
   Alert,
   Image,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "../context/CartContext";
 import { useServiceCart, ServiceCartItem } from "../context/ServiceCartContext";
@@ -29,11 +32,14 @@ type UnifiedCartItem = {
 
 export default function UnifiedCartScreen() {
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const { cart, removeFromCart, increaseQuantity, decreaseQuantity, clearCart: clearGroceryCart } = useCart();
   const { state: serviceState, removeService, clearCart: clearServiceCart, totalAmount: serviceTotalAmount } = useServiceCart();
   
   const [groceryProducts, setGroceryProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkoutOptionsVisible, setCheckoutOptionsVisible] = useState(false);
+  const [separateCheckoutVisible, setSeparateCheckoutVisible] = useState(false);
 
   // Fetch grocery product details
   useEffect(() => {
@@ -213,50 +219,42 @@ export default function UnifiedCartScreen() {
 
   const handleCheckout = () => {
     if (groceryProducts.length > 0 && Object.keys(serviceState.items).length > 0) {
-      // Both types - show selection
-      Alert.alert(
-        "Checkout Options",
-        "You have both grocery items and services. How would you like to proceed?",
-        [
-          {
-            text: "Grocery Only",
-            onPress: () => navigation.navigate("CartPayment")
-          },
-          {
-            text: "Services Only", 
-            onPress: () => navigation.navigate("ServiceCheckout", {
-              services: Object.values(serviceState.items),
-              totalAmount: serviceTotalAmount,
-            })
-          },
-          {
-            text: "Separate Checkouts",
-            onPress: () => {
-              Alert.alert(
-                "Checkout Separately",
-                "Please checkout grocery items and services separately. Which would you like to checkout first?",
-                [
-                  { text: "Grocery First", onPress: () => navigation.navigate("CartPayment") },
-                  { text: "Services First", onPress: () => navigation.navigate("ServiceCheckout", {
-                    services: Object.values(serviceState.items),
-                    totalAmount: serviceTotalAmount,
-                  })},
-                  { text: "Cancel", style: "cancel" }
-                ]
-              );
-            }
-          },
-          { text: "Cancel", style: "cancel" }
-        ]
-      );
+      setCheckoutOptionsVisible(true);
     } else if (groceryProducts.length > 0) {
       navigation.navigate("CartPayment");
     } else if (Object.keys(serviceState.items).length > 0) {
-      navigation.navigate("ServiceCheckout", {
-        services: Object.values(serviceState.items),
-        totalAmount: serviceTotalAmount,
-      });
+      navigation.navigate(
+        "ServicesTab" as never,
+        {
+          screen: "ServiceCheckout",
+          params: {
+            services: Object.values(serviceState.items),
+            totalAmount: serviceTotalAmount,
+          },
+        } as never
+      );
     }
+  };
+
+  const goGroceryCheckout = () => {
+    setCheckoutOptionsVisible(false);
+    setSeparateCheckoutVisible(false);
+    navigation.navigate("GroceryCart");
+  };
+
+  const goServicesCheckout = () => {
+    setCheckoutOptionsVisible(false);
+    setSeparateCheckoutVisible(false);
+    navigation.navigate(
+      "ServicesTab" as never,
+      {
+        screen: "ServiceCheckout",
+        params: {
+          services: Object.values(serviceState.items),
+          totalAmount: serviceTotalAmount,
+        },
+      } as never
+    );
   };
 
   const renderCartItem = ({ item }: { item: UnifiedCartItem }) => {
@@ -387,7 +385,7 @@ export default function UnifiedCartScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { marginBottom: tabBarHeight }]}>
         <View style={styles.totalContainer}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Grocery Items:</Text>
@@ -407,6 +405,69 @@ export default function UnifiedCartScreen() {
           <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={checkoutOptionsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCheckoutOptionsVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setCheckoutOptionsVisible(false)}>
+          <Pressable style={[styles.modalCard, { marginBottom: tabBarHeight }]} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Checkout Options</Text>
+            <Text style={styles.modalMessage}>
+              You have both grocery items and services. How would you like to proceed?
+            </Text>
+
+            <TouchableOpacity style={styles.modalAction} onPress={() => {
+              setCheckoutOptionsVisible(false);
+              setSeparateCheckoutVisible(true);
+            }}>
+              <Text style={styles.modalActionText}>SEPARATE CHECKOUTS</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goServicesCheckout}>
+              <Text style={styles.modalActionText}>SERVICES ONLY</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goGroceryCheckout}>
+              <Text style={styles.modalActionText}>GROCERY ONLY</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={() => setCheckoutOptionsVisible(false)}>
+              <Text style={styles.modalActionText}>CANCEL</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={separateCheckoutVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSeparateCheckoutVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setSeparateCheckoutVisible(false)}>
+          <Pressable style={[styles.modalCard, { marginBottom: tabBarHeight }]} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Checkout Separately</Text>
+            <Text style={styles.modalMessage}>
+              Please checkout grocery items and services separately. Which would you like to checkout first?
+            </Text>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goGroceryCheckout}>
+              <Text style={styles.modalActionText}>GROCERY FIRST</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goServicesCheckout}>
+              <Text style={styles.modalActionText}>SERVICES FIRST</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={() => setSeparateCheckoutVisible(false)}>
+              <Text style={styles.modalActionText}>CANCEL</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -643,6 +704,45 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#4a4a4a',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 10,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  modalMessage: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  modalAction: {
+    paddingVertical: 14,
+    alignItems: 'flex-end',
+  },
+  modalActionText: {
+    color: '#8be7dd',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   
   emptyContainer: {

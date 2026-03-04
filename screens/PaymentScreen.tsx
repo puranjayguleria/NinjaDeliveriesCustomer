@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
@@ -31,6 +32,7 @@ const toPaise = (amountRupees: number) => Math.round(Number(amountRupees) * 100)
 export default function PaymentScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const [loading, setLoading] = useState(false);
   const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slowTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -516,7 +518,7 @@ export default function PaymentScreen() {
         </ScrollView>
 
         {/* Fixed Bottom Section */}
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, { marginBottom: tabBarHeight }]}>
           <TouchableOpacity
             style={[styles.payBtn, loading && styles.disabledBtn]}
             activeOpacity={0.7}
