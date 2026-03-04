@@ -145,8 +145,7 @@ const shortcutLabel = (name?: string, shortName?: string) => {
   const exactMap: Record<string, string> = {
     "Pooja Essentials": "Pooja Ess..",
     "Water Gun": "Water Gun",
-    "Spray colors": "Sprays",
-    "Color Spray": "Color Spr..",
+    "Color Spray": "Sprays",
     "Dairy, Bread & Eggs": "Dairy",
     "Fresh Flowers": "Flowers",
   };
@@ -278,13 +277,13 @@ const Header = memo(() => {
       onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-        <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>20 minutes</Text>
+        <MaterialIcons name="flash-on" size={16} color="#c5e873ff" style={{ marginRight: 2 }} />
+        <Text style={{ color: "#333", fontWeight: "bold", fontSize: 13 }}>25-30 minutes</Text>
       </View>
-      <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
+      <Text style={{ color: "#333", opacity: 0.8, marginRight: 6 }}>•</Text>
       <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
 
-        <Text style={styles.locationTxt} numberOfLines={1}>
+        <Text style={[styles.locationTxt, { color: "#333" }]} numberOfLines={1}>
           {location.address
             ? `Delivering to ${location.address}`
             : "Set delivery location"}
@@ -296,7 +295,7 @@ const Header = memo(() => {
           </View>
         )}
       </View>
-      <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
+      <MaterialIcons name="keyboard-arrow-down" size={18} color="#333" />
     </Pressable>
   );
 });
@@ -306,29 +305,37 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
 
   return (
     <Pressable
-      style={[styles.searchWrapper, { paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent', overflow: 'hidden' }]}
+      style={{
+        borderRadius: 26,
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 3,
+        backgroundColor: "#fff",
+      }}
       onPress={() => nav.navigate("Search")}
     >
-      <LinearGradient
-        colors={["#F8BBD0", "#FFF9C4", "#B2DFDB", "#DCEDC8"]} // Holi spread: Light Pink, Yellow, Teal, Green
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
+          flexDirection: "row",
+          alignItems: "center",
+          borderRadius: 26,
           paddingVertical: 10,
           paddingHorizontal: 16,
-          width: '100%',
+          backgroundColor: "#FFFDE7",
+          borderWidth: 1,
+          borderColor: "#FFE082",
         }}
       >
         <MaterialIcons
           name="search"
           size={20}
-          color={Colors.text.secondary}
+          color="#555"
           style={{ marginRight: 6 }}
         />
         <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
-      </LinearGradient>
+      </View>
     </Pressable>
   );
 });
@@ -2097,7 +2104,7 @@ export default function ProductsHomeScreen() {
           {[
             { id: '1', name: 'Gulal', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433173204_gulal.webp?alt=media&token=39e727ce-557e-4b1c-a0be-f6fd31fb5eb0', ringColor: '#f8b3caff' },
             { id: '2', name: 'Water Gun', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433332589_gun%20pichkari.jpg?alt=media&token=d1e5c7e6-06b0-44a2-b6f8-ee40e8dcdc98', ringColor: '#bfdef7ff' },
-            { id: '3', name: 'Spray colors', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433086837_COLOR%20SPRAYS.jpg?alt=media&token=86e5e3d8-f586-416e-a01a-a4153e5f296c', ringColor: '#f8e1c0ff' },
+            { id: '3', name: 'Color Spray', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433086837_COLOR%20SPRAYS.jpg?alt=media&token=86e5e3d8-f586-416e-a01a-a4153e5f296c', ringColor: '#f8e1c0ff' },
             { id: '4', name: 'Pooja Essentials', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15', ringColor: '#f4ccfbff' },
             { id: '5', name: 'Dairy', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af', ringColor: '#cfe9ffff' }
           ].map((item) => (
@@ -2201,10 +2208,16 @@ export default function ProductsHomeScreen() {
                 borderColor: item.ringColor,
                 overflow: "hidden",
               }}>
-                {item.name === "Gulal" || item.name === "Water Gun" || item.name === "Color Spray" ? (
+                {item.name === "Gulal" || item.name === "Water Gun" ? (
                   <Image
                     source={{ uri: item.img }}
                     style={{ width: "100%", height: "100%", transform: [{ scale: 1.06 }] }}
+                    contentFit="cover"
+                  />
+                ) : item.name === "Color Spray" ? (
+                  <Image
+                    source={{ uri: item.img }}
+                    style={{ width: "100%", height: "100%", transform: [{ scale: 1.4 }] }}
                     contentFit="cover"
                   />
                 ) : item.name === "Pooja Essentials" ? (
@@ -2448,18 +2461,14 @@ export default function ProductsHomeScreen() {
               { height: videoHeight },
             ]}
           >
-            <LinearGradient
-              colors={["#f1b4d5ff", "#f7eba5ff", "#9ae0f8ff", "#b9f8b9ff"]} // DeepPink, Gold, DeepSkyBlue, LimeGreen
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            >
-               {/* Optional: Add a subtle overlay for texture/depth if desired */}
-               <LinearGradient
-                  colors={["rgba(255,255,255,0.15)", "transparent", "rgba(0,0,0,0.05)"]}
-                  style={StyleSheet.absoluteFill}
-               />
-            </LinearGradient>
+            <View
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                backgroundColor: "#FFF9C4", // Light yellow background
+                borderBottomWidth: 1,
+                borderBottomColor: "rgba(0,0,0,0.05)",
+              }}
+            />
           </Animated.View>
 
           {/* Gradient overlay removed to show Holi colors */}

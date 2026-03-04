@@ -350,7 +350,10 @@ ________________________________________
             </View>
           ) : (
             <>
-              <ScrollView style={styles.content}>
+              <ScrollView 
+                style={styles.content} 
+                contentContainerStyle={{ paddingBottom: 100 }} // Add bottom padding for tab bar
+              >
                 <Markdown>{markdownContent}</Markdown>
               </ScrollView>
               {!viewOnly && (

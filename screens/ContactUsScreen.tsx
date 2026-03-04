@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   /* ---------- actions ---------- */
   actionsWrapper: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
+    paddingBottom: 100, // Increased padding to avoid bottom tab bar
   },
   actionBtn: {
     flexDirection: 'row',

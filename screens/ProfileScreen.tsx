@@ -705,10 +705,9 @@ const ProfileScreen: React.FC = () => {
   if (!currentUser) {
     return (
       <View style={styles.notLoggedInContainer}>
-        <Image
-          source={require("../assets/ninja-logo.jpg")}
-          style={styles.promptImage}
-        />
+        <View style={styles.loggedOutIconBg}>
+          <Ionicons name="person" size={40} color="#9CA3AF" />
+        </View>
         <Text style={styles.promptText}>
           Login to view and manage your profile
         </Text>
@@ -778,11 +777,18 @@ const ProfileScreen: React.FC = () => {
             </View>
 
             <View style={styles.heroCard}>
-              <View style={styles.avatarWrap}>
-                <Image
-                  source={require("../assets/ninja-logo.jpg")}
-                  style={styles.avatarImage}
-                />
+              <View style={[styles.avatarWrap, { backgroundColor: "#FFEDD5" }]}>
+                <Text style={styles.avatarInitials}>
+                  {displayName
+                    ? displayName
+                        .split(" ")
+                        .filter((n) => n)
+                        .map((n) => n[0])
+                        .join("")
+                        .substring(0, 2)
+                        .toUpperCase()
+                    : "NC"}
+                </Text>
               </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.heroName} numberOfLines={1}>
@@ -1270,10 +1276,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: "#fff",
   },
-  promptImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  loggedOutIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
   },
   promptText: {
@@ -1328,10 +1337,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
   },
-  avatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  avatarInitials: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#EA580C",
   },
   heroName: {
     fontSize: 16,

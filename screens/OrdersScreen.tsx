@@ -10,7 +10,8 @@ import {
   Button,
   ActivityIndicator,
   ScrollView,
-  SafeAreaView
+  SafeAreaView,
+  TouchableWithoutFeedback
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
@@ -442,32 +443,38 @@ const OrdersScreen: React.FC = () => {
         visible={isFilterModalVisible}
         onRequestClose={() => setFilterModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalHeader}>Filter by Date</Text>
+        <TouchableOpacity
+          style={styles.modalContainer}
+          activeOpacity={1}
+          onPress={() => setFilterModalVisible(false)}
+        >
+          <TouchableWithoutFeedback>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Filter by Date</Text>
 
-            <View style={styles.dateFilterContainer}>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => showDatePicker("start")}
-              >
-                <Text style={styles.dateButtonText}>
-                  {startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => showDatePicker("end")}
-              >
-                <Text style={styles.dateButtonText}>
-                  {endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.dateFilterContainer}>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => showDatePicker("start")}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => showDatePicker("end")}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Button title="Apply Filter" onPress={applyFilter} />
             </View>
-
-            <Button title="Apply Filter" onPress={applyFilter} />
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
 
       <DateTimePickerModal
@@ -587,7 +594,7 @@ const styles = StyleSheet.create({
   },
   fabButton: {
     position: "absolute",
-    bottom: 30,
+    bottom: 100, // Raised to avoid bottom tab bar
     right: 30,
     backgroundColor: "#4CAF50",
     padding: 15,

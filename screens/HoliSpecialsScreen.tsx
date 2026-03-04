@@ -148,7 +148,7 @@ export default function HoliSpecialsScreen() {
   }, [userName]);
 
   const onOpenSub = (sub: SubcategoryDoc) => {
-    nav.navigate("HoliSpecialScreen", {
+    nav.navigate("ProductListingFromHome", {
       categoryId: CATEGORY_ID,
       categoryName: String(sub?.name || "Holi Specials"),
       subcategoryId: sub.id,
