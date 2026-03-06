@@ -824,7 +824,13 @@ function AppTabs() {
       />
 
       <Tab.Navigator
-        initialRouteName={showGrocery ? "HomeTab" : showServices ? "ServicesTab" : "HomeTab"}
+        initialRouteName={
+          showGrocery 
+            ? "HomeTab" 
+            : showServices 
+            ? "ServicesTab" 
+            : "Profile"  // Fallback to Profile if nothing else is available
+        }
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
