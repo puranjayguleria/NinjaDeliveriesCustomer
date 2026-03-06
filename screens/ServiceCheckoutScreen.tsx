@@ -196,7 +196,14 @@ export default function ServiceCheckoutScreen() {
 
       // Keep storeId in sync with the latest deliverability result.
       if (location?.storeId !== nearest.id) {
-        updateLocation({ storeId: nearest.id, lat, lng });
+        updateLocation({ 
+          storeId: nearest.id, 
+          lat, 
+          lng,
+          grocery: nearest.grocery,
+          food: nearest.food,
+          services: nearest.services,
+        });
       }
       return true;
     } catch (e) {

@@ -54,7 +54,7 @@ export async function prefetchNearestStoreZones(): Promise<void> {
 export async function findNearestStore(
   lat: number,
   lng: number
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; grocery?: boolean; food?: boolean; services?: boolean } | null> {
   const key = coordKey(lat, lng);
   const now = Date.now();
   const cached = nearestCache.get(key);
@@ -111,5 +111,22 @@ export async function findNearestStore(
 
   const winner = eligible[0].id;
   nearestCache.set(key, { ts: Date.now(), id: winner });
+  
+  // ── 5. fetch location document to get grocery/food/services flags
+  try {
+    const locationDoc = await firestore().collection('locations').doc(winner).get();
+    if (locationDoc.exists) {
+      const data = locationDoc.data();
+      return { 
+        id: winner,
+        grocery: data?.grocery ?? true,
+        food: data?.food ?? true,
+        services: data?.services ?? true
+      };
+    }
+  } catch (error) {
+    console.warn('[findNearestStore] Error fetching location flags:', error);
+  }
+  
   return { id: winner };
 }

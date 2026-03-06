@@ -1628,6 +1628,9 @@ const CartScreen: React.FC = () => {
               lat: item.lat,
               lng: item.lng,
               storeId: nearest.id,
+              grocery: nearest.grocery,
+              food: nearest.food,
+              services: nearest.services,
             };
 
             const allCartsEmpty = isAllCartsEmpty();

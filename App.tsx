@@ -46,6 +46,7 @@ import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider } from "./context/LocationContext";
 import { useLocationContext } from "./context/LocationContext";
+import { fetchLocationFlags } from "./utils/fetchLocationFlags";
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
@@ -56,7 +57,6 @@ import ProductsHomeScreen from "./screens/ProductsHomeScreen";
 import ServicesStack from "./navigation/ServicesStack";
 
 import CategoriesScreen from "./screens/CategoriesScreen";
-import FeaturedScreen from "./screens/FeaturedScreen";
 import ProductListingScreen from "./screens/ProductListingScreen";
 import CartScreen from "./screens/CartScreen";
 import CartPaymentScreen from "./screens/CartPaymentScreen";
@@ -506,22 +506,6 @@ function CategoriesStack() {
   );
 }
 
-function FeaturedStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="FeaturedHome" component={FeaturedScreen} />
-      <Stack.Screen
-        name="ProductListingFromFeatured"
-        component={ProductListingScreen as any}
-        options={({ route }) => ({
-          title: (route.params as any)?.categoryName || "Products",
-          headerShown: true,
-        })}
-      />
-    </Stack.Navigator>
-  );
-}
-
 
 
 const CartStack = () => (
@@ -555,12 +539,120 @@ const ProfileStack = () => (
 function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
-  const { location } = useLocationContext(); // Add location context
+  const { location, updateLocation } = useLocationContext(); // Add updateLocation
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  
+  // Get location flags (default to true if not set)
+  const showGrocery = location?.grocery !== false;
+  const showFood = location?.food !== false;
+  const showServices = location?.services !== false;
+  
+  // Fetch location flags when storeId changes
+  useEffect(() => {
+    if (!location?.storeId) {
+      return;
+    }
+
+    console.log('[AppTabs] Setting up real-time listener for storeId:', location.storeId);
+
+    // Real-time listener for location flags
+    const unsubscribe = firestore()
+      .collection('locations')
+      .where('storeId', '==', location.storeId)
+      .limit(1)
+      .onSnapshot(
+        (querySnapshot) => {
+          if (!querySnapshot.empty) {
+            const data = querySnapshot.docs[0].data();
+            console.log('[AppTabs] Real-time update - Document data:', data);
+            
+            const flags = {
+              grocery: data?.grocery ?? true,
+              food: data?.food ?? true,
+              services: data?.services ?? true,
+            };
+            
+            console.log('[AppTabs] Real-time update - Updating flags:', flags);
+            updateLocation(flags);
+          } else {
+            console.warn('[AppTabs] Real-time update - No document found');
+          }
+        },
+        (error) => {
+          console.error('[AppTabs] Real-time listener error:', error);
+        }
+      );
+
+    // Cleanup listener on unmount or storeId change
+    return () => {
+      console.log('[AppTabs] Cleaning up real-time listener');
+      unsubscribe();
+    };
+  }, [location?.storeId]);
+
+  // Navigate away if current tab becomes unavailable
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+
+    // Check if current tab is still available
+    const isHomeAvailable = showGrocery;
+    const isCategoriesAvailable = showGrocery;
+    const isServicesAvailable = showServices;
+
+    // If on Home or Categories tab and grocery becomes false
+    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
+      console.log('[AppTabs] Current tab unavailable, navigating to available tab');
+      if (isServicesAvailable) {
+        navigation.navigate('ServicesTab' as never);
+      } else {
+        navigation.navigate('HomeTab' as never);
+      }
+    }
+    
+    // If on Services tab and services becomes false
+    if (currentTab === 'ServicesTab' && !showServices) {
+      console.log('[AppTabs] Services tab unavailable, navigating to available tab');
+      if (isHomeAvailable) {
+        navigation.navigate('HomeTab' as never);
+      } else {
+        navigation.navigate('HomeTab' as never);
+      }
+    }
+  }, [showGrocery, showServices, currentTab]);
+
+  // Navigate to HomeTab when grocery becomes true (from false)
+  const prevGroceryRef = useRef(showGrocery);
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+
+    // Check if grocery flag changed from false to true
+    if (!prevGroceryRef.current && showGrocery) {
+      console.log('[AppTabs] Grocery enabled, navigating to HomeTab');
+      navigation.navigate('HomeTab' as never);
+    }
+
+    // Update previous value
+    prevGroceryRef.current = showGrocery;
+  }, [showGrocery]);
+  
+  // Debug logging
+  if (__DEV__) {
+    console.log('[AppTabs] Location flags:', {
+      storeId: location?.storeId,
+      grocery: location?.grocery,
+      food: location?.food,
+      services: location?.services,
+      showGrocery,
+      showFood,
+      showServices,
+    });
+  }
   
   // Cart selection modal state
   const [cartModalVisible, setCartModalVisible] = useState(false);
@@ -732,12 +824,11 @@ function AppTabs() {
       />
 
       <Tab.Navigator
-        initialRouteName="HomeTab"
+        initialRouteName={showGrocery ? "HomeTab" : showServices ? "ServicesTab" : "HomeTab"}
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
             CategoriesTab: "apps-outline",
-            FeaturedTab: "star-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
             ServicesTab: "construct-outline",
@@ -804,69 +895,71 @@ function AppTabs() {
         }}
       >
 
-        <Tab.Screen
-          name="HomeTab"
-          component={HomeStack}
-          options={{ title: "Home" }}
-        />
+        {/* Home Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="HomeTab"
+            component={HomeStack}
+            options={{ title: "Home" }}
+          />
+        )}
 
-        {/* ⿢ Categories Tab */}
-        <Tab.Screen
-          name="CategoriesTab"
-          component={CategoriesStack}
-          options={{ title: "Categories" }}
-        />
+        {/* ⿢ Categories Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="CategoriesTab"
+            component={CategoriesStack}
+            options={{ title: "Categories" }}
+          />
+        )}
         
-        {/* ⿣ Featured Tab */}
-        <Tab.Screen
-          name="FeaturedTab"
-          component={FeaturedStack}
-          options={{ title: "Featured" }}
-        />
+        {/* ⿣ Services Tab - Only show if services is enabled */}
+        {showServices && (
+          <Tab.Screen
+            name="ServicesTab"
+            component={ServicesStack}
+            options={{
+              title: "Services",
+            }}
+            listeners={({ navigation, route }) => ({
+              tabPress: (e) => {
+                // Check if user is in Tanda location or other restricted locations
+                // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
+                const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
+                
+                // Debug: Log current storeId to help identify location
+                if (__DEV__) {
+                  console.log("[Services Tab] Current storeId:", location?.storeId);
+                  console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
+                  console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
+                }
+                
+                if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
+                  e.preventDefault();
+                  setServicesUnavailableModalVisible(true);
+                  return;
+                }
 
-        {/* ⿣ Services Tab */}
-        <Tab.Screen
-          name="ServicesTab"
-          component={ServicesStack}
-          options={{
-            title: "Services",
-          }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (e) => {
-              // Check if user is in Tanda location or other restricted locations
-              // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
-              const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
-              
-              // Debug: Log current storeId to help identify location
-              if (__DEV__) {
-                console.log("[Services Tab] Current storeId:", location?.storeId);
-                console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
-                console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
-              }
-              
-              if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
+                // Non-restricted location:
+                // Navigate immediately and show loader
                 e.preventDefault();
-                setServicesUnavailableModalVisible(true);
-                return;
-              }
+                
+                // Navigate first
+                navigation.navigate("ServicesTab", { screen: "ServicesHome" });
+                
+                // Show loader immediately
+                setServiceLoaderVisible(true);
+                
+                // Hide loader after animation
+                setTimeout(() => {
+                  setServiceLoaderVisible(false);
+                }, 800);
+              },
+            })}
+          />
+        )}
 
-              // Non-restricted location:
-              // Navigate immediately and show loader
-              e.preventDefault();
-              
-              // Navigate first
-              navigation.navigate("ServicesTab", { screen: "ServicesHome" });
-              
-              // Show loader immediately
-              setServiceLoaderVisible(true);
-              
-              // Hide loader after animation
-              setTimeout(() => {
-                setServiceLoaderVisible(false);
-              }, 800);
-            },
-          })}
-        />
+        {/* ⿣ Featured Tab */}
 
         {/* ⿤ Cart (with modal selection) */}
         <Tab.Screen

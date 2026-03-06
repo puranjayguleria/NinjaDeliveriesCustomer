@@ -37,6 +37,7 @@ import { Image } from "expo-image";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 
 import { useLocationContext } from "@/context/LocationContext";
+import { fetchLocationFlags } from "@/utils/fetchLocationFlags";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
 import Loader from "@/components/VideoLoader";
@@ -459,14 +460,14 @@ const MosaicCard: React.FC<{
         </View>
       )}
 
-      <View style={styles.cardLabel}>
-        {badge && (
-          <View style={[styles.badge, { backgroundColor: color }]}>            
-            <Text style={styles.badgeTxt}>{badge}</Text>
-          </View>
-        )}
-        <Text style={styles.cardTitle}>{cat.name}</Text>
-      </View>
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.85)'] as any}
+        style={styles.cardLabel}
+      >
+        <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
+          {cat.name}
+        </Text>
+      </LinearGradient>
     </Pressable>
   );
 };
@@ -1364,9 +1365,15 @@ export default function ProductsHomeScreen() {
         // ignore
       }
 
-      updateLocation({ storeId: picked.storeId, address: addr });
+      updateLocation({ storeId: (picked as DeliveryZone).storeId, address: addr });
+      
+      // Fetch and update location flags
+      const flags = await fetchLocationFlags((picked as DeliveryZone).storeId);
+      if (flags) {
+        updateLocation({ ...flags } as any);
+      }
     },
-    [zones, location.storeId, updateLocation, nav, setErrorMessage, setConfirmText]
+    [zones, location.storeId, updateLocation, nav]
   );
 
   const triedAuto = useRef(false);
@@ -1739,18 +1746,18 @@ export default function ProductsHomeScreen() {
           id: d.id,
           ...data,
           createdAt: data.createdAt?.toDate?.() ?? null,
-        };
+        } as any;
       });
 
       setBestProducts(
         all
-          .filter((p) => (p.weeklySold ?? 0) > 0)
-          .sort((a, b) => (b.weeklySold ?? 0) - (a.weeklySold ?? 0))
+          .filter((p: any) => (p.weeklySold ?? 0) > 0)
+          .sort((a: any, b: any) => (b.weeklySold ?? 0) - (a.weeklySold ?? 0))
       );
 
       setFreshProducts(
         all
-          .filter((p) => p.isNew)
+          .filter((p: any) => p.isNew)
           .sort((a, b) => {
             const aTime = a.createdAt?.getTime?.() ?? 0;
             const bTime = b.createdAt?.getTime?.() ?? 0;
@@ -1774,7 +1781,7 @@ export default function ProductsHomeScreen() {
     }
 
     if (name === "Chocolates") {
-      const storeId = location.storeId;
+      const storeId = location.storeId || null;
       if (storeId) {
         try {
           const snap = await firestore()
@@ -1806,7 +1813,7 @@ export default function ProductsHomeScreen() {
     }
 
     if (name === "Blossoms") {
-      const storeId = location.storeId;
+      const storeId = location.storeId || null;
       if (storeId) {
         try {
           const snap = await firestore()
@@ -1901,9 +1908,8 @@ export default function ProductsHomeScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
             {(categoryShortcuts && categoryShortcuts.length > 0
               ? categoryShortcuts
-              : [
-                       ]
-            ).map((item) => {
+              : []
+            ).map((item: any) => {
               const source = typeof item.imageUrl === "string" ? { uri: item.imageUrl } : item.imageUrl;
               return (
                 <TouchableOpacity
@@ -1952,7 +1958,7 @@ export default function ProductsHomeScreen() {
       )}
 
       {/* Promotional banners - Pass flag to control Valentine sections only */}
-      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
+      <BannerSwitcher storeId={location.storeId || ""} enableValentineUI={enableValentineUI} />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
@@ -2078,7 +2084,7 @@ export default function ProductsHomeScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={pageBg.overlayGradient}
+                  colors={pageBg.overlayGradient as any}
                   style={StyleSheet.absoluteFill}
                 />
               </View>
@@ -2137,7 +2143,7 @@ export default function ProductsHomeScreen() {
             style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
           >
             <LinearGradient
-              colors={headerGradientColors}
+              colors={headerGradientColors as any}
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
@@ -2265,9 +2271,9 @@ export default function ProductsHomeScreen() {
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item: any) => item.id}
             extraData={listExtraData}
-            renderItem={({ item }) => {
+            renderItem={({ item }: { item: any }) => {
               if (!item?.id || !item?.name) return null;
 
               const data = prodMap[item.id]?.rows || [];

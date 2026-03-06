@@ -29,6 +29,7 @@ import { RootStackParamList, LocationData } from "../types/navigation";
 import { GOOGLE_PLACES_API_KEY } from "@env";
 import ErrorModal from "../components/ErrorModal";
 import { useLocationContext } from "../context/LocationContext"; // location context hook
+import { fetchLocationFlags } from "../utils/fetchLocationFlags";
 import { useCart } from "../context/CartContext";
 import { useRestaurantCart } from "../context/RestaurantCartContext";
 import { useServiceCart } from "../context/ServiceCartContext";
@@ -471,7 +472,13 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         storeId: nearest.storeId,
       };
 
-      updateLocation(newLocationData);
+      // Fetch location flags from Firestore
+      const flags = await fetchLocationFlags(nearest.storeId);
+      
+      updateLocation({
+        ...newLocationData,
+        ...flags,
+      });
 
       if (fromScreenKey === "cart") {
         const allCartsEmpty = isAllCartsEmpty();

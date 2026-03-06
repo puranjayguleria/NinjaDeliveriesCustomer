@@ -142,7 +142,7 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
         } as never
       );
     } else {
-      navigation.navigate("FeaturedTab" as never);
+      navigation.navigate("HomeTab" as never);
     }
   };
 
