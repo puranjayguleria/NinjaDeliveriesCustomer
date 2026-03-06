@@ -1274,8 +1274,9 @@ const CartScreen: React.FC = () => {
         }
         
         const { orderId, pickupCoords } = result;
-        // Clear all carts after successful order
-        clearAllCarts();
+        // Clear only grocery cart after successful grocery order
+        // Don't clear services cart as it's independent
+        clearCart();
         setSelectedLocation(null);
 
         console.log("Navigating to OrderAllocating with:", {

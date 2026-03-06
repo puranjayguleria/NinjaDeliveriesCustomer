@@ -876,17 +876,23 @@ function AppTabs() {
                     </View>
                   )}
 
-                  <Ionicons
-                    name={iconName}
-                    size={size}
-                    color={isService ? "red" : color}
-                  />
-
-                  {route.name === "CartFlow" && totalItems > 0 && (
-                    <View style={styles.badgeContainer}>
-                      <Text style={styles.badgeText}>{totalItems}</Text>
-                    </View>
+                  {/* Render the actual icon */}
+                  {iconName && (
+                    <Ionicons name={iconName} size={size} color={color} />
                   )}
+
+                  {route.name === "CartFlow" && (() => {
+                    // Calculate active cart items based on location flags
+                    const activeGroceryItems = showGrocery ? groceryTotalItems : 0;
+                    const activeServiceItems = showServices ? serviceTotalItems : 0;
+                    const activeTotalItems = activeGroceryItems + activeServiceItems;
+                    
+                    return activeTotalItems > 0 ? (
+                      <View style={styles.badgeContainer}>
+                        <Text style={styles.badgeText}>{activeTotalItems}</Text>
+                      </View>
+                    ) : null;
+                  })()}
 
                 </Animated.View>
               );
@@ -972,13 +978,40 @@ function AppTabs() {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
               } else {
-                // Show modal if both grocery and services have items, or if user wants to choose
-                if (groceryTotalItems > 0 || serviceTotalItems > 0) {
+                // Determine which carts are active based on location flags
+                const isGroceryActive = showGrocery && groceryTotalItems > 0;
+                const isServiceActive = showServices && serviceTotalItems > 0;
+                
+                // If both are active, show modal to choose
+                if (isGroceryActive && isServiceActive) {
                   e.preventDefault();
                   setPendingNavigation(navigation);
                   setCartModalVisible(true);
-                } else {
-                  // Empty cart - go to unified cart
+                }
+                // If only grocery is active, go directly to grocery cart
+                else if (isGroceryActive && !isServiceActive) {
+                  e.preventDefault();
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "CartFlow",
+                          state: { routes: [{ name: "GroceryCart" }] },
+                        },
+                      ],
+                    })
+                  );
+                }
+                // If only service is active, go directly to service cart
+                else if (isServiceActive && !isGroceryActive) {
+                  e.preventDefault();
+                  navigation.navigate("ServicesTab", { 
+                    screen: "ServiceCart" 
+                  });
+                }
+                // Empty cart or no active carts - go to unified cart
+                else {
                   const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
                   if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
                     e.preventDefault();
