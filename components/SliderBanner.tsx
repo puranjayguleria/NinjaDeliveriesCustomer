@@ -273,8 +273,7 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 0,
-    marginBottom: 0, // Reduced gap below slider banner
+    marginVertical: 16,
   },
   bannerContainer: {
     width: SLIDE_WIDTH,

@@ -10,12 +10,10 @@ import Loader from "./VideoLoader";
 import ValentineBanner from "./ValentineBanner";
 import RoseBouquetBanner from "./RoseBouquetBanner";
 import ValentineSpecialSection from "./ValentineSpecialSection";
-import HoliBanner from "./HoliBanner";
 
 interface BannerSwitcherProps {
   storeId: string;
   enableValentineUI?: boolean;
-  showHoliInside?: boolean;
 }
 
 interface ZBanner {
@@ -24,7 +22,7 @@ interface ZBanner {
   imageUrl: string;
 }
 
-const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentineUI = true, showHoliInside = true }) => {
+const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentineUI = true }) => {
   const [bannerConfig, setBannerConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,10 +115,6 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId, enableValentin
       {enableValentineUI && showValentineBanner && <ValentineBanner imageUrl={valentineBannerUrl} />}
       {enableValentineUI && showRoseBouquetBanner && <RoseBouquetBanner imageUrl={roseBouquetBannerUrl} />}
       {enableValentineUI && <ValentineSpecialSection storeId={storeId} />}
-      
-      {showHoliInside && bannerConfig?.showHoliBanner && (
-        <HoliBanner imageUrl={bannerConfig?.holiBannerUrl} storeId={storeId} />
-      )}
       
       {/* Other banners - always shown */}
       {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}

@@ -12,7 +12,6 @@ import {
   TextInput,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { ServiceIssue, ServiceCategory } from "../services/firestoreService";
@@ -22,7 +21,6 @@ import { firestore } from "../firebase.native";
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const tabBarHeight = useBottomTabBarHeight();
 
   const { serviceTitle, categoryId } = route.params;
 
@@ -210,8 +208,6 @@ export default function ServiceCategoryScreen() {
   const totalSelectedCount = useMemo(() => {
     return Object.values(serviceQuantities).reduce((sum, qty) => sum + qty, 0);
   }, [serviceQuantities]);
-
-  const listBottomPadding = tabBarHeight + (totalSelectedCount > 0 ? 120 : 24);
 
   const onContinue = async () => {
     if (selectedServices.length === 0) {
@@ -478,7 +474,7 @@ export default function ServiceCategoryScreen() {
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ListFooterComponent={ListFooter}
-            contentContainerStyle={{ paddingBottom: listBottomPadding }}
+            contentContainerStyle={{ paddingBottom: 100 }}
             showsVerticalScrollIndicator={false}
             refreshing={loading}
             onRefresh={fetchServiceIssues}
@@ -488,7 +484,7 @@ export default function ServiceCategoryScreen() {
 
       {/* Bottom Continue Button */}
       {totalSelectedCount > 0 && (
-        <View style={[styles.bottomBar, { bottom: tabBarHeight }]}>
+        <View style={styles.bottomBar}>
           <View style={styles.bottomBarContent}>
             <View>
               <Text style={styles.itemCountText}>

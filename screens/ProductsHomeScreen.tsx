@@ -43,7 +43,6 @@ import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
-import HoliBanner from "@/components/HoliBanner";
 import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 import { Colors } from "@/constants/colors";
 
@@ -59,16 +58,16 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 120;
+const INITIAL_VIDEO_HEIGHT = 160;
 const COLLAPSED_VIDEO_HEIGHT = 80;
-const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 30 : 10;
-const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 36 : 24;
+const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
+const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
 
 const { width } = Dimensions.get("window");
 const H = 16;
 const G = 20;
-const MOSAIC_W = width * 0.28;
+const MOSAIC_W = width * 0.35;
 const MOSAIC_W_GAME = width * 0.5;
 const SEARCH_PH = ["atta", "dal", "eggs", "biscuits", "coffee"];
 
@@ -134,29 +133,6 @@ const latlng = (c?: { latitude?: number; longitude?: number }) =>
   c?.latitude != null && c?.longitude != null
     ? `${Number(c.latitude).toFixed(4)}, ${Number(c.longitude).toFixed(4)}`
     : "";
-
-const shortcutLabel = (name?: string, shortName?: string) => {
-  const direct = String(shortName || "").trim();
-  if (direct) return direct;
-
-  const n = String(name || "").replace(/\s+/g, " ").trim();
-  if (!n) return "";
-
-  const exactMap: Record<string, string> = {
-    "Pooja Essentials": "Pooja Ess..",
-    "Water Gun": "Water Gun",
-    "Color Spray": "Sprays",
-    "Dairy, Bread & Eggs": "Dairy",
-    "Fresh Flowers": "Flowers",
-  };
-
-  if (exactMap[n]) return exactMap[n];
-
-  const words = n.split(" ");
-  if (words.length === 1) return n;
-  if (n.length <= 10) return n;
-  return words[0];
-};
 
 /* ------------------------------------------------------------------ types */
 
@@ -277,13 +253,13 @@ const Header = memo(() => {
       onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-        <MaterialIcons name="flash-on" size={16} color="#c5e873ff" style={{ marginRight: 2 }} />
-        <Text style={{ color: "#333", fontWeight: "bold", fontSize: 13 }}>25-30 minutes</Text>
+        <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
+        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
       </View>
-      <Text style={{ color: "#333", opacity: 0.8, marginRight: 6 }}>•</Text>
+      <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
       <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
 
-        <Text style={[styles.locationTxt, { color: "#333" }]} numberOfLines={1}>
+        <Text style={styles.locationTxt} numberOfLines={1}>
           {location.address
             ? `Delivering to ${location.address}`
             : "Set delivery location"}
@@ -295,7 +271,7 @@ const Header = memo(() => {
           </View>
         )}
       </View>
-      <MaterialIcons name="keyboard-arrow-down" size={18} color="#333" />
+      <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
     </Pressable>
   );
 });
@@ -305,37 +281,16 @@ const SearchBar = memo(({ ph }: { ph: string }) => {
 
   return (
     <Pressable
-      style={{
-        borderRadius: 26,
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
-        elevation: 3,
-        backgroundColor: "#fff",
-      }}
+      style={[styles.searchWrapper]}
       onPress={() => nav.navigate("Search")}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          borderRadius: 26,
-          paddingVertical: 10,
-          paddingHorizontal: 16,
-          backgroundColor: "#FFFDE7",
-          borderWidth: 1,
-          borderColor: "#FFE082",
-        }}
-      >
-        <MaterialIcons
-          name="search"
-          size={20}
-          color="#555"
-          style={{ marginRight: 6 }}
-        />
-        <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
-      </View>
+      <MaterialIcons
+        name="search"
+        size={20}
+        color={Colors.text.secondary}
+        style={{ marginRight: 6 }}
+      />
+      <Text style={styles.searchTxt}>{`Search for ${ph}`}</Text>
     </Pressable>
   );
 });
@@ -415,38 +370,20 @@ const MemoIntroCard = React.memo(
 const ChipsRow: React.FC<{ subs: any[]; onPress: (s: any) => void }> = ({
   subs,
   onPress,
-}) => {
-  const colors = [
-    { bg: "#E3F2FD", text: "#1565C0" }, // Blue
-    { bg: "#E8F5E9", text: "#2E7D32" }, // Green
-    { bg: "#FFF3E0", text: "#E65100" }, // Orange
-    { bg: "#F3E5F5", text: "#7B1FA2" }, // Purple
-    { bg: "#E0F2F1", text: "#00695C" }, // Teal
-    { bg: "#FBE9E7", text: "#D84315" }, // Deep Orange
-    { bg: "#FFFDE7", text: "#FBC02D" }, // Yellow/Gold
-  ];
-
-  return subs.length ? (
+}) =>
+  subs.length ? (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingLeft: H, paddingVertical: 6 }}
     >
-      {subs.map((s, idx) => {
-        const color = colors[idx % colors.length];
-        return (
-          <Pressable 
-            key={s.id} 
-            style={[styles.chip, { backgroundColor: color.bg }]} 
-            onPress={() => onPress(s)}
-          >
-            <Text style={[styles.chipTxt, { color: color.text }]}>{s.name}</Text>
-          </Pressable>
-        );
-      })}
+      {subs.map((s) => (
+        <Pressable key={s.id} style={styles.chip} onPress={() => onPress(s)}>
+          <Text style={styles.chipTxt}>{s.name}</Text>
+        </Pressable>
+      ))}
     </ScrollView>
   ) : null;
-};
 
 /* ------------------------------------------------------------------ mosaic card */
 
@@ -479,7 +416,7 @@ const MosaicCard: React.FC<{
 
   return (
     <Pressable
-      style={[styles.mosaicCard, { borderColor: color, borderWidth: 1.5 }]}
+      style={styles.mosaicCard}
       onPress={() =>
         nav.navigate("ProductListingFromHome", {
           categoryId: cat.id,
@@ -487,25 +424,6 @@ const MosaicCard: React.FC<{
         })
       }
     >
-      <View style={styles.mosaicTopPills} pointerEvents="none">
-        <View style={styles.mosaicTopPillsLeft}>
-          {badge && (
-            <View style={[styles.mosaicBadgePill, { borderColor: color }]}>
-              <Text style={[styles.mosaicBadgeTxt, { color }]}>{badge}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.mosaicTopPillsRight}>
-          {maxDiscountPercent > 0 && (
-            <View style={styles.mosaicDealPill}>
-              <Text style={styles.mosaicDealTxt}>
-                {maxDiscountPercent}% OFF
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
       {grid.map((cellStyle, idx) => (
         <View
           key={idx}
@@ -535,15 +453,20 @@ const MosaicCard: React.FC<{
           <Text style={styles.moreTxt}>+{products.length - 4}</Text>
         </View>
       )}
+      {maxDiscountPercent > 0 && (
+        <View style={styles.mosaicDeal}>
+          <Text style={styles.mosaicDealTxt}>UP TO {maxDiscountPercent}% OFF</Text>
+        </View>
+      )}
 
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)']}
-        style={styles.cardLabel}
-      >
-        <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
-          {cat.name}
-        </Text>
-      </LinearGradient>
+      <View style={styles.cardLabel}>
+        {badge && (
+          <View style={[styles.badge, { backgroundColor: color }]}>            
+            <Text style={styles.badgeTxt}>{badge}</Text>
+          </View>
+        )}
+        <Text style={styles.cardTitle}>{cat.name}</Text>
+      </View>
     </Pressable>
   );
 };
@@ -631,7 +554,7 @@ const SeeAllButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
       <View style={styles.seeAllRow}>
         <Text style={styles.seeAllTxt}>See all</Text>
         <Animated.View style={{ transform: [{ rotate: rotateDeg }] }}>
-          <MaterialIcons name="arrow-forward-ios" size={14} color="#1976D2" />
+          <MaterialIcons name="arrow-forward-ios" size={14} color={Colors.primary} />
         </Animated.View>
       </View>
     </AnimatedPressable>
@@ -662,8 +585,7 @@ const MultiRowProductGrid: React.FC<{
   products: any[];
   isPanProd: (p: any) => boolean;
   maybeGate: (cb: () => void, isPan: boolean) => void;
-  padBottom?: number;
-}> = ({ products, isPanProd, maybeGate, padBottom }) => {
+}> = ({ products, isPanProd, maybeGate }) => {
   const groupMap: Record<string, { items: any[]; total: number }> = {};
 
   products.forEach((p) => {
@@ -752,14 +674,6 @@ const MultiRowProductGrid: React.FC<{
     }
   }
 
-  const TILE_SCALE = 0.8;
-  const TILE_W = 120; // Original width from QuickTile
-  const TILE_H = 210; // Original height from QuickTile
-  
-  // Calculate scaled dimensions
-  const SCALED_W = TILE_W * TILE_SCALE;
-  const SCALED_H = TILE_H * TILE_SCALE;
-  
   return (
     <View>
       {rows.map((rowItems, rowIdx) => (
@@ -769,9 +683,7 @@ const MultiRowProductGrid: React.FC<{
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{
             paddingLeft: H,
-            // Reduce negative margin to prevent vertical overlap
-            marginTop: rowIdx === 0 ? 0 : 0, 
-            paddingBottom: typeof padBottom === "number" ? padBottom : 8
+            marginTop: rowIdx === 0 ? 0 : 8,
           }}
           directionalLockEnabled
           alwaysBounceVertical={false}
@@ -779,29 +691,8 @@ const MultiRowProductGrid: React.FC<{
           {rowItems.map((p: any) => {
             const isPan = isPanProd(p);
             return (
-              <View 
-                key={p.id} 
-                style={{ 
-                  width: SCALED_W, 
-                  height: SCALED_H,
-                  marginRight: 16, // Increase horizontal gap to prevent overlap
-                  // We need to center the scaled item in this smaller box or align top-left
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'visible' 
-                }}
-              >
-                <View style={{ 
-                  width: TILE_W, 
-                  height: TILE_H,
-                  transform: [{ scale: TILE_SCALE }],
-                }}>
-                  <QuickTile 
-                    p={p} 
-                    isPan={isPan} 
-                    guard={maybeGate} 
-                  />
-                </View>
+              <View key={p.id} style={{ marginRight: 8 }}>
+                <QuickTile p={p} isPan={isPan} guard={maybeGate} />
               </View>
             );
           })}
@@ -1423,37 +1314,6 @@ export default function ProductsHomeScreen() {
       .catch((e) => console.warn("fetch zones", e));
   }, []);
 
-  const [holiBannerEnabled, setHoliBannerEnabled] = useState(false);
-  const [holiBannerUrl, setHoliBannerUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!location.storeId) {
-      setHoliBannerEnabled(false);
-      setHoliBannerUrl(null);
-      return;
-    }
-    const unsub = firestore()
-      .collection("banner")
-      .where("storeId", "==", location.storeId)
-      .limit(1)
-      .onSnapshot(
-        (snap) => {
-          const d = snap.docs[0]?.data() as any;
-          const en = !!d?.showHoliBanner;
-          const url =
-            typeof d?.holiBannerUrl === "string"
-              ? d.holiBannerUrl.replace(/`/g, "").trim()
-              : null;
-          setHoliBannerEnabled(en);
-          setHoliBannerUrl(url);
-        },
-        () => {
-          setHoliBannerEnabled(false);
-          setHoliBannerUrl(null);
-        }
-      );
-    return unsub;
-  }, [location.storeId]);
-
   const mapCoordsToStore = useCallback(
     async (lat: number, lng: number) => {
       if (!zones || location.storeId) return;
@@ -2037,7 +1897,7 @@ export default function ProductsHomeScreen() {
     <>
       {/* Category Shortcuts - Show only when enableValentineUI is true */}
       {enableValentineUI && (
-        <View style={{ paddingBottom: 4, marginTop: -10, backgroundColor: "transparent", zIndex: 2 }}>
+        <View style={{ paddingBottom: 4, marginTop: -17, backgroundColor: "transparent", zIndex: 2 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
             {(categoryShortcuts && categoryShortcuts.length > 0
               ? categoryShortcuts
@@ -2050,8 +1910,8 @@ export default function ProductsHomeScreen() {
                   key={item.id}
                   style={{
                     alignItems: "center",
-                    marginRight: 6,
-                    width: 72,
+                    marginRight: 4,
+                    width: 68,
                   }}
                   onPress={() => {
                     void handleCategoryShortcut(item.name);
@@ -2081,12 +1941,8 @@ export default function ProductsHomeScreen() {
                       placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
                     />
                   </View>
-                  <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}
-                  >
-                    {shortcutLabel(item.name, (item as any)?.shortName)}
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#333", textAlign: "center" }}>
+                    {item.name}
                   </Text>
                 </TouchableOpacity>
               );
@@ -2096,177 +1952,18 @@ export default function ProductsHomeScreen() {
       )}
 
       {/* Promotional banners - Pass flag to control Valentine sections only */}
-      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} showHoliInside={false} />
-      
-      {/* Holi Category Shortcuts */}
-      <View style={{ marginHorizontal: H, marginBottom: 12, marginTop: -28, zIndex: 1 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 16 }}>
-          {[
-            { id: '1', name: 'Gulal', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433173204_gulal.webp?alt=media&token=39e727ce-557e-4b1c-a0be-f6fd31fb5eb0', ringColor: '#f8b3caff' },
-            { id: '2', name: 'Water Gun', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433332589_gun%20pichkari.jpg?alt=media&token=d1e5c7e6-06b0-44a2-b6f8-ee40e8dcdc98', ringColor: '#bfdef7ff' },
-            { id: '3', name: 'Color Spray', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1772433086837_COLOR%20SPRAYS.jpg?alt=media&token=86e5e3d8-f586-416e-a01a-a4153e5f296c', ringColor: '#f8e1c0ff' },
-            { id: '4', name: 'Pooja Essentials', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15', ringColor: '#f4ccfbff' },
-            { id: '5', name: 'Dairy', img: 'https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af', ringColor: '#cfe9ffff' }
-          ].map((item) => (
-            <TouchableOpacity 
-              key={item.id} 
-              style={{ alignItems: "center", marginRight: 8, width: 72 }}
-              onPress={() => {
-                void (async () => {
-                  const storeId = location.storeId || "0oS7Zig2gxj2MJesvlC2";
-
-                  if (item.name === "Pooja Essentials") {
-                    const cat = cats.find(
-                      (c) =>
-                        String((c as any)?.name || "")
-                          .trim()
-                          .toLowerCase() === "pooja essentials"
-                    );
-                    if (cat) {
-                      maybeNavigateCat(cat);
-                      return;
-                    }
-                    nav.navigate("ProductListingFromHome", {
-                      categoryName: item.name,
-                      searchQuery: "pooja essentials",
-                    });
-                    return;
-                  }
-                  if (item.name === "Dairy") {
-                    const targetName = "Dairy, Bread & Eggs";
-                    const cat = cats.find(
-                      (c) =>
-                        String((c as any)?.name || "")
-                          .trim()
-                          .toLowerCase() === targetName.toLowerCase()
-                    );
-                    if (cat) {
-                      maybeNavigateCat(cat);
-                      return;
-                    }
-                    nav.navigate("ProductListingFromHome", {
-                      categoryName: targetName,
-                      searchQuery: "dairy milk eggs bread",
-                    });
-                    return;
-                  }
-
-                  const isHoliSpecialShortcut =
-                    item.name === "Gulal" ||
-                    item.name === "Water Gun" ||
-                    item.name === "Color Spray";
-                  const targetSubName =
-                    item.name === "Gulal"
-                      ? "Gulal"
-                      : item.name === "Water Gun"
-                      ? "Water Gun"
-                      : "Color Spray";
-
-                  if (!isHoliSpecialShortcut) {
-                    nav.navigate("ProductListingFromHome", {
-                      categoryName: item.name,
-                      searchQuery: item.name,
-                    });
-                    return;
-                  }
-                  try {
-                    const snap = await firestore()
-                      .collection("subcategories")
-                      .where("storeId", "==", storeId)
-                      .where("categoryId", "==", "Holi Specials")
-                      .where("name", "==", targetSubName)
-                      .limit(1)
-                      .get();
-
-                    if (!snap.empty) {
-                      const doc = snap.docs[0];
-                      nav.navigate("ProductListingFromHome", {
-                        categoryId: "Holi Specials",
-                        categoryName: "Holi Specials",
-                        subcategoryId: doc.id,
-                      });
-                      return;
-                    }
-                  } catch {}
-
-                  nav.navigate("ProductListingFromHome", {
-                    categoryName: item.name,
-                    searchQuery: item.name.toLowerCase(),
-                  });
-                })();
-              }}
-            >
-              <View style={{ 
-                width: 55, 
-                height: 45, 
-                borderRadius: 30, 
-                backgroundColor: '#FFFFFF', 
-                justifyContent: 'center', 
-                alignItems: 'center',
-                marginBottom: 4,
-                borderWidth: 2,
-                borderColor: item.ringColor,
-                overflow: "hidden",
-              }}>
-                {item.name === "Gulal" || item.name === "Water Gun" ? (
-                  <Image
-                    source={{ uri: item.img }}
-                    style={{ width: "100%", height: "100%", transform: [{ scale: 1.06 }] }}
-                    contentFit="cover"
-                  />
-                ) : item.name === "Color Spray" ? (
-                  <Image
-                    source={{ uri: item.img }}
-                    style={{ width: "100%", height: "100%", transform: [{ scale: 1.4 }] }}
-                    contentFit="cover"
-                  />
-                ) : item.name === "Pooja Essentials" ? (
-                  <Image
-                    source={{ uri: item.img }}
-                    style={{ width: "100%", height: "100%", transform: [{ scale: 1.28 }] }}
-                    contentFit="contain"
-                  />
-                ) : item.name === "Dairy" ? (
-                  <Image
-                    source={{ uri: item.img }}
-                    style={{ width: "100%", height: "100%" }}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <Image
-                    source={{ uri: item.img }}
-                    style={{ width: 35, height: 35 }}
-                    contentFit="contain"
-                  />
-                )}
-              </View>
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={{ fontSize: 12, fontWeight: "700", color: "#2D3436", textAlign: "center" }}
-              >
-                {shortcutLabel(item.name)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {holiBannerEnabled ? (
-        <HoliBanner imageUrl={holiBannerUrl} storeId={location.storeId} />
-      ) : null}
-
+      <BannerSwitcher storeId={location.storeId} enableValentineUI={enableValentineUI} />
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
-        <View style={{ marginTop: -17 }}>
+        <View>
           <Text style={styles.buyAgainTitle}>Buy Again</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
               paddingLeft: H,
-              paddingBottom: 17,
+              paddingBottom: 16,
               paddingRight: H,
             }}
           >
@@ -2274,43 +1971,9 @@ export default function ProductsHomeScreen() {
               const id = p?.id || p?.productId;
               if (!id) return null;
               const isPan = isPanProd(p);
-              // Decreasing size to 80% (0.8 scale)
-              const SCALE = 0.8; 
-              
               return (
-                <View key={id} style={{ 
-                  marginRight: 8,
-                }}>
-                  {/* 
-                     Wrapper View with explicit scaled dimensions to prevent layout gaps.
-                     QuickTile has fixed dimensions internally (TILE_W=120, TILE_H=210).
-                  */}
-                  <View style={{
-                    width: 120 * SCALE,
-                    height: 210 * SCALE,
-                    // Center the scaled content
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    // overflow: 'hidden' // Optional: clips if scaling goes out
-                  }}>
-                     {/* Scale the QuickTile itself */}
-                     <View style={{ 
-                       width: 120, // Original width needed for transform origin center
-                       height: 210, // Original height
-                       transform: [{ scale: SCALE }] 
-                     }}>
-                        <QuickTile 
-                          p={p} 
-                          isPan={isPan} 
-                          guard={maybeGate} 
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#DAA520', // Golden border
-                            backgroundColor: '#FFF8E1', // Light cream/yellow background
-                          }}
-                        />
-                     </View>
-                  </View>
+                <View key={id} style={{ marginRight: 8 }}>
+                  <QuickTile p={p} isPan={isPan} guard={maybeGate} />
                 </View>
               );
             })}
@@ -2324,50 +1987,32 @@ export default function ProductsHomeScreen() {
     return (
       <>
         {bestHeader.length > 0 && (
-          <View style={{ marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: H, marginBottom: 8 }}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: "#000", letterSpacing: 0.5 }}>Best sellers</Text>
-              <Text style={{ fontSize: 19, marginLeft: 6 }}>❤️</Text>
-            </View>
-            <Text style={{ fontSize: 10, color: '#757575', marginHorizontal: H, marginBottom: 12, marginTop: -4 }}>Most loved by our customers</Text>
-            
+          <>
+            <Text style={styles.laneTitle}>Best sellers❤️</Text>
             <FlatList
               horizontal
               data={bestHeader}
               keyExtractor={(_, i) => `best${i}`}
-              renderItem={({ item, index }) => {
-                const colors = ['#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#009688', '#FF5722', '#795548'];
-                const color = colors[index % colors.length];
-                return <MosaicCard {...item} color={color} />;
-              }}              
+              renderItem={({ item }) => <MosaicCard {...item} badge="HOT" />}              
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingLeft: H }}
             />
-          </View>
+          </>
         )}
         {freshHeader.length > 0 && (
-          <View style={{ marginBottom: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: H, marginBottom: 8, marginTop: 4 }}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: "#000", letterSpacing: 0.5 }}>Fresh Arrivals</Text>
-              <Text style={{ fontSize: 19, marginLeft: 4 }}>✨</Text>
-            </View>
-            <Text style={{ fontSize: 10, color: '#757575', marginHorizontal: H, marginBottom: 12, marginTop: -4 }}>Celebrate with new flavors!</Text>
-
+          <>
+            <Text style={styles.laneTitle}>Fresh arrivals✨</Text>
             <FlatList
               horizontal
               data={freshHeader}
               keyExtractor={(_, i) => `fresh${i}`}
-              renderItem={({ item, index }) => {
-                const colors = ['#FF9800', '#FFC107', '#FFEB3B', '#CDDC39', '#8BC34A', '#4CAF50', '#00BCD4'];
-                const color = colors[index % colors.length];
-                return (
-                  <MosaicCard {...item} color={color} />
-                );
-              }}
+              renderItem={({ item }) => (
+                <MosaicCard {...item} badge="JUST IN" color="#ff7043" />
+              )}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingLeft: H }}
             />
-          </View>
+          </>
         )}
       </>
     );
@@ -2448,7 +2093,7 @@ export default function ProductsHomeScreen() {
         <Animated.View
           pointerEvents="box-none"
           style={[styles.headerWrapper, { paddingTop: topPadding }]}>
-          {/* Background Gradient */}
+          {/* Background video */}
           <Animated.View
             pointerEvents="none"
             style={[
@@ -2458,20 +2103,44 @@ export default function ProductsHomeScreen() {
                 width: "100%",
                 left: "0%",
               },
-              { height: videoHeight },
+              { height: videoHeight, opacity: videoOpacity },
             ]}
           >
-            <View
-              style={{
-                ...StyleSheet.absoluteFillObject,
-                backgroundColor: "#FFF9C4", // Light yellow background
-                borderBottomWidth: 1,
-                borderBottomColor: "rgba(0,0,0,0.05)",
+            <Video
+              source={
+                enableValentineUI
+                  ? require("../assets/deliveryBackground11.mp4")
+                  : require("../assets/deliveryBackground.mp4")
+              }
+              style={StyleSheet.absoluteFill}
+              muted
+              repeat
+              resizeMode="cover"
+              rate={1.0}
+              ignoreSilentSwitch="obey"
+              paused={!isFocused}
+              playInBackground={false}
+              playWhenInactive={false}
+              bufferConfig={{
+                minBufferMs: 1500,
+                maxBufferMs: 6000,
+                bufferForPlaybackMs: 750,
+                bufferForPlaybackAfterRebufferMs: 1500,
               }}
+              maxBitRate={1500000}
             />
           </Animated.View>
 
-          {/* Gradient overlay removed to show Holi colors */}
+          {/* Gradient overlay */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { opacity: gradientOpacity }]}
+          >
+            <LinearGradient
+              colors={headerGradientColors}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
 
           <View style={styles.topBg}>
             <Header />
@@ -2486,28 +2155,20 @@ export default function ProductsHomeScreen() {
     style={styles.profileBtn}
     onPress={() => nav.navigate("Profile")}
   >
-    <View style={{
-      width: 43,
-      height: 43,
-      borderRadius: 23,
-      backgroundColor: '#fff',
-      padding: 1, // Ring effect
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 3.84,
-      elevation: 5,
-    }}>
-      <Image
-        source={require("../assets/profile.png")}
-        style={{
-          width: '100%',
-          height: '100%',
-          borderRadius: 23,
-        }}
-        contentFit="cover"
+    <Svg height="48" width="48" viewBox="0 0 24 24">
+      <Defs>
+        <ClipPath id="heart_clip">
+          <Path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        </ClipPath>
+      </Defs>
+      <SvgImage
+        href={require("../assets/profile.png")}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid slice"
+        clipPath="url(#heart_clip)"
       />
-    </View>
+    </Svg>
   </Pressable>
 </View>
 
@@ -2610,31 +2271,9 @@ export default function ProductsHomeScreen() {
               if (!item?.id || !item?.name) return null;
 
               const data = prodMap[item.id]?.rows || [];
-              const normalize = (s: string) =>
-                String(s || "")
-                  .toLowerCase()
-                  .replace(/&/g, "")
-                  .replace(/[^a-z0-9]/g, "");
-              const nm = normalize(item.name);
-              const targets = new Set([
-                "freshproduce",
-                "beautypersonalcare",
-                "snacks",
-                "attadalrice",
-                "oilgheemasala",
-                "dryfruits",
-                "beverages",
-                "teacoffee",
-              ]);
-              const isGapTarget = targets.has(nm);
-              const topGap = isGapTarget ? 1 : 7; // ~80% reduction from 7
-              const rowMargins = isGapTarget
-                ? { marginTop: 2, marginBottom: 2 }
-                : {};
-              const afterPadding = isGapTarget ? 2 : 8; // ~80% reduction
               return (
-                <View style={{ marginTop: topGap }}>
-                  <View style={[styles.rowHeader, rowMargins]}>
+                <View style={{ marginTop: 36}}>
+                  <View style={styles.rowHeader}>
                     <Text style={styles.rowTitle}>{item.name}</Text>
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
                   </View>
@@ -2668,7 +2307,6 @@ export default function ProductsHomeScreen() {
                     products={data}
                     isPanProd={isPanProd}
                     maybeGate={maybeGate}
-                    padBottom={afterPadding}
                   />
                 </View>
               );
@@ -2818,7 +2456,7 @@ labelActive: { color: '#fff' },
   locationRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginBottom: 4,
+  marginBottom: 10,
   // no paddingHorizontal here – topBg already has it
 },
 
@@ -2841,7 +2479,7 @@ labelActive: { color: '#fff' },
   shadowOffset: { width: 0, height: 4 },
   elevation: 3,
 },
-searchTxt: { color: "#555", fontSize: 13, flexShrink: 1, minWidth: 0 },
+searchTxt: { color: "#555", fontSize: 14 },
   quizCard: {
     margin: H,
     borderRadius: 12,
@@ -2882,8 +2520,9 @@ searchTxt: { color: "#555", fontSize: 13, flexShrink: 1, minWidth: 0 },
     marginBottom: 8,
   },
   rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
-  seeAllTxt: { fontSize: 13, color: "#1976D2", fontWeight: "700" }, // Professional Blue
+  seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
   chip: {
+  backgroundColor: "#FFE6F0",   // soft pink
   borderRadius: 18,
   paddingHorizontal: 12,
   paddingVertical: 6,
@@ -2891,6 +2530,7 @@ searchTxt: { color: "#555", fontSize: 13, flexShrink: 1, minWidth: 0 },
 },
 chipTxt: {
   fontSize: 12,
+  color: "#C2185B",
   fontWeight: "700",
 },
   tile: {
@@ -2989,46 +2629,16 @@ chipTxt: {
     paddingHorizontal: 6,
     paddingVertical: 1.5,
   },
-  mosaicTopPills: {
-    position: "absolute",
-    top: 6,
-    left: 8,
-    right: 8,
-    zIndex: 5,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  mosaicTopPillsLeft: { flexDirection: "row", alignItems: "center" },
-  mosaicTopPillsRight: { flexDirection: "row", alignItems: "center" },
-  mosaicBadgePill: {
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  mosaicBadgeTxt: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-  mosaicDealPill: {
-    backgroundColor: "#E53935",
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  mosaicDealTxt: { color: "#fff", fontSize: 7, fontWeight: "900" },
+  mosaicDealTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
   cardLabel: {
   position: "absolute",
   bottom: 0,
   left: 0,
   right: 0,
-  // backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
-  paddingHorizontal: 10,
-  paddingVertical: 10,
-  justifyContent: "flex-end",
+  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 6,
 },
 
   badge: {
@@ -3038,7 +2648,7 @@ chipTxt: {
     paddingVertical: 1,
   },
   badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 10, fontWeight: "900", lineHeight: 13 },
+  cardTitle: { color: "#fff", fontSize: 13, fontWeight: "800", flex: 1 },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -3295,7 +2905,7 @@ searchSwitchRow: {
 
 searchFlex: {
   flex: 1,
-  marginRight: 10,
+  marginRight: 22,
 },
   homeMsgBar: {
     marginHorizontal: H,

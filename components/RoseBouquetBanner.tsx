@@ -41,7 +41,7 @@ const RoseBouquetBanner: React.FC<RoseBouquetBannerProps> = ({ imageUrl }) => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: H,
-    marginBottom: 5,
+    marginBottom: 16,
     alignItems: "center",
   },
   pressable: {

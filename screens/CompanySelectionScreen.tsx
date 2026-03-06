@@ -19,7 +19,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { firestore } from "../firebase.native";
 import { FirestoreService, ServiceCompany } from "../services/firestoreService";
 import { useServiceCart } from "../context/ServiceCartContext";
@@ -87,7 +86,6 @@ const AnimatedReviewSnippet: React.FC<{
 export default function CompanySelectionScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const tabBarHeight = useBottomTabBarHeight();
   const { addService } = useServiceCart();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
@@ -1160,7 +1158,7 @@ export default function CompanySelectionScreen() {
                   </Pressable>
                 );
               }}
-              contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
+              contentContainerStyle={{ paddingBottom: 120 }}
               showsVerticalScrollIndicator={false}
             />
           ) : (
@@ -1535,7 +1533,7 @@ export default function CompanySelectionScreen() {
               </TouchableOpacity>
             );
           }}
-              contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 140 }]}
+              contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               refreshing={loading}
               onRefresh={fetchServiceCompanies}
@@ -1546,7 +1544,7 @@ export default function CompanySelectionScreen() {
       {/* Modern Bottom Action Bar */}
       {isPackageBooking === true ? (
         effectiveSelectedPackage && selectedCompanyId ? (
-          <View style={[styles.bottomActionBar, { bottom: tabBarHeight }]}>
+          <View style={styles.bottomActionBar}>
             <View style={styles.selectedSummary}>
               <Text style={styles.selectedLabel}>Selected Package</Text>
               <Text style={styles.selectedProviderName} numberOfLines={1}>
@@ -1565,7 +1563,7 @@ export default function CompanySelectionScreen() {
         ) : null
       ) : (
         selectedCompany && (
-        <View style={[styles.bottomActionBar, { bottom: tabBarHeight }]}>
+        <View style={styles.bottomActionBar}>
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedLabel}>Selected Provider</Text>
             <Text style={styles.selectedProviderName}>

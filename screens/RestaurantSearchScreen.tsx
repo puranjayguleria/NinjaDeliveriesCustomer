@@ -72,7 +72,7 @@ const RestaurantSearchScreen: React.FC = () => {
         />
         <TextInput
           style={styles.input}
-          placeholder="Search dishes / restaurants"
+          placeholder="Search for dishes or restaurants"
           placeholderTextColor="#999"
           value={query}
           onChangeText={setQuery}

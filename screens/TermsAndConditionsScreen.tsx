@@ -10,26 +10,18 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import Markdown from "react-native-markdown-display";
-import { CommonActions, useNavigation, useRoute } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import Loader from "@/components/VideoLoader";
 
 const TermsAndConditionsScreen: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigation = useNavigation();
-  const route = useRoute();
-  const { viewOnly } = (route.params as any) || {};
 
   useEffect(() => {
-    if (viewOnly) {
-      setIsLoading(false);
-      return;
-    }
     // Check if the user has already accepted the terms
     const checkAcceptance = async () => {
       try {
@@ -324,17 +316,7 @@ ________________________________________
 `;
 
   return (
-    <SafeAreaView style={styles.container}>
-      {viewOnly && (
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Terms & Conditions</Text>
-          <View style={{ width: 24 }} />
-        </View>
-      )}
-
+    <View style={styles.container}>
       {/* Loader during initial check */}
       {isLoading ? (
         <View style={styles.loaderContainer}>
@@ -350,33 +332,26 @@ ________________________________________
             </View>
           ) : (
             <>
-              <ScrollView 
-                style={styles.content} 
-                contentContainerStyle={{ paddingBottom: 100 }} // Add bottom padding for tab bar
-              >
+              <ScrollView style={styles.content}>
                 <Markdown>{markdownContent}</Markdown>
               </ScrollView>
-              {!viewOnly && (
-                <>
-                  <TouchableOpacity
-                    onPress={handleAccept}
-                    style={styles.acceptButton}
-                  >
-                    <Text style={styles.buttonText}>I Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleDecline}
-                    style={styles.declineButton}
-                  >
-                    <Text style={styles.buttonText}>I Do Not Accept</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+              <TouchableOpacity
+                onPress={handleAccept}
+                style={styles.acceptButton}
+              >
+                <Text style={styles.buttonText}>I Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDecline}
+                style={styles.declineButton}
+              >
+                <Text style={styles.buttonText}>I Do Not Accept</Text>
+              </TouchableOpacity>
             </>
           )}
         </>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -423,16 +398,5 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: "#555",
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
   },
 });

@@ -11,29 +11,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useNavigation } from '@react-navigation/native';
 
 const PHONE = '8219105753';
 const EMAIL = 'admin@ninjadeliveries.com';
 
 const ContactUsScreen: React.FC = () => {
-  const navigation = useNavigation();
   const handleCall  = () => Linking.openURL(`tel:${PHONE}`);
   const handleEmail = () => Linking.openURL(`mailto:${EMAIL}`);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
-
-      {/* ---------- Header with Back Button ---------- */}
-      <View style={styles.headerContainer}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
 
       {/* ---------- Hero (logo / mascot) ---------- */}
       <View style={styles.heroWrapper}>
@@ -82,25 +70,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
-  /* ---------- header ---------- */
-  headerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-
   /* ---------- hero ---------- */
   heroWrapper: {
     alignItems: 'center',
     paddingHorizontal: 32,
-    paddingTop: 10, // reduced top padding slightly as header is above
+    paddingTop: 32,
   },
   logoCircle: {
     width: 160,
@@ -135,7 +109,7 @@ const styles = StyleSheet.create({
   /* ---------- actions ---------- */
   actionsWrapper: {
     paddingHorizontal: 24,
-    paddingBottom: 100, // Increased padding to avoid bottom tab bar
+    paddingBottom: 32,
   },
   actionBtn: {
     flexDirection: 'row',

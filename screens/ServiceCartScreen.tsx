@@ -9,7 +9,6 @@ import {
   StatusBar,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getLastNonCartTab, navigationRef } from "../navigation/rootNavigation";
@@ -18,7 +17,6 @@ import { getBestActiveQuantityOffer } from "../utils/serviceQuantityOffers";
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
-  const tabBarHeight = useBottomTabBarHeight();
   const { state, removeService, updateService, clearCart, totalItems, hasServices } = useServiceCart();
 
   React.useEffect(() => {
@@ -514,7 +512,7 @@ export default function ServiceCartScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <View style={[styles.footer, { marginBottom: tabBarHeight }]}>
+      <View style={styles.footer}>
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Total Amount:</Text>
           <Text style={styles.totalAmount}>₹{computedTotalAmount}</Text>
