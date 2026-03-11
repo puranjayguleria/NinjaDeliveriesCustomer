@@ -38,7 +38,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
-import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -94,10 +93,6 @@ import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
-import CuisinesScreen from './screens/CuisinesScreen';
-import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
-import { RestaurantCartProvider } from './context/RestaurantCartContext';
-import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
 import OrdersScreen from "./screens/OrdersScreen";
 import OrderSummaryScreen from "./screens/OrderSummaryScreen";
 
@@ -190,51 +185,12 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
 // NinjaEats screens (fallback mappings)
 // Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
 // Map them to existing screens to avoid launch-time crashes / compile failures.
-const NinjaEatsHomeScreen = ProductsHomeScreen;
-const NinjaEatsOrdersScreen = OrdersScreen;
-const NinjaEatsOrderDetailScreen = OrderSummaryScreen;
+
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
-const NinjaEatsTab = createBottomTabNavigator();
-const NinjaEatsStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-    }}
-  >
-    <Stack.Screen
-      name="NinjaEatsHome"
-      component={NinjaEatsHomeScreen}
-    />
-     <Stack.Screen
-      name="RestaurantCategoryListing"
-      component={RestaurantCategoryListingScreen}
-    />
-    <Stack.Screen
-      name="RestaurantDetails"
-      component={RestaurantDetailsScreen}
-    /> 
-    <Stack.Screen
-      name="RestaurantCheckout"
-      component={RestaurantCheckoutScreen}
-    />
-  </Stack.Navigator>
-);
 
-const NinjaEatsOrdersStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen
-      name="NinjaEatsOrders"
-      component={NinjaEatsOrdersScreen}
-    />
-    <Stack.Screen
-      name="NinjaEatsOrderDetail"
-      component={NinjaEatsOrderDetailScreen}
-    />
-  </Stack.Navigator>
-);
 
 /**
  * Bottom tabs for Ninja Eats:
@@ -243,70 +199,7 @@ const NinjaEatsOrdersStack = () => (
  * - Orders
  * - Profile
  */
-const NinjaEatsTabs = () => (
-  <Tab.Navigator
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: "#00b4a0",
-      tabBarInactiveTintColor: "#777",
-      tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: "600",
-      },
-      tabBarStyle: {
-        backgroundColor: "#ffffff",
-        borderTopColor: "#eee",
-        elevation: 8,
-        height: 56,
-      },
-    }}
-  >
-    <Tab.Screen
-      name="NinjaEatsHomeTab"
-      component={NinjaEatsStack}
-      options={{
-        title: "Home",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="home-filled" size={size} color={color} />
-        ),
-      }}
-    />
 
-    <Tab.Screen
-      name="CuisinesTab"
-      component={CuisinesScreen}
-      options={{
-        title: "Cuisines",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="restaurant-menu" size={size} color={color} />
-        ),
-      }}
-    />
-
-   <Tab.Screen
-  name="OrdersTab"
-  component={NinjaEatsOrdersStack}
-  options={{
-    title: "Orders",
-    tabBarIcon: ({ color, size }) => (
-      <MaterialIcons name="receipt-long" size={size} color={color} />
-    ),
-  }}
-/>
-
-
-    <Tab.Screen
-      name="ProfileTab"
-      component={ProfileScreen}
-      options={{
-        title: "Profile",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="person" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
 
 
 // Log inbound deep links (for the reCAPTCHA return)
@@ -548,7 +441,7 @@ function AppTabs() {
   
   // Get location flags (default to true if not set)
   const showGrocery = location?.grocery !== false;
-  const showFood = location?.food !== false;
+
   const showServices = location?.services !== false;
   
   // Fetch location flags when storeId changes
@@ -572,7 +465,6 @@ function AppTabs() {
             
             const flags = {
               grocery: data?.grocery ?? true,
-              food: data?.food ?? true,
               services: data?.services ?? true,
             };
             
@@ -646,10 +538,8 @@ function AppTabs() {
     console.log('[AppTabs] Location flags:', {
       storeId: location?.storeId,
       grocery: location?.grocery,
-      food: location?.food,
       services: location?.services,
       showGrocery,
-      showFood,
       showServices,
     });
   }
@@ -1434,7 +1324,6 @@ const App: React.FC = () => {
 
         <CustomerProvider>
         <CartProvider>
-          <RestaurantCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
@@ -1466,7 +1355,7 @@ const App: React.FC = () => {
                       options={{ headerShown: false }}
                     />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
-                      <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
+
                     <RootStack.Screen
                       name="LocationSelector"
                       component={LocationSelectorScreen}
@@ -1483,7 +1372,6 @@ const App: React.FC = () => {
                 </WeatherProvider>
               </LocationProvider>
             </ServiceCartProvider>
-          </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
 
