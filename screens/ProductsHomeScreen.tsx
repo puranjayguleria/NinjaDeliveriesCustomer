@@ -44,7 +44,6 @@ import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
-import { VerticalSwitcher } from "@/components/VerticalSwitcher";
 import { Colors } from "@/constants/colors";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
@@ -904,7 +903,7 @@ export default function ProductsHomeScreen() {
   ); // fallback defaults
 
   const [activeVerticalMode, setActiveVerticalMode] =
-    useState<"grocery" | "restaurants">("grocery");
+    useState<"grocery">("grocery");
 
   /* ========== Pan Corner age-gate state ========== */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
@@ -2041,15 +2040,7 @@ export default function ProductsHomeScreen() {
    */
   // const navigation = useNavigation<any>();
 
-  const handleModeChange = (mode: "grocery" | "restaurants") => {
-    if (mode === "restaurants") {
-      requestAnimationFrame(() => {
-        // Use the top-level navigation instance (nav) to avoid creating
-        // a new navigation hook inside this component. This ensures
-        // consistent hook ordering across renders.
-        nav.replace("NinjaEatsTabs");
-      });
-    }
+  const handleModeChange = (mode: "grocery") => {
     // grocery → already on ProductsHome
   };
 

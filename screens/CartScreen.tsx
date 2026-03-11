@@ -45,7 +45,6 @@ import axios from "axios";
 import { openRazorpayNative } from "../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
 import { useWeather } from "../context/WeatherContext";
-import { useRestaurantCart } from "../context/RestaurantCartContext";
 import { useServiceCart } from "../context/ServiceCartContext";
 import PaymentMethodModal from "../components/PaymentMethodModal";
 
@@ -298,7 +297,6 @@ const CartScreen: React.FC = () => {
     addToCart,
   } = useCart();
 
-  const restaurantCart = useRestaurantCart();
   const serviceCart = useServiceCart();
 
   const [cartItems, setCartItems] = useState<Product[]>([]);
@@ -1562,7 +1560,6 @@ const CartScreen: React.FC = () => {
 
   /**
    * Clear grocery and services carts when location changes
-   * Keep restaurant cart as it's independent of location
    */
   const clearAllCarts = () => {
     clearCart(); // Clear grocery cart
@@ -1575,8 +1572,7 @@ const CartScreen: React.FC = () => {
   const isAllCartsEmpty = () => {
     const groceryItemsCount = Object.keys(cart).length;
     const serviceItemsCount = serviceCart.totalItems;
-    const restaurantItemsCount = restaurantCart.totalItems;
-    return groceryItemsCount === 0 && serviceItemsCount === 0 && restaurantItemsCount === 0;
+    return groceryItemsCount === 0 && serviceItemsCount === 0;
   };
 
   const handleDeleteLocation = async (locToDelete: any) => {

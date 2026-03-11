@@ -31,7 +31,6 @@ import ErrorModal from "../components/ErrorModal";
 import { useLocationContext } from "../context/LocationContext"; // location context hook
 import { fetchLocationFlags } from "../utils/fetchLocationFlags";
 import { useCart } from "../context/CartContext";
-import { useRestaurantCart } from "../context/RestaurantCartContext";
 import { useServiceCart } from "../context/ServiceCartContext";
 import Loader from "@/components/VideoLoader";
 
@@ -75,7 +74,6 @@ type PlaceDetails = {
 const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const { location, updateLocation } = useLocationContext();
   const { cart } = useCart();
-  const restaurantCart = useRestaurantCart();
   const serviceCart = useServiceCart();
   const mapRef = useRef<MapView>(null);
 
@@ -142,8 +140,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const isAllCartsEmpty = () => {
     const groceryItemsCount = Object.keys(cart).length;
     const serviceItemsCount = serviceCart.totalItems;
-    const restaurantItemsCount = restaurantCart.totalItems;
-    return groceryItemsCount === 0 && serviceItemsCount === 0 && restaurantItemsCount === 0;
+    return groceryItemsCount === 0 && serviceItemsCount === 0;
   };
 
   /****************************************
@@ -492,7 +489,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           setPlaceLabel("");
           setShowSaveForm(true);
         }
-      } else if (fromScreenKey === "servicecheckout" || fromScreenKey === "restaurantcheckout") {
+      } else if (fromScreenKey === "servicecheckout") {
         // Navigate back to checkout screen
         navigation.goBack();
       } else if (fromScreenKey === "services") {
@@ -607,7 +604,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
             params: { selectedLocation: newLoc },
           },
         });
-      } else if (fromScreenKey === "servicecheckout" || fromScreenKey === "restaurantcheckout") {
+      } else if (fromScreenKey === "servicecheckout") {
         // Navigate back to checkout screen
         navigation.goBack();
       } else if (fromScreenKey === "services") {
