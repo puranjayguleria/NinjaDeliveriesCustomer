@@ -2,14 +2,14 @@
 
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import GroceryCatalogScreen from '../screens/GroceryCatalogScreen';
-import DropoffLocationScreen from '../screens/DropoffLocationScreen';
-import AdditionalInfoScreen from '../screens/AdditionalInfoScreen';
-import OrderSummaryScreen from '../screens/OrderSummaryScreen';
-import OrderAllocatingScreen from '../screens/OrderAllocatingScreen';
-import OrderTrackingScreen from '../screens/OrderTrackingScreen';
-import RatingScreen from '../screens/RatingScreen';
-import NewOrderCancelledScreen from '../screens/NewOrderCancelledScreen';
+import ProductsHomeScreen from '../screens/grocery/ProductsHomeScreen';
+import DropoffLocationScreen from '../screens/shared/DropoffLocationScreen';
+import AdditionalInfoScreen from '../screens/services/AdditionalInfoScreen';
+import OrderSummaryScreen from '../screens/shared/OrderSummaryScreen';
+import OrderAllocatingScreen from '../screens/grocery/OrderAllocatingScreen';
+import OrderTrackingScreen from '../screens/grocery/OrderTrackingScreen';
+import RatingScreen from '../screens/shared/RatingScreen';
+import NewOrderCancelledScreen from '../screens/grocery/NewOrderCancelledScreen';
 
 export type NewOrderStackParamList = {
   GroceryCatalog: undefined;
@@ -96,7 +96,7 @@ const NewOrderStack: React.FC = () => (
   <Stack.Navigator initialRouteName="GroceryCatalog">
     <Stack.Screen
       name="GroceryCatalog"
-      component={GroceryCatalogScreen}
+      component={ProductsHomeScreen}
       options={{ headerShown: false }}
     />
     <Stack.Screen
