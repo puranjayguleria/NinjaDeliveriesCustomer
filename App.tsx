@@ -72,9 +72,6 @@ import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
 import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SearchScreen from "./screens/SearchScreen";
-import RoseBouquetScreen from "./screens/RoseBouquetScreen";
-import ValentineSpecialsScreen from "./screens/ValentineSpecialsScreen";
-import MakeBouquetScreen from "./screens/MakeBouquetScreen";
 import ProductDetailsScreen from "./screens/ProductDetailsScreen";
 import QuizScreen from "./screens/QuizScreen";
 import CongratsScreen from "./screens/CongratsScreen";
@@ -291,21 +288,6 @@ function HomeStack() {
       <Stack.Screen
         name="Search"
         component={SearchScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ValentineSpecials"
-        component={ValentineSpecialsScreen}
-        options={{ title: "Valentine Specials", headerShown: true }}
-      />
-      <Stack.Screen
-        name="RoseBouquetScreen"
-        component={RoseBouquetScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MakeBouquetScreen"
-        component={MakeBouquetScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -1348,11 +1330,6 @@ const App: React.FC = () => {
                     <RootStack.Screen
                       name="TermsAndConditions"
                       component={TermsAndConditionsScreen}
-                    />
-                    <RootStack.Screen
-                      name="MakeBouquetScreen"
-                      component={MakeBouquetScreen}
-                      options={{ headerShown: false }}
                     />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
 
