@@ -38,7 +38,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
-import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -53,35 +52,32 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
 /* ──────────────────────────────────────────────────────────
    Screens
    ────────────────────────────────────────────────────────── */
-import ProductsHomeScreen from "./screens/ProductsHomeScreen";
+import ProductsHomeScreen from "./screens/grocery/ProductsHomeScreen";
 import ServicesStack from "./navigation/ServicesStack";
 
-import CategoriesScreen from "./screens/CategoriesScreen";
-import ProductListingScreen from "./screens/ProductListingScreen";
-import CartScreen from "./screens/CartScreen";
-import CartPaymentScreen from "./screens/CartPaymentScreen";
-import UnifiedCartScreen from "./screens/UnifiedCartScreen";
+import CategoriesScreen from "./screens/grocery/CategoriesScreen";
+import ProductListingScreen from "./screens/grocery/ProductListingScreen";
+import CartScreen from "./screens/grocery/CartScreen";
+import CartPaymentScreen from "./screens/grocery/CartPaymentScreen";
+import UnifiedCartScreen from "./screens/shared/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
 import AreaUnavailableModal from "./components/AreaUnavailableModal";
-import RazorpayWebView from "./screens/RazorpayWebView";
-import ProfileScreen from "./screens/ProfileScreen";
-import LocationSelectorScreen from "./screens/LocationSelectorScreen";
-import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
-import OrderTrackingScreen from "./screens/OrderTrackingScreen";
-import RatingScreen from "./screens/RatingScreen";
-import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
-import LoginScreen from "./screens/LoginScreen";
-import SearchScreen from "./screens/SearchScreen";
-import RoseBouquetScreen from "./screens/RoseBouquetScreen";
-import ValentineSpecialsScreen from "./screens/ValentineSpecialsScreen";
-import MakeBouquetScreen from "./screens/MakeBouquetScreen";
-import ProductDetailsScreen from "./screens/ProductDetailsScreen";
-import QuizScreen from "./screens/QuizScreen";
-import CongratsScreen from "./screens/CongratsScreen";
-import LeaderboardScreen from "./screens/LeaderBoardScreen";
-import AllDiscountedProductsScreen from "./screens/AllDiscountedProductsScreen";
+import RazorpayWebView from "./screens/shared/RazorpayWebView";
+import ProfileScreen from "./screens/shared/ProfileScreen";
+import LocationSelectorScreen from "./screens/shared/LocationSelectorScreen";
+import OrderAllocatingScreen from "./screens/grocery/OrderAllocatingScreen";
+import OrderTrackingScreen from "./screens/grocery/OrderTrackingScreen";
+import RatingScreen from "./screens/shared/RatingScreen";
+import NewOrderCancelledScreen from "./screens/grocery/NewOrderCancelledScreen";
+import TermsAndConditionsScreen from "./screens/shared/TermsAndConditionsScreen";
+import LoginScreen from "./screens/shared/LoginScreen";
+import SearchScreen from "./screens/grocery/SearchScreen";
+import ProductDetailsScreen from "./screens/grocery/ProductDetailsScreen";
+import QuizScreen from "./screens/gamification/QuizScreen";
+import CongratsScreen from "./screens/gamification/CongratsScreen";
+import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
+import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -90,17 +86,13 @@ import { useOtaUpdate } from "./utils/useOtaUpdate";
 import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
-import HiddenCouponCard from "./screens/RewardScreen";
+import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
-import CuisinesScreen from './screens/CuisinesScreen';
-import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
-import { RestaurantCartProvider } from './context/RestaurantCartContext';
-import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
-import OrdersScreen from "./screens/OrdersScreen";
-import OrderSummaryScreen from "./screens/OrderSummaryScreen";
+import OrdersScreen from "./screens/shared/OrdersScreen";
+import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -191,51 +183,12 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
 // NinjaEats screens (fallback mappings)
 // Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
 // Map them to existing screens to avoid launch-time crashes / compile failures.
-const NinjaEatsHomeScreen = ProductsHomeScreen;
-const NinjaEatsOrdersScreen = OrdersScreen;
-const NinjaEatsOrderDetailScreen = OrderSummaryScreen;
+
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
-const NinjaEatsTab = createBottomTabNavigator();
-const NinjaEatsStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-    }}
-  >
-    <Stack.Screen
-      name="NinjaEatsHome"
-      component={NinjaEatsHomeScreen}
-    />
-     <Stack.Screen
-      name="RestaurantCategoryListing"
-      component={RestaurantCategoryListingScreen}
-    />
-    <Stack.Screen
-      name="RestaurantDetails"
-      component={RestaurantDetailsScreen}
-    /> 
-    <Stack.Screen
-      name="RestaurantCheckout"
-      component={RestaurantCheckoutScreen}
-    />
-  </Stack.Navigator>
-);
 
-const NinjaEatsOrdersStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen
-      name="NinjaEatsOrders"
-      component={NinjaEatsOrdersScreen}
-    />
-    <Stack.Screen
-      name="NinjaEatsOrderDetail"
-      component={NinjaEatsOrderDetailScreen}
-    />
-  </Stack.Navigator>
-);
 
 /**
  * Bottom tabs for Ninja Eats:
@@ -244,70 +197,7 @@ const NinjaEatsOrdersStack = () => (
  * - Orders
  * - Profile
  */
-const NinjaEatsTabs = () => (
-  <Tab.Navigator
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: "#00b4a0",
-      tabBarInactiveTintColor: "#777",
-      tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: "600",
-      },
-      tabBarStyle: {
-        backgroundColor: "#ffffff",
-        borderTopColor: "#eee",
-        elevation: 8,
-        height: 56,
-      },
-    }}
-  >
-    <Tab.Screen
-      name="NinjaEatsHomeTab"
-      component={NinjaEatsStack}
-      options={{
-        title: "Home",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="home-filled" size={size} color={color} />
-        ),
-      }}
-    />
 
-    <Tab.Screen
-      name="CuisinesTab"
-      component={CuisinesScreen}
-      options={{
-        title: "Cuisines",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="restaurant-menu" size={size} color={color} />
-        ),
-      }}
-    />
-
-   <Tab.Screen
-  name="OrdersTab"
-  component={NinjaEatsOrdersStack}
-  options={{
-    title: "Orders",
-    tabBarIcon: ({ color, size }) => (
-      <MaterialIcons name="receipt-long" size={size} color={color} />
-    ),
-  }}
-/>
-
-
-    <Tab.Screen
-      name="ProfileTab"
-      component={ProfileScreen}
-      options={{
-        title: "Profile",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="person" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
 
 
 // Log inbound deep links (for the reCAPTCHA return)
@@ -399,21 +289,6 @@ function HomeStack() {
       <Stack.Screen
         name="Search"
         component={SearchScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ValentineSpecials"
-        component={ValentineSpecialsScreen}
-        options={{ title: "Valentine Specials", headerShown: true }}
-      />
-      <Stack.Screen
-        name="RoseBouquetScreen"
-        component={RoseBouquetScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MakeBouquetScreen"
-        component={MakeBouquetScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -552,6 +427,9 @@ function AppTabs() {
   const showFood = location?.food !== false;
   const showServices = location?.services !== false;
   
+  // Derived: all services off for this area
+  const allServicesOff = !showGrocery && !showServices && !showFood;
+  
   // Fetch location flags when storeId changes
   useEffect(() => {
     if (!location?.storeId) {
@@ -573,7 +451,6 @@ function AppTabs() {
             
             const flags = {
               grocery: data?.grocery ?? true,
-              food: data?.food ?? true,
               services: data?.services ?? true,
             };
             
@@ -656,10 +533,8 @@ function AppTabs() {
     console.log('[AppTabs] Location flags:', {
       storeId: location?.storeId,
       grocery: location?.grocery,
-      food: location?.food,
       services: location?.services,
       showGrocery,
-      showFood,
       showServices,
     });
   }
@@ -672,7 +547,6 @@ function AppTabs() {
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
   // Area unavailable modal state (all services off)
-  const allServicesOff = !showGrocery && !showServices && !showFood;
   const [areaUnavailableVisible, setAreaUnavailableVisible] = useState(false);
 
 
@@ -1460,7 +1334,6 @@ const App: React.FC = () => {
 
         <CustomerProvider>
         <CartProvider>
-          <RestaurantCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
@@ -1486,13 +1359,8 @@ const App: React.FC = () => {
                       name="TermsAndConditions"
                       component={TermsAndConditionsScreen}
                     />
-                    <RootStack.Screen
-                      name="MakeBouquetScreen"
-                      component={MakeBouquetScreen}
-                      options={{ headerShown: false }}
-                    />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
-                      <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
+
                     <RootStack.Screen
                       name="LocationSelector"
                       component={LocationSelectorScreen}
@@ -1509,7 +1377,6 @@ const App: React.FC = () => {
                 </WeatherProvider>
               </LocationProvider>
             </ServiceCartProvider>
-          </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
 

@@ -5,13 +5,13 @@ import { ActivityIndicator, View, StyleSheet, Alert } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { useCustomer } from '../context/CustomerContext';
-import OrdersScreen from '../screens/OrdersScreen';
-import OrderAllocatingScreen from '../screens/OrderAllocatingScreen';
-import OrderTrackingScreen from '../screens/OrderTrackingScreen';
-import RatingScreen from '../screens/RatingScreen';
-import NewOrderCancelledScreen from '../screens/NewOrderCancelledScreen';
-import LoginScreen from '../screens/LoginScreen';
-import TermsAndConditionsScreen from '../screens/TermsAndConditionsScreen';
+import OrdersScreen from '../screens/shared/OrdersScreen';
+import OrderAllocatingScreen from '../screens/grocery/OrderAllocatingScreen';
+import OrderTrackingScreen from '../screens/grocery/OrderTrackingScreen';
+import RatingScreen from '../screens/shared/RatingScreen';
+import NewOrderCancelledScreen from '../screens/grocery/NewOrderCancelledScreen';
+import LoginScreen from '../screens/shared/LoginScreen';
+import TermsAndConditionsScreen from '../screens/shared/TermsAndConditionsScreen';
 
 const Stack = createStackNavigator();
 
