@@ -1,34 +1,34 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import ServicesScreen from "../screens/ServicesScreen";
-import AllServicesScreen from "../screens/AllServicesScreen";
-import ServiceCategoryScreen from "../screens/ServiceCategoryScreen";
-import PackageSelectionScreen from "../screens/PackageSelectionScreen";
-import CompanySelectionScreen from "../screens/CompanySelectionScreen";
-import SelectDateTimeScreen from "../screens/SelectDateTimeScreen";
-import PaymentScreen from "../screens/PaymentScreen";
-import RazorpayWebView from "../screens/RazorpayWebView";
-import BookingDetailsScreen from "../screens/BookingDetailsScreen";
-import BookingHistoryScreen from "../screens/BookingHistoryScreen";
-import TrackBookingScreen from "../screens/TrackBookingScreen";
-import BookingConfirmationScreen from "../screens/BookingConfirmationScreen";
-import ServiceCartScreen from "../screens/ServiceCartScreen";
-import ServiceCheckoutScreen from "../screens/ServiceCheckoutScreen";
-import UnifiedCartScreen from "../screens/UnifiedCartScreen";
+import ServicesScreen from "../screens/services/ServicesScreen";
+import AllServicesScreen from "../screens/services/AllServicesScreen";
+import ServiceCategoryScreen from "../screens/services/ServiceCategoryScreen";
+import PackageSelectionScreen from "../screens/services/PackageSelectionScreen";
+import CompanySelectionScreen from "../screens/services/CompanySelectionScreen";
+import SelectDateTimeScreen from "../screens/services/SelectDateTimeScreen";
+import PaymentScreen from "../screens/services/PaymentScreen";
+import RazorpayWebView from "../screens/shared/RazorpayWebView";
+import BookingDetailsScreen from "../screens/services/BookingDetailsScreen";
+import BookingHistoryScreen from "../screens/services/BookingHistoryScreen";
+import TrackBookingScreen from "../screens/services/TrackBookingScreen";
+import BookingConfirmationScreen from "../screens/services/BookingConfirmationScreen";
+import ServiceCartScreen from "../screens/services/ServiceCartScreen";
+import ServiceCheckoutScreen from "../screens/services/ServiceCheckoutScreen";
+import UnifiedCartScreen from "../screens/shared/UnifiedCartScreen";
 
 // ✅ Single-file flows
-import DailyWagesCategoryScreen from "../screens/DailyWagesCategoryScreen";
-import CleaningCategoryScreen from "../screens/CleaningCategoryScreen";
-import HealthCategoryScreen from "../screens/HealthCategoryScreen";
-import CarWashCategoryScreen from "../screens/CarWashCategoryScreen";
+import DailyWagesCategoryScreen from "../screens/services/category-specific/DailyWagesCategoryScreen";
+import CleaningCategoryScreen from "../screens/services/category-specific/CleaningCategoryScreen";
+import HealthCategoryScreen from "../screens/services/category-specific/HealthCategoryScreen";
+import CarWashCategoryScreen from "../screens/services/category-specific/CarWashCategoryScreen";
 
 // ✅ Service workflow screens
-import ServiceAddOnScreen from "../screens/ServiceAddOnScreen";
-import ServiceCallingScreen from "../screens/ServiceCallingScreen";
-import ServiceVisitScreen from "../screens/ServiceVisitScreen";
-import ServiceEndScreen from "../screens/ServiceEndScreen";
-import FinalCheckoutScreen from "../screens/FinalCheckoutScreen";
+import ServiceAddOnScreen from "../screens/services/ServiceAddOnScreen";
+import ServiceCallingScreen from "../screens/services/ServiceCallingScreen";
+import ServiceVisitScreen from "../screens/services/ServiceVisitScreen";
+import ServiceEndScreen from "../screens/services/ServiceEndScreen";
+import FinalCheckoutScreen from "../screens/services/FinalCheckoutScreen";
 
 const Stack = createNativeStackNavigator();
 

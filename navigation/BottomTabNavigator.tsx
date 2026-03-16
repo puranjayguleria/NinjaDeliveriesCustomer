@@ -6,7 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import OrdersStack from './OrdersStack';
 import NewOrderStack from './NewOrderStack';
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileScreen from '../screens/shared/ProfileScreen';
 import ServicesStack from './ServicesStack';
 import { useLocationContext } from '../context/LocationContext';
 
