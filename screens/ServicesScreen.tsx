@@ -397,6 +397,27 @@ export default function ServicesScreen() {
   // That collection can be large and may take a long time to stream the first snapshot.
   const isLoading = loading || zoneCompaniesLoading;
 
+  // Check if services are enabled for this store
+  useEffect(() => {
+    if (location?.services === false) {
+      Alert.alert(
+        "Service Unavailable",
+        "Services are not available at this location.",
+        [
+          {
+            text: "Change Location",
+            onPress: () => navigation.navigate("LocationSelector"),
+          },
+          {
+            text: "Go Back",
+            onPress: () => navigation.goBack(),
+            style: "cancel",
+          },
+        ]
+      );
+    }
+  }, [location?.services, navigation]);
+
   const zoneCompanyIdSet = React.useMemo(() => {
     const ids = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
     return new Set(ids);

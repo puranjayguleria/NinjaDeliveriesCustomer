@@ -63,6 +63,7 @@ import CartPaymentScreen from "./screens/CartPaymentScreen";
 import UnifiedCartScreen from "./screens/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
+import AreaUnavailableModal from "./components/AreaUnavailableModal";
 import RazorpayWebView from "./screens/RazorpayWebView";
 import ProfileScreen from "./screens/ProfileScreen";
 import LocationSelectorScreen from "./screens/LocationSelectorScreen";
@@ -594,6 +595,15 @@ function AppTabs() {
     };
   }, [location?.storeId]);
 
+  // Show modal when ALL services are off for this area
+  useEffect(() => {
+    if (allServicesOff && location?.storeId) {
+      setAreaUnavailableVisible(true);
+    } else {
+      setAreaUnavailableVisible(false);
+    }
+  }, [allServicesOff, location?.storeId]);
+
   // Navigate away if current tab becomes unavailable
   useEffect(() => {
     const navigation = navigationRef.current;
@@ -661,6 +671,10 @@ function AppTabs() {
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
+  // Area unavailable modal state (all services off)
+  const allServicesOff = !showGrocery && !showServices && !showFood;
+  const [areaUnavailableVisible, setAreaUnavailableVisible] = useState(false);
+
 
   // One-time welcome modal -> jump user to Services (uses root navigation ref)
   /*animation of blink and Side to Side (vibration)*/
@@ -1081,6 +1095,18 @@ function AppTabs() {
           onClose={() => setServicesUnavailableModalVisible(false)}
         />
       )}
+
+      {/* Area Unavailable Modal (all services off) */}
+      <AreaUnavailableModal
+        visible={areaUnavailableVisible}
+        onClose={() => setAreaUnavailableVisible(false)}
+        onChangeLocation={() => {
+          setAreaUnavailableVisible(false);
+          if (navigationRef.isReady()) {
+            (navigationRef.navigate as any)('LocationSelector');
+          }
+        }}
+      />
 
       {/* Cart Selection Modal */}
       {cartModalVisible && (

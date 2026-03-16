@@ -40,6 +40,7 @@ import { useLocationContext } from "@/context/LocationContext";
 import { fetchLocationFlags } from "@/utils/fetchLocationFlags";
 import { useCart } from "@/context/CartContext";
 import NotificationModal from "../components/ErrorModal";
+import AreaUnavailableModal from "../components/AreaUnavailableModal";
 import Loader from "@/components/VideoLoader";
 import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../context/WeatherContext";
@@ -950,6 +951,42 @@ export default function ProductsHomeScreen() {
             nav.navigate("LocationSelector", { fromScreen: "Products" }),
         }
       : null;
+
+  // Check if grocery service is enabled for this store
+  const allServicesOff =
+    location?.grocery === false &&
+    location?.services === false &&
+    location?.food === false;
+  const [showAreaUnavailable, setShowAreaUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (allServicesOff) {
+      setShowAreaUnavailable(true);
+    } else {
+      setShowAreaUnavailable(false);
+    }
+  }, [allServicesOff]);
+
+  useEffect(() => {
+    // Only show grocery-specific alert when grocery is off but not ALL services
+    if (location?.grocery === false && !allServicesOff) {
+      Alert.alert(
+        "Service Unavailable",
+        "Grocery service is not available at this location.",
+        [
+          {
+            text: "Change Location",
+            onPress: () => nav.navigate("LocationSelector"),
+          },
+          {
+            text: "Go Back",
+            onPress: () => nav.goBack(),
+            style: "cancel",
+          },
+        ]
+      );
+    }
+  }, [location?.grocery, allServicesOff, nav]);
 
   // watch delivery_zones collection for the current store to know if orders are paused
   useEffect(() => {
@@ -2055,6 +2092,15 @@ export default function ProductsHomeScreen() {
 
   return (
     <>
+      {/* Modal shown when ALL services are off for this area */}
+      <AreaUnavailableModal
+        visible={showAreaUnavailable}
+        onClose={() => setShowAreaUnavailable(false)}
+        onChangeLocation={() => {
+          setShowAreaUnavailable(false);
+          nav.navigate("LocationSelector");
+        }}
+      />
       <View
         style={{
           flex: 1,
