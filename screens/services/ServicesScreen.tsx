@@ -1,4 +1,5 @@
 import { useLocationContext } from "../../context/LocationContext";
+import { useToggleContext } from "../../context/ToggleContext";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -235,13 +236,13 @@ const HEADER_GIFS = [
   require("../../assets/ninjaVideo.gif"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = 200;
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 90;
+const SERVICES_HEADER_MEDIA_HEIGHT = 180; // TESTING - SHOULD BE VERY TALL
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 120;
 const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
 const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 // Solid, very light + friendly header colors (no transparency).
 // Soft off-white to a subtle mint/teal tint feels calmer during scroll.
-const SERVICES_HEADER_GRADIENT_COLORS = ['#f8fafc', '#f0fdfa'] as const;
+const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
 const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 190 : 175;
@@ -261,6 +262,7 @@ const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
+  const { activeMode, setActiveMode } = useToggleContext();
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
@@ -1969,6 +1971,10 @@ export default function ServicesScreen() {
             source={HEADER_GIFS[activeGifIndex]}
             style={StyleSheet.absoluteFillObject}
             resizeMode="contain"
+            imageStyle={{
+              width: '100%',
+              height: '100%',
+            }}
           />
         </Animated.View>
 
@@ -1992,13 +1998,14 @@ export default function ServicesScreen() {
               <Ionicons name="chevron-down" size={16} color="#64748b" />
             </TouchableOpacity>
 
+            {/* Profile Icon */}
             <TouchableOpacity
-              onPress={handleHistoryPress}
+              onPress={() => navigation.navigate('Profile')}
               activeOpacity={0.8}
-              style={styles.historyIconButton}
-              accessibilityLabel="Booking history"
+              style={styles.profileIconButton}
+              accessibilityLabel="Profile"
             >
-              <Ionicons name="reader-outline" size={18} color="#0f172a" />
+              <Ionicons name="person" size={20} color="#0f172a" />
             </TouchableOpacity>
           </View>
 
@@ -2045,14 +2052,86 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Spacer so search width matches location (which shares row with History) */}
-              <View pointerEvents="none" style={styles.headerRightSpacer} />
+              {/* Booking History Icon */}
+              <TouchableOpacity
+                onPress={handleHistoryPress}
+                activeOpacity={0.8}
+                style={styles.historyIconButtonSearch}
+                accessibilityLabel="Booking history"
+              >
+                <Ionicons name="reader-outline" size={20} color="#0f172a" />
+              </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Grocery/Service/Food Toggle */}
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "grocery" && styles.toggleBtnActive,
+              ]}
+              onPress={() => {
+                setActiveMode("grocery");
+                // Force navigation reset to ensure screen change
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "HomeTab" }],
+                });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "grocery" && styles.toggleLabelActive,
+                ]}
+              >
+                Grocery
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "service" && styles.toggleBtnActive,
+              ]}
+              onPress={() => setActiveMode("service")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "service" && styles.toggleLabelActive,
+                ]}
+              >
+                Service
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "food" && styles.toggleBtnActive,
+              ]}
+              onPress={() => {
+                setActiveMode("food");
+                // Food screen navigation can be added here when ready
+              }}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "food" && styles.toggleLabelActive,
+                ]}
+              >
+                Food
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
     );
-  }, [activeGifIndex, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, showAnimatedSearchPlaceholder]);
+  }, [activeGifIndex, activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
 
   const ListHeaderUI = React.useMemo(() => {
     return (
@@ -2576,6 +2655,58 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.82)',
   },
 
+  profileIconButton: {
+    marginLeft: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  historyIconButtonSearch: {
+    marginLeft: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
+  },
+
+  // Toggle Styles
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 12,
+    gap: 8,
+  },
+  toggleBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  toggleBtnActive: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
+  },
+  toggleLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  toggleLabelActive: {
+    color: "#00b4a0",
+  },
+
   searchResultsCard: {
     marginHorizontal: 16,
     marginTop: 6,
@@ -2787,7 +2918,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 12,
-    marginTop: 8,
+    marginTop: 40, // Increased from 8 to 40 for more GIF space
   },
 
   sectionTitle: {

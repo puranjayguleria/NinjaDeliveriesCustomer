@@ -39,6 +39,7 @@ import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 import { useLocationContext } from "@/context/LocationContext";
 import { fetchLocationFlags } from "@/utils/fetchLocationFlags";
 import { useCart } from "@/context/CartContext";
+import { useToggleContext } from "@/context/ToggleContext";
 import NotificationModal from "../../components/ErrorModal";
 import AreaUnavailableModal from "../../components/AreaUnavailableModal";
 import Loader from "@/components/VideoLoader";
@@ -249,31 +250,43 @@ const Header = memo(() => {
   const nav = useNavigation<any>();
 
   return (
-    <Pressable
-      style={styles.locationRow}
-      onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-        <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-        <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
-      </View>
-      <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
-      <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
+    <View style={styles.headerContainer}>
+      <Pressable
+        style={styles.locationRow}
+        onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
+          <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
+          <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+        </View>
+        <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
+        <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
 
-        <Text style={styles.locationTxt} numberOfLines={1}>
-          {location.address
-            ? `Delivering to ${location.address}`
-            : "Set delivery location"}
-        </Text>
+          <Text style={styles.locationTxt} numberOfLines={1}>
+            {location.address
+              ? `Delivering to ${location.address}`
+              : "Set delivery location"}
+          </Text>
 
-        {isBadWeather && (
-          <View style={styles.badge01}>
-            <Text style={styles.badgeText}>🌩️ Bad Weather</Text>
-          </View>
-        )}
-      </View>
-      <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
-    </Pressable>
+          {isBadWeather && (
+            <View style={styles.badge01}>
+              <Text style={styles.badgeText}>🌩️ Bad Weather</Text>
+            </View>
+          )}
+        </View>
+        <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
+      </Pressable>
+
+      {/* Profile Icon */}
+      <Pressable
+        style={styles.profileIconBtn}
+        onPress={() => {
+          nav.navigate("Profile");
+        }}
+      >
+        <MaterialIcons name="person" size={24} color={Colors.white} />
+      </Pressable>
+    </View>
   );
 });
 
@@ -903,8 +916,7 @@ export default function ProductsHomeScreen() {
     ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
   ); // fallback defaults
 
-  const [activeVerticalMode, setActiveVerticalMode] =
-    useState<"grocery">("grocery");
+  const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
 
   /* ========== Pan Corner age-gate state ========== */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
@@ -2086,30 +2098,65 @@ export default function ProductsHomeScreen() {
 
             {/* Search bar */}
             <View style={styles.searchRow}>
-  <View style={styles.searchFlex}>
-    <StableSearchBar />
-  </View>
+              <View style={styles.searchFlex}>
+                <StableSearchBar />
+              </View>
+            </View>
 
-  <Pressable
-    style={styles.profileBtn}
-    onPress={() => nav.navigate("Profile")}
-  >
-    <Svg height="48" width="48" viewBox="0 0 24 24">
-      <Defs>
-        <ClipPath id="heart_clip">
-          <Path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </ClipPath>
-      </Defs>
-      <SvgImage
-        href={require("../../assets/profile.png")}
-        width="100%"
-        height="100%"
-        preserveAspectRatio="xMidYMid slice"
-        clipPath="url(#heart_clip)"
-      />
-    </Svg>
-  </Pressable>
-</View>
+            {/* Grocery/Service/Food Toggle - BELOW SEARCH */}
+            <View style={styles.toggleRow}>
+              <Pressable
+                style={[
+                  styles.toggleBtn,
+                  activeVerticalMode === "grocery" && styles.toggleBtnActive,
+                ]}
+                onPress={() => setActiveVerticalMode("grocery")}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeVerticalMode === "grocery" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Grocery
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.toggleBtn,
+                  activeVerticalMode === "service" && styles.toggleBtnActive,
+                ]}
+                onPress={() => {
+                  setActiveVerticalMode("service");
+                  nav.navigate("ServicesHome");
+                }}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeVerticalMode === "service" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Service
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.toggleBtn,
+                  activeVerticalMode === "food" && styles.toggleBtnActive,
+                ]}
+                onPress={() => setActiveVerticalMode("food")}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeVerticalMode === "food" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Food
+                </Text>
+              </Pressable>
+            </View>
 
             {/* Informational messages displayed below the search bar.
                Show the highest priority message first (homeMsg from Firestore
@@ -2191,6 +2238,14 @@ export default function ProductsHomeScreen() {
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
+        {/* Show Food blank screen when Food is selected */}
+        {activeVerticalMode === "food" ? (
+          <View style={[styles.center, { flex: 1 }]}>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#0f172a', marginBottom: 8 }}>Food</Text>
+            <Text style={{ fontSize: 16, color: '#64748b' }}>Coming Soon...</Text>
+          </View>
+        ) : (
+          <>
         {location.storeId ? (
           <AnimatedSectionList
             showsVerticalScrollIndicator={false}
@@ -2268,6 +2323,8 @@ export default function ProductsHomeScreen() {
           </View>
         ) : (
           <View style={{ flex: 1 }} />
+        )}
+          </>
         )}
 
         {hasPerm === false && selectManually === false && (
@@ -2396,8 +2453,23 @@ labelActive: { color: '#fff' },
   flexDirection: "row",
   alignItems: "center",
   marginBottom: 10,
+  flex: 1,
   // no paddingHorizontal here – topBg already has it
 },
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  profileIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
 
   locationTxt: {
   flex: 1,
@@ -2903,10 +2975,34 @@ searchFlex: {
     flexDirection: "row",
     alignItems: "center",
   },
-    profileBtn: {
-    marginLeft: 10,
-    padding: 4,
-    marginTop: -4,
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 12,
+    gap: 8,
+  },
+  toggleBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  toggleBtnActive: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
+  },
+  toggleLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  toggleLabelActive: {
+    color: "#00b4a0",
   },
    profileImg: {
    width: 38,
