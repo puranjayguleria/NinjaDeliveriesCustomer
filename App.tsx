@@ -58,6 +58,9 @@ import ServicesStack from "./navigation/ServicesStack";
 import ServicesScreen from "./screens/services/ServicesScreen";
 import AllServicesScreen from "./screens/services/AllServicesScreen";
 import FoodScreen from "./screens/food/FoodScreen";
+import RestaurantDetailScreen from "./screens/food/RestaurantDetailScreen";
+import FoodCartScreen from "./screens/food/FoodCartScreen";
+import { FoodCartProvider } from "./context/FoodCartContext";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
 import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
@@ -401,6 +404,18 @@ function HomeStack() {
       <Stack.Screen
         name="ServicesHome"
         component={ServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Food Screens */}
+      <Stack.Screen
+        name="RestaurantDetail"
+        component={RestaurantDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodCart"
+        component={FoodCartScreen}
         options={{ headerShown: false }}
       />
 
@@ -1530,6 +1545,7 @@ const App: React.FC = () => {
         <ToggleProvider>
         <CustomerProvider>
         <CartProvider>
+            <FoodCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
@@ -1573,6 +1589,7 @@ const App: React.FC = () => {
                 </WeatherProvider>
               </LocationProvider>
             </ServiceCartProvider>
+            </FoodCartProvider>
         </CartProvider>
       </CustomerProvider>
         </ToggleProvider>

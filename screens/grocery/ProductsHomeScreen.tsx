@@ -47,6 +47,7 @@ import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { Colors } from "@/constants/colors";
+import FoodScreen from "@/screens/food/FoodScreen";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
 // migrate to the modular API, you can remove this. See:
@@ -60,8 +61,8 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 160;
-const COLLAPSED_VIDEO_HEIGHT = 80;
+const INITIAL_VIDEO_HEIGHT = 220;
+const COLLAPSED_VIDEO_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
@@ -2238,12 +2239,9 @@ export default function ProductsHomeScreen() {
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
-        {/* Show Food blank screen when Food is selected */}
+        {/* Show FoodScreen when Food tab is selected */}
         {activeVerticalMode === "food" ? (
-          <View style={[styles.center, { flex: 1 }]}>
-            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#0f172a', marginBottom: 8 }}>Food</Text>
-            <Text style={{ fontSize: 16, color: '#64748b' }}>Coming Soon...</Text>
-          </View>
+          <FoodScreen />
         ) : (
           <>
         {location.storeId ? (
@@ -2977,7 +2975,7 @@ searchFlex: {
   },
   toggleRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
     marginHorizontal: 16,
     marginTop: 10,
@@ -2988,21 +2986,21 @@ searchFlex: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    borderColor: "rgba(0, 0, 0, 0.15)",
   },
   toggleBtnActive: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ffffff",
+    backgroundColor: "#00b4a0",
+    borderColor: "#00b4a0",
   },
   toggleLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "#333333",
   },
   toggleLabelActive: {
-    color: "#00b4a0",
+    color: "#ffffff",
   },
    profileImg: {
    width: 38,

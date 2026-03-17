@@ -2114,7 +2114,7 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("food");
-                // Food screen navigation can be added here when ready
+                navigation.navigate("ProductsHome");
               }}
               activeOpacity={0.7}
             >
@@ -2679,7 +2679,7 @@ const styles = StyleSheet.create({
   // Toggle Styles
   toggleRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
     marginHorizontal: 16,
     marginTop: 10,
@@ -2690,21 +2690,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    borderColor: "rgba(0, 0, 0, 0.15)",
   },
   toggleBtnActive: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ffffff",
+    backgroundColor: "#00b4a0",
+    borderColor: "#00b4a0",
   },
   toggleLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "#333333",
   },
   toggleLabelActive: {
-    color: "#00b4a0",
+    color: "#ffffff",
   },
 
   searchResultsCard: {
