@@ -107,10 +107,7 @@ export default function UnifiedCartScreen() {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          navigationRef.navigate("CategoriesTab" as never);
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -146,8 +143,8 @@ export default function UnifiedCartScreen() {
         navigationRef.navigate("NinjaEatsHomeTab" as never);
         return;
       }
-      if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+      if (availableRoutes.has("CategoriesTab")) {
+        navigationRef.navigate("CategoriesTab" as never);
         return;
       }
     }

@@ -92,7 +92,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
               index: 0,
               routes: [
                 {
-                  name: "ServicesTab",
+                  name: "CategoriesTab",
                   state: {
                     index: 0,
                     routes: [{ name: "ServicesHome" }],
@@ -115,7 +115,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       const tabsState: any = prevRoute?.state;
       const tabIndex = typeof tabsState?.index === "number" ? tabsState.index : -1;
       const activeTab = tabsState?.routes?.[tabIndex]?.name;
-      return activeTab === "ServicesTab";
+      return activeTab === "CategoriesTab";
     } catch {
       return false;
     }

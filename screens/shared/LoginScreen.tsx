@@ -198,7 +198,7 @@ if (__DEV__ && Platform.OS === "ios") {
           // Clear the stored state
           await AsyncStorage.removeItem('returnToCheckout');
           
-          // Navigate back to ServicesTab -> ServiceCheckout
+          // Navigate back to CategoriesTab -> ServiceCheckout
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -208,7 +208,7 @@ if (__DEV__ && Platform.OS === "ios") {
                   state: {
                     routes: [
                       {
-                        name: "ServicesTab",
+                        name: "CategoriesTab",
                         state: {
                           routes: [
                             { name: "ServicesHome" },

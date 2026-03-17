@@ -152,10 +152,7 @@ export default function ServiceCartScreen() {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          navigationRef.navigate("CategoriesTab" as never);
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -176,7 +173,7 @@ export default function ServiceCartScreen() {
     if (navigationRef.isReady?.()) {
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+          navigationRef.navigate("CategoriesTab" as never);
           return;
         } catch {}
         try {
@@ -184,8 +181,8 @@ export default function ServiceCartScreen() {
           return;
         } catch {}
       }
-      if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+      if (availableRoutes.has("CategoriesTab")) {
+        navigationRef.navigate("CategoriesTab" as never);
         return;
       }
       if (availableRoutes.has("HomeTab")) {

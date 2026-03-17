@@ -749,13 +749,13 @@ function AppTabs() {
     if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
       console.log('[AppTabs] Current tab unavailable, navigating to available tab');
       if (isServicesAvailable) {
-        navigation.navigate('ServicesTab' as never);
+        navigation.navigate('CategoriesTab' as never);
       } else {
         navigation.navigate('HomeTab' as never);
       }
     }
     
-    // If on Services tab and services becomes false
+    // If on Services tab and services becomes false (legacy guard, ServicesTab no longer exists as a tab)
     if (currentTab === 'ServicesTab' && !showServices) {
       console.log('[AppTabs] Services tab unavailable, navigating to available tab');
       if (isHomeAvailable) {
@@ -920,9 +920,17 @@ function AppTabs() {
     setCartModalVisible(false);
     if (pendingNavigation) {
       // Navigate first, then show loader
-      pendingNavigation.navigate("ServicesTab", { 
-        screen: "ServiceCart" 
-      });
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "HomeTab",
+              state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
+            },
+          ],
+        })
+      );
       
       // Show loader immediately
       setServiceLoaderVisible(true);
@@ -960,7 +968,7 @@ function AppTabs() {
         onGoToServices={() => {
           // Navigate from the ROOT navigator so this works from a global modal.
           if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
+            (navigationRef.navigate as any)("CategoriesTab");
           }
         }}
       />
@@ -969,8 +977,6 @@ function AppTabs() {
         initialRouteName={
           showGrocery 
             ? "HomeTab" 
-            : showServices 
-            ? "ServicesTab" 
             : "Profile"  // Fallback to Profile if nothing else is available
         }
         screenOptions={({ route }) => {
@@ -979,7 +985,6 @@ function AppTabs() {
             CategoriesTab: "apps-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
@@ -1000,7 +1005,6 @@ function AppTabs() {
                 return null;
               }
 
-              const isService = route.name === "ServicesTab";
               const iconName = iconMap[route.name];
 
               return (
@@ -1010,24 +1014,8 @@ function AppTabs() {
                     height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
-                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
-                  {isService && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        backgroundColor: "red",
-                        paddingHorizontal: 4,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-                        NEW
-                      </Text>
-                    </View>
-                  )}
 
                   {/* Render the actual icon */}
                   {iconName && (
@@ -1115,9 +1103,17 @@ function AppTabs() {
                 // If only service is active, go directly to service cart
                 else if (isServiceActive && !isGroceryActive) {
                   e.preventDefault();
-                  navigation.navigate("ServicesTab", { 
-                    screen: "ServiceCart" 
-                  });
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "HomeTab",
+                          state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
+                        },
+                      ],
+                    })
+                  );
                 }
                 // Empty cart or no active carts - go to unified cart
                 else {
