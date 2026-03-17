@@ -21,7 +21,9 @@ import {
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
+import Video from "react-native-video";
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
 import { firestore } from "../../firebase.native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -236,8 +238,8 @@ const HEADER_GIFS = [
   require("../../assets/ninjaVideo.gif"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = 180; // TESTING - SHOULD BE VERY TALL
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 120;
+const SERVICES_HEADER_MEDIA_HEIGHT = 220;
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 100;
 const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
 const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 // Solid, very light + friendly header colors (no transparency).
@@ -245,7 +247,7 @@ const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 190 : 175;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 220 : 205;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'electrician',
@@ -261,6 +263,7 @@ const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
   const { location } = useLocationContext();
   const { activeMode, setActiveMode } = useToggleContext();
 
@@ -373,7 +376,7 @@ export default function ServicesScreen() {
   const placeholderOpacity = React.useRef(new Animated.Value(0)).current;
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
-  const [activeGifIndex, setActiveGifIndex] = useState(0);
+  const [activeGifIndex] = useState(0); // kept for useMemo dep compatibility
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
@@ -1402,34 +1405,6 @@ export default function ServicesScreen() {
     return sorted[0] || null;
   }, [liveBookings]);
 
-  // Auto-switch GIFs with different durations for each GIF
-  useEffect(() => {
-    console.log('🎬 GIF Auto-switch started');
-    let gifTimeout: ReturnType<typeof setTimeout>;
-    
-    const scheduleNextSwitch = (currentIndex: number) => {
-      // ninjaVideo1.gif is longer, ninjaVideo.gif is shorter
-      const duration = currentIndex === 0 ? 16000 : 5000; // 20s for first, 5s for second
-      console.log(`🎬 Scheduling next switch in ${duration}ms for GIF index ${currentIndex}`);
-      
-      gifTimeout = setTimeout(() => {
-        setActiveGifIndex((prevIndex) => {
-          const newIndex = prevIndex === 0 ? 1 : 0;
-          console.log('🎬 Switching GIF from', prevIndex, 'to', newIndex);
-          scheduleNextSwitch(newIndex);
-          return newIndex;
-        });
-      }, duration);
-    };
-    
-    scheduleNextSwitch(0);
-
-    return () => {
-      console.log('🎬 GIF Auto-switch cleanup');
-      if (gifTimeout) clearTimeout(gifTimeout);
-    };
-  }, []);
-
   // Blinking animation for View All button (light)
   useEffect(() => {
     const blinkAnimation = Animated.loop(
@@ -1958,7 +1933,7 @@ export default function ServicesScreen() {
           />
         </Animated.View>
 
-        {/* Background media (GIF) */}
+        {/* Background media (Video) */}
         <Animated.View
           pointerEvents="none"
           style={[
@@ -1966,15 +1941,24 @@ export default function ServicesScreen() {
             { height: headerMediaHeight, opacity: headerMediaOpacity },
           ]}
         >
-          <ImageBackground
-            key={`gif-${activeGifIndex}`}
-            source={HEADER_GIFS[activeGifIndex]}
+          <Video
+            source={require("../../assets/deliveryBackground.mp4")}
             style={StyleSheet.absoluteFillObject}
-            resizeMode="contain"
-            imageStyle={{
-              width: '100%',
-              height: '100%',
+            muted
+            repeat
+            resizeMode="cover"
+            rate={1.0}
+            ignoreSilentSwitch="obey"
+            paused={!isFocused}
+            playInBackground={false}
+            playWhenInactive={false}
+            bufferConfig={{
+              minBufferMs: 1500,
+              maxBufferMs: 6000,
+              bufferForPlaybackMs: 750,
+              bufferForPlaybackAfterRebufferMs: 1500,
             }}
+            maxBitRate={1500000}
           />
         </Animated.View>
 
