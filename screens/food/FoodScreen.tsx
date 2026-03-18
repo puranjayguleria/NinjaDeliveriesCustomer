@@ -2,12 +2,13 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, FlatList, ActivityIndicator, Dimensions,
-  StatusBar, Platform, RefreshControl,
+  StatusBar, Platform, RefreshControl, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { useLocationContext } from '@/context/LocationContext';
+import { useToggleContext } from '@/context/ToggleContext';
 import {
   getActiveRestaurants,
   getFoodCategories,
@@ -17,15 +18,10 @@ import {
 
 const { width } = Dimensions.get('window');
 
-const BANNERS = [
-  { id: '1', color: '#FF6B35', text: '50% OFF up to ₹100', sub: 'Use code NINJA50' },
-  { id: '2', color: '#E91E8C', text: 'Free Delivery', sub: 'On orders above ₹199' },
-  { id: '3', color: '#7C3AED', text: 'Try Something New', sub: 'New restaurants added daily' },
-];
-
 export default function FoodScreen() {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
+  const { activeMode, setActiveMode } = useToggleContext();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -33,8 +29,11 @@ export default function FoodScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [bannerIndex, setBannerIndex] = useState(0);
-  const bannerTimer = useRef<any>(null);
+  const [isVegMode, setIsVegMode] = useState(false);
+  
+  // Animation for collapsible header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = useRef(new Animated.Value(300)).current;
 
   const fetchData = useCallback(async () => {
     try {
@@ -53,11 +52,6 @@ export default function FoodScreen() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    bannerTimer.current = setInterval(() => setBannerIndex(i => (i + 1) % BANNERS.length), 3000);
-    return () => clearInterval(bannerTimer.current);
-  }, []);
 
   const onRefresh = () => { setRefreshing(true); fetchData(); };
 
@@ -78,103 +72,181 @@ export default function FoodScreen() {
     <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* ── Header ── */}
-      <View style={s.header}>
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity style={s.locationRow} activeOpacity={0.7}>
-            <Ionicons name="location-sharp" size={18} color="#FF6B35" />
-            <Text style={s.locationText} numberOfLines={1}>
-              {location?.address ? location.address.split(',')[0] : 'Select Location'}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color="#1e293b" />
-          </TouchableOpacity>
-          <Text style={s.locationSub}>Delivering to your location</Text>
-        </View>
-        <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-          <Ionicons name="person-circle-outline" size={32} color="#1e293b" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B35']} />}
-      >
-        {/* ── Search ── */}
-        <View style={s.searchBox}>
-          <Ionicons name="search-outline" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
-          <TextInput
-            style={s.searchInput}
-            placeholder="Search restaurants, cuisines..."
-            placeholderTextColor="#94a3b8"
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText('')}>
-              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+      {/* ── Fixed Header Section (Above Red Line) ── */}
+      <Animated.View style={[s.headerBackgroundSection, { height: headerHeight }]}>
+        <Image
+          source={require('../../assets/foodBG.png')}
+          style={s.headerBackgroundImage}
+          contentFit="cover"
+        />
+        
+        {/* Header Content Overlay */}
+        <View style={s.headerOverlay}>
+          {/* ── Header ── */}
+          <View style={s.header}>
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity style={s.locationRow} activeOpacity={0.7}>
+                <Ionicons name="location-sharp" size={18} color="#FF6B35" />
+                <Text style={s.locationText} numberOfLines={1}>
+                  {location?.address ? location.address.split(',')[0] : 'Select Location'}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#1e293b" />
+              </TouchableOpacity>
+              <Text style={s.locationSub}>Delivering to your location</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+              <Ionicons name="person-circle-outline" size={32} color="#1e293b" />
             </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ── Offer Banner ── */}
-        <View style={s.bannerWrap}>
-          <View style={[s.banner, { backgroundColor: BANNERS[bannerIndex].color }]}>
-            <Text style={s.bannerTitle}>{BANNERS[bannerIndex].text}</Text>
-            <Text style={s.bannerSub}>{BANNERS[bannerIndex].sub}</Text>
           </View>
-          <View style={s.dots}>
-            {BANNERS.map((_, i) => (
-              <View key={i} style={[s.dot, i === bannerIndex && s.dotActive]} />
-            ))}
-          </View>
-        </View>
 
-        {/* ── Quick Filters ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filtersRow}>
-          {['Pure Veg', 'Ratings 4.0+', 'Fast Delivery', 'New Arrivals', 'Offers'].map(f => (
-            <TouchableOpacity key={f} style={s.chip} activeOpacity={0.7}>
-              <Text style={s.chipText}>{f}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* ── Categories ── */}
-        {categories.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>What's on your mind?</Text>
-            <FlatList
-              data={categories}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={item => item.id}
-              contentContainerStyle={{ paddingBottom: 4 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={s.catItem}
-                  activeOpacity={0.7}
-                  onPress={() => setSelectedCategory(selectedCategory === item.id ? null : item.id)}
-                >
-                  {item.image ? (
-                    <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
-                  ) : (
-                    <View style={[s.catImg, s.catImgPlaceholder]}>
-                      <Ionicons name="restaurant-outline" size={22} color="#FF6B35" />
-                    </View>
-                  )}
-                  <Text
-                    style={[s.catName, selectedCategory === item.id && { color: '#FF6B35', fontWeight: '700' }]}
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                  {selectedCategory === item.id && <View style={s.catUnderline} />}
+          {/* ── Search & Veg Toggle ── */}
+          <View style={s.searchContainer}>
+            <View style={s.searchBox}>
+              <Ionicons name="search-outline" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
+              <TextInput
+                style={s.searchInput}
+                placeholder="Search restaurants, cuisines..."
+                placeholderTextColor="#94a3b8"
+                value={searchText}
+                onChangeText={setSearchText}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText('')}>
+                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
                 </TouchableOpacity>
               )}
-            />
+            </View>
+            
+            {/* Veg Mode Toggle */}
+            <TouchableOpacity
+              style={[s.vegToggle, isVegMode && s.vegToggleActive]}
+              onPress={() => setIsVegMode(!isVegMode)}
+              activeOpacity={0.7}
+            >
+              <View style={[s.vegDot, isVegMode && s.vegDotActive]} />
+              <Text style={[s.vegText, isVegMode && s.vegTextActive]}>VEG</Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* ── Restaurants ── */}
+          {/* ── Grocery/Service/Food Toggle ── */}
+          <View style={s.toggleRow}>
+            <TouchableOpacity
+              style={[s.toggleBtn, activeMode === "grocery" && s.toggleBtnActive]}
+              onPress={() => {
+                setActiveMode("grocery");
+                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.toggleLabel, activeMode === "grocery" && s.toggleLabelActive]}>
+                Grocery
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.toggleBtn, activeMode === "service" && s.toggleBtnActive]}
+              onPress={() => {
+                setActiveMode("service");
+                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.toggleLabel, activeMode === "service" && s.toggleLabelActive]}>
+                Service
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.toggleBtn, activeMode === "food" && s.toggleBtnActive]}
+              onPress={() => setActiveMode("food")}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.toggleLabel, activeMode === "food" && s.toggleLabelActive]}>
+                Food
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
+
+      {/* ── Fixed Categories Section (RED LINE HERE) ── */}
+      {categories.length > 0 && (
+        <View style={s.stickyCategories}>
+          <Text style={s.sectionTitle}>What's on your mind?</Text>
+          <FlatList
+            data={categories}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ paddingBottom: 4 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={s.catItem}
+                activeOpacity={0.7}
+                onPress={() => setSelectedCategory(selectedCategory === item.id ? null : item.id)}
+              >
+                {item.image ? (
+                  <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
+                ) : (
+                  <View style={[s.catImg, s.catImgPlaceholder]}>
+                    <Ionicons name="restaurant-outline" size={22} color="#FF6B35" />
+                  </View>
+                )}
+                <Text
+                  style={[s.catName, selectedCategory === item.id && { color: '#FF6B35', fontWeight: '700' }]}
+                  numberOfLines={1}
+                >
+                  {item.name}
+                </Text>
+                {selectedCategory === item.id && <View style={s.catUnderline} />}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      )}
+
+      {/* ── Scrollable Section (Below Red Line) ── */}
+      <ScrollView 
+        style={s.restaurantsContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B35']} />}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: false,
+            listener: (event: any) => {
+              const offsetY = event.nativeEvent.contentOffset.y;
+              
+              // Continuous animation - header height changes with scroll position
+              const maxHeight = 300;
+              const minHeight = 128;
+              const scrollRange = 160;
+              
+              let newHeight;
+              if (offsetY <= 0) {
+                newHeight = maxHeight;
+              } else if (offsetY >= scrollRange) {
+                newHeight = minHeight;
+              } else {
+                newHeight = maxHeight - (offsetY * (maxHeight - minHeight) / scrollRange);
+              }
+              
+              headerHeight.setValue(newHeight);
+            }
+          }
+        )}
+        scrollEventThrottle={16}
+      >
+        {/* ── Scrollable Filters Section ── */}
+        <View style={s.filtersSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filtersRow}>
+            {['Pure Veg', 'Ratings 4.0+', 'Fast Delivery', 'New Arrivals', 'Offers'].map(f => (
+              <TouchableOpacity key={f} style={s.chip} activeOpacity={0.7}>
+                <Text style={s.chipText}>{f}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* ── Restaurants Section ── */}
         <View style={s.section}>
           <View style={s.sectionRow}>
             <Text style={s.sectionTitle}>
@@ -254,43 +326,112 @@ const s = StyleSheet.create({
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
   loaderText: { marginTop: 12, color: '#64748b', fontSize: 14 },
 
+  // Header Background Section
+  headerBackgroundSection: {
+    position: 'relative',
+    width: '100%',
+    overflow: 'hidden',
+  },
+  headerBackgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingBottom: 20,
+    justifyContent: 'flex-start',
+  },
+
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 52 : 40,
     paddingBottom: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
   },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   locationText: { fontSize: 15, fontWeight: '700', color: '#1e293b', maxWidth: width * 0.55 },
   locationSub: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
 
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 0,
+    gap: 12,
+  },
   searchBox: {
-    flexDirection: 'row', alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row', 
+    alignItems: 'center',
     backgroundColor: '#fff',
-    marginHorizontal: 16, marginTop: 14,
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
+    borderRadius: 12, 
+    paddingHorizontal: 14, 
+    paddingVertical: 11,
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07, 
+    shadowRadius: 8, 
+    elevation: 3,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#1e293b', padding: 0 },
 
-  bannerWrap: {
-    marginHorizontal: 16, marginTop: 14,
-    borderRadius: 16, overflow: 'hidden', height: 90,
+  // Veg Toggle Styles
+  vegToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 6,
   },
-  banner: {
-    width: '100%', height: 90, borderRadius: 16,
-    justifyContent: 'center', paddingHorizontal: 20,
+  vegToggleActive: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
   },
-  bannerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  bannerSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
-  dots: { position: 'absolute', bottom: 10, right: 14, flexDirection: 'row', gap: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.45)' },
-  dotActive: { backgroundColor: '#fff', width: 16 },
+  vegDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#dc2626',
+  },
+  vegDotActive: {
+    backgroundColor: '#fff',
+  },
+  vegText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  vegTextActive: {
+    color: '#fff',
+  },
 
-  filtersRow: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+  // Scrollable Filters Section
+  filtersSection: {
+    backgroundColor: '#f8fafc',
+    paddingVertical: 8,
+  },
+  filtersRow: { paddingHorizontal: 16, paddingVertical: 6, gap: 8 },
   chip: {
     paddingHorizontal: 14, paddingVertical: 7,
     borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0',
@@ -303,15 +444,30 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#1e293b', marginBottom: 14 },
   countText: { fontSize: 12, color: '#94a3b8' },
 
-  catItem: { alignItems: 'center', marginRight: 18, width: 70 },
-  catImg: { width: 64, height: 64, borderRadius: 32 },
+  // Sticky Categories
+  stickyCategories: {
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 16,
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+
+  // Restaurants Container
+  restaurantsContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+
+  catItem: { alignItems: 'center', marginRight: 18, width: 60 },
+  catImg: { width: 54, height: 54, borderRadius: 32 },
   catImgPlaceholder: { backgroundColor: '#fff5f0', justifyContent: 'center', alignItems: 'center' },
-  catName: { fontSize: 11, color: '#475569', marginTop: 6, textAlign: 'center', fontWeight: '500' },
+  catName: { fontSize: 10, color: '#475569', marginTop: 6, textAlign: 'center', fontWeight: '500' },
   catUnderline: { width: 24, height: 2, backgroundColor: '#FF6B35', borderRadius: 1, marginTop: 3 },
 
   restCard: {
     backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 14, marginHorizontal: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
@@ -348,4 +504,37 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 48 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#94a3b8', marginTop: 12 },
   emptySub: { fontSize: 13, color: '#cbd5e1', marginTop: 4 },
+
+  // Toggle styles
+  toggleRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 4,
+    gap: 8,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.15)",
+  },
+  toggleBtnActive: {
+    backgroundColor: "#00b4a0",
+    borderColor: "#00b4a0",
+  },
+  toggleLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333333",
+  },
+  toggleLabelActive: {
+    color: "#ffffff",
+  },
 });
