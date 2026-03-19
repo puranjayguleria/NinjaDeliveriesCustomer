@@ -16,6 +16,7 @@ import { useCart } from "../../context/CartContext";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
 import firestore from "@react-native-firebase/firestore";
 import { getLastNonCartTab, navigationRef } from "../../navigation/rootNavigation";
+import { useLocationContext } from "../../context/LocationContext";
 
 type UnifiedCartItem = {
   id: string;
@@ -31,6 +32,8 @@ export default function UnifiedCartScreen() {
   const navigation = useNavigation<any>();
   const { cart, removeFromCart, increaseQuantity, decreaseQuantity, clearCart: clearGroceryCart } = useCart();
   const { state: serviceState, removeService, clearCart: clearServiceCart, totalAmount: serviceTotalAmount } = useServiceCart();
+  const { location } = useLocationContext();
+  const groceryEnabled = location?.grocery !== false;
   
   const [groceryProducts, setGroceryProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +72,8 @@ export default function UnifiedCartScreen() {
 
   // Create unified cart items
   const unifiedItems: UnifiedCartItem[] = [
-    // Grocery items
-    ...groceryProducts.map(product => ({
+    // Grocery items - only show when grocery is enabled
+    ...(groceryEnabled ? groceryProducts.map(product => ({
       id: product.id,
       type: 'grocery' as const,
       name: product.name || product.title || 'Unknown Product',
@@ -78,7 +81,7 @@ export default function UnifiedCartScreen() {
       quantity: cart[product.id] || 0,
       image: product.imageUrl || product.image,
       details: product,
-    })),
+    })) : []),
     // Service items
     ...Object.values(serviceState.items).map(service => ({
       id: service.id,
@@ -90,9 +93,9 @@ export default function UnifiedCartScreen() {
     }))
   ];
 
-  const groceryTotal = groceryProducts.reduce((total, product) => {
+  const groceryTotal = groceryEnabled ? groceryProducts.reduce((total, product) => {
     return total + (product.price * (cart[product.id] || 0));
-  }, 0);
+  }, 0) : 0;
 
   const grandTotal = groceryTotal + serviceTotalAmount;
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);

@@ -1693,7 +1693,13 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {loading || navigating || validatingLocation ? (
+        {location?.grocery === false ? (
+          <View style={styles.loaderContainer}>
+            <Text style={{ color: '#888', fontSize: 16, textAlign: 'center', paddingHorizontal: 24 }}>
+              Cart is empty
+            </Text>
+          </View>
+        ) : loading || navigating || validatingLocation ? (
           <View style={styles.loaderContainer}>
             <Loader />
           </View>
