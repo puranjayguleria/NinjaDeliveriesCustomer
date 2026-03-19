@@ -87,7 +87,7 @@ export default function UnifiedCartScreen() {
       id: service.id,
       type: 'service' as const,
       name: service.serviceTitle,
-      price: service.company.price,
+      price: service.company.price ?? 0,
       quantity: service.quantity,
       details: service,
     }))
@@ -110,10 +110,7 @@ export default function UnifiedCartScreen() {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -150,7 +147,7 @@ export default function UnifiedCartScreen() {
         return;
       }
       if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+        (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
         return;
       }
     }
@@ -364,8 +361,23 @@ export default function UnifiedCartScreen() {
         
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>Your cart is empty</Text>
-          <Text style={styles.emptySubText}>Add some items to get started</Text>
+          <Text style={styles.emptyText}>Cart is empty</Text>
+          {groceryEnabled && (
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => navigation.navigate('HomeTab' as never)}
+            >
+              <Text style={styles.emptyBtnText}>Shop Grocery</Text>
+            </TouchableOpacity>
+          )}
+          {location?.services !== false && (
+            <TouchableOpacity
+              style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
+              onPress={() => navigation.navigate('ServicesTab' as never, { screen: 'ServicesHome' } as never)}
+            >
+              <Text style={styles.emptyBtnText}>Explore Services</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -665,5 +677,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+  },
+
+  emptyBtn: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 16,
+    width: 220,
+    alignItems: 'center',
+  },
+
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

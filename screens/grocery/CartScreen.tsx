@@ -1693,17 +1693,35 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {location?.grocery === false ? (
+        {location?.grocery === false || Object.keys(cart).length === 0 ? (
           <View style={styles.loaderContainer}>
-            <Text style={{ color: '#888', fontSize: 16, textAlign: 'center', paddingHorizontal: 24 }}>
-              Cart is empty
+            <Ionicons name="cart-outline" size={90} color="#ddd" />
+            <Text style={{ color: '#333', fontSize: 20, fontWeight: '700', marginTop: 16, marginBottom: 6 }}>
+              Your cart is empty
             </Text>
+            <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 36, textAlign: 'center', paddingHorizontal: 32 }}>
+              Looks like you haven't added anything yet
+            </Text>
+            {location?.grocery !== false && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2e7d32', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, marginBottom: 12, width: 240, justifyContent: 'center' }}
+                onPress={() => navigation.navigate('HomeTab' as never)}
+              >
+                <Ionicons name="basket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Shop Grocery</Text>
+              </TouchableOpacity>
+            )}
+            {location?.services !== false && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF6B35', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, width: 240, justifyContent: 'center' }}
+                onPress={() => navigation.navigate('ServicesTab' as never, { screen: 'ServicesHome' } as never)}
+              >
+                <Ionicons name="construct-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Explore Services</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : loading || navigating || validatingLocation ? (
-          <View style={styles.loaderContainer}>
-            <Loader />
-          </View>
-        ) : Object.keys(cart).length === 0 ? (
           <View style={styles.loaderContainer}>
             <Loader />
           </View>
