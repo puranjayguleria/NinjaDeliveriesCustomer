@@ -1,9 +1,6 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-import app from '@react-native-firebase/app';
-
-
 import { ensureFirebaseReady } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
@@ -43,8 +40,8 @@ import { NativeModules, Platform } from 'react-native';
    ────────────────────────────────────────────────────────── */
 import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
-import { LocationProvider } from "./context/LocationContext";
-import { useLocationContext } from "./context/LocationContext";
+import { LocationProvider, useLocationContext } from "./context/LocationContext";
+import { ToggleProvider, useToggleContext } from "./context/ToggleContext";
 import { fetchLocationFlags } from "./utils/fetchLocationFlags";
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
@@ -53,7 +50,25 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
    Screens
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/grocery/ProductsHomeScreen";
-import ServicesStack from "./navigation/ServicesStack";
+import ServicesScreen from "./screens/services/ServicesScreen";
+import AllServicesScreen from "./screens/services/AllServicesScreen";
+import FoodScreen from "./screens/food/FoodScreen";
+import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
+import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
+import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
+import CompanySelectionScreen from "./screens/services/CompanySelectionScreen";
+import SelectDateTimeScreen from "./screens/services/SelectDateTimeScreen";
+import PaymentScreen from "./screens/services/PaymentScreen";
+import BookingDetailsScreen from "./screens/services/BookingDetailsScreen";
+import BookingConfirmationScreen from "./screens/services/BookingConfirmationScreen";
+import TrackBookingScreen from "./screens/services/TrackBookingScreen";
+import ServiceCartScreen from "./screens/services/ServiceCartScreen";
+import ServiceCheckoutScreen from "./screens/services/ServiceCheckoutScreen";
+import ServiceAddOnScreen from "./screens/services/ServiceAddOnScreen";
+import ServiceCallingScreen from "./screens/services/ServiceCallingScreen";
+import ServiceVisitScreen from "./screens/services/ServiceVisitScreen";
+import ServiceEndScreen from "./screens/services/ServiceEndScreen";
+import FinalCheckoutScreen from "./screens/services/FinalCheckoutScreen";
 
 import CategoriesScreen from "./screens/grocery/CategoriesScreen";
 import ProductListingScreen from "./screens/grocery/ProductListingScreen";
@@ -78,6 +93,11 @@ import QuizScreen from "./screens/gamification/QuizScreen";
 import CongratsScreen from "./screens/gamification/CongratsScreen";
 import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
+import FreshProduceScreen from "./screens/grocery/FreshProduceScreen";
+import NavratriPageScreen from "./screens/grocery/NavratriPageScreen";
+import NavratriContentScreen from "./screens/grocery/NavratriContentScreen";
+import BuyAgainScreen from "./screens/grocery/BuyAgainScreen";
+import FoodComingSoonScreen from "./screens/grocery/FoodComingSoonScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -250,10 +270,25 @@ const RootStack = createNativeStackNavigator();
 /* ==========================================================
    STACK COMPOSITIONS
    ========================================================== */
+
+// Wrapper component that shows the right home screen based on toggle
+const HomeScreenWrapper = () => {
+  const { activeMode } = useToggleContext();
+  
+  if (activeMode === "service") {
+    return <ServicesScreen />;
+  } else if (activeMode === "food") {
+    // If food is selected, we show the coming soon screen
+    // Note: We keep the mode as 'food' so the toggle bar reflects it
+    return <FoodComingSoonScreen />;
+  }
+  return <ProductsHomeScreen />;
+};
+
 function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ProductsHome" component={ProductsHomeScreen} />
+      <Stack.Screen name="ProductsHome" component={HomeScreenWrapper} />
 
       {/* Quiz flow (gated) */}
       <Stack.Screen name="Quiz" options={{ title: "Quiz & Win" }}>
@@ -309,6 +344,27 @@ function HomeStack() {
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
       />
+      <Stack.Screen
+        name="NavratriPage"
+        component={NavratriPageScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="NavratriContent"
+        component={NavratriContentScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="BuyAgain"
+        component={BuyAgainScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodComingSoon"
+        component={FoodComingSoonScreen}
+        options={{ headerShown: false }}
+      />
+
 
       {/* Order flow */}
       <Stack.Screen
@@ -320,10 +376,8 @@ function HomeStack() {
         name="OrderTracking"
         component={OrderTrackingScreen}
         options={{
-          headerShown: true,
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
-          title: "Order Tracking",
         }}
       />
       {/* Reward */}
@@ -336,8 +390,7 @@ function HomeStack() {
         name="OrderCancelled"
         component={NewOrderCancelledScreen}
         options={{
-          title: "Order Cancelled",
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
         }}
       />
@@ -345,8 +398,7 @@ function HomeStack() {
         name="RatingScreen"
         component={RatingScreen}
         options={{
-          title: "Rate Your Rider",
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
         }}
       />
@@ -357,27 +409,273 @@ function HomeStack() {
         component={LoginScreen}
         options={{ headerShown: false }}
       />
+
+      {/* Profile Screen - accessible via profile icon in header */}
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Orders Screen */}
+      <Stack.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{ title: "Your Orders", headerShown: false }}
+      />
+
+      {/* Contact Us Screen */}
+      <Stack.Screen
+        name="ContactUs"
+        component={require("./screens/shared/ContactUsScreen").default}
+        options={{ title: "Contact Us", headerShown: false }}
+      />
+
+      {/* Services Screen - accessible via toggle in header */}
+      <Stack.Screen
+        name="ServicesHome"
+        component={ServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* All Services Screen - accessible via View All button in ServicesScreen */}
+      <Stack.Screen
+        name="AllServices"
+        component={AllServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Category Screen */}
+      <Stack.Screen
+        name="ServiceCategory"
+        component={ServiceCategoryScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Package Selection Screen */}
+      <Stack.Screen
+        name="PackageSelection"
+        component={PackageSelectionScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Company Selection Screen */}
+      <Stack.Screen
+        name="CompanySelection"
+        component={CompanySelectionScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Select Date Time Screen */}
+      <Stack.Screen
+        name="SelectDateTime"
+        component={SelectDateTimeScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Payment Screen */}
+      <Stack.Screen
+        name="Payment"
+        component={PaymentScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking Details Screen */}
+      <Stack.Screen
+        name="BookingDetails"
+        component={BookingDetailsScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking History Screen - accessible via booking history icon in ServicesScreen */}
+      <Stack.Screen
+        name="BookingHistory"
+        component={BookingHistoryScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking Confirmation Screen */}
+      <Stack.Screen
+        name="BookingConfirmation"
+        component={BookingConfirmationScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Track Booking Screen */}
+      <Stack.Screen
+        name="TrackBooking"
+        component={TrackBookingScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Cart Screen */}
+      <Stack.Screen
+        name="ServiceCart"
+        component={ServiceCartScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Checkout Screen */}
+      <Stack.Screen
+        name="ServiceCheckout"
+        component={ServiceCheckoutScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Add On Screen */}
+      <Stack.Screen
+        name="ServiceAddOn"
+        component={ServiceAddOnScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Calling Screen */}
+      <Stack.Screen
+        name="ServiceCalling"
+        component={ServiceCallingScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Visit Screen */}
+      <Stack.Screen
+        name="ServiceVisit"
+        component={ServiceVisitScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service End Screen */}
+      <Stack.Screen
+        name="ServiceEnd"
+        component={ServiceEndScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Final Checkout Screen */}
+      <Stack.Screen
+        name="FinalCheckout"
+        component={FinalCheckoutScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RazorpayWebView"
+        component={RazorpayWebView}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
 
 function CategoriesStack() {
+  const { activeMode } = useToggleContext();
+  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
-      <Stack.Screen
-        name="ProductListingFromCats"
-        component={ProductListingScreen as any}
-        options={({ route }) => ({
-          title: (route.params as any)?.categoryName || "Products",
-          headerShown: true,
-        })}
-      />
-      <Stack.Screen
-        name="OrderAllocating"
-        component={OrderAllocatingScreen}
-        options={{ headerShown: false }}
-      />
+      {activeMode === "grocery" ? (
+        <>
+          <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
+          <Stack.Screen
+            name="ProductListingFromCats"
+            component={ProductListingScreen as any}
+            options={({ route }) => ({
+              title: (route.params as any)?.categoryName || "Products",
+              headerShown: true,
+            })}
+          />
+          <Stack.Screen
+            name="OrderAllocating"
+            component={OrderAllocatingScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      ) : activeMode === "service" ? (
+        <>
+          <Stack.Screen name="CategoriesHome" component={AllServicesScreen} options={{ headerShown: false }} />
+          
+          {/* Service flow screens - needed for navigation from AllServicesScreen */}
+          <Stack.Screen
+            name="ServiceCategory"
+            component={ServiceCategoryScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PackageSelection"
+            component={PackageSelectionScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CompanySelection"
+            component={CompanySelectionScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SelectDateTime"
+            component={SelectDateTimeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Payment"
+            component={PaymentScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BookingDetails"
+            component={BookingDetailsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BookingConfirmation"
+            component={BookingConfirmationScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TrackBooking"
+            component={TrackBookingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCart"
+            component={ServiceCartScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCheckout"
+            component={ServiceCheckoutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceAddOn"
+            component={ServiceAddOnScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCalling"
+            component={ServiceCallingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceVisit"
+            component={ServiceVisitScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceEnd"
+            component={ServiceEndScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="FinalCheckout"
+            component={FinalCheckoutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="RazorpayWebView"
+            component={RazorpayWebView}
+            options={{ headerShown: false }}
+          />
+        </>
+      ) : (
+        <Stack.Screen name="CategoriesHome" component={FoodScreen} options={{ headerShown: false }} />
+      )}
     </Stack.Navigator>
   );
 }
@@ -405,6 +703,21 @@ const ProfileStack = () => (
       name="RewardScreen"
       component={HiddenCouponCard}
       options={{ title: "Reward Screen", headerShown: false }}
+    />
+    <Stack.Screen
+      name="Orders"
+      component={OrdersScreen}
+      options={{ title: "Your Orders", headerShown: false }}
+    />
+    <Stack.Screen
+      name="ContactUs"
+      component={require("./screens/shared/ContactUsScreen").default}
+      options={{ title: "Contact Us", headerShown: false }}
+    />
+    <Stack.Screen
+      name="TermsAndConditions"
+      component={TermsAndConditionsScreen}
+      options={{ title: "Terms & Conditions", headerShown: false }}
     />
   </Stack.Navigator>
 );
@@ -494,21 +807,13 @@ function AppTabs() {
     // If on Home or Categories tab and grocery becomes false
     if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
       console.log('[AppTabs] Current tab unavailable, navigating to available tab');
-      if (isServicesAvailable) {
-        navigation.navigate('ServicesTab' as never);
-      } else {
-        navigation.navigate('HomeTab' as never);
-      }
+      navigation.navigate('HomeTab' as never);
     }
     
     // If on Services tab and services becomes false
     if (currentTab === 'ServicesTab' && !showServices) {
       console.log('[AppTabs] Services tab unavailable, navigating to available tab');
-      if (isHomeAvailable) {
-        navigation.navigate('HomeTab' as never);
-      } else {
-        navigation.navigate('HomeTab' as never);
-      }
+      navigation.navigate('HomeTab' as never);
     }
   }, [showGrocery, showServices, currentTab]);
 
@@ -554,8 +859,7 @@ function AppTabs() {
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
-     // Services tab bounce animation
-     const serviceBounceAnim = useRef(new Animated.Value(0)).current;
+     // Services tab bounce animation removed
 
    useEffect(() => {
     Animated.loop(
@@ -589,22 +893,6 @@ function AppTabs() {
             useNativeDriver: true,
           }),
         ]),
-      ])
-    ).start();
-
-    // Services tab bounce animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(serviceBounceAnim, {
-          toValue: -8,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(serviceBounceAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
       ])
     ).start();
   }, []);
@@ -664,20 +952,15 @@ function AppTabs() {
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate first, then show loader
-      pendingNavigation.navigate("ServicesTab", { 
-        screen: "ServiceCart" 
-      });
-      
-      // Show loader immediately
-      setServiceLoaderVisible(true);
-      
-      // Hide loader after animation
-      setTimeout(() => {
-        setServiceLoaderVisible(false);
-      }, 500);
+    
+    // Use navigation object if available
+    const nav = pendingNavigation || navigationRef.current;
+    
+    if (nav) {
+      // Navigate to the Service Cart screen within the HomeTab stack
+      nav.navigate("HomeTab", { screen: "ServiceCart" });
     }
+    
     setPendingNavigation(null);
   };
 
@@ -706,26 +989,20 @@ function AppTabs() {
         onGoToServices={() => {
           // Navigate from the ROOT navigator so this works from a global modal.
           if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
+            (navigationRef.navigate as any)("HomeTab", { screen: "ProductsHome", params: { mode: "service" } });
           }
         }}
       />
 
       <Tab.Navigator
-        initialRouteName={
-          showGrocery 
-            ? "HomeTab" 
-            : showServices 
-            ? "ServicesTab" 
-            : "Profile"  // Fallback to Profile if nothing else is available
-        }
+        initialRouteName="HomeTab"
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
             CategoriesTab: "apps-outline",
+            BuyAgainTab: "repeat-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
@@ -741,7 +1018,11 @@ function AppTabs() {
             },
             // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
-              const isService = route.name === "ServicesTab";
+              // Hide Profile tab icon
+              if (route.name === "Profile") {
+                return null;
+              }
+
               const iconName = iconMap[route.name];
 
               return (
@@ -751,25 +1032,8 @@ function AppTabs() {
                     height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
-                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
-                  {isService && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        backgroundColor: "red",
-                        paddingHorizontal: 4,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-                        NEW
-                      </Text>
-                    </View>
-                  )}
-
                   {/* Render the actual icon */}
                   {iconName && (
                     <Ionicons name={iconName} size={size} color={color} />
@@ -801,6 +1065,19 @@ function AppTabs() {
             name="HomeTab"
             component={HomeStack}
             options={{ title: "Home" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                // If we are already on HomeTab, pop to the top of its stack.
+                // This ensures that if the user is on ServiceCart (which is in HomeStack),
+                // they return to ProductsHome/ServicesScreen.
+                const state = navigation.getState();
+                const homeRoute = state.routes[state.index];
+                if (homeRoute.name === "HomeTab" && homeRoute.state && homeRoute.state.index > 0) {
+                  // Navigate to the first screen of the HomeStack
+                  navigation.navigate("HomeTab", { screen: "ProductsHome" });
+                }
+              },
+            })}
           />
         )}
 
@@ -812,52 +1089,25 @@ function AppTabs() {
             options={{ title: "Categories" }}
           />
         )}
-        
-        {/* ⿣ Services Tab - Only show if services is enabled */}
-        {showServices && (
-          <Tab.Screen
-            name="ServicesTab"
-            component={ServicesStack}
-            options={{
-              title: "Services",
-            }}
-            listeners={({ navigation, route }) => ({
-              tabPress: (e) => {
-                // Check if user is in Tanda location or other restricted locations
-                // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
-                const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
-                
-                // Debug: Log current storeId to help identify location
-                if (__DEV__) {
-                  console.log("[Services Tab] Current storeId:", location?.storeId);
-                  console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
-                  console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
-                }
-                
-                if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
-                  e.preventDefault();
-                  setServicesUnavailableModalVisible(true);
-                  return;
-                }
 
-                // Non-restricted location:
-                // Navigate immediately and show loader
-                e.preventDefault();
-                
-                // Navigate first
-                navigation.navigate("ServicesTab", { screen: "ServicesHome" });
-                
-                // Show loader immediately
-                setServiceLoaderVisible(true);
-                
-                // Hide loader after animation
-                setTimeout(() => {
-                  setServiceLoaderVisible(false);
-                }, 800);
+        {/* ⿣ Buy Again Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="BuyAgainTab"
+            component={BuyAgainScreen}
+            options={{ title: "Order Again" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                if (!auth().currentUser) {
+                  e.preventDefault();
+                  promptLogin(navigation, "Order Again");
+                }
               },
             })}
           />
         )}
+        
+        {/* Services Tab removed - now accessible via toggle in ProductsHomeScreen */}
 
         {/* ⿣ Featured Tab */}
 
@@ -900,8 +1150,8 @@ function AppTabs() {
                 // If only service is active, go directly to service cart
                 else if (isServiceActive && !isGroceryActive) {
                   e.preventDefault();
-                  navigation.navigate("ServicesTab", { 
-                    screen: "ServiceCart" 
+                  navigation.navigate("HomeTab", { 
+                    screen: "ServiceCart"
                   });
                 }
                 // Empty cart or no active carts - go to unified cart
@@ -922,22 +1172,6 @@ function AppTabs() {
                     );
                   }
                 }
-              }
-            },
-          })}
-        />
-
-        {/* ⿥ Profile */}
-        <Tab.Screen
-          name="Profile"
-          component={ProfileStack}
-          options={{ title: "Profile" }}
-          listeners={({ navigation }) => ({
-            tabPress: (e) => {
-              if (!auth().currentUser) {
-                promptLogin(navigation, "Profile");
-                e.preventDefault();
-                // ...login prompt...
               }
             },
           })}
@@ -1087,9 +1321,6 @@ const App: React.FC = () => {
     (async () => {
       await ensureFirebaseReady();
       setFirebaseReady(true);
-      // Optional: verify
-      // import { getApps } from '@react-native-firebase/app';
-      // console.log('[RNFB] post-init apps:', getApps().map(a => a.name));
     })();
   }, []);
 
@@ -1332,6 +1563,7 @@ const App: React.FC = () => {
         <ErrorBoundary>
         <StatusBar style="dark" translucent backgroundColor="transparent" />
 
+        <ToggleProvider>
         <CustomerProvider>
         <CartProvider>
             <ServiceCartProvider>
@@ -1379,6 +1611,7 @@ const App: React.FC = () => {
             </ServiceCartProvider>
         </CartProvider>
       </CustomerProvider>
+        </ToggleProvider>
 
       {/* push-permission modal */}
       {showNotifModal && (

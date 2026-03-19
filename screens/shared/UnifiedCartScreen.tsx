@@ -134,12 +134,12 @@ export default function UnifiedCartScreen() {
       // If we cannot introspect route names, still attempt a sensible exit.
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("HomeTab" as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
@@ -365,7 +365,9 @@ export default function UnifiedCartScreen() {
           {groceryEnabled && (
             <TouchableOpacity
               style={styles.emptyBtn}
-              onPress={() => navigation.navigate('HomeTab' as never)}
+              onPress={() => {
+                navigation.navigate('HomeTab', { screen: 'ProductsHome' });
+              }}
             >
               <Text style={styles.emptyBtnText}>Shop Grocery</Text>
             </TouchableOpacity>
@@ -373,7 +375,9 @@ export default function UnifiedCartScreen() {
           {location?.services !== false && (
             <TouchableOpacity
               style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
-              onPress={() => navigation.navigate('ServicesTab' as never, { screen: 'ServicesHome' } as never)}
+              onPress={() => {
+                navigation.navigate('HomeTab', { screen: 'ServicesHome' });
+              }}
             >
               <Text style={styles.emptyBtnText}>Explore Services</Text>
             </TouchableOpacity>

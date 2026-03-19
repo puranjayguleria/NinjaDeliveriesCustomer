@@ -143,60 +143,13 @@ export default function ServiceCartScreen() {
   };
 
   const handleBackPress = () => {
-    if (navigation.canGoBack?.()) {
+    if (navigation.canGoBack()) {
       navigation.goBack();
       return;
     }
 
-    const lastTab = getLastNonCartTab();
-    if (navigationRef.isReady?.() && lastTab) {
-      try {
-        if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
-          return;
-        }
-        navigationRef.navigate(lastTab as never);
-        return;
-      } catch {
-        // fall through
-      }
-    }
-
-    const availableRoutes = new Set<string>();
-    const collect = (state: any) => {
-      if (!state) return;
-      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
-      (state.routes ?? []).forEach((r: any) => collect(r.state));
-    };
-    collect(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
-
-    if (navigationRef.isReady?.()) {
-      if (availableRoutes.size === 0) {
-        try {
-          navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
-          return;
-        } catch {}
-        try {
-          navigationRef.navigate("HomeTab" as never);
-          return;
-        } catch {}
-      }
-      if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
-        return;
-      }
-      if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
-        return;
-      }
-      if (availableRoutes.has("NinjaEatsHomeTab")) {
-        navigationRef.navigate("NinjaEatsHomeTab" as never);
-        return;
-      }
-    }
+    // Fallback if we can't go back in the stack (e.g. deep link or reset)
+    navigation.navigate("HomeTab", { screen: "ProductsHome" });
   };
 
   const renderServiceItem = ({ item }: { item: ServiceCartItem }) => (
