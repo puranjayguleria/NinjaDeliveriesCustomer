@@ -60,6 +60,9 @@ import AllServicesScreen from "./screens/services/AllServicesScreen";
 import FoodScreen from "@/screens/food/FoodScreen";
 import RestaurantDetailScreen from "@/screens/food/RestaurantDetailScreen";
 import FoodCartScreen from "@/screens/food/FoodCartScreen";
+import FoodCheckoutScreen from "@/screens/food/FoodCheckoutScreen";
+import FoodOrderSuccessScreen from "@/screens/food/FoodOrderSuccessScreen";
+import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
@@ -416,6 +419,21 @@ function HomeStack() {
       <Stack.Screen
         name="FoodCart"
         component={FoodCartScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodCheckout"
+        component={FoodCheckoutScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodOrderSuccess"
+        component={FoodOrderSuccessScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodTracking"
+        component={FoodTrackingScreen}
         options={{ headerShown: false }}
       />
 

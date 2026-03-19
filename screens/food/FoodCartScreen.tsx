@@ -121,7 +121,19 @@ export default function FoodCartScreen() {
 
       {/* Checkout Button */}
       <View style={s.checkoutWrap}>
-        <TouchableOpacity style={s.checkoutBtn} activeOpacity={0.9}>
+        <TouchableOpacity
+          style={s.checkoutBtn}
+          activeOpacity={0.9}
+          onPress={() =>
+            navigation.navigate('FoodCheckout', {
+              cartItems,
+              subtotal: totalPrice,
+              deliveryFee,
+              taxes,
+              grandTotal,
+            })
+          }
+        >
           <View>
             <Text style={s.checkoutItems}>{totalItems} item{totalItems > 1 ? 's' : ''}</Text>
             <Text style={s.checkoutLabel}>Proceed to Checkout</Text>
