@@ -152,10 +152,7 @@ export default function ServiceCartScreen() {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -176,20 +173,12 @@ export default function ServiceCartScreen() {
     if (navigationRef.isReady?.()) {
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
-        try {
-          navigationRef.navigate("HomeTab" as never);
-          return;
-        } catch {}
-      }
-      if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
-        return;
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {

@@ -18,6 +18,8 @@ import { format } from "date-fns";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Loader from "@/components/VideoLoader";
 
+import { SafeAreaView } from "react-native-safe-area-context";
+
 const OrdersScreen: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,109 +156,114 @@ const OrdersScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Your Orders</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <Text style={styles.header}>Your Orders</Text>
 
-      {loading ? (
-        <Loader />
-      ) : orders.length === 0 ? (
-        <Text style={styles.noOrdersText}>
-          You have no orders at the moment.
-        </Text>
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => handleOrderClick(item)}
-              style={styles.orderCard}
-            >
-              <View style={styles.orderCardContent}>
-                <Ionicons
-                  name="cube-outline"
-                  size={30}
-                  color="#4CAF50"
-                  style={styles.icon}
-                />
-                <View style={styles.orderDetails}>
-                  <Text style={styles.orderTitle}>
-                    {item.pickupDetails?.buildingName || "Pickup"} ➝{" "}
-                    {item.dropoffDetails?.buildingName || "Dropoff"}
-                  </Text>
-                  <Text style={styles.orderStatus}>Status: {item.status}</Text>
-                  <Text style={styles.orderDate}>
-                    {item.createdAt
-                      ? format(
-                          new Date(item.createdAt.seconds * 1000),
-                          "MMM dd, yyyy - h:mm a"
-                        )
-                      : "N/A"}
-                  </Text>
+        {loading ? (
+          <Loader />
+        ) : orders.length === 0 ? (
+          <Text style={styles.noOrdersText}>
+            You have no orders at the moment.
+          </Text>
+        ) : (
+          <FlatList
+            data={orders}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => handleOrderClick(item)}
+                style={styles.orderCard}
+              >
+                <View style={styles.orderCardContent}>
+                  <Ionicons
+                    name="cube-outline"
+                    size={30}
+                    color="#4CAF50"
+                    style={styles.icon}
+                  />
+                  <View style={styles.orderDetails}>
+                    <Text style={styles.orderTitle}>
+                      {item.pickupDetails?.buildingName || "Pickup"} ➝{" "}
+                      {item.dropoffDetails?.buildingName || "Dropoff"}
+                    </Text>
+                    <Text style={styles.orderStatus}>Status: {item.status}</Text>
+                    <Text style={styles.orderDate}>
+                      {item.createdAt
+                        ? format(
+                            new Date(item.createdAt.seconds * 1000),
+                            "MMM dd, yyyy - h:mm a"
+                          )
+                        : "N/A"}
+                    </Text>
+                  </View>
                 </View>
+              </TouchableOpacity>
+            )}
+            onEndReachedThreshold={0.5}
+          />
+        )}
+
+        <TouchableOpacity
+          onPress={() => setFilterModalVisible(true)}
+          style={styles.fabButton}
+        >
+          <Ionicons name="filter" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={isFilterModalVisible}
+          onRequestClose={() => setFilterModalVisible(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Filter by Date</Text>
+
+              <View style={styles.dateFilterContainer}>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => showDatePicker("start")}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => showDatePicker("end")}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          )}
-          onEndReachedThreshold={0.5}
-        />
-      )}
 
-      <TouchableOpacity
-        onPress={() => setFilterModalVisible(true)}
-        style={styles.fabButton}
-      >
-        <Ionicons name="filter" size={24} color="#FFFFFF" />
-      </TouchableOpacity>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={isFilterModalVisible}
-        onRequestClose={() => setFilterModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalHeader}>Filter by Date</Text>
-
-            <View style={styles.dateFilterContainer}>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => showDatePicker("start")}
-              >
-                <Text style={styles.dateButtonText}>
-                  {startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => showDatePicker("end")}
-              >
-                <Text style={styles.dateButtonText}>
-                  {endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}
-                </Text>
-              </TouchableOpacity>
+              <Button title="Apply Filter" onPress={applyFilter} />
             </View>
-
-            <Button title="Apply Filter" onPress={applyFilter} />
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      <DateTimePickerModal
-        isVisible={isDatePickerVisible}
-        mode="date"
-        onConfirm={handleConfirmDate}
-        onCancel={() => setDatePickerVisible(false)}
-      />
-    </View>
+        <DateTimePickerModal
+          isVisible={isDatePickerVisible}
+          mode="date"
+          onConfirm={handleConfirmDate}
+          onCancel={() => setDatePickerVisible(false)}
+        />
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
   container: {
     flex: 1,
-    paddingTop: 50,
-    paddingHorizontal: 20,
+    padding: 20,
     backgroundColor: "#FFFFFF",
   },
   header: {

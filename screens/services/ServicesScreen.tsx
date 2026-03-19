@@ -236,16 +236,16 @@ const HEADER_GIFS = [
   require("../../assets/ninjaVideo.gif"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = 180; // TESTING - SHOULD BE VERY TALL
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 120;
-const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
-const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
+const SERVICES_HEADER_MEDIA_HEIGHT = 260; // Increased for more space
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 180; // Increased for more space
+const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 64 : 48; // Increased for status bar/notch
+const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 52 : 36; // Increased for status bar/notch
 // Solid, very light + friendly header colors (no transparency).
 // Soft off-white to a subtle mint/teal tint feels calmer during scroll.
 const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 190 : 175;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 260 : 240; // SIGNIFICANTLY INCREASED TO FIX OVERLAP
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'electrician',
@@ -1945,7 +1945,7 @@ export default function ServicesScreen() {
         ]}
         pointerEvents="box-none"
       >
-        <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
         {/* Scroll background (BEHIND the GIF, not on top of it) */}
         <Animated.View
@@ -2005,7 +2005,7 @@ export default function ServicesScreen() {
               style={styles.profileIconButton}
               accessibilityLabel="Profile"
             >
-              <Ionicons name="person" size={20} color="#0f172a" />
+              <Ionicons name="person" size={30} color="#0f172a" />
             </TouchableOpacity>
           </View>
 
@@ -2081,6 +2081,12 @@ export default function ServicesScreen() {
               }}
               activeOpacity={0.7}
             >
+              <Ionicons 
+                name="basket" 
+                size={16} 
+                color={activeMode === "grocery" ? "#00b4a0" : "#777777"} 
+                style={{ marginRight: 6 }}
+              />
               <Text
                 style={[
                   styles.toggleLabel,
@@ -2098,6 +2104,12 @@ export default function ServicesScreen() {
               onPress={() => setActiveMode("service")}
               activeOpacity={0.7}
             >
+              <Ionicons 
+                name="construct" 
+                size={16} 
+                color={activeMode === "service" ? "#00b4a0" : "#777777"} 
+                style={{ marginRight: 6 }}
+              />
               <Text
                 style={[
                   styles.toggleLabel,
@@ -2114,10 +2126,16 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("food");
-                // Food screen navigation can be added here when ready
+                navigation.navigate("FoodScreen");
               }}
               activeOpacity={0.7}
             >
+              <Ionicons 
+                name="fast-food" 
+                size={16} 
+                color={activeMode === "food" ? "#00b4a0" : "#777777"} 
+                style={{ marginRight: 6 }}
+              />
               <Text
                 style={[
                   styles.toggleLabel,
@@ -2679,29 +2697,36 @@ const styles = StyleSheet.create({
   // Toggle Styles
   toggleRow: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
-    gap: 8,
+    marginTop: 12,
+    marginBottom: 14,
+    backgroundColor: "#F0F0F0", // subtle light gray for white background
+    borderRadius: 28,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.05)",
   },
   toggleBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 24,
   },
   toggleBtnActive: {
     backgroundColor: "#ffffff",
-    borderColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   toggleLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#777777",
   },
   toggleLabelActive: {
     color: "#00b4a0",

@@ -43,9 +43,8 @@ import { NativeModules, Platform } from 'react-native';
    ────────────────────────────────────────────────────────── */
 import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
-import { LocationProvider } from "./context/LocationContext";
+import { LocationProvider, useLocationContext } from "./context/LocationContext";
 import { ToggleProvider, useToggleContext } from "./context/ToggleContext";
-import { useLocationContext } from "./context/LocationContext";
 import { fetchLocationFlags } from "./utils/fetchLocationFlags";
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
@@ -54,7 +53,6 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
    Screens
    ────────────────────────────────────────────────────────── */
 import ProductsHomeScreen from "./screens/grocery/ProductsHomeScreen";
-import ServicesStack from "./navigation/ServicesStack";
 import ServicesScreen from "./screens/services/ServicesScreen";
 import AllServicesScreen from "./screens/services/AllServicesScreen";
 import FoodScreen from "./screens/food/FoodScreen";
@@ -98,6 +96,9 @@ import QuizScreen from "./screens/gamification/QuizScreen";
 import CongratsScreen from "./screens/gamification/CongratsScreen";
 import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
+import FreshProduceScreen from "./screens/grocery/FreshProduceScreen";
+import NavratriPageScreen from "./screens/grocery/NavratriPageScreen";
+import NavratriContentScreen from "./screens/grocery/NavratriContentScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -341,6 +342,17 @@ function HomeStack() {
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
       />
+      <Stack.Screen
+        name="NavratriPage"
+        component={NavratriPageScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="NavratriContent"
+        component={NavratriContentScreen}
+        options={{ headerShown: false }}
+      />
+
 
       {/* Order flow */}
       <Stack.Screen
@@ -395,6 +407,20 @@ function HomeStack() {
         name="Profile"
         component={ProfileScreen}
         options={{ headerShown: false }}
+      />
+
+      {/* Orders Screen */}
+      <Stack.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{ title: "Your Orders", headerShown: true }}
+      />
+
+      {/* Contact Us Screen */}
+      <Stack.Screen
+        name="ContactUs"
+        component={require("./screens/shared/ContactUsScreen").default}
+        options={{ title: "Contact Us", headerShown: true }}
       />
 
       {/* Services Screen - accessible via toggle in header */}
@@ -660,6 +686,21 @@ const ProfileStack = () => (
       component={HiddenCouponCard}
       options={{ title: "Reward Screen", headerShown: false }}
     />
+    <Stack.Screen
+      name="Orders"
+      component={OrdersScreen}
+      options={{ title: "Your Orders", headerShown: true }}
+    />
+    <Stack.Screen
+      name="ContactUs"
+      component={require("./screens/shared/ContactUsScreen").default}
+      options={{ title: "Contact Us", headerShown: true }}
+    />
+    <Stack.Screen
+      name="TermsAndConditions"
+      component={TermsAndConditionsScreen}
+      options={{ title: "Terms & Conditions", headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -748,21 +789,13 @@ function AppTabs() {
     // If on Home or Categories tab and grocery becomes false
     if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
       console.log('[AppTabs] Current tab unavailable, navigating to available tab');
-      if (isServicesAvailable) {
-        navigation.navigate('ServicesTab' as never);
-      } else {
-        navigation.navigate('HomeTab' as never);
-      }
+      navigation.navigate('HomeTab' as never);
     }
     
     // If on Services tab and services becomes false
     if (currentTab === 'ServicesTab' && !showServices) {
       console.log('[AppTabs] Services tab unavailable, navigating to available tab');
-      if (isHomeAvailable) {
-        navigation.navigate('HomeTab' as never);
-      } else {
-        navigation.navigate('HomeTab' as never);
-      }
+      navigation.navigate('HomeTab' as never);
     }
   }, [showGrocery, showServices, currentTab]);
 
@@ -808,8 +841,7 @@ function AppTabs() {
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
-     // Services tab bounce animation
-     const serviceBounceAnim = useRef(new Animated.Value(0)).current;
+     // Services tab bounce animation removed
 
    useEffect(() => {
     Animated.loop(
@@ -843,22 +875,6 @@ function AppTabs() {
             useNativeDriver: true,
           }),
         ]),
-      ])
-    ).start();
-
-    // Services tab bounce animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(serviceBounceAnim, {
-          toValue: -8,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(serviceBounceAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
       ])
     ).start();
   }, []);
@@ -919,9 +935,10 @@ function AppTabs() {
   const handleSelectServices = () => {
     setCartModalVisible(false);
     if (pendingNavigation) {
-      // Navigate first, then show loader
-      pendingNavigation.navigate("ServicesTab", { 
-        screen: "ServiceCart" 
+      // Navigate to HomeTab with service mode
+      pendingNavigation.navigate("HomeTab", { 
+        screen: "ProductsHome",
+        params: { mode: "service" }
       });
       
       // Show loader immediately
@@ -960,26 +977,19 @@ function AppTabs() {
         onGoToServices={() => {
           // Navigate from the ROOT navigator so this works from a global modal.
           if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
+            (navigationRef.navigate as any)("HomeTab", { screen: "ProductsHome", params: { mode: "service" } });
           }
         }}
       />
 
       <Tab.Navigator
-        initialRouteName={
-          showGrocery 
-            ? "HomeTab" 
-            : showServices 
-            ? "ServicesTab" 
-            : "Profile"  // Fallback to Profile if nothing else is available
-        }
+        initialRouteName="HomeTab"
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
             CategoriesTab: "apps-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
@@ -1000,7 +1010,6 @@ function AppTabs() {
                 return null;
               }
 
-              const isService = route.name === "ServicesTab";
               const iconName = iconMap[route.name];
 
               return (
@@ -1010,25 +1019,8 @@ function AppTabs() {
                     height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
-                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
-                  {isService && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        backgroundColor: "red",
-                        paddingHorizontal: 4,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-                        NEW
-                      </Text>
-                    </View>
-                  )}
-
                   {/* Render the actual icon */}
                   {iconName && (
                     <Ionicons name={iconName} size={size} color={color} />
@@ -1115,8 +1107,9 @@ function AppTabs() {
                 // If only service is active, go directly to service cart
                 else if (isServiceActive && !isGroceryActive) {
                   e.preventDefault();
-                  navigation.navigate("ServicesTab", { 
-                    screen: "ServiceCart" 
+                  navigation.navigate("HomeTab", { 
+                    screen: "ProductsHome",
+                    params: { mode: "service" }
                   });
                 }
                 // Empty cart or no active carts - go to unified cart

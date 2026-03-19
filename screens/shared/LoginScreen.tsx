@@ -208,10 +208,10 @@ if (__DEV__ && Platform.OS === "ios") {
                   state: {
                     routes: [
                       {
-                        name: "ServicesTab",
+                        name: "HomeTab",
                         state: {
                           routes: [
-                            { name: "ServicesHome" },
+                            { name: "ProductsHome" },
                             { 
                               name: "ServiceCheckout", 
                               params: { 

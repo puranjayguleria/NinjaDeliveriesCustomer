@@ -60,16 +60,18 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 160;
-const COLLAPSED_VIDEO_HEIGHT = 80;
+const INITIAL_HEADER_HEIGHT = 210;
+const COLLAPSED_HEADER_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
 
+import { navigateToSpecializedCategory } from "../../utils/categoryNavigation";
+
 const { width } = Dimensions.get("window");
-const H = 16;
-const G = 20;
-const MOSAIC_W = width * 0.35;
+const H = 14;
+const G = 12; // ⬅ Slightly tighter
+const MOSAIC_W = width * 0.30; // ⬅ Slightly smaller
 const MOSAIC_W_GAME = width * 0.5;
 const SEARCH_PH = ["atta", "dal", "eggs", "biscuits", "coffee"];
 
@@ -256,10 +258,10 @@ const Header = memo(() => {
         onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
       >
         <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-          <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-          <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+          <MaterialIcons name="flash-on" size={16} color="#007D34" style={{ marginRight: 2 }} />
+          <Text style={{ color: "#007D34", fontWeight: "900", fontSize: 13 }}>15-20 mins</Text>
         </View>
-        <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
+        <Text style={{ color: "#111111", opacity: 0.8, marginRight: 6 }}>•</Text>
         <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
 
           <Text style={styles.locationTxt} numberOfLines={1}>
@@ -274,7 +276,7 @@ const Header = memo(() => {
             </View>
           )}
         </View>
-        <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
+        <MaterialIcons name="keyboard-arrow-down" size={18} color="#111111" />
       </Pressable>
 
       {/* Profile Icon */}
@@ -284,7 +286,7 @@ const Header = memo(() => {
           nav.navigate("Profile");
         }}
       >
-        <MaterialIcons name="person" size={24} color={Colors.white} />
+        <MaterialIcons name="person" size={30} color="#111111" />
       </Pressable>
     </View>
   );
@@ -473,14 +475,11 @@ const MosaicCard: React.FC<{
         </View>
       )}
 
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)'] as any}
-        style={styles.cardLabel}
-      >
+      <View style={styles.cardLabel}>
         <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
           {cat.name}
         </Text>
-      </LinearGradient>
+      </View>
     </Pressable>
   );
 };
@@ -913,7 +912,7 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
-    ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+    ["#FFFFFF", "#FFFFFF", "#FFFFFF"]
   ); // fallback defaults
 
   const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
@@ -1088,7 +1087,7 @@ export default function ProductsHomeScreen() {
   // pull gradient colors for the collapsing header from Firestore
   useEffect(() => {
     if (!location.storeId) {
-      setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"]);
+      setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"]);
       return;
     }
 
@@ -1109,10 +1108,10 @@ export default function ProductsHomeScreen() {
             : null;
 
           setHeaderGradientColors(
-            arr && arr.length ? arr : ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+            arr && arr.length ? arr : ["#FFFFFF", "#FFFFFF", "#FFFFFF"]
           );
         },
-        () => setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"])
+        () => setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"])
       );
 
     return unsub;
@@ -1710,21 +1709,9 @@ export default function ProductsHomeScreen() {
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const videoHeight = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [INITIAL_VIDEO_HEIGHT, COLLAPSED_VIDEO_HEIGHT],
-    extrapolate: "clamp",
-  });
-
-  const videoOpacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
-
   const gradientOpacity = scrollY.interpolate({
-    inputRange: [50, 100],
-    outputRange: [0, 1],
+    inputRange: [0, 50],
+    outputRange: [1, 1], // Always visible now
     extrapolate: "clamp",
   });
 
@@ -1799,37 +1786,9 @@ export default function ProductsHomeScreen() {
       return;
     }
 
-    if (name === "Chocolates") {
-      const storeId = location.storeId || null;
-      if (storeId) {
-        try {
-          const snap = await firestore()
-            .collection("subcategories")
-            .where("storeId", "==", storeId)
-            .where("name", "==", "Chocolate Gift Box")
-            .limit(1)
-            .get();
-
-          if (!snap.empty) {
-            const doc = snap.docs[0];
-            const data: any = doc.data() || {};
-            const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
-            nav.navigate("ProductListingFromHome", {
-              categoryId,
-              categoryName: categoryId,
-              subcategoryId: doc.id,
-            });
-            return;
-          }
-        } catch {}
-      }
-
-      nav.navigate("ProductListingFromHome", {
-        categoryName: name,
-        searchQuery: "chocolate",
-      });
-      return;
-    }
+    const storeId = location.storeId || "0oS7Zig2gxj2MJesvlC2";
+    const handled = await navigateToSpecializedCategory(name, storeId, nav, maybeNavigateCat);
+    if (handled) return;
 
     if (name === "Blossoms") {
       const storeId = location.storeId || null;
@@ -1862,8 +1821,6 @@ export default function ProductsHomeScreen() {
       return;
     }
 
-
-    
     // Define keyword mappings for shortcuts that may not match category names exactly
     const keywordMappings: Record<string, string[]> = {
       "Chocolates": ["chocolate", "chocolates", "choco"],
@@ -1907,6 +1864,169 @@ export default function ProductsHomeScreen() {
     <>
       {/* Promotional banners */}
       <BannerSwitcher storeId={location.storeId || ""} />
+
+      {/* Feature Tiles - 3 Professional Carts */}
+      <View style={{ marginVertical: 2 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: H }}
+        >
+          {[
+            {
+              title: "Best Sellers",
+              sub: "Top Products",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Fbest%20seller.png?alt=media&token=8808ea27-2af7-4efd-8a47-c177d901fffa" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "best" }),
+            },
+            {
+              title: "Fresh Arrivals",
+              sub: "New Stock",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Ffresh%20arrivals.png?alt=media&token=a3435465-6d5e-4e03-add6-b74be1aa9637" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "fresh" }),
+            },
+            {
+              title: "Offers",
+              sub: "Hot Deals",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Foffers.png?alt=media&token=5f466286-0cb2-4da7-b4c3-dc5ee9b0c3a6" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "sale" }),
+            },
+          ].map((t, i) => (
+            <TouchableOpacity
+              key={i}
+              activeOpacity={0.9}
+              onPress={t.onPress}
+              style={{
+                width: 100,
+                height: 120,
+                marginRight: 10,
+                borderRadius: 12,
+                backgroundColor: '#fff',
+                overflow: 'hidden',
+                elevation: 2,
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                shadowOffset: { width: 0, height: 2 },
+              }}
+            >
+              <Image source={t.img} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.8)"]}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: 6,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{t.title}</Text>
+                <Text style={{ color: '#eee', fontSize: 8, fontWeight: '600' }}>{t.sub}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Category Shortcuts - Circle Icons */}
+      <View style={{ marginTop: 6, marginBottom: 4 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: H }}
+        >
+          {(() => {
+            const mandatory = [
+              { name: "Pooja Essentials" },
+              { name: "Fruits" },
+              { name: "Vegetables" },
+              { name: "Dairy" },
+            ];
+            
+            // Merge dynamic shortcuts, avoiding duplicates
+            const allShortcuts = [...mandatory];
+            categoryShortcuts.forEach(ds => {
+              if (
+                ds.name.toLowerCase() !== "snacks" &&
+                !allShortcuts.find(s => s.name.toLowerCase() === ds.name.toLowerCase())
+              ) {
+                allShortcuts.push(ds);
+              }
+            });
+
+            const profImgMap: Record<string, string> = {
+              "Pooja Essentials": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15",
+              "Fruits": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1760369103039_ImageForArticle_14459_1718253799749257.webp?alt=media&token=4c164d31-ad65-4c8d-972f-cfc8d0a28bb8",
+              "Vegetables": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1760369943892_Vegetables-3.jpg?alt=media&token=3371bb11-4e21-474a-b0e2-258bfb38a7d0",
+              "Dairy": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af",
+              "Beverages": "https://img.freepik.com/free-photo/fresh-juice-glass_144627-17336.jpg",
+              "Chocolates": "https://ninjadeliveries-91007.web.app/SubCategories/1CH2580.webp",
+            };
+
+            return allShortcuts.map((item, i) => {
+              const displayImg = profImgMap[item.name] || (item as any).imageUrl || "https://via.placeholder.com/150";
+
+              return (
+                <TouchableOpacity
+                  key={i}
+                  activeOpacity={0.8}
+                  onPress={() => handleCategoryShortcut(item.name)}
+                  style={{ alignItems: 'center', marginRight: 10, width: 68 }}
+                >
+                  <View style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: '#fff',
+                    overflow: 'hidden',
+                    borderWidth: 1,
+                    borderColor: '#f8f8f8',
+                    elevation: 2,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                    shadowOffset: { width: 0, height: 2 },
+                  }}>
+                    <Image
+                      source={{ uri: displayImg }}
+                      style={{ width: '100%', height: '100%' }}
+                      contentFit="cover"
+                    />
+                  </View>
+                  <Text style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: '#111',
+                    marginTop: 4,
+                    textAlign: 'center',
+                  }} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            });
+          })()}
+        </ScrollView>
+      </View>
+
+      {/* Navratri Banner */}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => nav.navigate("NavratriPage")}
+        style={{ marginHorizontal: H, marginTop: 12, marginBottom: 8 }}
+      >
+        <Image
+          source={{ uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Fnavratri.png?alt=media&token=44d5774a-110c-4d89-8851-44ce3e10db5b" }}
+          style={{
+            width: '100%',
+            height: 160,
+            borderRadius: 16,
+          }}
+          contentFit="cover"
+        />
+      </TouchableOpacity>
+
       {/* Last order → Repeat order card */}
       {/* Buy again section using existing QuickTile cards */}
       {buyAgainResolved.length > 0 && (
@@ -2048,40 +2168,6 @@ export default function ProductsHomeScreen() {
         <Animated.View
           pointerEvents="box-none"
           style={[styles.headerWrapper, { paddingTop: topPadding }]}>
-          {/* Background video */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                top: -35,
-                width: "100%",
-                left: "0%",
-              },
-              { height: videoHeight, opacity: videoOpacity },
-            ]}
-          >
-            <Video
-              source={require("../../assets/deliveryBackground.mp4")}
-              style={StyleSheet.absoluteFill}
-              muted
-              repeat
-              resizeMode="cover"
-              rate={1.0}
-              ignoreSilentSwitch="obey"
-              paused={!isFocused}
-              playInBackground={false}
-              playWhenInactive={false}
-              bufferConfig={{
-                minBufferMs: 1500,
-                maxBufferMs: 6000,
-                bufferForPlaybackMs: 750,
-                bufferForPlaybackAfterRebufferMs: 1500,
-              }}
-              maxBitRate={1500000}
-            />
-          </Animated.View>
-
           {/* Gradient overlay */}
           <Animated.View
             pointerEvents="none"
@@ -2112,6 +2198,12 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => setActiveVerticalMode("grocery")}
               >
+                <Ionicons 
+                  name="basket" 
+                  size={16} 
+                  color={activeVerticalMode === "grocery" ? "#00b4a0" : "#777777"} 
+                  style={{ marginRight: 6 }}
+                />
                 <Text
                   style={[
                     styles.toggleLabel,
@@ -2121,6 +2213,7 @@ export default function ProductsHomeScreen() {
                   Grocery
                 </Text>
               </Pressable>
+
               <Pressable
                 style={[
                   styles.toggleBtn,
@@ -2131,6 +2224,12 @@ export default function ProductsHomeScreen() {
                   nav.navigate("ServicesHome");
                 }}
               >
+                <Ionicons 
+                  name="construct" 
+                  size={16} 
+                  color={activeVerticalMode === "service" ? "#00b4a0" : "#777777"} 
+                  style={{ marginRight: 6 }}
+                />
                 <Text
                   style={[
                     styles.toggleLabel,
@@ -2140,6 +2239,7 @@ export default function ProductsHomeScreen() {
                   Service
                 </Text>
               </Pressable>
+
               <Pressable
                 style={[
                   styles.toggleBtn,
@@ -2147,6 +2247,12 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => setActiveVerticalMode("food")}
               >
+                <Ionicons 
+                  name="fast-food" 
+                  size={16} 
+                  color={activeVerticalMode === "food" ? "#00b4a0" : "#777777"} 
+                  style={{ marginRight: 6 }}
+                />
                 <Text
                   style={[
                     styles.toggleLabel,
@@ -2240,9 +2346,30 @@ export default function ProductsHomeScreen() {
 
         {/* Show Food blank screen when Food is selected */}
         {activeVerticalMode === "food" ? (
-          <View style={[styles.center, { flex: 1 }]}>
+          <View style={[styles.center, { flex: 1, backgroundColor: '#ffffff' }]}>
             <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#0f172a', marginBottom: 8 }}>Food</Text>
-            <Text style={{ fontSize: 16, color: '#64748b' }}>Coming Soon...</Text>
+            <Text style={{ fontSize: 16, color: '#64748b', marginBottom: 32 }}>Coming Soon...</Text>
+            
+            <TouchableOpacity 
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#00b4a0',
+                paddingHorizontal: 24,
+                paddingVertical: 12,
+                borderRadius: 12,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                elevation: 4,
+              }} 
+              onPress={() => setActiveVerticalMode("grocery")}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="home" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+              <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>Home</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -2255,7 +2382,7 @@ export default function ProductsHomeScreen() {
               { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
+            contentContainerStyle={{ paddingTop: INITIAL_HEADER_HEIGHT }}
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
@@ -2403,27 +2530,6 @@ const GAP_BG = "#f8f8f8";
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  videoContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 0,
-    overflow: "hidden",
-  },
-  pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-pillActive: {
-  backgroundColor: '#00b4a0', // Ninja green accent for active
-},
-label: { fontSize: 12, fontWeight: '600', color: '#333' },
-labelActive: { color: '#fff' },
-  backgroundVideo: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-  },
   topBg: {
     paddingHorizontal: H,
     paddingBottom: 4,
@@ -2431,23 +2537,11 @@ labelActive: { color: '#fff' },
     zIndex: 1,
     backgroundColor: "transparent",
   },
-  gradientHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
   badge01: {
     backgroundColor: "#FF3D00",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 20,
-  },
-  videoOverlay: {
-    position: "relative",
-    backgroundColor: "transparent",
-    flex: 1,
   },
   locationRow: {
   flexDirection: "row",
@@ -2474,21 +2568,21 @@ labelActive: { color: '#fff' },
   locationTxt: {
   flex: 1,
   fontSize: 15,          // ⬅ slightly larger
-  fontWeight: "700",
-  color: "#fff",
+  fontWeight: "800",     // ⬅ bolder
+  color: "#111111",
 },
   searchWrapper: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#ffffff",
+  backgroundColor: "#F5F5F5",    // subtle light gray for white background
   borderRadius: 26,              // ⬅ rounder pill
   paddingVertical: 10,
   paddingHorizontal: 16,
   shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
+  shadowOpacity: 0.05,
+  shadowRadius: 5,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
 },
 searchTxt: { color: "#555", fontSize: 14 },
   quizCard: {
@@ -2533,7 +2627,7 @@ searchTxt: { color: "#555", fontSize: 14 },
   rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
   seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
   chip: {
-  backgroundColor: "#FFE6F0",   // soft pink
+  backgroundColor: "#F0F0F0",   // ⬅ professional light gray
   borderRadius: 18,
   paddingHorizontal: 12,
   paddingVertical: 6,
@@ -2541,7 +2635,7 @@ searchTxt: { color: "#555", fontSize: 14 },
 },
 chipTxt: {
   fontSize: 12,
-  color: "#C2185B",
+  color: "#333333",             // ⬅ professional dark text
   fontWeight: "700",
 },
   tile: {
@@ -2642,24 +2736,25 @@ chipTxt: {
   },
   mosaicDealTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
   cardLabel: {
-  position: "absolute",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
-  flexDirection: "row",
-  alignItems: "center",
-  padding: 6,
-},
-
-  badge: {
-    marginRight: 4,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    backgroundColor: "rgba(255,255,255,0.85)", // ⬅ Very subtle professional overlay for readability
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 13, fontWeight: "800", flex: 1 },
+  cardTitle: { 
+    color: "#111111", 
+    fontSize: 11, 
+    fontWeight: "900", 
+    flex: 1, 
+    textAlign: "center",
+    letterSpacing: 0.2,
+    textTransform: "uppercase", // ⬅ Professional boutique look
+  },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -2767,8 +2862,8 @@ chipTxt: {
   },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
   laneTitle: {
-  marginTop: 28,
-  marginBottom: 12,
+  marginTop: 16,     // ⬅ Reduced from 28 to 16
+  marginBottom: 8,      // ⬅ Reduced from 12 to 8
   fontSize: 18,
   fontWeight: "800",
   color: "#222",
@@ -2977,29 +3072,36 @@ searchFlex: {
   },
   toggleRow: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
-    gap: 8,
+    marginTop: 8,              // ⬅ smaller
+    marginBottom: 10,           // ⬅ smaller
+    backgroundColor: "#F0F0F0",
+    borderRadius: 28,
+    padding: 3,                 // ⬅ smaller
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.05)",
   },
   toggleBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,         // ⬅ smaller
+    borderRadius: 24,
   },
   toggleBtnActive: {
     backgroundColor: "#ffffff",
-    borderColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   toggleLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#ffffff",
+    fontSize: 13,               // ⬅ smaller
+    fontWeight: "700",
+    color: "#777777",
   },
   toggleLabelActive: {
     color: "#00b4a0",

@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 
 const PHONE = '8219105753';
 const EMAIL = 'admin@ninjadeliveries.com';
@@ -18,10 +20,23 @@ const EMAIL = 'admin@ninjadeliveries.com';
 const ContactUsScreen: React.FC = () => {
   const handleCall  = () => Linking.openURL(`tel:${PHONE}`);
   const handleEmail = () => Linking.openURL(`mailto:${EMAIL}`);
+  const navigation = useNavigation();
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
+
+      {/* Header with back button */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Contact Us</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
       {/* ---------- Hero (logo / mascot) ---------- */}
       <View style={styles.heroWrapper}>
@@ -39,7 +54,7 @@ const ContactUsScreen: React.FC = () => {
       </View>
 
       {/* ---------- Action buttons ---------- */}
-      <View style={styles.actionsWrapper}>
+      <View style={[styles.actionsWrapper, { marginBottom: 40 }]}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleCall}>
           <Icon name="phone" size={24} color="#fff" style={styles.actionIcon} />
           <Text style={styles.actionText}>Call Us</Text>
@@ -67,7 +82,24 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: DARK_BG,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
   },
 
   /* ---------- hero ---------- */
