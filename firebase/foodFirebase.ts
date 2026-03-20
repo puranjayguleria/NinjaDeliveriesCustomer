@@ -22,8 +22,10 @@ export type Restaurant = {
   isActive: boolean;
   accountEnabled: boolean;
   type: string;
+  image?: string;
   createdAt?: any;
   updatedAt?: any;
+  profileImage?: string;
 };
 
 export type FoodCategory = {
@@ -41,7 +43,9 @@ export type MenuItem = {
   name: string;
   description: string;
   price: string;
-  image: string;
+  image?: string;
+  imageUrl?: string;
+  imageURL?: string;
   category: string;
   categoryId: string;
   available: boolean;
@@ -55,7 +59,9 @@ export type MenuAddon = {
   name: string;
   description: string;
   price: string;
-  image: string;
+  image?: string;
+  imageUrl?: string;
+  imageURL?: string;
   menuItemId: string;
   menuItemName: string;
   restaurantId: string;
@@ -128,7 +134,14 @@ export async function getMenuByRestaurant(restaurantId: string): Promise<MenuIte
     .where('restaurantId', '==', restaurantId)
     .where('available', '==', true)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuItem, 'id'>) }));
+  return snap.docs.map(d => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      ...data,
+      image: data.image || data.imageUrl || data.imageURL || '',
+    } as MenuItem;
+  });
 }
 
 /** Fetch menu items filtered by category */
@@ -139,7 +152,14 @@ export async function getMenuByCategory(restaurantId: string, categoryId: string
     .where('categoryId', '==', categoryId)
     .where('available', '==', true)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuItem, 'id'>) }));
+  return snap.docs.map(d => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      ...data,
+      image: data.image || data.imageUrl || data.imageURL || '',
+    } as MenuItem;
+  });
 }
 
 /** Real-time listener for a restaurant's menu */
@@ -153,7 +173,10 @@ export function listenMenuByRestaurant(
     .where('restaurantId', '==', restaurantId)
     .where('available', '==', true)
     .onSnapshot(
-      snap => onData(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))),
+      snap => onData(snap.docs.map(d => {
+        const data = d.data() as any;
+        return { id: d.id, ...data, image: data.image || data.imageUrl || data.imageURL || '' };
+      })),
       onError
     );
 }
@@ -167,7 +190,14 @@ export async function getAddonsByRestaurant(restaurantId: string): Promise<MenuA
     .where('restaurantId', '==', restaurantId)
     .where('available', '==', true)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuAddon, 'id'>) }));
+  return snap.docs.map(d => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      ...data,
+      image: data.image || data.imageUrl || data.imageURL || '',
+    } as MenuAddon;
+  });
 }
 
 /** Fetch addons for a specific menu item */
@@ -177,5 +207,61 @@ export async function getAddonsByMenuItem(menuItemId: string): Promise<MenuAddon
     .where('menuItemId', '==', menuItemId)
     .where('available', '==', true)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuAddon, 'id'>) }));
+  return snap.docs.map(d => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      ...data,
+      image: data.image || data.imageUrl || data.imageURL || '',
+    } as MenuAddon;
+  });
+}
+
+/** Fetch all category IDs that have at least one available menu item */
+export async function getActiveCategoryIds(): Promise<Set<string>> {
+  const snap = await firestore()
+    .collection('restaurant_menu')
+    .where('available', '==', true)
+    .get();
+  const ids = new Set<string>();
+  snap.docs.forEach(d => {
+    const catId = d.data().categoryId;
+    if (catId) ids.add(catId);
+  });
+  return ids;
+}
+
+/** Real-time listener for active food categories filtered by active menu items */
+export function listenFoodCategoriesWithItems(
+  onData: (categories: FoodCategory[]) => void,
+  onError?: (e: Error) => void
+) {
+  // Listen to restaurant_menu for available items
+  const menuUnsub = firestore()
+    .collection('restaurant_menu')
+    .where('available', '==', true)
+    .onSnapshot(async menuSnap => {
+      try {
+        const activeCatIds = new Set<string>();
+        menuSnap.docs.forEach(d => {
+          const catId = d.data().categoryId;
+          if (catId) activeCatIds.add(catId);
+        });
+
+        const catSnap = await firestore()
+          .collection('restaurant_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        const cats = catSnap.docs
+          .map(d => ({ id: d.id, ...(d.data() as Omit<FoodCategory, 'id'>) }))
+          .filter(cat => activeCatIds.has(cat.id));
+
+        onData(cats);
+      } catch (e) {
+        onError?.(e as Error);
+      }
+    }, onError);
+
+  return menuUnsub;
 }

@@ -2,9 +2,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   FlatList, ActivityIndicator, Dimensions, Platform,
-  Modal, Pressable, StatusBar,
+  StatusBar,
 } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { useFoodCart } from '@/context/FoodCartContext';
@@ -15,13 +15,14 @@ import {
   type MenuAddon,
   type FoodCategory as Category,
 } from '@/firebase/foodFirebase';
+import DishModal from '@/components/food/DishModal';
 
 const { width } = Dimensions.get('window');
 
 export default function RestaurantDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { restaurantId, restaurantName } = route.params ?? {};
+  const { restaurantId, restaurantName, restaurantImage } = route.params ?? {};
 
   const { cartItems, addItem, removeItem, getItemQty, totalItems, totalPrice, clearCart } = useFoodCart();
 
@@ -30,9 +31,7 @@ export default function RestaurantDetailScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('');
-  const [addonModal, setAddonModal] = useState<{ visible: boolean; item: MenuItem | null }>({ visible: false, item: null });
-  const [selectedVariant, setSelectedVariant] = useState<{ size: string; price: string } | null>(null);
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [dishModal, setDishModal] = useState<{ visible: boolean; item: MenuItem | null }>({ visible: false, item: null });
 
   const sectionRefs = useRef<{ [key: string]: number }>({});
   const scrollRef = useRef<ScrollView>(null);
@@ -43,6 +42,9 @@ export default function RestaurantDetailScreen() {
         getMenuByRestaurant(restaurantId),
         getAddonsByRestaurant(restaurantId),
       ]);
+
+      console.log('[RestaurantDetail] menu items fetched:', items.length, items.map(i => ({ name: i.name, image: i.image })));
+      console.log('[RestaurantDetail] addons fetched:', addonItems.length, addonItems.map(a => ({ name: a.name, image: a.image })));
 
       setMenuItems(items);
       setAddons(addonItems);
@@ -67,39 +69,8 @@ export default function RestaurantDetailScreen() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const itemsByCategory = (catId: string) => menuItems.filter(i => i.categoryId === catId);
-  const addonsForItem = (itemId: string) => addons.filter(a => a.menuItemId === itemId);
 
-  const openAddonModal = (item: MenuItem) => {
-    const itemAddons = addonsForItem(item.id);
-    if (item.variants?.length > 0 || itemAddons.length > 0) {
-      setSelectedVariant(item.variants?.[0] ?? null);
-      setSelectedAddons([]);
-      setAddonModal({ visible: true, item });
-    } else {
-      addItem({ id: item.id, name: item.name, price: Number(item.price), image: item.image, restaurantId, restaurantName });
-    }
-  };
-
-  const confirmAddToCart = () => {
-    if (!addonModal.item) return;
-    const item = addonModal.item;
-    const price = selectedVariant ? Number(selectedVariant.price) : Number(item.price);
-    const addonTotal = selectedAddons.reduce((sum, aid) => {
-      const a = addons.find(x => x.id === aid);
-      return sum + (a ? Number(a.price) : 0);
-    }, 0);
-    addItem({
-      id: item.id + (selectedVariant?.size ?? ''),
-      name: item.name + (selectedVariant ? ` (${selectedVariant.size})` : ''),
-      price: price + addonTotal,
-      image: item.image,
-      restaurantId,
-      restaurantName,
-      variant: selectedVariant?.size,
-      addons: selectedAddons.map(aid => addons.find(x => x.id === aid)?.name ?? '').filter(Boolean),
-    });
-    setAddonModal({ visible: false, item: null });
-  };
+  const openDishModal = (item: MenuItem) => setDishModal({ visible: true, item });
 
   if (loading) {
     return (
@@ -115,9 +86,13 @@ export default function RestaurantDetailScreen() {
 
       {/* ── Hero ── */}
       <View style={s.hero}>
-        <View style={s.heroPlaceholder}>
-          <Ionicons name="restaurant" size={56} color="rgba(255,255,255,0.4)" />
-        </View>
+        {restaurantImage ? (
+          <Image source={{ uri: restaurantImage }} style={s.heroImg} contentFit="cover" />
+        ) : (
+          <View style={s.heroPlaceholder}>
+            <Ionicons name="restaurant" size={56} color="rgba(255,255,255,0.4)" />
+          </View>
+        )}
         <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
@@ -173,10 +148,9 @@ export default function RestaurantDetailScreen() {
 
             {itemsByCategory(cat.id).map(item => {
               const qty = getItemQty(item.id);
-              const itemAddons = addonsForItem(item.id);
 
               return (
-                <View key={item.id} style={s.menuItem}>
+                <TouchableOpacity key={item.id} style={s.menuItem} onPress={() => openDishModal(item)} activeOpacity={0.85}>
                   <View style={s.menuItemLeft}>
                     {/* Veg/Non-veg indicator */}
                     <View style={[s.vegDot, { borderColor: '#16a34a' }]}>
@@ -192,9 +166,6 @@ export default function RestaurantDetailScreen() {
                     {item.description ? (
                       <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
                     ) : null}
-                    {itemAddons.length > 0 && (
-                      <Text style={s.addonHint}>+ {itemAddons.length} add-on{itemAddons.length > 1 ? 's' : ''} available</Text>
-                    )}
                   </View>
 
                   <View style={s.menuItemRight}>
@@ -207,31 +178,23 @@ export default function RestaurantDetailScreen() {
                     )}
 
                     {qty === 0 ? (
-                      <TouchableOpacity style={s.addBtn} onPress={() => openAddonModal(item)}>
+                      <TouchableOpacity style={s.addBtn} onPress={() => openDishModal(item)}>
                         <Text style={s.addBtnText}>ADD</Text>
-                        {(item.variants?.length > 0 || itemAddons.length > 0) && (
-                          <Text style={s.addBtnPlus}>+</Text>
-                        )}
+                        {item.variants?.length > 0 && <Text style={s.addBtnPlus}>+</Text>}
                       </TouchableOpacity>
                     ) : (
                       <View style={s.qtyControl}>
-                        <TouchableOpacity
-                          style={s.qtyBtn}
-                          onPress={() => removeItem(item.id)}
-                        >
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => removeItem(item.id)}>
                           <Ionicons name="remove" size={16} color="#FF6B35" />
                         </TouchableOpacity>
                         <Text style={s.qtyText}>{qty}</Text>
-                        <TouchableOpacity
-                          style={s.qtyBtn}
-                          onPress={() => openAddonModal(item)}
-                        >
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => openDishModal(item)}>
                           <Ionicons name="add" size={16} color="#FF6B35" />
                         </TouchableOpacity>
                       </View>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -244,7 +207,7 @@ export default function RestaurantDetailScreen() {
         <TouchableOpacity
           style={s.cartBar}
           activeOpacity={0.9}
-          onPress={() => navigation.navigate('FoodCart')}
+          onPress={() => navigation.navigate('FoodCartTab')}
         >
           <View style={s.cartBarLeft}>
             <View style={s.cartCount}>
@@ -256,81 +219,13 @@ export default function RestaurantDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* ── Addon / Variant Modal ── */}
-      <Modal
-        visible={addonModal.visible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAddonModal({ visible: false, item: null })}
-      >
-        <Pressable style={s.modalOverlay} onPress={() => setAddonModal({ visible: false, item: null })}>
-          <Pressable style={s.modalSheet} onPress={e => e.stopPropagation()}>
-            <View style={s.modalHandle} />
-            <Text style={s.modalTitle}>{addonModal.item?.name}</Text>
-
-            {/* Variants */}
-            {(addonModal.item?.variants?.length ?? 0) > 0 && (
-              <View style={s.modalSection}>
-                <Text style={s.modalSectionTitle}>Choose Size</Text>
-                {addonModal.item!.variants.map(v => (
-                  <TouchableOpacity
-                    key={v.size}
-                    style={s.optionRow}
-                    onPress={() => setSelectedVariant(v)}
-                  >
-                    <View style={[s.radio, selectedVariant?.size === v.size && s.radioActive]}>
-                      {selectedVariant?.size === v.size && <View style={s.radioInner} />}
-                    </View>
-                    <Text style={s.optionName}>{v.size}</Text>
-                    <Text style={s.optionPrice}>₹{v.price}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Addons */}
-            {addonsForItem(addonModal.item?.id ?? '').length > 0 && (
-              <View style={s.modalSection}>
-                <Text style={s.modalSectionTitle}>Add-ons (Optional)</Text>
-                {addonsForItem(addonModal.item!.id).map(addon => (
-                  <TouchableOpacity
-                    key={addon.id}
-                    style={s.optionRow}
-                    onPress={() => {
-                      setSelectedAddons(prev =>
-                        prev.includes(addon.id) ? prev.filter(x => x !== addon.id) : [...prev, addon.id]
-                      );
-                    }}
-                  >
-                    <View style={[s.checkbox, selectedAddons.includes(addon.id) && s.checkboxActive]}>
-                      {selectedAddons.includes(addon.id) && (
-                        <Ionicons name="checkmark" size={12} color="#fff" />
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.optionName}>{addon.name}</Text>
-                      {addon.description ? <Text style={s.optionDesc}>{addon.description}</Text> : null}
-                    </View>
-                    <Text style={s.optionPrice}>+₹{addon.price}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            <TouchableOpacity style={s.confirmBtn} onPress={confirmAddToCart}>
-              <Text style={s.confirmBtnText}>
-                Add to Cart · ₹{
-                  (selectedVariant ? Number(selectedVariant.price) : Number(addonModal.item?.price ?? 0)) +
-                  selectedAddons.reduce((sum, aid) => {
-                    const a = addons.find(x => x.id === aid);
-                    return sum + (a ? Number(a.price) : 0);
-                  }, 0)
-                }
-              </Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <DishModal
+        visible={dishModal.visible}
+        onClose={() => setDishModal({ visible: false, item: null })}
+        restaurantId={restaurantId}
+        restaurantName={restaurantName}
+        initialItem={dishModal.item}
+      />
     </View>
   );
 }
@@ -340,6 +235,7 @@ const s = StyleSheet.create({
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   hero: { height: 220, position: 'relative' },
+  heroImg: { width: '100%', height: '100%' },
   heroPlaceholder: {
     width: '100%', height: '100%',
     backgroundColor: '#1e293b', justifyContent: 'center', alignItems: 'center',
@@ -474,6 +370,7 @@ const s = StyleSheet.create({
   optionName: { flex: 1, fontSize: 14, color: '#1e293b', fontWeight: '500' },
   optionDesc: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
   optionPrice: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
+  addonImg: { width: 48, height: 48, borderRadius: 8 },
   confirmBtn: {
     backgroundColor: '#FF6B35', borderRadius: 12,
     paddingVertical: 14, alignItems: 'center', marginTop: 8,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, FlatList, ActivityIndicator, Dimensions,
@@ -10,11 +10,13 @@ import { Image } from 'expo-image';
 import { useLocationContext } from '@/context/LocationContext';
 import { useToggleContext } from '@/context/ToggleContext';
 import {
-  getActiveRestaurants,
-  getFoodCategories,
+  listenActiveRestaurants,
+  listenFoodCategoriesWithItems,
   type Restaurant,
   type FoodCategory as Category,
 } from '@/firebase/foodFirebase';
+
+import DishModal from '@/components/food/DishModal';
 
 const { width } = Dimensions.get('window');
 
@@ -26,38 +28,59 @@ export default function FoodScreen() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isVegMode, setIsVegMode] = useState(false);
+
+  // DishModal state — simplified, real-time listeners are inside DishModal
+  const [dishModal, setDishModal] = useState<{
+    visible: boolean;
+    restaurantId: string;
+    restaurantName: string;
+    filterCategoryId?: string | null;
+  }>({ visible: false, restaurantId: '', restaurantName: '' });
+
+  const openDishModal = (restaurantId: string, restaurantName: string, filterCategoryId?: string | null) => {
+    setDishModal({ visible: true, restaurantId, restaurantName, filterCategoryId });
+  };
   
   // Animation for collapsible header
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerHeight = useRef(new Animated.Value(300)).current;
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [restData, catData] = await Promise.all([
-        getActiveRestaurants(),
-        getFoodCategories(),
-      ]);
-      setRestaurants(restData);
-      setCategories(catData);
-    } catch (e) {
-      console.error('[FoodScreen] fetch error:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  useEffect(() => {
+    setLoading(true);
+
+    const unsubRestaurants = listenActiveRestaurants(
+      (data) => {
+        setRestaurants(data);
+        setLoading(false);
+      },
+      (e) => {
+        console.error('[FoodScreen] restaurants listener error:', e);
+        setLoading(false);
+      }
+    );
+
+    const unsubCategories = listenFoodCategoriesWithItems(
+      (data) => setCategories(data),
+      (e) => console.error('[FoodScreen] categories listener error:', e)
+    );
+
+    return () => {
+      unsubRestaurants();
+      unsubCategories();
+    };
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const onRefresh = () => {}; // no-op, real-time handles updates
 
-  const onRefresh = () => { setRefreshing(true); fetchData(); };
-
-  const filteredRestaurants = restaurants.filter(r =>
-    r.restaurantName?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredRestaurants = restaurants.filter(r => {
+    const matchesSearch = r.restaurantName?.toLowerCase().includes(searchText.toLowerCase());
+    const matchesCategory = !selectedCategory ||
+      categories.find(c => c.id === selectedCategory)?.companyIds?.includes(r.id);
+    return matchesSearch && matchesCategory;
+  });
 
   if (loading) {
     return (
@@ -134,7 +157,6 @@ export default function FoodScreen() {
               style={[s.toggleBtn, activeMode === "grocery" && s.toggleBtnActive]}
               onPress={() => {
                 setActiveMode("grocery");
-                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
               }}
               activeOpacity={0.7}
             >
@@ -146,7 +168,6 @@ export default function FoodScreen() {
               style={[s.toggleBtn, activeMode === "service" && s.toggleBtnActive]}
               onPress={() => {
                 setActiveMode("service");
-                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
               }}
               activeOpacity={0.7}
             >
@@ -181,7 +202,14 @@ export default function FoodScreen() {
               <TouchableOpacity
                 style={s.catItem}
                 activeOpacity={0.7}
-                onPress={() => setSelectedCategory(selectedCategory === item.id ? null : item.id)}
+                onPress={() => {
+                  const cat = categories.find(c => c.id === item.id);
+                  const restId = cat?.companyIds?.[0] ?? '';
+                  const rest = restaurants.find(r => r.id === restId);
+                  if (rest) {
+                    openDishModal(rest.id, rest.restaurantName, item.id);
+                  }
+                }}
               >
                 {item.image ? (
                   <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
@@ -207,7 +235,7 @@ export default function FoodScreen() {
       <ScrollView 
         style={s.restaurantsContainer}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B35']} />}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} colors={['#FF6B35']} />}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { 
@@ -269,15 +297,16 @@ export default function FoodScreen() {
                 key={item.id}
                 style={s.restCard}
                 activeOpacity={0.85}
-                onPress={() => navigation.navigate('RestaurantDetail', {
-                  restaurantId: item.id,
-                  restaurantName: item.restaurantName,
-                })}
+                onPress={() => openDishModal(item.id, item.restaurantName)}
               >
                 <View style={s.restImgWrap}>
-                  <View style={s.restImgPlaceholder}>
-                    <Ionicons name="restaurant" size={44} color="#FF6B35" />
-                  </View>
+                  {(item.profileImage || item.image) ? (
+                    <Image source={{ uri: item.profileImage || item.image }} style={s.restImg} contentFit="cover" />
+                  ) : (
+                    <View style={s.restImgPlaceholder}>
+                      <Ionicons name="restaurant" size={44} color="#FF6B35" />
+                    </View>
+                  )}
                   <View style={s.offerBadge}>
                     <Text style={s.offerBadgeText}>20% OFF</Text>
                   </View>
@@ -317,6 +346,14 @@ export default function FoodScreen() {
 
         <View style={{ height: 80 }} />
       </ScrollView>
+
+      <DishModal
+        visible={dishModal.visible}
+        onClose={() => setDishModal(prev => ({ ...prev, visible: false }))}
+        restaurantId={dishModal.restaurantId}
+        restaurantName={dishModal.restaurantName}
+        filterCategoryId={dishModal.filterCategoryId}
+      />
     </View>
   );
 }
@@ -472,6 +509,7 @@ const s = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
   restImgWrap: { position: 'relative' },
+  restImg: { width: '100%', height: 160, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   restImgPlaceholder: {
     width: '100%', height: 160,
     backgroundColor: '#fff5f0', justifyContent: 'center', alignItems: 'center',

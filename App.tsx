@@ -63,7 +63,10 @@ import FoodCartScreen from "@/screens/food/FoodCartScreen";
 import FoodCheckoutScreen from "@/screens/food/FoodCheckoutScreen";
 import FoodOrderSuccessScreen from "@/screens/food/FoodOrderSuccessScreen";
 import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
+import FoodOrdersScreen from "@/screens/food/FoodOrdersScreen";
+import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
+import { useFoodCart } from "./context/FoodCartContext";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
 import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
@@ -116,6 +119,7 @@ import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
+import CurvedTabBar from "@/components/CurvedTabBar";
 
 import OrdersScreen from "./screens/shared/OrdersScreen";
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
@@ -279,12 +283,9 @@ const RootStack = createNativeStackNavigator();
 function HomeStack() {
   const { activeMode } = useToggleContext();
   
-  // Wrapper component that shows the right home screen based on toggle
   const HomeScreenWrapper = () => {
     if (activeMode === "service") {
       return <ServicesScreen />;
-    } else if (activeMode === "food") {
-      return <FoodScreen />;
     }
     return <ProductsHomeScreen />;
   };
@@ -663,7 +664,7 @@ function CategoriesStack() {
           />
         </>
       ) : (
-        <Stack.Screen name="CategoriesHome" component={FoodScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="CategoriesHome" component={FoodCategoriesScreen} options={{ headerShown: false }} />
       )}
     </Stack.Navigator>
   );
@@ -697,18 +698,126 @@ const ProfileStack = () => (
 );
 
 /* ==========================================================
+   FOOD TAB NAVIGATOR
+   ========================================================== */
+const FoodTab = createBottomTabNavigator();
+const FoodStack = createNativeStackNavigator();
+
+function FoodHomeStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodHome" component={FoodScreen} />
+      <FoodStack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
+      <FoodStack.Screen name="Profile" component={ProfileScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodCartStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodCartHome" component={FoodCartScreen} />
+      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
+      <FoodStack.Screen name="FoodOrderSuccess" component={FoodOrderSuccessScreen} />
+      <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="RazorpayWebView" component={RazorpayWebView} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodOrdersStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodOrdersHome" component={FoodOrdersScreen} />
+      <FoodStack.Screen name="FoodCart" component={FoodCartScreen} />
+      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodHistoryStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodHistoryHome">
+        {() => <FoodOrdersScreen mode="history" />}
+      </FoodStack.Screen>
+      <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodReorderStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodReorderHome">
+        {() => <FoodOrdersScreen mode="reorder" />}
+      </FoodStack.Screen>
+      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodTabs() {
+  const { totalItems } = useFoodCart();
+
+  return (
+    <FoodTab.Navigator
+      tabBar={props => {
+        const state = props.state;
+        const activeIndex = state.index;
+        const tabs = [
+          { name: 'FoodRestaurants', label: 'Restaurants', icon: 'restaurant-outline' as const, iconFocused: 'restaurant' as const },
+          { name: 'FoodMenu',        label: 'Menu',        icon: 'grid-outline' as const,        iconFocused: 'grid' as const },
+          { name: 'FoodCartTab',     label: 'Cart',        icon: 'bag-outline' as const,         iconFocused: 'bag' as const, badge: totalItems },
+          { name: 'FoodHistory',     label: 'History',     icon: 'receipt-outline' as const,     iconFocused: 'receipt' as const },
+        ];
+        return (
+          <CurvedTabBar
+            tabs={tabs}
+            activeIndex={activeIndex}
+            onPress={i => {
+              const route = state.routes[i];
+              // Always reset the stack to root when pressing any tab
+              props.navigation.dispatch({
+                type: 'RESET',
+                payload: { index: 0, routes: [{ name: route.name }] },
+                target: state.key,
+              });
+            }}
+            bubbleColor="#FF6B35"
+          />
+        );
+      }}
+      screenOptions={{ headerShown: false }}
+    >
+      <FoodTab.Screen name="FoodRestaurants" component={FoodHomeStack} />
+      <FoodTab.Screen name="FoodMenu" component={FoodCategoriesScreen} />
+      <FoodTab.Screen name="FoodCartTab" component={FoodCartStack} />
+      <FoodTab.Screen name="FoodHistory" component={FoodHistoryStack} />
+    </FoodTab.Navigator>
+  );
+}
+
+/* ==========================================================
    TAB NAVIGATOR
    ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
-  const { location, updateLocation } = useLocationContext(); // Add updateLocation
+  const { location, updateLocation } = useLocationContext();
+  const { activeMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
-  
+  const [groceryTabIndex, setGroceryTabIndex] = React.useState(0);
+  const [serviceTabIndex, setServiceTabIndex] = React.useState(0);
+
   // Get location flags (default to true if not set)
   const showGrocery = location?.grocery !== false;
   const showFood = location?.food !== false;
@@ -1006,20 +1115,11 @@ function AppTabs() {
         }}
       />
 
-      <Tab.Navigator
-        initialRouteName={
-          showGrocery 
-            ? "HomeTab" 
-            : "Profile"  // Fallback to Profile if nothing else is available
-        }
-        screenOptions={({ route }) => {
-          const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-            HomeTab: "home-outline",
-            CategoriesTab: "apps-outline",
-            CartFlow: "cart-outline",
-            Profile: "person-outline",
-          };
-          return {
+      {/* ── Grocery + Service: original Tab.Navigator ── */}
+      {activeMode !== 'food' && (
+        <Tab.Navigator
+          initialRouteName={showGrocery ? "HomeTab" : "Profile"}
+          screenOptions={({ route }) => ({
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
@@ -1031,146 +1131,75 @@ function AppTabs() {
               paddingBottom: Platform.OS === "android" ? 10 : 30,
               elevation: 8,
             },
-            // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
-              // Hide Profile tab icon
-              if (route.name === "Profile") {
-                return null;
-              }
-
+              const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
+                HomeTab: "home-outline",
+                CategoriesTab: "apps-outline",
+                CartFlow: "cart-outline",
+                Profile: "person-outline",
+              };
+              if (route.name === "Profile") return null;
               const iconName = iconMap[route.name];
-
               return (
-                <Animated.View
-                  style={{
-                    width: size + 12,
-                    height: size + 12,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-
-                  {/* Render the actual icon */}
-                  {iconName && (
-                    <Ionicons name={iconName} size={size} color={color} />
-                  )}
-
+                <Animated.View style={{ width: size + 12, height: size + 12, alignItems: "center", justifyContent: "center" }}>
+                  {iconName && <Ionicons name={iconName} size={size} color={color} />}
                   {route.name === "CartFlow" && (() => {
-                    // Calculate active cart items based on location flags
-                    const activeGroceryItems = showGrocery ? groceryTotalItems : 0;
-                    const activeServiceItems = showServices ? serviceTotalItems : 0;
-                    const activeTotalItems = activeGroceryItems + activeServiceItems;
-                    
+                    const activeTotalItems = (showGrocery ? groceryTotalItems : 0) + (showServices ? serviceTotalItems : 0);
                     return activeTotalItems > 0 ? (
                       <View style={styles.badgeContainer}>
                         <Text style={styles.badgeText}>{activeTotalItems}</Text>
                       </View>
                     ) : null;
                   })()}
-
                 </Animated.View>
               );
             },
-          };
-        }}
-      >
-
-        {/* Home Tab - Only show if grocery is enabled */}
-        {showGrocery && (
+          })}
+        >
+          {showGrocery && <Tab.Screen name="HomeTab" component={HomeStack} options={{ title: "Home" }} />}
+          {showGrocery && <Tab.Screen name="CategoriesTab" component={CategoriesStack} options={{ title: "Categories" }} />}
           <Tab.Screen
-            name="HomeTab"
-            component={HomeStack}
-            options={{ title: "Home" }}
-          />
-        )}
-
-        {/* ⿢ Categories Tab - Only show if grocery is enabled */}
-        {showGrocery && (
-          <Tab.Screen
-            name="CategoriesTab"
-            component={CategoriesStack}
-            options={{ title: "Categories" }}
-          />
-        )}
-        
-        {/* Services Tab removed - now accessible via toggle in ProductsHomeScreen */}
-
-        {/* ⿣ Featured Tab */}
-
-        {/* ⿤ Cart (with modal selection) */}
-        <Tab.Screen
-          name="CartFlow"
-          component={CartStack}
-          options={{ title: "Cart" }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (e) => {
-              if (!auth().currentUser) {
-                e.preventDefault();
-                promptLogin(navigation, "Cart");
-              } else {
-                // Determine which carts are active based on location flags
-                const isGroceryActive = showGrocery && groceryTotalItems > 0;
-                const isServiceActive = showServices && serviceTotalItems > 0;
-                
-                // If both are active, show modal to choose
-                if (isGroceryActive && isServiceActive) {
+            name="CartFlow"
+            component={CartStack}
+            options={{ title: "Cart" }}
+            listeners={({ navigation, route }) => ({
+              tabPress: (e) => {
+                if (!auth().currentUser) {
                   e.preventDefault();
-                  setPendingNavigation(navigation);
-                  setCartModalVisible(true);
-                }
-                // If only grocery is active, go directly to grocery cart
-                else if (isGroceryActive && !isServiceActive) {
-                  e.preventDefault();
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: "CartFlow",
-                          state: { routes: [{ name: "GroceryCart" }] },
-                        },
-                      ],
-                    })
-                  );
-                }
-                // If only service is active, go directly to service cart
-                else if (isServiceActive && !isGroceryActive) {
-                  e.preventDefault();
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: "HomeTab",
-                          state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
-                        },
-                      ],
-                    })
-                  );
-                }
-                // Empty cart or no active carts - go to unified cart
-                else {
-                  const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
-                  if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
+                  promptLogin(navigation, "Cart");
+                } else {
+                  const isGroceryActive = showGrocery && groceryTotalItems > 0;
+                  const isServiceActive = showServices && serviceTotalItems > 0;
+                  if (isGroceryActive && isServiceActive) {
                     e.preventDefault();
-                    navigation.dispatch(
-                      CommonActions.reset({
-                        index: 0,
-                        routes: [
-                          {
-                            name: "CartFlow",
-                            state: { routes: [{ name: "CartHome" }] },
-                          },
-                        ],
-                      })
-                    );
+                    setPendingNavigation(navigation);
+                    setCartModalVisible(true);
+                  } else if (isGroceryActive && !isServiceActive) {
+                    e.preventDefault();
+                    navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: "CartFlow", state: { routes: [{ name: "GroceryCart" }] } }] }));
+                  } else if (isServiceActive && !isGroceryActive) {
+                    e.preventDefault();
+                    navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: "HomeTab", state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 } }] }));
+                  } else {
+                    const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+                    if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
+                      e.preventDefault();
+                      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: "CartFlow", state: { routes: [{ name: "CartHome" }] } }] }));
+                    }
                   }
                 }
-              }
-            },
-          })}
-        />
-      </Tab.Navigator>
+              },
+            })}
+          />
+        </Tab.Navigator>
+      )}
+
+      {/* ── Food: curved tab bar ── */}
+      {activeMode === 'food' && (
+        <View style={{ flex: 1 }}>
+          <FoodTabs />
+        </View>
+      )}
       
       {/* Service Loader Modal */}
       {serviceLoaderVisible && (

@@ -9,18 +9,18 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'cancelled';
+type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'delivery' | 'delivered' | 'cancelled';
 
 const STATUS_STEPS: { key: OrderStatus; label: string; icon: string }[] = [
   { key: 'pending',          label: 'Order Placed',     icon: 'receipt-outline' },
   { key: 'confirmed',        label: 'Order Confirmed',  icon: 'checkmark-circle-outline' },
   { key: 'preparing',        label: 'Preparing Food',   icon: 'restaurant-outline' },
-  { key: 'out_for_delivery', label: 'Out for Delivery', icon: 'bicycle-outline' },
+  { key: 'delivery',         label: 'Out for Delivery', icon: 'bicycle-outline' },
   { key: 'delivered',        label: 'Delivered',        icon: 'home-outline' },
 ];
 
 const STATUS_ORDER: OrderStatus[] = [
-  'pending', 'confirmed', 'preparing', 'out_for_delivery', 'delivered',
+  'pending', 'confirmed', 'preparing', 'delivery', 'delivered',
 ];
 
 function getStepIndex(status: OrderStatus) {
@@ -109,7 +109,8 @@ export default function FoodTrackingScreen() {
       await firestore().collection('restaurant_Orders').doc(orderId).update({ reviewed: true });
 
       setReviewed(true);
-      closeReviewModal();
+      // Show success inside modal for 1.5s then close
+      setTimeout(() => closeReviewModal(), 1500);
     } catch (e) {
       Alert.alert('Error', 'Failed to submit review. Please try again.');
     } finally {
@@ -154,7 +155,7 @@ export default function FoodTrackingScreen() {
         <View style={{ width: 30 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 140 : 120 }}>
 
         {/* Status Banner */}
         <View style={[s.banner, isCancelled && s.bannerCancelled, isDelivered && s.bannerDelivered]}>
@@ -271,7 +272,7 @@ export default function FoodTrackingScreen() {
 
         <TouchableOpacity
           style={s.homeBtn}
-          onPress={() => navigation.navigate('HomeTab', { screen: 'ProductsHome' })}
+          onPress={() => navigation.navigate('FoodRestaurants')}
           activeOpacity={0.9}
         >
           <Text style={s.homeBtnText}>Back to Restaurants</Text>
@@ -283,6 +284,22 @@ export default function FoodTrackingScreen() {
         <View style={s.modalOverlay}>
           <Animated.View style={[s.modalBox, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}>
 
+            {reviewed ? (
+              /* ── Success State ── */
+              <View style={s.successWrap}>
+                <View style={s.successIcon}>
+                  <Ionicons name="checkmark-circle" size={64} color="#16a34a" />
+                </View>
+                <Text style={s.successTitle}>Thank you!</Text>
+                <Text style={s.successSub}>Your feedback has been submitted.</Text>
+                <View style={s.starsRowSmall}>
+                  {[1,2,3,4,5].map(star => (
+                    <Ionicons key={star} name={star <= rating ? 'star' : 'star-outline'} size={24} color={star <= rating ? '#f59e0b' : '#e2e8f0'} />
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <>
             {/* Close */}
             <TouchableOpacity style={s.modalClose} onPress={closeReviewModal}>
               <Ionicons name="close" size={20} color="#94a3b8" />
@@ -343,6 +360,8 @@ export default function FoodTrackingScreen() {
             <TouchableOpacity onPress={closeReviewModal} style={{ marginTop: 12 }}>
               <Text style={s.skipText}>Skip for now</Text>
             </TouchableOpacity>
+              </>
+            )}
           </Animated.View>
         </View>
       </Modal>
@@ -473,4 +492,9 @@ const s = StyleSheet.create({
   },
   submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   skipText: { fontSize: 13, color: '#94a3b8' },
+  successWrap: { alignItems: 'center', paddingVertical: 24 },
+  successIcon: { marginBottom: 16 },
+  successTitle: { fontSize: 22, fontWeight: '800', color: '#1e293b', marginBottom: 6 },
+  successSub: { fontSize: 14, color: '#64748b', marginBottom: 16 },
+  starsRowSmall: { flexDirection: 'row', gap: 6 },
 });

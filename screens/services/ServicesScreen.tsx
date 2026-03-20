@@ -2057,11 +2057,6 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("grocery");
-                // Force navigation reset to ensure screen change
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "HomeTab" }],
-                });
               }}
               activeOpacity={0.7}
             >

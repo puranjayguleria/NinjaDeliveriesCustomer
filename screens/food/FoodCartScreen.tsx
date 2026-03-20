@@ -116,7 +116,7 @@ export default function FoodCartScreen() {
           </View>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: Platform.OS === 'ios' ? 180 : 160 }} />
       </ScrollView>
 
       {/* Checkout Button */}
@@ -216,7 +216,7 @@ const s = StyleSheet.create({
   billTotalValue: { fontSize: 15, fontWeight: '800', color: '#FF6B35' },
 
   checkoutWrap: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 100 : 80, left: 0, right: 0,
     backgroundColor: '#fff', padding: 16,
     borderTopWidth: 1, borderTopColor: '#f1f5f9',
   },

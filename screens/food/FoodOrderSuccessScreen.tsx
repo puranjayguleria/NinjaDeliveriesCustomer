@@ -33,7 +33,7 @@ export default function FoodOrderSuccessScreen() {
 
       <TouchableOpacity
         style={s.btn}
-        onPress={() => navigation.navigate('HomeTab', { screen: 'ProductsHome' })}
+        onPress={() => navigation.navigate('FoodRestaurants')}
         activeOpacity={0.9}
       >
         <Text style={s.btnText}>Back to Restaurants</Text>
