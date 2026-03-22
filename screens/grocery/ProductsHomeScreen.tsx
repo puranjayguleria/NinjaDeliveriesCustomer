@@ -1842,7 +1842,7 @@ export default function ProductsHomeScreen() {
       <BannerSwitcher storeId={location.storeId || ""} />
 
       {/* Feature Tiles - 3 Professional Carts */}
-      <View style={{ marginVertical: 2 }}>
+      <View style={{ marginTop: -30, marginBottom: 2 }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
