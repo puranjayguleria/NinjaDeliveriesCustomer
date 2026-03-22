@@ -11,7 +11,6 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
-  ImageBackground,
   ScrollView,
   Animated,
   RefreshControl,
@@ -231,22 +230,12 @@ interface LiveBooking {
   timestamp: any;
 }
 
-// GIF sources array
-const HEADER_GIFS = [
-  require("../../assets/ninjaVideo1.gif"),
-  require("../../assets/ninjaVideo.gif"),
-];
-
-const SERVICES_HEADER_MEDIA_HEIGHT = 260; // Increased for more space
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 180; // Increased for more space
-const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 64 : 48; // Increased for status bar/notch
-const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 52 : 36; // Increased for status bar/notch
 // Solid, very light + friendly header colors (no transparency).
 // Soft off-white to a subtle mint/teal tint feels calmer during scroll.
-const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
+const SERVICES_HEADER_GRADIENT_COLORS = ['#ffffff', '#f8fafc'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 260 : 240; // SIGNIFICANTLY INCREASED TO FIX OVERLAP
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 220 : 200; // Adjusted for white background without GIF
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'electrician',
@@ -267,41 +256,11 @@ export default function ServicesScreen() {
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
-  const headerMediaHeight = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [SERVICES_HEADER_MEDIA_HEIGHT, SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
-  const headerMediaOpacity = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
   const headerGradientOpacity = React.useMemo(
     () =>
       scrollY.interpolate({
-        inputRange: [60, 120],
+        inputRange: [20, 80],
         outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
-  const headerTopPadding = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [SERVICES_HEADER_PADDING_TOP_INITIAL, SERVICES_HEADER_PADDING_TOP_COLLAPSED],
         extrapolate: 'clamp',
       }),
     [scrollY]
@@ -374,7 +333,6 @@ export default function ServicesScreen() {
   const placeholderOpacity = React.useRef(new Animated.Value(0)).current;
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
-  const [activeGifIndex, setActiveGifIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
@@ -1940,7 +1898,7 @@ export default function ServicesScreen() {
         style={[
           styles.stickyHeaderWrapper,
           {
-            paddingTop: headerTopPadding,
+            paddingTop: Platform.OS === 'ios' ? 60 : 40,
             height: SERVICES_STICKY_HEADER_HEIGHT,
           },
         ]}
@@ -1948,34 +1906,27 @@ export default function ServicesScreen() {
       >
         <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-        {/* Scroll background (BEHIND the GIF, not on top of it) */}
+        {/* Static white background */}
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ffffff' }]} />
+
+        {/* Scroll gradient overlay (becomes visible on scroll) */}
         <Animated.View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { opacity: headerGradientOpacity }]}
+          style={[
+            StyleSheet.absoluteFillObject, 
+            { 
+              opacity: headerGradientOpacity,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.05,
+              shadowRadius: 10,
+              elevation: 3,
+            }
+          ]}
         >
           <LinearGradient
             colors={[...SERVICES_HEADER_GRADIENT_COLORS]}
             style={StyleSheet.absoluteFillObject}
-          />
-        </Animated.View>
-
-        {/* Background media (GIF) */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.stickyHeaderMediaLayer,
-            { height: headerMediaHeight, opacity: headerMediaOpacity },
-          ]}
-        >
-          <ImageBackground
-            key={`gif-${activeGifIndex}`}
-            source={HEADER_GIFS[activeGifIndex]}
-            style={StyleSheet.absoluteFillObject}
-            resizeMode="contain"
-            imageStyle={{
-              width: '100%',
-              height: '100%',
-            }}
           />
         </Animated.View>
 
@@ -2167,7 +2118,7 @@ export default function ServicesScreen() {
         </View>
       </Animated.View>
     );
-  }, [activeGifIndex, activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
+  }, [activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
 
   const ListHeaderUI = React.useMemo(() => {
     return (
@@ -2299,12 +2250,7 @@ export default function ServicesScreen() {
   }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
 
   return (
-    <ImageBackground
-      source={require("../../assets/serviceBG.png")}
-      style={styles.container}
-      resizeMode="cover"
-      blurRadius={3}
-    >
+    <View style={styles.container}>
       {StickyHeaderUI}
       {serviceConfirmedBanner && (
         <View style={styles.serviceConfirmedBanner}>
@@ -2398,7 +2344,7 @@ export default function ServicesScreen() {
           nestedScrollEnabled
         />
       )}
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -2480,14 +2426,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
-  },
-
-  stickyHeaderMediaLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#f8fafc',
   },
 
   stickyHeaderContent: {
@@ -3025,7 +2963,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 12,
-    marginTop: 40, // Increased from 8 to 40 for more GIF space
+    marginTop: 8, 
   },
 
   sectionTitle: {
