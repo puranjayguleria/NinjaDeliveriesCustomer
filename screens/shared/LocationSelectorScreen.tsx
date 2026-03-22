@@ -92,10 +92,10 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
               index: 0,
               routes: [
                 {
-                  name: "ServicesTab",
+                  name: "HomeTab",
                   state: {
                     index: 0,
-                    routes: [{ name: "ServicesHome" }],
+                    routes: [{ name: "ProductsHome" }],
                   },
                 },
               ],

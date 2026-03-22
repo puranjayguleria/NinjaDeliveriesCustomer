@@ -237,10 +237,7 @@ const CartScreen: React.FC = () => {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -261,20 +258,16 @@ const CartScreen: React.FC = () => {
     if (navigationRef.isReady?.()) {
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("HomeTab" as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
         navigationRef.navigate("NinjaEatsHomeTab" as never);
-        return;
-      }
-      if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
         return;
       }
     }

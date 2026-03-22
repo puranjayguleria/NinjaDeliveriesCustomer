@@ -11,11 +11,13 @@ import {
   Alert,
   Animated,
   ScrollView,
+  SafeAreaView,
 } from "react-native";
 
 import firestore from "@react-native-firebase/firestore";
 import MapView, { Marker, Polyline, LatLng } from "react-native-maps";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useOrder } from "../../context/OrderContext";
 
@@ -72,6 +74,7 @@ const OrderTrackingScreen: React.FC = () => {
   // For the map
   const mapRef = useRef<MapView | null>(null);
   const mapOpacity = useRef(new Animated.Value(1)).current;
+  const insets = useSafeAreaInsets();
 
   // Guard to prevent repeated navigation to Rating
   const hasNavigatedToRatingRef = useRef(false);
@@ -252,6 +255,20 @@ const OrderTrackingScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* HEADER WITH BACK BUTTON - Prevent notch overlap */}
+      <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top, 10) }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Order Tracking</Text>
+          <View style={{ width: 40 }} /> 
+        </View>
+      </View>
+
       {/* MAP */}
       <Animated.View style={[styles.mapContainer, { opacity: mapOpacity }]}>
         <MapView
@@ -470,6 +487,31 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  headerContainer: {
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    flex: 1,
+    textAlign: "center",
   },
   centerButton: {
     position: "absolute",
