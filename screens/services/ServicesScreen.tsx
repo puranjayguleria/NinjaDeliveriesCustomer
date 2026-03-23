@@ -1,4 +1,5 @@
 import { useLocationContext } from "../../context/LocationContext";
+import { useToggleContext } from "../../context/ToggleContext";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -10,19 +11,19 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
-  ImageBackground,
   ScrollView,
   Animated,
   RefreshControl,
   Platform,
   Alert,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { Image as ExpoImage, Image } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
 import { firestore } from "../../firebase.native";
+import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get('window');
@@ -229,22 +230,12 @@ interface LiveBooking {
   timestamp: any;
 }
 
-// GIF sources array
-const HEADER_GIFS = [
-  require("../../assets/ninjaVideo1.gif"),
-  require("../../assets/ninjaVideo.gif"),
-];
-
-const SERVICES_HEADER_MEDIA_HEIGHT = 200;
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 90;
-const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
-const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 // Solid, very light + friendly header colors (no transparency).
 // Soft off-white to a subtle mint/teal tint feels calmer during scroll.
-const SERVICES_HEADER_GRADIENT_COLORS = ['#f8fafc', '#f0fdfa'] as const;
+const SERVICES_HEADER_GRADIENT_COLORS = ['#ffffff', '#f8fafc'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 190 : 175;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 220 : 200; // Adjusted for white background without GIF
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'electrician',
@@ -261,44 +252,15 @@ const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const { location } = useLocationContext();
+  const { activeMode, setActiveMode } = useToggleContext();
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
-
-  const headerMediaHeight = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [SERVICES_HEADER_MEDIA_HEIGHT, SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
-  const headerMediaOpacity = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
 
   const headerGradientOpacity = React.useMemo(
     () =>
       scrollY.interpolate({
-        inputRange: [60, 120],
+        inputRange: [20, 80],
         outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
-  const headerTopPadding = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [SERVICES_HEADER_PADDING_TOP_INITIAL, SERVICES_HEADER_PADDING_TOP_COLLAPSED],
         extrapolate: 'clamp',
       }),
     [scrollY]
@@ -371,7 +333,6 @@ export default function ServicesScreen() {
   const placeholderOpacity = React.useRef(new Animated.Value(0)).current;
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
-  const [activeGifIndex, setActiveGifIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
@@ -1937,38 +1898,35 @@ export default function ServicesScreen() {
         style={[
           styles.stickyHeaderWrapper,
           {
-            paddingTop: headerTopPadding,
+            paddingTop: Platform.OS === 'ios' ? 60 : 40,
             height: SERVICES_STICKY_HEADER_HEIGHT,
           },
         ]}
         pointerEvents="box-none"
       >
-        <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-        {/* Scroll background (BEHIND the GIF, not on top of it) */}
+        {/* Static white background */}
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ffffff' }]} />
+
+        {/* Scroll gradient overlay (becomes visible on scroll) */}
         <Animated.View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { opacity: headerGradientOpacity }]}
+          style={[
+            StyleSheet.absoluteFillObject, 
+            { 
+              opacity: headerGradientOpacity,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.05,
+              shadowRadius: 10,
+              elevation: 3,
+            }
+          ]}
         >
           <LinearGradient
             colors={[...SERVICES_HEADER_GRADIENT_COLORS]}
             style={StyleSheet.absoluteFillObject}
-          />
-        </Animated.View>
-
-        {/* Background media (GIF) */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.stickyHeaderMediaLayer,
-            { height: headerMediaHeight, opacity: headerMediaOpacity },
-          ]}
-        >
-          <ImageBackground
-            key={`gif-${activeGifIndex}`}
-            source={HEADER_GIFS[activeGifIndex]}
-            style={StyleSheet.absoluteFillObject}
-            resizeMode="contain"
           />
         </Animated.View>
 
@@ -1992,13 +1950,24 @@ export default function ServicesScreen() {
               <Ionicons name="chevron-down" size={16} color="#64748b" />
             </TouchableOpacity>
 
+            {/* Profile Icon */}
             <TouchableOpacity
-              onPress={handleHistoryPress}
+              onPress={() => navigation.navigate('Profile')}
               activeOpacity={0.8}
-              style={styles.historyIconButton}
-              accessibilityLabel="Booking history"
+              style={styles.profileIconButton}
+              accessibilityLabel="Profile"
             >
-              <Ionicons name="reader-outline" size={18} color="#0f172a" />
+              {auth().currentUser?.photoURL ? (
+                <Image
+                  source={{ uri: auth().currentUser.photoURL }}
+                  style={styles.profileImg}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.profilePlaceholder}>
+                  <Ionicons name="person" size={20} color="#555" />
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -2045,14 +2014,111 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Spacer so search width matches location (which shares row with History) */}
-              <View pointerEvents="none" style={styles.headerRightSpacer} />
+              {/* Booking History Icon */}
+              <TouchableOpacity
+                onPress={handleHistoryPress}
+                activeOpacity={0.8}
+                style={styles.historyIconButtonSearch}
+                accessibilityLabel="Booking history"
+              >
+                <Ionicons name="reader-outline" size={20} color="#0f172a" />
+              </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Grocery/Service/Food Toggle */}
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "grocery" && styles.toggleBtnActive,
+              ]}
+              onPress={() => {
+                setActiveMode("grocery");
+                // Force navigation reset to ensure screen change
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "HomeTab" }],
+                });
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons 
+                name="basket" 
+                size={15} 
+                color={activeMode === "grocery" ? "#00b4a0" : "#6B7280"} 
+                style={{ marginRight: 5 }}
+              />
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "grocery" && styles.toggleLabelActive,
+                ]}
+              >
+                Grocery
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "service" && styles.toggleBtnActive,
+              ]}
+              onPress={() => setActiveMode("service")}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons 
+                name="hammer-wrench" 
+                size={15} 
+                color={activeMode === "service" ? "#00b4a0" : "#6B7280"} 
+                style={{ marginRight: 5 }}
+              />
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "service" && styles.toggleLabelActive,
+                ]}
+              >
+                Service
+              </Text>
+              {/* New Badge */}
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>NEW</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                activeMode === "food" && styles.toggleBtnActive,
+              ]}
+              onPress={() => {
+                setActiveMode("food");
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons 
+                name="food" 
+                size={15} 
+                color={activeMode === "food" ? "#00b4a0" : "#6B7280"} 
+                style={{ marginRight: 5 }}
+              />
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  activeMode === "food" && styles.toggleLabelActive,
+                ]}
+              >
+                Food
+              </Text>
+              {/* Coming Soon Badge */}
+              <View style={styles.soonBadge}>
+                <Text style={styles.soonBadgeText}>SOON</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
     );
-  }, [activeGifIndex, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, showAnimatedSearchPlaceholder]);
+  }, [activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
 
   const ListHeaderUI = React.useMemo(() => {
     return (
@@ -2184,12 +2250,7 @@ export default function ServicesScreen() {
   }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
 
   return (
-    <ImageBackground
-      source={require("../../assets/serviceBG.png")}
-      style={styles.container}
-      resizeMode="cover"
-      blurRadius={3}
-    >
+    <View style={styles.container}>
       {StickyHeaderUI}
       {serviceConfirmedBanner && (
         <View style={styles.serviceConfirmedBanner}>
@@ -2283,7 +2344,7 @@ export default function ServicesScreen() {
           nestedScrollEnabled
         />
       )}
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -2365,14 +2426,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
-  },
-
-  stickyHeaderMediaLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#f8fafc',
   },
 
   stickyHeaderContent: {
@@ -2574,6 +2627,129 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(226,232,240,0.85)',
     backgroundColor: 'rgba(255,255,255,0.82)',
+  },
+
+  profileIconButton: {
+    marginLeft: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    overflow: "hidden",
+  },
+
+  profileImg: {
+    width: "100%",
+    height: "100%",
+  },
+
+  profilePlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#f8f9fa",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  historyIconButtonSearch: {
+    marginLeft: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
+  },
+
+  // Toggle Styles
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 32,
+    marginTop: 6,
+    marginBottom: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.04)",
+    borderRadius: 20,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.01)",
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    borderRadius: 18,
+    backgroundColor: "transparent",
+  },
+  toggleBtnActive: {
+    backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#6B7280",
+    letterSpacing: 0.1,
+  },
+  toggleLabelActive: {
+    color: "#00b4a0",
+  },
+  newBadge: {
+    position: "absolute",
+    top: -6,
+    right: 0,
+    backgroundColor: "#FF3B30",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  newBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  soonBadge: {
+    position: "absolute",
+    top: -6,
+    right: 4,
+    backgroundColor: "#FF9500",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  soonBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 0.2,
   },
 
   searchResultsCard: {
@@ -2787,7 +2963,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 12,
-    marginTop: 8,
+    marginTop: 8, 
   },
 
   sectionTitle: {

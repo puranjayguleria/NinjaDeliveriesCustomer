@@ -16,6 +16,7 @@ import { useCart } from "../../context/CartContext";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
 import firestore from "@react-native-firebase/firestore";
 import { getLastNonCartTab, navigationRef } from "../../navigation/rootNavigation";
+import { useLocationContext } from "../../context/LocationContext";
 
 type UnifiedCartItem = {
   id: string;
@@ -31,6 +32,8 @@ export default function UnifiedCartScreen() {
   const navigation = useNavigation<any>();
   const { cart, removeFromCart, increaseQuantity, decreaseQuantity, clearCart: clearGroceryCart } = useCart();
   const { state: serviceState, removeService, clearCart: clearServiceCart, totalAmount: serviceTotalAmount } = useServiceCart();
+  const { location } = useLocationContext();
+  const groceryEnabled = location?.grocery !== false;
   
   const [groceryProducts, setGroceryProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +72,8 @@ export default function UnifiedCartScreen() {
 
   // Create unified cart items
   const unifiedItems: UnifiedCartItem[] = [
-    // Grocery items
-    ...groceryProducts.map(product => ({
+    // Grocery items - only show when grocery is enabled
+    ...(groceryEnabled ? groceryProducts.map(product => ({
       id: product.id,
       type: 'grocery' as const,
       name: product.name || product.title || 'Unknown Product',
@@ -78,21 +81,21 @@ export default function UnifiedCartScreen() {
       quantity: cart[product.id] || 0,
       image: product.imageUrl || product.image,
       details: product,
-    })),
+    })) : []),
     // Service items
     ...Object.values(serviceState.items).map(service => ({
       id: service.id,
       type: 'service' as const,
       name: service.serviceTitle,
-      price: service.company.price,
+      price: service.company.price ?? 0,
       quantity: service.quantity,
       details: service,
     }))
   ];
 
-  const groceryTotal = groceryProducts.reduce((total, product) => {
+  const groceryTotal = groceryEnabled ? groceryProducts.reduce((total, product) => {
     return total + (product.price * (cart[product.id] || 0));
-  }, 0);
+  }, 0) : 0;
 
   const grandTotal = groceryTotal + serviceTotalAmount;
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -107,10 +110,7 @@ export default function UnifiedCartScreen() {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigationRef.navigate(
-            "ServicesTab" as never,
-            { screen: "ServicesHome" } as never
-          );
+          (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -134,12 +134,12 @@ export default function UnifiedCartScreen() {
       // If we cannot introspect route names, still attempt a sensible exit.
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("HomeTab" as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
@@ -147,7 +147,7 @@ export default function UnifiedCartScreen() {
         return;
       }
       if (availableRoutes.has("ServicesTab")) {
-        navigationRef.navigate("ServicesTab" as never, { screen: "ServicesHome" } as never);
+        (navigationRef.navigate as any)("ServicesTab", { screen: "ServicesHome" });
         return;
       }
     }
@@ -361,8 +361,27 @@ export default function UnifiedCartScreen() {
         
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>Your cart is empty</Text>
-          <Text style={styles.emptySubText}>Add some items to get started</Text>
+          <Text style={styles.emptyText}>Cart is empty</Text>
+          {groceryEnabled && (
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => {
+                navigation.navigate('HomeTab', { screen: 'ProductsHome' });
+              }}
+            >
+              <Text style={styles.emptyBtnText}>Shop Grocery</Text>
+            </TouchableOpacity>
+          )}
+          {location?.services !== false && (
+            <TouchableOpacity
+              style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
+              onPress={() => {
+                navigation.navigate('HomeTab', { screen: 'ServicesHome' });
+              }}
+            >
+              <Text style={styles.emptyBtnText}>Explore Services</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -662,5 +681,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+  },
+
+  emptyBtn: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 16,
+    width: 220,
+    alignItems: 'center',
+  },
+
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

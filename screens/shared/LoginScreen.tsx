@@ -47,20 +47,39 @@ const LoginScreen: React.FC = () => {
 
   // Format phone number with +91 prefix and ensure E.164 compliance
   const formatPhoneNumber = (number: string) => {
-    const clean = number.trim();
-    // If user typed "+91 999...", remove spaces/dashes but keep +
+    if (!number) return "";
+    
+    let clean = number.trim();
+    
+    // If it already starts with +, just clean non-digits but keep +
     if (clean.startsWith("+")) {
-      return clean.replace(/[\s-()]/g, "");
+      return "+" + clean.replace(/\D/g, "");
     }
-    // If user typed "9999999999", remove everything else and add +91
-    const digits = clean.replace(/\D/g, "");
+
+    // Extract all digits
+    let digits = clean.replace(/\D/g, "");
+
+    // Handle leading zero (common in some regions)
+    if (digits.startsWith("0")) {
+      digits = digits.substring(1);
+    }
+
+    // Case 1: 10 digits -> Assume India and add +91
     if (digits.length === 10) {
       return `+91${digits}`;
     }
+
+    // Case 2: 12 digits starting with 91 -> Add +
     if (digits.length === 12 && digits.startsWith("91")) {
       return `+${digits}`;
     }
-    // Fallback
+
+    // Case 3: More than 10 digits -> Assume it already has a country code and add +
+    if (digits.length > 10) {
+      return `+${digits}`;
+    }
+
+    // Default fallback: Prepend +91 to whatever digits we have (sendOtp will validate length)
     return `+91${digits}`;
   };
 
@@ -136,9 +155,17 @@ if (__DEV__ && Platform.OS === "ios") {
       name: error?.name,
       code: error?.code,
       message: error?.message,
-      stack: error?.stack,
     });
-    showErrorModal("Something went wrong while sending OTP. Please try again.");
+    
+    if (error.code === "auth/invalid-phone-number") {
+      showErrorModal("The phone number format is incorrect. Please enter a valid 10-digit mobile number.");
+    } else if (error.code === "auth/too-many-requests") {
+      showErrorModal("Too many attempts. Please try again after some time.");
+    } else if (error.code === "auth/network-request-failed") {
+      showErrorModal("Network error. Please check your internet connection.");
+    } else {
+      showErrorModal("Something went wrong while sending OTP. Please try again.");
+    }
   } finally {
     setIsSendingOtp(false);
   }
@@ -208,10 +235,10 @@ if (__DEV__ && Platform.OS === "ios") {
                   state: {
                     routes: [
                       {
-                        name: "ServicesTab",
+                        name: "HomeTab",
                         state: {
                           routes: [
-                            { name: "ServicesHome" },
+                            { name: "ProductsHome" },
                             { 
                               name: "ServiceCheckout", 
                               params: { 

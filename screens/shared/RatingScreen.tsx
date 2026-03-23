@@ -498,7 +498,7 @@ export default function RatingScreen() {
       ${companyHTML}
 
       <div class="header">
-        <h2>${companyData.billName}</h2>
+        <h2>${companyData?.billName || "Ninja Deliveries"}</h2>
         <p><strong>Date:</strong> ${dateString}</p>
         <p><strong>Rider:</strong> ${riderName}</p>
         <p><strong>Status:</strong> ${status}</p>
@@ -610,6 +610,16 @@ export default function RatingScreen() {
   // UI
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitleText}>Order Bill</Text>
+        <View style={{ width: 40 }} />
+      </View>
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* BILL CARD */}
@@ -805,7 +815,28 @@ const CARD_BACKGROUND = "#FFF";
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f2f2f2",
+    backgroundColor: "#ffffff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitleText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1A1A1A",
   },
   container: {
     flex: 1,

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  SafeAreaView,
 } from "react-native";
 import {
   useNavigation,
@@ -147,7 +148,7 @@ const NewOrderCancelledScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Red Cross Icon for Order Cancellation */}
       <View style={styles.iconContainer}>
         <Ionicons name="close-circle" size={80} color="red" />
@@ -175,7 +176,7 @@ const NewOrderCancelledScreen: React.FC = () => {
       <TouchableOpacity style={styles.homeButton} onPress={navigateToHome}>
         <Text style={styles.homeButtonText}>Back to Home</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 };
 
