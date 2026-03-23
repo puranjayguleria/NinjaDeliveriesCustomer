@@ -17,10 +17,12 @@ import { Image } from "expo-image";
 import { ServiceIssue, ServiceCategory } from "../../services/firestoreService";
 import { dedupeServicesByCategoryAndName } from "../../utils/serviceDedupe";
 import { firestore } from "../../firebase.native";
+import { useLocationContext } from "../../context/LocationContext";
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { location } = useLocationContext();
 
   const { serviceTitle, categoryId } = route.params;
 
@@ -32,6 +34,9 @@ export default function ServiceCategoryScreen() {
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [zoneCompanyIdsKey, setZoneCompanyIdsKey] = useState('');
+  const [zoneCompanyNamesKey, setZoneCompanyNamesKey] = useState('');
+  const [zoneCompaniesLoading, setZoneCompaniesLoading] = useState(true);
 
   // Description modal
   const [descriptionModal, setDescriptionModal] = useState<{
@@ -45,6 +50,82 @@ export default function ServiceCategoryScreen() {
   const [selectedCategoryId] = useState<string>(categoryId || "");
   const [categoryMasterId, setCategoryMasterId] = useState<string>(categoryId || "");
 
+  // Load zone-specific companies
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const zid = String(location?.storeId || '').trim();
+      
+      if (!zid) {
+        setZoneCompanyIdsKey('');
+        setZoneCompanyNamesKey('');
+        setZoneCompaniesLoading(false);
+        return;
+      }
+
+      try {
+        setZoneCompaniesLoading(true);
+
+        // 1) Try matching by deliveryZoneId
+        let snap = await firestore()
+          .collection('service_company')
+          .where('deliveryZoneId', '==', zid)
+          .get();
+
+        // 2) Fallback: match by deliveryZoneName
+        if (snap.empty) {
+          try {
+            const zoneDoc = await firestore().collection('delivery_zones').doc(zid).get();
+            const zoneName = String(zoneDoc.data()?.name || '').trim();
+            if (zoneName) {
+              snap = await firestore()
+                .collection('service_company')
+                .where('deliveryZoneName', '==', zoneName)
+                .get();
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (cancelled) return;
+
+        const ids = new Set<string>();
+        const names = new Set<string>();
+
+        snap.forEach((doc) => {
+          const data = doc.data() as any;
+          if (data?.isActive === false) return;
+
+          const docId = String(doc.id || '').trim();
+          if (docId) ids.add(docId);
+          const dataCompanyId = String(data?.companyId || '').trim();
+          if (dataCompanyId) ids.add(dataCompanyId);
+
+          const nm = String(data?.companyName || data?.name || '').trim();
+          if (nm) names.add(nm);
+        });
+
+        const zoneIdsKey = Array.from(ids).filter(Boolean).sort().join('|');
+        const zoneNamesKey = Array.from(names).filter(Boolean).sort().join('|');
+        
+        setZoneCompanyIdsKey(zoneIdsKey);
+        setZoneCompanyNamesKey(zoneNamesKey);
+
+        console.log(`✅ Zone companies loaded: ids=${ids.size}, names=${names.size}`);
+      } catch (e) {
+        console.error('❌ Failed to load zone companies:', e);
+      } finally {
+        if (!cancelled) setZoneCompaniesLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.storeId]);
+
   const fetchServiceIssues = useCallback(async () => {
     try {
       setLoading(true);
@@ -56,6 +137,37 @@ export default function ServiceCategoryScreen() {
         setIssues([]);
         return;
       }
+
+      // Wait for zone companies to load
+      if (zoneCompaniesLoading) {
+        console.log('⏳ Waiting for zone companies to load...');
+        return;
+      }
+
+      const zid = String(location?.storeId || '').trim();
+      if (!zid) {
+        console.log('❌ No zone selected');
+        setIssues([]);
+        return;
+      }
+
+      // Get zone companies
+      const zoneCompanyIds = zoneCompanyIdsKey
+        ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+        : [];
+      
+      const zoneCompanyNames = zoneCompanyNamesKey
+        ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+        : [];
+
+      if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+        console.log('❌ No companies available in this zone');
+        setIssues([]);
+        return;
+      }
+
+      const zoneCompanyIdSet = new Set(zoneCompanyIds);
+      const zoneCompanyNameSet = new Set(zoneCompanyNames);
 
       // Get the category to check if it has a masterCategoryId
       const categoryDoc = await firestore()
@@ -76,12 +188,11 @@ export default function ServiceCategoryScreen() {
       setCategoryMasterId(searchCategoryId);
 
       // Fetch DIRECTLY from service_services collection
-      console.log(`� Querying service_services where categoryMasterId == "${searchCategoryId}"`);
+      console.log(`🔍 Querying service_services where categoryMasterId == "${searchCategoryId}"`);
       
       const servicesSnapshot = await firestore()
         .collection('service_services')
         .where('categoryMasterId', '==', searchCategoryId)
-
         .get();
 
       console.log(`� Found ${servicesSnapshot.size} total services in service_services`);
@@ -91,10 +202,25 @@ export default function ServiceCategoryScreen() {
 
       servicesSnapshot.forEach(doc => {
         const data = doc.data();
+        
+        // Check if company is active in this zone
+        const companyId = String(data?.companyId || '').trim();
+        const companyName = String(data?.companyName || '').trim();
+        
+        const isCompanyInZone = 
+          (companyId && zoneCompanyIdSet.has(companyId)) ||
+          (companyName && zoneCompanyNameSet.has(companyName));
+        
+        if (!isCompanyInZone) {
+          console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+          return;
+        }
+
         const hasPackages = data.packages && Array.isArray(data.packages) && data.packages.length > 0;
         
         console.log(`📋 Service: "${data.name}"`);
         console.log(`   - Has packages: ${hasPackages}`);
+        console.log(`   - Company in zone: ✅`);
         
         const serviceIssue: ServiceIssue = {
           id: doc.id,
@@ -130,7 +256,7 @@ export default function ServiceCategoryScreen() {
       console.log(`📊 Summary:`);
       console.log(`   - Direct-price services: ${directPriceServices.length}`);
       console.log(`   - Package-based services: ${packageBasedServices.length}`);
-      console.log(`   - Total services: ${allServices.length}`);
+      console.log(`   - Total services (zone-filtered): ${allServices.length}`);
       
       setIssues(allServices);
       
@@ -142,7 +268,7 @@ export default function ServiceCategoryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
   // Fetch issues when category changes
   useEffect(() => {

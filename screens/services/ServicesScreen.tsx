@@ -23,7 +23,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
-import Video from "react-native-video";
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
 import { firestore } from "../../firebase.native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -232,14 +231,15 @@ interface LiveBooking {
   timestamp: any;
 }
 
-// GIF sources array
-const HEADER_GIFS = [
-  require("../../assets/ninjaVideo1.gif"),
-  require("../../assets/ninjaVideo.gif"),
+// Header images array
+const HEADER_IMAGES = [
+  require("../../assets/ninjaServicebanner1.png"),
+  require("../../assets/ninjaServicebanner2.png"),
+  require("../../assets/ninjaServicebanner3.png"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = 220;
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 100;
+const SERVICES_HEADER_MEDIA_HEIGHT = 280;
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 120;
 const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
 const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 // Solid, very light + friendly header colors (no transparency).
@@ -247,12 +247,12 @@ const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 220 : 205;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 340 : 325;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
-  'electrician',
   'plumber',
   'car wash',
+  'automobile washing',
   'home cleaning',
   'astrology',
   'painter',
@@ -304,6 +304,56 @@ export default function ServicesScreen() {
       scrollY.interpolate({
         inputRange: [0, 120],
         outputRange: [SERVICES_HEADER_PADDING_TOP_INITIAL, SERVICES_HEADER_PADDING_TOP_COLLAPSED],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const locationRowOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 60],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const toggleRowOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 40],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const toggleRowHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 40],
+        outputRange: [50, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const searchBarTranslateY = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [0, -50],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const stickyHeaderHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [SERVICES_STICKY_HEADER_HEIGHT, 130],
         extrapolate: 'clamp',
       }),
     [scrollY]
@@ -377,16 +427,21 @@ export default function ServicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [activeGifIndex] = useState(0); // kept for useMemo dep compatibility
+  const [activeHeaderImageIndex, setActiveHeaderImageIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
   const bannerAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const headerImageAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   // const currentBookingIndex = React.useRef(0);
   const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
+  const [randomServices, setRandomServices] = useState<any[]>([]);
+  const [plumberServices, setPlumberServices] = useState<any[]>([]);
+  const [automobileWashingServices, setAutomobileWashingServices] = useState<any[]>([]);
 
   const categorySnapshotSeqRef = React.useRef(0);
 
@@ -963,6 +1018,12 @@ export default function ServicesScreen() {
           clearInterval(bannerAutoScrollIntervalRef.current);
           bannerAutoScrollIntervalRef.current = null;
         }
+        
+        // Stop header image auto-scroll when leaving the screen.
+        if (headerImageAutoScrollIntervalRef.current) {
+          clearInterval(headerImageAutoScrollIntervalRef.current);
+          headerImageAutoScrollIntervalRef.current = null;
+        }
       };
     }, [])
   );
@@ -1319,6 +1380,30 @@ export default function ServicesScreen() {
     };
   }, []);
 
+  // Auto-scroll header images every 10 seconds
+  useEffect(() => {
+    if (!isFocused) return;
+
+    // Clear any previous interval
+    if (headerImageAutoScrollIntervalRef.current) {
+      clearInterval(headerImageAutoScrollIntervalRef.current);
+      headerImageAutoScrollIntervalRef.current = null;
+    }
+
+    const interval = setInterval(() => {
+      setActiveHeaderImageIndex((prev) => (prev + 1) % HEADER_IMAGES.length);
+    }, 10000); // 10 seconds
+
+    headerImageAutoScrollIntervalRef.current = interval;
+
+    return () => {
+      clearInterval(interval);
+      if (headerImageAutoScrollIntervalRef.current === interval) {
+        headerImageAutoScrollIntervalRef.current = null;
+      }
+    };
+  }, [isFocused]);
+
   // Auto-scroll banners with pause
   useEffect(() => {
     if (serviceBanners.length <= 1) return;
@@ -1405,29 +1490,295 @@ export default function ServicesScreen() {
     return sorted[0] || null;
   }, [liveBookings]);
 
-  // Blinking animation for View All button (light)
+  // Fetch random packages for modal cards
   useEffect(() => {
-    const blinkAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(blinkAnim, {
-          toValue: 0.7,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(blinkAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    const fetchRandomPackages = async () => {
+      try {
+        const snap = await firestore()
+          .collection('service_services')
+          .where('isActive', '==', true)
+          .limit(150)
+          .get();
 
-    blinkAnimation.start();
+        const packagesWithService: any[] = [];
+        snap.forEach((doc) => {
+          const data = doc.data() as any;
+          if (Array.isArray(data?.packages) && data.packages.length > 0) {
+            // For each package, store it with service details
+            data.packages.forEach((pkg: any, index: number) => {
+              packagesWithService.push({
+                id: `${doc.id}_${index}`,
+                serviceId: doc.id,
+                serviceName: data.name || 'Service',
+                categoryName: data.categoryName,
+                companyName: data.companyName,
+                companyId: data.companyId,
+                categoryId: data.categoryId || data.categoryMasterId,
+                package: pkg,
+                allPackages: data.packages,
+                // Booking count for trending packages (most booked)
+                bookingCount: data.bookingCount || pkg.bookingCount || 0,
+                // Rating for highest rated packages
+                rating: data.rating || pkg.rating || 0,
+              });
+            });
+          }
+        });
 
-    return () => {
-      blinkAnimation.stop();
+        // Sort by booking count (descending) to show most booked packages first
+        const sorted = packagesWithService.sort((a, b) => (b.bookingCount || 0) - (a.bookingCount || 0));
+        
+        // Show only 3-4 most booked packages in Trending Packages section
+        setRandomServices(sorted.slice(0, 4));
+      } catch (e) {
+        if (__DEV__) console.log('Failed to fetch random packages:', e);
+      }
     };
-  }, [blinkAnim]);
+
+    fetchRandomPackages();
+  }, []);
+
+  // Fetch Plumber services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchPlumberServices = async () => {
+      try {
+        console.log('🔧 Fetching Plumber services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Plumber category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let plumberCategoryId = '';
+        let plumberMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          if (name.includes('plumb')) {
+            plumberCategoryId = doc.id;
+            plumberMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Plumber category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${plumberMasterCategoryId}`);
+          }
+        });
+
+        if (!plumberCategoryId) {
+          if (__DEV__) console.log('❌ Plumber category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${plumberMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', plumberMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} plumber services`);
+
+        const plumberServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          plumberServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: plumberCategoryId,
+            categoryMasterId: plumberMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = plumberServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Plumber services loaded (zone-filtered): ${sorted.length}`);
+        setPlumberServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch plumber services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchPlumberServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+  // Fetch Automobile Washing services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchAutomobileWashingServices = async () => {
+      try {
+        console.log('🚗 Fetching Automobile Washing services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Automobile Washing category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let automobileCategoryId = '';
+        let automobileMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // More specific matching for car wash/automobile washing only
+          if ((name.includes('car') && name.includes('wash')) || 
+              (name.includes('automobile') && name.includes('wash')) ||
+              name.includes('car wash') ||
+              name.includes('vehicle wash')) {
+            automobileCategoryId = doc.id;
+            automobileMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Automobile Washing category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${automobileMasterCategoryId}`);
+          }
+        });
+
+        if (!automobileCategoryId) {
+          if (__DEV__) console.log('❌ Automobile Washing category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${automobileMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', automobileMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} automobile washing services`);
+
+        const automobileServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          automobileServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: automobileCategoryId,
+            categoryMasterId: automobileMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = automobileServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Automobile Washing services loaded (zone-filtered): ${sorted.length}`);
+        setAutomobileWashingServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch automobile washing services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchAutomobileWashingServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+
 
   // Blinking animation for live bookings
   useEffect(() => {
@@ -1453,7 +1804,7 @@ export default function ServicesScreen() {
     };
   }, [bookingBlinkAnim]);
 
-  // Arrow movement animation for View All button
+  // Arrow movement animation for View All button and package cards
   useEffect(() => {
     const arrowAnimation = Animated.loop(
       Animated.sequence([
@@ -1543,19 +1894,23 @@ export default function ServicesScreen() {
     // Instant feedback so the user knows the tap registered.
     setTapLoading({ visible: true, message: 'Opening…' });
     
-    // Check if category has packages
-    let hasPackages = false;
-    try {
-      hasPackages = await FirestoreService.categoryHasPackages(category.id);
-    } catch (e) {
-      if (__DEV__) console.log('⚠️ categoryHasPackages failed:', e);
-    }
-    
+    // Check if category has packages - run in parallel with navigation
     const navigationParams = {
       serviceTitle: category.name,
       categoryId: category.id,
       allCategories: serviceCategories,
     };
+    
+    // Start navigation immediately without waiting for package check
+    let hasPackages = false;
+    try {
+      hasPackages = await Promise.race([
+        FirestoreService.categoryHasPackages(category.id),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 300)) // 300ms timeout
+      ]);
+    } catch (e) {
+      if (__DEV__) console.log('⚠️ categoryHasPackages failed:', e);
+    }
     
     if (hasPackages) {
       if (__DEV__) console.log('✅ Category has packages, navigating to PackageSelection');
@@ -1564,6 +1919,9 @@ export default function ServicesScreen() {
       if (__DEV__) console.log('✅ Category has no packages, navigating directly to ServiceCategory');
       navigation.navigate("ServiceCategory", navigationParams);
     }
+    
+    // Hide loading immediately after navigation
+    setTimeout(() => setTapLoading({ visible: false }), 100);
   }, [navigation, serviceCategories]);
 
   const handleViewAllCategories = useCallback(() => {
@@ -1653,13 +2011,328 @@ export default function ServicesScreen() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Data slices with null checks - Show only 6 categories in main view
+  // Data slices with null checks - Show 6 categories in main view
   const listCategories = searchQuery 
     ? (filteredCategories || []).slice(0, 20) 
     : (serviceCategories || []).slice(0, 6);
   
   // Check if there are more categories to show
   const hasMoreCategories = !searchQuery && (serviceCategories || []).length > 6;
+
+  const ListFooterUI = React.useMemo(() => {
+    if (searchQuery.length > 0) return null;
+
+    return (
+      <View>
+        {/* Quick Services Section - Before Trending Packages */}
+        {plumberServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Plumber</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find plumber category and navigate
+                  const plumberCategory = serviceCategories.find(cat => 
+                    cat.name.toLowerCase().includes('plumb')
+                  );
+                  if (plumberCategory) {
+                    console.log('🔧 Navigating to Plumber category:', plumberCategory.name);
+                    handleCategoryPress(plumberCategory);
+                  } else {
+                    console.log('❌ Plumber category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {plumberServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#EFF6FF' }]}>
+                          <Ionicons 
+                            name="water-outline" 
+                            size={32} 
+                            color="#3B82F6" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <Text style={styles.quickServiceName} numberOfLines={2}>
+                        {service.name || 'Service'}
+                      </Text>
+                      <Text style={styles.quickServicePrice} numberOfLines={1}>
+                        {displayPrice}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Automobile Washing Services Section */}
+        {automobileWashingServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Automobile Washing</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find automobile washing category and navigate
+                  const automobileCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return (name.includes('car') && name.includes('wash')) || 
+                           (name.includes('automobile') && name.includes('wash')) ||
+                           name.includes('car wash') ||
+                           name.includes('vehicle wash');
+                  });
+                  if (automobileCategory) {
+                    console.log('🚗 Navigating to Automobile Washing category:', automobileCategory.name);
+                    handleCategoryPress(automobileCategory);
+                  } else {
+                    console.log('❌ Automobile Washing category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {automobileWashingServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#F0F9FF' }]}>
+                          <Ionicons 
+                            name="car-outline" 
+                            size={32} 
+                            color="#0EA5E9" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <Text style={styles.quickServiceName} numberOfLines={2}>
+                        {service.name || 'Service'}
+                      </Text>
+                      <Text style={styles.quickServicePrice} numberOfLines={1}>
+                        {displayPrice}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+
+
+        {/* Trending Packages Section - After Quick Services */}
+        {randomServices.length > 0 && (
+          <View style={styles.trendingPackagesContainer}>
+            <View style={styles.trendingPackagesHeader}>
+              <View style={styles.trendingHeaderLeft}>
+                <Ionicons name="trending-up" size={18} color="#10b981" />
+                <Text style={styles.trendingPackagesTitle}>Trending Packages</Text>
+              </View>
+              <Text style={styles.trendingSubtitle}>Most Booked</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.trendingPackagesScroll}
+              scrollEventThrottle={16}
+            >
+              {randomServices.map((item, index) => {
+                if (!item || !item.package) return null;
+
+                const pkg = item.package;
+                
+                // Format price with lakh/crore notation
+                const formatPrice = (price: number) => {
+                  if (!price || isNaN(price)) return 'N/A';
+                  
+                  if (price >= 10000000) {
+                    // Crore (1,00,00,000)
+                    const crores = price / 10000000;
+                    return `₹${crores % 1 === 0 ? crores : crores.toFixed(1)} Crore`;
+                  } else if (price >= 100000) {
+                    // Lakh (1,00,000)
+                    const lakhs = price / 100000;
+                    return `₹${lakhs % 1 === 0 ? lakhs : lakhs.toFixed(1)} Lakh`;
+                  } else if (price >= 10000) {
+                    // Thousand (10,000+)
+                    const thousands = price / 1000;
+                    return `₹${thousands % 1 === 0 ? thousands : thousands.toFixed(1)} Thousand`;
+                  } else {
+                    // Below 10,000 - show normal value
+                    return `₹${price}`;
+                  }
+                };
+                
+                const displayPrice = formatPrice(pkg.price);
+                
+                // Format duration properly with unit
+                const formatDuration = () => {
+                  let duration = pkg?.duration || pkg?.durationDays;
+                  let unit = String(pkg?.durationUnit || pkg?.unit || '').toLowerCase().trim();
+                  
+                  if (!duration) return 'N/A';
+                  
+                  const count = Number(duration);
+                  
+                  // Remove "(s)" from unit if present
+                  unit = unit.replace(/\(s\)/g, '');
+                  
+                  // Format based on unit
+                  if (unit === 'day' || unit === 'days') {
+                    return `${count} ${count === 1 ? 'day' : 'days'}`;
+                  } else if (unit === 'week' || unit === 'weeks') {
+                    return `${count} ${count === 1 ? 'week' : 'weeks'}`;
+                  } else if (unit === 'month' || unit === 'months') {
+                    return `${count} ${count === 1 ? 'month' : 'months'}`;
+                  } else if (unit === 'hour' || unit === 'hours') {
+                    return `${count} ${count === 1 ? 'hour' : 'hours'}`;
+                  } else if (unit === 'minute' || unit === 'minutes' || unit === 'mins' || unit === 'min') {
+                    return `${count} ${count === 1 ? 'min' : 'mins'}`;
+                  } else if (unit === 'year' || unit === 'years') {
+                    return `${count} ${count === 1 ? 'year' : 'years'}`;
+                  } else {
+                    // Default to minutes if no unit specified
+                    return `${count} mins`;
+                  }
+                };
+                
+                const displayDuration = formatDuration();
+
+                const onModalPress = () => {
+                  if (!item.categoryId) {
+                    console.log('❌ Package missing categoryId; cannot open flow');
+                    return;
+                  }
+
+                  setTapLoading({ visible: true, message: 'Opening…' });
+                  try {
+                    navigation.navigate('PackageSelection', {
+                      serviceTitle: item.serviceName || 'Service',
+                      categoryId: item.categoryId,
+                      allCategories: serviceCategories,
+                      serviceId: item.serviceId,
+                      serviceName: item.serviceName,
+                    } as any);
+                  } catch (e) {
+                    console.log('❌ Failed to navigate from package modal', e);
+                    setTapLoading({ visible: false });
+                  }
+                };
+
+                return (
+                  <TouchableOpacity
+                    key={`trending-${index}`}
+                    style={styles.packageCard}
+                    activeOpacity={0.7}
+                    onPress={onModalPress}
+                  >
+                    {/* Package Name */}
+                    <Text style={styles.packageCardTitle} numberOfLines={1}>
+                      {String(pkg.name || 'Package')}
+                    </Text>
+
+                    {/* Description */}
+                    <Text style={styles.packageCardDescription} numberOfLines={2}>
+                      {String(pkg.description || item.serviceName || 'Service package')}
+                    </Text>
+
+                    {/* Duration */}
+                    <View style={styles.packageCardDuration}>
+                      <Ionicons name="time-outline" size={16} color="#64748b" />
+                      <Text style={styles.packageCardDurationText}>{displayDuration}</Text>
+                    </View>
+
+                    {/* Price Section - Compact Badge with Arrow */}
+                    <View style={styles.packageCardFooter}>
+                      <View style={styles.packagePriceBadge}>
+                        <View style={styles.packagePriceContent}>
+                          <View>
+                            <Text style={styles.packageCardPriceLabel}>Starting from</Text>
+                            <Text style={styles.packageCardPrice}>{displayPrice}</Text>
+                          </View>
+                          <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
+                            <Ionicons name="chevron-forward" size={20} color="#10b981" />
+                          </Animated.View>
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  }, [searchQuery, randomServices, navigation, serviceCategories, arrowAnim, handleViewAllCategories, handleCategoryPress, plumberServices, automobileWashingServices, onServicePress]);
 
   // Render functions
   const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
@@ -1839,44 +2512,62 @@ export default function ServicesScreen() {
     if (!item || !item.name) return null; // Safety check
     
     const categoryStyle = getCategoryStyle(item.name, index);
+    
+    // Gradient colors for borders
+    const gradientColorSets = [
+      ['#FFD89B', '#19547B'] as const, // Yellow to Blue
+      ['#FF6B9D', '#C44569'] as const, // Pink to Red
+      ['#4FACFE', '#00F2FE'] as const, // Blue to Cyan
+    ];
+    const borderGradient = gradientColorSets[index % 3];
+    
     return (
-      <TouchableOpacity
-        style={styles.gridCard}
-        activeOpacity={0.7}
-        onPress={() => handleCategoryPress(item)}
-      >
-        <View style={styles.gridMedia}>
-          <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
-            {item.imageUrl ? (
-              <ExpoImage
-                source={{ uri: item.imageUrl }}
-                style={styles.gridCategoryImage}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                transition={150}
-                onError={(e) => {
-                  if (__DEV__) {
-                    console.log(`⚠️ Failed to load image for ${item.name}`, {
-                      url: item.imageUrl,
-                      error: (e as any)?.nativeEvent,
-                    });
-                  }
-                }}
-              />
-            ) : (
-              <Ionicons 
-                name={categoryStyle.icon as any} 
-                size={36} 
-                color={categoryStyle.color} 
-              />
-            )}
-          </View>
-        </View>
+      <View style={styles.gradientBorderWrapper}>
+        <LinearGradient
+          colors={[...borderGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.gradientBorder}
+        >
+          <TouchableOpacity
+            style={styles.gridCard}
+            activeOpacity={0.7}
+            onPress={() => handleCategoryPress(item)}
+          >
+            <View style={styles.gridMedia}>
+              <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
+                {item.imageUrl ? (
+                  <ExpoImage
+                    source={{ uri: item.imageUrl }}
+                    style={styles.gridCategoryImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    onError={(e) => {
+                      if (__DEV__) {
+                        console.log(`⚠️ Failed to load image for ${item.name}`, {
+                          url: item.imageUrl,
+                          error: (e as any)?.nativeEvent,
+                        });
+                      }
+                    }}
+                  />
+                ) : (
+                  <Ionicons 
+                    name={categoryStyle.icon as any} 
+                    size={36} 
+                    color={categoryStyle.color} 
+                  />
+                )}
+              </View>
+            </View>
 
-        <View style={styles.gridInfo}>
-          <Text style={styles.gridTitle} numberOfLines={2}>{item.name}</Text>
-        </View>
-      </TouchableOpacity>
+            <View style={styles.gridInfo}>
+              <Text style={styles.gridTitle} numberOfLines={2}>{item.name}</Text>
+            </View>
+          </TouchableOpacity>
+        </LinearGradient>
+      </View>
     );
   }, [handleCategoryPress]);
 
@@ -1908,6 +2599,149 @@ export default function ServicesScreen() {
     );
   }, [onServicePress]);
 
+  const renderRandomServiceModal = useCallback(({ item, index }: { item: any; index: number }) => {
+    if (!item || !item.package) return null;
+
+    const pkg = item.package;
+    const displayPrice = `₹${pkg.price || 'N/A'}`;
+    
+    // Format duration properly with unit
+    const formatDuration = () => {
+      let duration = pkg?.duration || pkg?.durationDays;
+      let unit = String(pkg?.durationUnit || pkg?.unit || '').toLowerCase().trim();
+      
+      if (!duration) return 'N/A';
+      
+      const count = Number(duration);
+      
+      // Remove "(s)" from unit if present
+      unit = unit.replace(/\(s\)/g, '');
+      
+      // Format based on unit
+      if (unit === 'day' || unit === 'days') {
+        return `${count} ${count === 1 ? 'day' : 'days'}`;
+      } else if (unit === 'week' || unit === 'weeks') {
+        return `${count} ${count === 1 ? 'week' : 'weeks'}`;
+      } else if (unit === 'month' || unit === 'months') {
+        return `${count} ${count === 1 ? 'month' : 'months'}`;
+      } else if (unit === 'hour' || unit === 'hours') {
+        return `${count} ${count === 1 ? 'hour' : 'hours'}`;
+      } else if (unit === 'minute' || unit === 'minutes' || unit === 'mins' || unit === 'min') {
+        return `${count} ${count === 1 ? 'min' : 'mins'}`;
+      } else if (unit === 'year' || unit === 'years') {
+        return `${count} ${count === 1 ? 'year' : 'years'}`;
+      } else {
+        // Default to minutes if no unit specified
+        return `${count} mins`;
+      }
+    };
+    
+    const displayDuration = formatDuration();
+
+    const onModalPress = () => {
+      if (!item.categoryId) {
+        console.log('❌ Package missing categoryId; cannot open flow');
+        return;
+      }
+
+      setTapLoading({ visible: true, message: 'Opening…' });
+      try {
+        navigation.navigate('PackageSelection', {
+          serviceTitle: item.serviceName || 'Service',
+          categoryId: item.categoryId,
+          allCategories: serviceCategories,
+          serviceId: item.serviceId,
+          serviceName: item.serviceName,
+        } as any);
+      } catch (e) {
+        console.log('❌ Failed to navigate from package modal', e);
+        setTapLoading({ visible: false });
+      }
+    };
+
+    return (
+      <TouchableOpacity
+        style={styles.randomPackageModal}
+        activeOpacity={0.7}
+        onPress={onModalPress}
+      >
+        {/* Header with Badge and Arrow */}
+        <View style={styles.packageModalHeader}>
+          <View style={styles.packageBadge}>
+            <Ionicons name="gift-outline" size={12} color="#10b981" />
+            <Text style={styles.packageBadgeText}>Package</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={16} color="#00b4a0" />
+        </View>
+
+        {/* Service Name */}
+        <Text style={styles.packageServiceName} numberOfLines={2}>
+          {String(item.serviceName || 'Service')}
+        </Text>
+
+        {/* Package Name */}
+        <Text style={styles.packageName} numberOfLines={1}>
+          {String(pkg.name || 'Package')}
+        </Text>
+
+        {/* Description */}
+        {pkg.description && (
+          <Text style={styles.packageDescription} numberOfLines={2}>
+            {String(pkg.description)}
+          </Text>
+        )}
+
+        {/* Details Row */}
+        <View style={styles.packageDetailsRow}>
+          <View style={styles.packageDetail}>
+            <Ionicons name="time-outline" size={14} color="#64748b" />
+            <Text style={styles.packageDetailText}>{displayDuration}</Text>
+          </View>
+          <View style={styles.packageDetail}>
+            <Ionicons name="checkmark-circle-outline" size={14} color="#64748b" />
+            <Text style={styles.packageDetailText}>
+              {pkg.features?.length || 0} features
+            </Text>
+          </View>
+        </View>
+
+        {/* Features List */}
+        {Array.isArray(pkg.features) && pkg.features.length > 0 && (
+          <View style={styles.packageFeatures}>
+            {pkg.features.slice(0, 2).map((feature: any, idx: number) => (
+              <View key={idx} style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <Text style={styles.featureText} numberOfLines={1}>
+                  {String(feature)}
+                </Text>
+              </View>
+            ))}
+            {pkg.features.length > 2 && (
+              <Text style={styles.moreFeatures}>
+                +{pkg.features.length - 2} more
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Footer with Price and Company */}
+        <View style={styles.packageModalFooter}>
+          <View>
+            <Text style={styles.packagePrice}>{displayPrice}</Text>
+            {item.companyName && (
+              <Text style={styles.packageCompany} numberOfLines={1}>
+                {String(item.companyName)}
+              </Text>
+            )}
+          </View>
+          <View style={styles.packageCTA}>
+            <Text style={styles.packageCTAText}>Book Now</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [navigation, serviceCategories]);
+
   const StickyHeaderUI = React.useMemo(() => {
     return (
       <Animated.View
@@ -1915,17 +2749,19 @@ export default function ServicesScreen() {
           styles.stickyHeaderWrapper,
           {
             paddingTop: headerTopPadding,
-            height: SERVICES_STICKY_HEADER_HEIGHT,
+            height: stickyHeaderHeight,
+            overflow: 'hidden',
+            backgroundColor: '#ffffff',
           },
         ]}
         pointerEvents="box-none"
       >
         <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
 
-        {/* Scroll background (BEHIND the GIF, not on top of it) */}
+        {/* Scroll background (BEHIND the GIF, not on top of it) - Hidden on scroll */}
         <Animated.View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { opacity: headerGradientOpacity }]}
+          style={[StyleSheet.absoluteFillObject, { opacity: 0 }]}
         >
           <LinearGradient
             colors={[...SERVICES_HEADER_GRADIENT_COLORS]}
@@ -1933,38 +2769,27 @@ export default function ServicesScreen() {
           />
         </Animated.View>
 
-        {/* Background media (Video) */}
+        {/* Background media (Scrolling Images) */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.stickyHeaderMediaLayer,
-            { height: headerMediaHeight, opacity: headerMediaOpacity },
+            { height: headerMediaHeight, opacity: headerMediaOpacity, backgroundColor: '#f8fafc' },
           ]}
         >
-          <Video
-            source={require("../../assets/deliveryBackground.mp4")}
-            style={StyleSheet.absoluteFillObject}
-            muted
-            repeat
-            resizeMode="cover"
-            rate={1.0}
-            ignoreSilentSwitch="obey"
-            paused={!isFocused}
-            playInBackground={false}
-            playWhenInactive={false}
-            bufferConfig={{
-              minBufferMs: 1500,
-              maxBufferMs: 6000,
-              bufferForPlaybackMs: 750,
-              bufferForPlaybackAfterRebufferMs: 1500,
-            }}
-            maxBitRate={1500000}
+          <ExpoImage
+            source={HEADER_IMAGES[activeHeaderImageIndex]}
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: '#f8fafc' }]}
+            contentFit="cover"
+            contentPosition="center"
+            cachePolicy="memory-disk"
+            transition={800}
           />
         </Animated.View>
 
-        <View style={styles.stickyHeaderContent} pointerEvents="box-none">
+        <View style={[styles.stickyHeaderContent, { overflow: 'hidden' }]} pointerEvents="box-none">
 
-          <View style={styles.headerRow}>
+          <Animated.View style={[styles.headerRow, { opacity: locationRowOpacity }]}>
             {/* Location row (always visible) */}
             <TouchableOpacity
               style={[styles.locationRow, styles.locationRowHeader]}
@@ -1991,10 +2816,10 @@ export default function ServicesScreen() {
             >
               <Ionicons name="person" size={20} color="#0f172a" />
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
-          {/* Search Bar */}
-          <View style={[styles.searchContainer, styles.searchContainerHeader]}>
+          {/* Search Bar - Always visible */}
+          <Animated.View style={[styles.searchContainer, styles.searchContainerHeader, { transform: [{ translateY: searchBarTranslateY }] }]}>
             <View style={styles.searchHeaderRow}>
               <View style={[styles.searchBar, styles.searchBarHeader, isSearchFocused && styles.searchBarFocused]}>
                 <Ionicons name="search" size={20} color="#00b4a0" style={styles.searchIcon} />
@@ -2046,10 +2871,10 @@ export default function ServicesScreen() {
                 <Ionicons name="reader-outline" size={20} color="#0f172a" />
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Grocery/Service/Food Toggle */}
-          <View style={styles.toggleRow}>
+          <Animated.View style={[styles.toggleRow, { opacity: toggleRowOpacity, height: toggleRowHeight, overflow: 'hidden' }]}>
             <TouchableOpacity
               style={[
                 styles.toggleBtn,
@@ -2111,11 +2936,11 @@ export default function ServicesScreen() {
                 Food
               </Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Animated.View>
     );
-  }, [activeGifIndex, activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
+  }, [activeGifIndex, activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, locationRowOpacity, navigation, placeholderOpacity, placeholderTranslateY, searchBarTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder, stickyHeaderHeight, toggleRowHeight, toggleRowOpacity]);
 
   const ListHeaderUI = React.useMemo(() => {
     return (
@@ -2169,63 +2994,68 @@ export default function ServicesScreen() {
               </View>
             )}
 
-            {/* All Services List Header with View All Button */}
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>All Services</Text>
-              {hasMoreCategories && (
-                <TouchableOpacity
-                  style={styles.viewAllButtonInline}
-                  onPress={handleViewAllCategories}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.viewAllTextInline}>View All</Text>
-                  <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
-                    <Ionicons name="arrow-forward" size={14} color="#00b4a0" />
-                  </Animated.View>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Live Updates Section */}
-            <View style={styles.liveUpdatesContainer}>
-              <View style={styles.liveUpdatesHeader}>
-                <Animated.View style={[styles.liveIndicator, { opacity: bookingBlinkAnim }]}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>Live Bookings</Text>
-                </Animated.View>
+            {/* All Services Section with White Background */}
+            <View style={styles.allServicesSection}>
+              {/* All Services List Header with View All Button */}
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>All Services</Text>
+                {hasMoreCategories && (
+                  <TouchableOpacity
+                    style={styles.viewAllButtonInline}
+                    onPress={handleViewAllCategories}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.viewAllTextInline}>View All</Text>
+                    <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
+                      <Ionicons name="arrow-forward" size={14} color="#00b4a0" />
+                    </Animated.View>
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={styles.liveUpdatesWrapper}>
-                {latestLiveBooking ? (
-                  <Animated.View style={[styles.liveUpdateCard, { opacity: bookingBlinkAnim }]}>
-                    <View style={styles.liveUpdateCardLeft}>
-                      <View style={styles.liveUpdateDot} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                          {latestLiveBooking.serviceName}
-                        </Text>
-                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                          Booked in {latestLiveBooking.location}
-                        </Text>
-                      </View>
-                    </View>
+
+              {/* Live Updates Section */}
+              <View style={styles.liveUpdatesContainer}>
+                <View style={styles.liveUpdatesHeader}>
+                  <Animated.View style={[styles.liveIndicator, { opacity: bookingBlinkAnim }]}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveText}>Live Bookings</Text>
                   </Animated.View>
-                ) : (
-                  <View style={styles.liveUpdateCard}>
-                    <View style={styles.liveUpdateCardLeft}>
-                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                          No live bookings
-                        </Text>
-                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                          No active bookings right now
-                        </Text>
+                </View>
+                <View style={styles.liveUpdatesWrapper}>
+                  {latestLiveBooking ? (
+                    <Animated.View style={[styles.liveUpdateCard, { opacity: bookingBlinkAnim }]}>
+                      <View style={styles.liveUpdateCardLeft}>
+                        <View style={styles.liveUpdateDot} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
+                            {latestLiveBooking.serviceName}
+                          </Text>
+                          <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
+                            Booked in {latestLiveBooking.location}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.liveUpdateCard}>
+                      <View style={styles.liveUpdateCardLeft}>
+                        <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
+                            No live bookings
+                          </Text>
+                          <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
+                            No active bookings right now
+                          </Text>
+                        </View>
+                      </View>
                   </View>
                 )}
               </View>
             </View>
+            </View>
+
+
           </>
         )}
 
@@ -2244,14 +3074,13 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking]);
 
   return (
     <ImageBackground
       source={require("../../assets/serviceBG.png")}
       style={styles.container}
       resizeMode="cover"
-      blurRadius={3}
     >
       {StickyHeaderUI}
       {serviceConfirmedBanner && (
@@ -2294,11 +3123,11 @@ export default function ServicesScreen() {
           data={isLoading ? [] : (listCategories || [])}
           keyExtractor={(item, index) => item?.id || `item-${index}`}
           ListHeaderComponent={ListHeaderUI}
+          ListFooterComponent={ListFooterUI}
           renderItem={renderListItem}
-          numColumns={2}
+          numColumns={3}
           columnWrapperStyle={styles.gridRow}
-          key="two-columns"
-          ListFooterComponent={null}
+          key="three-columns"
           ListEmptyComponent={
             isLoading ? (
               <View style={styles.emptyLoadingContainer}>
@@ -2322,7 +3151,7 @@ export default function ServicesScreen() {
               </View>
             )
           }
-          contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 30 }}
+          contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 30, backgroundColor: 'white' }}
           showsVerticalScrollIndicator={false}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -2428,6 +3257,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
+    backgroundColor: '#ffffff',
   },
 
   stickyHeaderMediaLayer: {
@@ -2665,16 +3495,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-start",
     alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 0,
     gap: 8,
   },
   toggleBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "rgba(0, 0, 0, 0.15)",
   },
@@ -2896,13 +3726,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
+  allServicesSection: {
+    backgroundColor: "white",
+    paddingBottom: 12,
+  },
+
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 12,
-    marginTop: 40, // Increased from 8 to 40 for more GIF space
+    marginTop: 8,
+    backgroundColor: "white",
   },
 
   sectionTitle: {
@@ -2914,32 +3750,30 @@ const styles = StyleSheet.create({
   viewAllButtonInline: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#00b4a0",
-    gap: 4,
+    backgroundColor: "#f0fdfa",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
 
   viewAllTextInline: {
     color: "#00b4a0",
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   // Live Updates Styles
   liveUpdatesContainer: {
-    paddingVertical: 12,
+    paddingVertical: 8,
     // backgroundColor: "#f8fafc",
     backgroundColor: "white",
-    marginBottom: 16,
+    marginBottom: 4,
   },
 
   liveUpdatesHeader: {
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 6,
   },
 
   liveIndicator: {
@@ -3049,26 +3883,30 @@ const styles = StyleSheet.create({
     color: "#0f172a",
   },
 
-  // Grid Styles (2 columns)
+  // Grid Styles (3 columns)
   gridRow: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+
+  gradientBorderWrapper: {
+    width: (width - 48) / 3,
+    borderRadius: 16,
+    padding: 2,
+  },
+
+  gradientBorder: {
+    borderRadius: 16,
+    padding: 0,
   },
 
   gridCard: {
-    width: (width - 48) / 2,
+    width: '100%',
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 14,
+    padding: 0,
     alignItems: "center",
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
     overflow: 'hidden',
   },
 
@@ -3076,14 +3914,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 6,
-    paddingBottom: 10,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
 
   gridIconContainer: {
     width: '100%',
-    height: 108,
-    borderRadius: 16,
+    height: 100,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -3092,17 +3930,18 @@ const styles = StyleSheet.create({
   gridCategoryImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: 14,
   },
 
   gridInfo: {
     width: '100%',
-    paddingHorizontal: 6,
-    paddingBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
 
   gridTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#0f172a",
     textAlign: "center",
@@ -3148,6 +3987,493 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignSelf: "center",
     color: "#cbd5e1",
+  },
+
+  // Random Service Modals Styles
+  randomServicesContainer: {
+    paddingVertical: 12,
+    backgroundColor: "#f8fafc",
+    marginBottom: 16,
+  },
+
+  randomServicesScroll: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+
+  randomServiceModal: {
+    width: (width - 64) / 2,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  modalBadge: {
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+
+  modalBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#10b981",
+    textTransform: "uppercase",
+  },
+
+  modalServiceName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+
+  modalCategoryName: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748b",
+    marginBottom: 10,
+  },
+
+  modalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+
+  modalPrice: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#00b4a0",
+  },
+
+  modalPackageCount: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
+
+  // Random Package Modal Styles
+  randomPackageModal: {
+    width: (width - 64) / 2,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  packageModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  // New Package Card Styles (Image-based design)
+  packageCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    width: 180,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+
+  packageIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  packageCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+
+  packageCardDescription: {
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#64748b",
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+
+  packageCardDuration: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 16,
+  },
+
+  packageCardDurationText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+
+  packageCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
+  },
+
+  packagePriceBadge: {
+    flex: 1,
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d1fae5",
+  },
+
+  packagePriceContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  packageCardPriceLabel: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#059669",
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  packageCardPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#10b981",
+  },
+
+  packageBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+
+  packageBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#10b981",
+    textTransform: "uppercase",
+  },
+
+  packageServiceName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 4,
+    lineHeight: 16,
+  },
+
+  packageName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#00b4a0",
+    marginBottom: 6,
+  },
+
+  packageDescription: {
+    fontSize: 11,
+    fontWeight: "400",
+    color: "#64748b",
+    marginBottom: 8,
+    lineHeight: 14,
+  },
+
+  packageDetailsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+
+  packageDetail: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+
+  packageDetailText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+
+  packageFeatures: {
+    marginBottom: 8,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+
+  featureDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#00b4a0",
+  },
+
+  featureText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#475569",
+    flex: 1,
+  },
+
+  moreFeatures: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#00b4a0",
+    marginTop: 4,
+  },
+
+  packageModalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+  },
+
+  packagePrice: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#00b4a0",
+  },
+
+  packagePriceSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  packageCompany: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+
+  packageCTA: {
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+
+  packageCTAText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  randomServicesHeader: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 20,
+  },
+
+  randomServicesTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  // Trending Packages Styles
+  trendingPackagesContainer: {
+    paddingVertical: 12,
+    backgroundColor: "#fdfdfd",
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  // Quick Services Styles (Popular Services)
+  quickServicesContainer: {
+    paddingVertical: 16,
+    backgroundColor: "#ffffff",
+    marginBottom: 8,
+  },
+
+  quickServicesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  quickServicesTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  seeAllButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#f0fdfa",
+  },
+
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#10b981",
+  },
+
+  quickServicesScroll: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+
+  quickServiceCard: {
+    width: 140,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  quickServiceImageContainer: {
+    width: "100%",
+    height: 120,
+    backgroundColor: "#f8fafc",
+    overflow: "hidden",
+  },
+
+  quickServiceImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  quickServiceIconFallback: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  quickServiceInfo: {
+    padding: 10,
+    alignItems: "center",
+  },
+
+  quickServiceName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "center",
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+
+  quickServicePrice: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#10b981",
+    textAlign: "center",
+  },
+
+  trendingPackagesContainer: {
+    paddingVertical: 12,
+    backgroundColor: "#fdfdfd",
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  trendingPackagesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  trendingHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  trendingPackagesTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  trendingSubtitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#10b981",
+  },
+
+  trendingPackagesScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
   },
 
 });
