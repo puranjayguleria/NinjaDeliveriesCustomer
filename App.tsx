@@ -65,8 +65,10 @@ import FoodOrderSuccessScreen from "@/screens/food/FoodOrderSuccessScreen";
 import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
 import FoodOrdersScreen from "@/screens/food/FoodOrdersScreen";
 import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
+import FoodSearchScreen from "@/screens/food/FoodSearchScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
 import { useFoodCart } from "./context/FoodCartContext";
+import SwiggyTabBar from "@/components/SwiggyTabBar";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
 import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
@@ -119,7 +121,6 @@ import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
-import CurvedTabBar from "@/components/CurvedTabBar";
 
 import OrdersScreen from "./screens/shared/OrdersScreen";
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
@@ -708,6 +709,7 @@ function FoodHomeStack() {
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodHome" component={FoodScreen} />
       <FoodStack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
+      <FoodStack.Screen name="FoodSearch" component={FoodSearchScreen} />
       <FoodStack.Screen name="Profile" component={ProfileScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
     </FoodStack.Navigator>
@@ -761,6 +763,42 @@ function FoodReorderStack() {
   );
 }
 
+function FoodSearchStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodSearchHome" component={FoodSearchScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodAccountStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodAccountHome" component={ProfileScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodMenuStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodMenuHome" component={FoodCategoriesScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
+function FoodHistoryTabStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="FoodHistoryTabHome">
+        {() => <FoodOrdersScreen mode="history" />}
+      </FoodStack.Screen>
+      <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
 function FoodTabs() {
   const { totalItems } = useFoodCart();
 
@@ -770,34 +808,33 @@ function FoodTabs() {
         const state = props.state;
         const activeIndex = state.index;
         const tabs = [
-          { name: 'FoodRestaurants', label: 'Restaurants', icon: 'restaurant-outline' as const, iconFocused: 'restaurant' as const },
-          { name: 'FoodMenu',        label: 'Menu',        icon: 'grid-outline' as const,        iconFocused: 'grid' as const },
-          { name: 'FoodCartTab',     label: 'Cart',        icon: 'bag-outline' as const,         iconFocused: 'bag' as const, badge: totalItems },
-          { name: 'FoodHistory',     label: 'History',     icon: 'receipt-outline' as const,     iconFocused: 'receipt' as const },
+          { name: 'FoodRestaurants', label: 'Home',    icon: 'home-outline' as const,       iconFocused: 'home' as const },
+          { name: 'FoodMenu',        label: 'Menu',    icon: 'grid-outline' as const,        iconFocused: 'grid' as const },
+          { name: 'FoodCartTab',     label: 'Cart',    icon: 'bag-outline' as const,         iconFocused: 'bag' as const, badge: totalItems },
+          { name: 'FoodHistoryTab',  label: 'History', icon: 'receipt-outline' as const,     iconFocused: 'receipt' as const },
         ];
         return (
-          <CurvedTabBar
+          <SwiggyTabBar
             tabs={tabs}
             activeIndex={activeIndex}
             onPress={i => {
               const route = state.routes[i];
-              // Always reset the stack to root when pressing any tab
               props.navigation.dispatch({
                 type: 'RESET',
                 payload: { index: 0, routes: [{ name: route.name }] },
                 target: state.key,
               });
             }}
-            bubbleColor="#FF6B35"
+            activeColor="#FC8019"
           />
         );
       }}
       screenOptions={{ headerShown: false }}
     >
       <FoodTab.Screen name="FoodRestaurants" component={FoodHomeStack} />
-      <FoodTab.Screen name="FoodMenu" component={FoodCategoriesScreen} />
-      <FoodTab.Screen name="FoodCartTab" component={FoodCartStack} />
-      <FoodTab.Screen name="FoodHistory" component={FoodHistoryStack} />
+      <FoodTab.Screen name="FoodMenu"        component={FoodMenuStack} />
+      <FoodTab.Screen name="FoodCartTab"     component={FoodCartStack} />
+      <FoodTab.Screen name="FoodHistoryTab"  component={FoodHistoryTabStack} />
     </FoodTab.Navigator>
   );
 }

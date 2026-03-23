@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   listenFoodCategoriesWithItems,
   listenActiveRestaurants,
@@ -14,6 +16,8 @@ import {
 import DishModal from '@/components/food/DishModal';
 
 export default function FoodCategoriesScreen() {
+  const navigation = useNavigation<any>();
+  const insets     = useSafeAreaInsets();
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,8 +47,14 @@ export default function FoodCategoriesScreen() {
   return (
     <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="arrow-back" size={22} color="#1e293b" />
+        </TouchableOpacity>
         <Text style={s.headerTitle}>Menu Categories</Text>
+        <View style={{ width: 36 }} />
+      </View>
+      <View style={s.searchWrap}>
         <View style={s.searchBox}>
           <Ionicons name="search-outline" size={16} color="#94a3b8" />
           <TextInput
@@ -93,13 +103,13 @@ const s = StyleSheet.create({
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'ios' ? 52 : 40,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1e293b', marginBottom: 10 },
+  backBtn:     { width: 36 },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: '800', color: '#1e293b', textAlign: 'center' },
+  searchWrap:  { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   searchBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#f1f5f9', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,

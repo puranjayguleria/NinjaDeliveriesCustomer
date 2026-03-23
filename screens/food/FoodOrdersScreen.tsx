@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { useFoodCart } from '@/context/FoodCartContext';
@@ -40,6 +41,7 @@ type Props = { mode?: 'reorder' | 'history' };
 
 export default function FoodOrdersScreen({ mode = 'history' }: Props) {
   const navigation = useNavigation<any>();
+  const insets     = useSafeAreaInsets();
   const { addItem, clearCart } = useFoodCart();
   const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,9 +158,15 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
   return (
     <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <View style={s.header}>
-        <Text style={s.headerTitle}>{mode === 'reorder' ? 'Reorder' : 'Order History'}</Text>
-        <Text style={s.headerSub}>{orders.length} order{orders.length !== 1 ? 's' : ''}</Text>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="arrow-back" size={22} color="#1e293b" />
+        </TouchableOpacity>
+        <View style={s.headerCenter}>
+          <Text style={s.headerTitle}>{mode === 'reorder' ? 'Reorder' : 'Order History'}</Text>
+          <Text style={s.headerSub}>{orders.length} order{orders.length !== 1 ? 's' : ''}</Text>
+        </View>
+        <View style={{ width: 36 }} />
       </View>
 
       {orders.length === 0 ? (
@@ -244,17 +252,17 @@ const s = StyleSheet.create({
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'ios' ? 52 : 40,
-    paddingBottom: 14,
-    paddingHorizontal: 20,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
-  headerSub: { fontSize: 13, color: '#94a3b8', marginBottom: 2 },
+  backBtn:      { width: 36 },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle:  { fontSize: 17, fontWeight: '800', color: '#1e293b' },
+  headerSub:    { fontSize: 12, color: '#94a3b8', marginTop: 2 },
   card: {
     backgroundColor: '#fff', borderRadius: 16, padding: 16,
     marginBottom: 12,
