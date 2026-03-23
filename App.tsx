@@ -68,7 +68,7 @@ import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
 import FoodSearchScreen from "@/screens/food/FoodSearchScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
 import { useFoodCart } from "./context/FoodCartContext";
-import SwiggyTabBar from "@/components/SwiggyTabBar";
+import SwiggyTabBar from "@/components/Footertabs";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
 import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";

@@ -40,6 +40,7 @@ import { useLocationContext } from "@/context/LocationContext";
 import { fetchLocationFlags } from "@/utils/fetchLocationFlags";
 import { useCart } from "@/context/CartContext";
 import { useToggleContext } from "@/context/ToggleContext";
+import ModeToggle from "@/components/ModeToggle";
 import NotificationModal from "../../components/ErrorModal";
 import AreaUnavailableModal from "../../components/AreaUnavailableModal";
 import Loader from "@/components/VideoLoader";
@@ -61,7 +62,7 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_VIDEO_HEIGHT = 220;
+const INITIAL_VIDEO_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
 const COLLAPSED_VIDEO_HEIGHT = 100;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
@@ -2105,59 +2106,13 @@ export default function ProductsHomeScreen() {
             </View>
 
             {/* Grocery/Service/Food Toggle - BELOW SEARCH */}
-            <View style={styles.toggleRow}>
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "grocery" && styles.toggleBtnActive,
-                ]}
-                onPress={() => setActiveVerticalMode("grocery")}
-              >
-                <Text
-                  style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "grocery" && styles.toggleLabelActive,
-                  ]}
-                >
-                  Grocery
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "service" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveVerticalMode("service");
-                  nav.navigate("ServicesHome");
-                }}
-              >
-                <Text
-                  style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "service" && styles.toggleLabelActive,
-                  ]}
-                >
-                  Service
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "food" && styles.toggleBtnActive,
-                ]}
-                onPress={() => setActiveVerticalMode("food")}
-              >
-                <Text
-                  style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "food" && styles.toggleLabelActive,
-                  ]}
-                >
-                  Food
-                </Text>
-              </Pressable>
-            </View>
+            <ModeToggle
+              activeMode={activeVerticalMode}
+              onPress={(mode) => {
+                setActiveVerticalMode(mode);
+                if (mode === 'service') nav.navigate('ServicesHome');
+              }}
+            />
 
             {/* Informational messages displayed below the search bar.
                Show the highest priority message first (homeMsg from Firestore

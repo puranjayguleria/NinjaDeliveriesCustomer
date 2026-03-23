@@ -1,5 +1,6 @@
 import { useLocationContext } from "../../context/LocationContext";
 import { useToggleContext } from "../../context/ToggleContext";
+import ModeToggle from "../../components/ModeToggle";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -238,16 +239,12 @@ const HEADER_GIFS = [
   require("../../assets/ninjaVideo.gif"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = 220;
+const SERVICES_HEADER_MEDIA_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
 const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 100;
 const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
 const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
-// Solid, very light + friendly header colors (no transparency).
-// Soft off-white to a subtle mint/teal tint feels calmer during scroll.
 const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
-// Sticky header should only reserve space until the search bar (not the full media height).
-// Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 220 : 205;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? Math.round(Dimensions.get('window').height * 0.45) + 100 : Math.round(Dimensions.get('window').height * 0.45) + 85;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'electrician',
@@ -2049,64 +2046,13 @@ export default function ServicesScreen() {
           </View>
 
           {/* Grocery/Service/Food Toggle */}
-          <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "grocery" && styles.toggleBtnActive,
-              ]}
-              onPress={() => {
-                setActiveMode("grocery");
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "grocery" && styles.toggleLabelActive,
-                ]}
-              >
-                Grocery
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "service" && styles.toggleBtnActive,
-              ]}
-              onPress={() => setActiveMode("service")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "service" && styles.toggleLabelActive,
-                ]}
-              >
-                Service
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "food" && styles.toggleBtnActive,
-              ]}
-              onPress={() => {
-                setActiveMode("food");
-                navigation.navigate("ProductsHome");
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "food" && styles.toggleLabelActive,
-                ]}
-              >
-                Food
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <ModeToggle
+            activeMode={activeMode}
+            onPress={(mode) => {
+              setActiveMode(mode);
+              if (mode === 'food') navigation.navigate('ProductsHome');
+            }}
+          />
         </View>
       </Animated.View>
     );

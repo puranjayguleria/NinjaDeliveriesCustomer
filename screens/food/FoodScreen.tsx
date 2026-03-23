@@ -8,6 +8,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { useLocationContext } from "@/context/LocationContext";
 import { useToggleContext } from "@/context/ToggleContext";
+import ModeToggle from "@/components/ModeToggle";
 import {
   listenActiveRestaurants,
   listenFoodCategoriesWithItems,
@@ -41,7 +42,7 @@ export default function FoodScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [isVegMode, setIsVegMode] = useState(false);
+  const [isVegMode, setIsVegMode] = useState(true);
   const [dishModal, setDishModal] = useState<{
     visible: boolean;
     restaurantId: string;
@@ -75,14 +76,25 @@ export default function FoodScreen() {
   }
 
   return (
-    <View style={s.container}>
+    <ImageBackground
+      source={require("../../assets/foodScreenbg.png")}
+      style={s.container}
+      resizeMode="repeat"
+    >
+      {!isVegMode && <View style={s.fullScreenRedOverlay} />}
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <ImageBackground
-          source={require("../../assets/foodBG.png")}
+          key={isVegMode ? "veg" : "nonveg"}
+          source={
+            isVegMode
+              ? require("../../assets/ninjafoodVeg.png")
+              : require("../../assets/ninjafoodNonVeg.png")
+          }
           style={s.hero}
-          resizeMode="cover"
+          resizeMode="stretch"
         >
+          {!isVegMode && <View style={s.redOverlay} />}
           <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
             <View style={s.locationRow}>
               <Ionicons name="location-sharp" size={18} color={ORANGE} />
@@ -109,35 +121,26 @@ export default function FoodScreen() {
                 <Text style={s.searchPlaceholder}>Search restaurants, cuisines...</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.vegToggle, isVegMode && s.vegToggleActive]}
+                style={s.toggleSwitch}
                 onPress={() => setIsVegMode(!isVegMode)}
                 activeOpacity={0.8}
               >
-                <View style={[s.vegDot, isVegMode && s.vegDotActive]} />
-                <Text style={[s.vegToggleText, isVegMode && s.vegToggleTextActive]}>VEG</Text>
+                <View style={[s.toggleTrack, isVegMode && s.toggleTrackActive]}>
+                  <View style={[s.toggleThumb, isVegMode && s.toggleThumbActive]}>
+                    <View style={[s.toggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
+                  </View>
+                </View>
               </TouchableOpacity>
             </View>
 
-            <View style={s.modeRow}>
-              {(["grocery", "service", "food"] as const).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[s.modeBtn, activeMode === mode && s.modeBtnActive]}
-                  onPress={() => setActiveMode(mode)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[s.modeLabel, activeMode === mode && s.modeLabelActive]}>
-                    {mode === "grocery" ? "Grocery" : mode === "service" ? "Services" : "Food"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
           </View>
         </ImageBackground>
 
         {categories.length > 0 && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>{"What's on your mind?"}</Text>
+            <View style={s.categoriesBorder}>
             <FlatList
               data={categories}
               horizontal
@@ -165,6 +168,7 @@ export default function FoodScreen() {
                 </TouchableOpacity>
               )}
             />
+            </View>
           </View>
         )}
 
@@ -270,25 +274,43 @@ export default function FoodScreen() {
         restaurantName={dishModal.restaurantName}
         filterCategoryId={dishModal.filterCategoryId}
       />
-    </View>
+    </ImageBackground>
   );
 }
 
 
 const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: "#fff" },
+  fullScreenRedOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(220, 38, 38, 0.12)",
+    zIndex: 1,
+    pointerEvents: "none",
+  },
   loader:     { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
   loaderText: { marginTop: 12, color: GRAY, fontSize: 14 },
 
-  hero:        { width: "100%" },
-  heroContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  hero:        { width: "100%", height: 320 },
+  heroContent: { paddingHorizontal: 16, paddingBottom: 20 },
+  redOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(220, 38, 38, 0.15)",
+  },
 
   locationRow:   { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 },
   locationBtn:   { flexDirection: "row", alignItems: "center" },
   locationLabel: { fontSize: 16, fontWeight: "800", color: DARK, maxWidth: 200 },
   locationSub:   { fontSize: 12, color: "#555", marginBottom: 12, marginLeft: 22 },
 
-  searchRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
   searchBar: {
     flex: 1, flexDirection: "row", alignItems: "center",
     backgroundColor: "#fff", borderRadius: 10,
@@ -297,6 +319,80 @@ const s = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
   },
   searchPlaceholder: { fontSize: 14, color: GRAY },
+  
+  toggleSwitch: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  toggleTrack: {
+    width: 50,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "#e57373",
+    justifyContent: "center",
+    padding: 2,
+  },
+  toggleTrackActive: {
+    backgroundColor: "#81c784",
+  },
+  toggleThumb: {
+    width: 22,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 4,
+    alignSelf: "flex-end",
+  },
+  toggleThumbActive: {
+    alignSelf: "flex-start",
+  },
+  toggleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  
+  vegSwitchContainer: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  vegSwitchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  vegSwitchBtnActive: {
+    backgroundColor: "#f0f0f0",
+  },
+  vegSwitchText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: GRAY,
+  },
+  vegSwitchTextActive: {
+    color: DARK,
+    fontWeight: "700",
+  },
+  
   vegToggle: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "#fff", borderRadius: 10,
@@ -307,7 +403,7 @@ const s = StyleSheet.create({
   },
   vegToggleActive:     { backgroundColor: GREEN, borderColor: GREEN },
   vegDot:              { width: 9, height: 9, borderRadius: 5, backgroundColor: "#dc2626" },
-  vegDotActive:        { backgroundColor: "#fff" },
+  vegDotActive:        { backgroundColor: GREEN },
   vegToggleText:       { fontSize: 11, fontWeight: "700", color: DARK },
   vegToggleTextActive: { color: "#fff" },
 
@@ -325,6 +421,12 @@ const s = StyleSheet.create({
   modeLabelActive: { color: DARK, fontWeight: "700" },
 
   section:           { marginTop: 16 },
+  categoriesBorder: {
+    marginHorizontal: 12,
+    borderRadius: 16,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
   sectionTitle:      { fontSize: 18, fontWeight: "800", color: DARK, marginBottom: 14, paddingHorizontal: 16 },
   catItem:           { alignItems: "center", marginRight: 4, width: 80 },
   catImg:            { width: 72, height: 72, borderRadius: 36 },
@@ -333,7 +435,7 @@ const s = StyleSheet.create({
 
   divider: { height: 1, backgroundColor: "#f0f0f0", marginTop: 16 },
 
-  filtersWrap:    { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
+  filtersWrap:    { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0", backgroundColor: "#fff" },
   filtersRow:     { paddingHorizontal: 12, gap: 8 },
   chip:           { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "#d4d5d9", backgroundColor: "#fff" },
   chipActive:     { borderColor: ORANGE, backgroundColor: "#fff8f3" },

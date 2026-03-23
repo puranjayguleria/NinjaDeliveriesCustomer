@@ -231,37 +231,16 @@ export async function getActiveCategoryIds(): Promise<Set<string>> {
   return ids;
 }
 
-/** Real-time listener for active food categories filtered by active menu items */
+/** Real-time listener for all active food categories */
 export function listenFoodCategoriesWithItems(
   onData: (categories: FoodCategory[]) => void,
   onError?: (e: Error) => void
 ) {
-  // Listen to restaurant_menu for available items
-  const menuUnsub = firestore()
-    .collection('restaurant_menu')
-    .where('available', '==', true)
-    .onSnapshot(async menuSnap => {
-      try {
-        const activeCatIds = new Set<string>();
-        menuSnap.docs.forEach(d => {
-          const catId = d.data().categoryId;
-          if (catId) activeCatIds.add(catId);
-        });
-
-        const catSnap = await firestore()
-          .collection('restaurant_categories')
-          .where('isActive', '==', true)
-          .get();
-
-        const cats = catSnap.docs
-          .map(d => ({ id: d.id, ...(d.data() as Omit<FoodCategory, 'id'>) }))
-          .filter(cat => activeCatIds.has(cat.id));
-
-        onData(cats);
-      } catch (e) {
-        onError?.(e as Error);
-      }
-    }, onError);
-
-  return menuUnsub;
+  return firestore()
+    .collection('restaurant_categories')
+    .where('isActive', '==', true)
+    .onSnapshot(
+      snap => onData(snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<FoodCategory, 'id'>) }))),
+      onError
+    );
 }
