@@ -14,6 +14,7 @@ import {
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { FirestoreService, ServiceBooking } from "../../services/firestoreService";
+import { firestore } from "../../firebase.native";
 import { BookingUtils } from "../../utils/bookingUtils";
 import TechnicianInfo from "../../components/TechnicianInfo";
 import ServiceCancellationModal from "../../components/ServiceCancellationModal";
@@ -181,9 +182,6 @@ export default function TrackBookingScreen() {
     
     try {
       console.log(`📞 Fetching company phone for ID: ${companyId}`);
-      
-      // Import firestore from the firebase config
-      const { firestore } = require('../firebase.native');
       
       const companyDoc = await firestore()
         .collection('service_company')
