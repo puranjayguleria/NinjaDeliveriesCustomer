@@ -247,7 +247,7 @@ const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
 const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 // Sticky header should only reserve space until the search bar (not the full media height).
 // Keep this compact; history is inline with the search bar.
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 340 : 325;
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 280 : 265;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'plumber',
@@ -438,6 +438,7 @@ export default function ServicesScreen() {
   const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
+  const liveDotBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
   const [randomServices, setRandomServices] = useState<any[]>([]);
   const [plumberServices, setPlumberServices] = useState<any[]>([]);
@@ -1353,15 +1354,26 @@ export default function ServicesScreen() {
           }
           
           const bookings: LiveBooking[] = [];
+          const seenBookings = new Set<string>();
           
           snapshot.forEach(doc => {
             const data = doc.data();
-            bookings.push({
-              id: doc.id,
-              serviceName: data.serviceName || data.serviceTitle || 'Service',
-              location: data.address?.city || data.address?.area || 'Your area',
-              timestamp: data.createdAt,
-            });
+            const serviceName = data.serviceName || data.serviceTitle || 'Service';
+            const location = data.address?.city || data.address?.area || 'Your area';
+            
+            // Create unique key based on service name and location
+            const uniqueKey = `${serviceName}-${location}`;
+            
+            // Only add if not already seen
+            if (!seenBookings.has(uniqueKey)) {
+              seenBookings.add(uniqueKey);
+              bookings.push({
+                id: doc.id,
+                serviceName: serviceName,
+                location: location,
+                timestamp: data.createdAt,
+              });
+            }
           });
 
           setLiveBookings(bookings);
@@ -1444,51 +1456,49 @@ export default function ServicesScreen() {
     };
   }, [serviceBanners.length]);
 
-  // Auto-scroll live bookings with smooth continuous marquee effect
+  // Auto-cycle through live bookings vertically (one by one)
+  const [currentBookingIndex, setCurrentBookingIndex] = useState(0);
+  const [shouldBlinkBooking, setShouldBlinkBooking] = useState(false);
+  const bookingTransitionAnim = React.useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    if (liveBookings.length === 0) return;
+    if (liveBookings.length <= 1) return;
 
-    // iOS: this continuous scroll can keep a responder active and make the
-    // rest of the screen feel "not clickable". Disable it on iOS.
-    if (Platform.OS === 'ios') {
-      return;
+    const interval = setInterval(() => {
+      // Slide up animation
+      Animated.timing(bookingTransitionAnim, {
+        toValue: -24,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        // Change booking
+        setCurrentBookingIndex((prevIndex) => 
+          (prevIndex + 1) % liveBookings.length
+        );
+        // Reset position to bottom and slide up
+        bookingTransitionAnim.setValue(24);
+        Animated.timing(bookingTransitionAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 3000); // Change booking every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [liveBookings.length, bookingTransitionAnim]);
+
+  // Trigger blink only when new bookings are added
+  useEffect(() => {
+    if (liveBookings.length > 0) {
+      setShouldBlinkBooking(true);
     }
-
-    let animationFrameId: number;
-    const scrollSpeed = 1; // Pixels per frame - increased from 0.5 to 1
-
-    const smoothScroll = () => {
-      if (liveBookingsScrollRef.current) {
-        scrollX.current += scrollSpeed;
-        
-        liveBookingsScrollRef.current.scrollTo({
-          x: scrollX.current,
-          animated: false, // Use false for smooth continuous scroll
-        });
-      }
-      
-      animationFrameId = requestAnimationFrame(smoothScroll);
-    };
-
-    animationFrameId = requestAnimationFrame(smoothScroll);
-
-    return () => {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
   }, [liveBookings.length]);
 
   const latestLiveBooking = React.useMemo(() => {
     if (!liveBookings?.length) return null;
-    // Query is already orderBy createdAt desc, but keep it defensive.
-    const sorted = [...liveBookings].sort((a, b) => {
-      const aSec = (a as any)?.timestamp?.seconds ?? 0;
-      const bSec = (b as any)?.timestamp?.seconds ?? 0;
-      return bSec - aSec;
-    });
-    return sorted[0] || null;
-  }, [liveBookings]);
+    return liveBookings[currentBookingIndex] || liveBookings[0];
+  }, [liveBookings, currentBookingIndex]);
 
   // Fetch random packages for modal cards
   useEffect(() => {
@@ -1780,16 +1790,16 @@ export default function ServicesScreen() {
 
 
 
-  // Blinking animation for live bookings
+  // Continuous blinking animation for live dot
   useEffect(() => {
-    const blinkAnimation = Animated.loop(
+    const liveDotBlink = Animated.loop(
       Animated.sequence([
-        Animated.timing(bookingBlinkAnim, {
-          toValue: 0.6,
+        Animated.timing(liveDotBlinkAnim, {
+          toValue: 0.3,
           duration: 800,
           useNativeDriver: true,
         }),
-        Animated.timing(bookingBlinkAnim, {
+        Animated.timing(liveDotBlinkAnim, {
           toValue: 1,
           duration: 800,
           useNativeDriver: true,
@@ -1797,12 +1807,77 @@ export default function ServicesScreen() {
       ])
     );
 
-    blinkAnimation.start();
+    liveDotBlink.start();
+
+    return () => {
+      liveDotBlink.stop();
+    };
+  }, [liveDotBlinkAnim]);
+
+  // Smooth blinking animation for Book Now buttons
+  useEffect(() => {
+    const buttonBlink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, {
+          toValue: 0.7,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blinkAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    buttonBlink.start();
+
+    return () => {
+      buttonBlink.stop();
+    };
+  }, [blinkAnim]);
+
+  // Blinking animation for live bookings - trigger only on new bookings
+  useEffect(() => {
+    if (!shouldBlinkBooking || !latestLiveBooking) return;
+
+    // Reset to 1 first
+    bookingBlinkAnim.setValue(1);
+
+    // Then animate blink
+    const blinkAnimation = Animated.sequence([
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 0.2,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 0.2,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    blinkAnimation.start(() => {
+      // Reset the flag after animation completes
+      setShouldBlinkBooking(false);
+    });
 
     return () => {
       blinkAnimation.stop();
     };
-  }, [bookingBlinkAnim]);
+  }, [shouldBlinkBooking, bookingBlinkAnim]);
 
   // Arrow movement animation for View All button and package cards
   useEffect(() => {
@@ -1844,40 +1919,28 @@ export default function ServicesScreen() {
   const filteredCategories = getFilteredCategories();
 
   const onServicePress = useCallback((svc: any) => {
-    if (!svc?.id) return;
-    const categoryId = String(svc.categoryId || svc.categoryMasterId || '');
-    if (!categoryId) {
-      console.log('❌ Service missing categoryId/categoryMasterId; cannot open flow', svc);
-      return;
-    }
-
-    const hasPackages = Array.isArray(svc?.packages) && svc.packages.length > 0;
-
-    setTapLoading({ visible: true, message: 'Opening…' });
-    try {
-      if (hasPackages) {
-        // PackageSelectionScreen supports (serviceId + serviceName) to fetch only that
-        // service’s packages.
-        navigation.navigate('PackageSelection', {
-          serviceTitle: svc.categoryName || svc.name || 'Service',
-          categoryId,
-          allCategories: serviceCategories,
-          serviceId: svc.id,
-          serviceName: svc.name || 'Service',
-        } as any);
-      } else {
-        // Direct-price services should open the category service selection screen
-        // so the user can pick the service and continue to CompanySelection -> SelectDateTime.
-        navigation.navigate('ServiceCategory', {
-          serviceTitle: svc.categoryName || 'Services',
-          categoryId,
-        } as any);
+      if (!svc?.id) return;
+      const categoryId = String(svc.categoryId || svc.categoryMasterId || '');
+      if (!categoryId) {
+        console.log('❌ Service missing categoryId/categoryMasterId; cannot open flow', svc);
+        return;
       }
-    } catch (e) {
-      console.log('❌ Failed to navigate from service search', e);
-      setTapLoading({ visible: false });
-    }
-  }, [navigation, serviceCategories]);
+
+      setTapLoading({ visible: true, message: 'Opening…' });
+      try {
+        // Navigate directly to CompanySelection screen
+        navigation.navigate('CompanySelection', {
+          serviceTitle: svc.name || 'Service',
+          categoryId,
+          issues: [svc.name],
+          serviceIds: [svc.id],
+          allCategories: serviceCategories,
+        } as any);
+      } catch (e) {
+        console.log('❌ Failed to navigate to CompanySelection', e);
+        setTapLoading({ visible: false });
+      }
+    }, [navigation, serviceCategories]);
 
   // Ensure we never leave the "Opening..." overlay stuck if navigation succeeds.
   useFocusEffect(
@@ -2089,12 +2152,25 @@ export default function ServicesScreen() {
                       )}
                     </View>
                     <View style={styles.quickServiceInfo}>
-                      <Text style={styles.quickServiceName} numberOfLines={2}>
-                        {service.name || 'Service'}
-                      </Text>
-                      <Text style={styles.quickServicePrice} numberOfLines={1}>
-                        {displayPrice}
-                      </Text>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={18} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2172,12 +2248,25 @@ export default function ServicesScreen() {
                       )}
                     </View>
                     <View style={styles.quickServiceInfo}>
-                      <Text style={styles.quickServiceName} numberOfLines={2}>
-                        {service.name || 'Service'}
-                      </Text>
-                      <Text style={styles.quickServicePrice} numberOfLines={1}>
-                        {displayPrice}
-                      </Text>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={18} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2310,19 +2399,21 @@ export default function ServicesScreen() {
                       <Text style={styles.packageCardDurationText}>{displayDuration}</Text>
                     </View>
 
-                    {/* Price Section - Compact Badge with Arrow */}
+                    {/* Book Now Button */}
                     <View style={styles.packageCardFooter}>
-                      <View style={styles.packagePriceBadge}>
-                        <View style={styles.packagePriceContent}>
-                          <View>
-                            <Text style={styles.packageCardPriceLabel}>Starting from</Text>
-                            <Text style={styles.packageCardPrice}>{displayPrice}</Text>
-                          </View>
+                      <Animated.View style={{ opacity: blinkAnim, flex: 1 }}>
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.packageBookNowButton}
+                        >
+                          <Text style={styles.packageBookNowText}>Book Now</Text>
                           <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
-                            <Ionicons name="chevron-forward" size={20} color="#10b981" />
+                            <Ionicons name="arrow-forward" size={18} color="#fff" />
                           </Animated.View>
-                        </View>
-                      </View>
+                        </LinearGradient>
+                      </Animated.View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2798,7 +2889,11 @@ export default function ServicesScreen() {
             >
               <View style={styles.locationRowLeft}>
                 <Ionicons name="location-outline" size={18} color="#00b4a0" />
-                <Text style={[styles.locationRowText, styles.locationRowTextHeader]} numberOfLines={1}>
+                <Text style={[
+                  styles.locationRowText, 
+                  styles.locationRowTextHeader,
+                  !hasSelectedLocation && styles.locationRowTextRed
+                ]} numberOfLines={1}>
                   {hasSelectedLocation
                     ? `Delivering to ${locationDisplayText}`
                     : 'Set delivery location'}
@@ -3016,43 +3111,42 @@ export default function ServicesScreen() {
               {/* Live Updates Section */}
               <View style={styles.liveUpdatesContainer}>
                 <View style={styles.liveUpdatesHeader}>
-                  <Animated.View style={[styles.liveIndicator, { opacity: bookingBlinkAnim }]}>
-                    <View style={styles.liveDot} />
+                  <View style={styles.liveIndicator}>
+                    <Animated.View style={[styles.liveDot, { opacity: liveDotBlinkAnim }]} />
                     <Text style={styles.liveText}>Live Bookings</Text>
-                  </Animated.View>
+                  </View>
                 </View>
                 <View style={styles.liveUpdatesWrapper}>
                   {latestLiveBooking ? (
-                    <Animated.View style={[styles.liveUpdateCard, { opacity: bookingBlinkAnim }]}>
-                      <View style={styles.liveUpdateCardLeft}>
-                        <View style={styles.liveUpdateDot} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                            {latestLiveBooking.serviceName}
-                          </Text>
-                          <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                            Booked in {latestLiveBooking.location}
-                          </Text>
-                        </View>
-                      </View>
+                    <Animated.View style={[
+                      styles.liveUpdateItem, 
+                      { 
+                        transform: [{ translateY: bookingTransitionAnim }]
+                      }
+                    ]}>
+                      <View style={styles.liveUpdateDot} />
+                      <Text style={styles.liveUpdateText} numberOfLines={1}>
+                        <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
+                        {' '}booked in{' '}
+                        <Text style={[
+                          styles.liveUpdateLocation,
+                          latestLiveBooking.location === 'Your area' && styles.liveUpdateLocationRed
+                        ]}>
+                          {latestLiveBooking.location}
+                        </Text>
+                      </Text>
                     </Animated.View>
                   ) : (
-                    <View style={styles.liveUpdateCard}>
-                      <View style={styles.liveUpdateCardLeft}>
-                        <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                            No live bookings
-                          </Text>
-                          <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                            No active bookings right now
-                          </Text>
-                        </View>
-                      </View>
-                  </View>
-                )}
+                    <View style={styles.liveUpdateItem}>
+                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
+                      <Text style={styles.liveUpdateText}>
+                        <Text style={styles.liveUpdateBold}>No live bookings</Text>
+                        {' '}at the moment
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
             </View>
 
 
@@ -3074,7 +3168,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking]);
 
   return (
     <ImageBackground
@@ -3317,6 +3411,10 @@ const styles = StyleSheet.create({
 
   locationRowTextHeader: {
     color: '#0f172a',
+  },
+
+  locationRowTextRed: {
+    color: '#ef4444',
   },
 
   headerOverlay: {
@@ -3765,15 +3863,14 @@ const styles = StyleSheet.create({
 
   // Live Updates Styles
   liveUpdatesContainer: {
-    paddingVertical: 8,
-    // backgroundColor: "#f8fafc",
+    paddingVertical: 12,
     backgroundColor: "white",
     marginBottom: 4,
   },
 
   liveUpdatesHeader: {
     paddingHorizontal: 16,
-    marginBottom: 6,
+    marginBottom: 8,
   },
 
   liveIndicator: {
@@ -3794,93 +3891,49 @@ const styles = StyleSheet.create({
   },
 
   liveText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: "#0f172a",
   },
 
   liveUpdatesWrapper: {
-    overflow: "hidden",
-  },
-
-  liveUpdatesScroll: {
     paddingHorizontal: 16,
-    flexDirection: "row",
+    height: 24,
+    overflow: "hidden",
   },
 
   liveUpdateItem: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 40,
     gap: 8,
   },
 
   liveUpdateDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "#00b4a0",
-  },
-
-  liveUpdateSimpleText: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "400",
-  },
-
-  liveUpdateLocation: {
-    color: "#00b4a0",
-    fontWeight: "500",
-  },
-
-  liveUpdateCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    marginRight: 10,
-    minWidth: 270,
-  },
-
-  liveUpdateCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-
-  liveUpdateCardTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  liveUpdateCardSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
   },
 
   liveUpdateText: {
     fontSize: 13,
     color: "#64748b",
     fontWeight: "400",
+    flex: 1,
   },
 
   liveUpdateBold: {
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#0f172a",
+  },
+
+  liveUpdateLocation: {
+    color: "#00b4a0",
+    fontWeight: "600",
+  },
+
+  liveUpdateLocationRed: {
+    color: "#ef4444",
   },
 
   // Grid Styles (3 columns)
@@ -4387,7 +4440,6 @@ const styles = StyleSheet.create({
     width: 140,
     backgroundColor: "#ffffff",
     borderRadius: 12,
-    overflow: "hidden",
     borderWidth: 1,
     borderColor: "#e2e8f0",
     shadowColor: "#000",
@@ -4402,6 +4454,8 @@ const styles = StyleSheet.create({
     height: 120,
     backgroundColor: "#f8fafc",
     overflow: "hidden",
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
 
   quickServiceImage: {
@@ -4418,16 +4472,24 @@ const styles = StyleSheet.create({
 
   quickServiceInfo: {
     padding: 10,
-    alignItems: "center",
+    width: "100%",
+    position: "relative",
+    minHeight: 70,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+
+  quickServiceTextContainer: {
+    flex: 1,
+    paddingRight: 8,
   },
 
   quickServiceName: {
     fontSize: 13,
     fontWeight: "600",
     color: "#0f172a",
-    textAlign: "center",
     lineHeight: 16,
-    marginBottom: 4,
   },
 
   quickServicePrice: {
@@ -4437,11 +4499,50 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  trendingPackagesContainer: {
-    paddingVertical: 12,
-    backgroundColor: "#fdfdfd",
-    marginBottom: 12,
-    marginTop: 8,
+  bookNowButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+
+  bookNowText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  addToCartButton: {
+    flexShrink: 0,
+  },
+
+  addToCartIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  packageBookNowButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  packageBookNowText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
   trendingPackagesHeader: {

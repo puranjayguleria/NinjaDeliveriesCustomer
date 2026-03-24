@@ -693,7 +693,17 @@ export default function CompanySelectionScreen() {
       
       const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
-      setCompanies(companiesWithActiveWorkers);
+      // Deduplicate companies by companyId or id
+      const uniqueCompanies = Array.from(
+        new Map(
+          companiesWithActiveWorkers.map(company => [
+            String(company.companyId || company.id || '').trim(),
+            company
+          ])
+        ).values()
+      );
+      
+      setCompanies(uniqueCompanies);
     } catch {
       setCompanies([]);
     } finally {
