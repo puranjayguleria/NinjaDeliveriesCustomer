@@ -846,7 +846,7 @@ function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
-  const { activeMode } = useToggleContext();
+  const { activeMode, setActiveMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
@@ -884,6 +884,7 @@ function AppTabs() {
             
             const flags = {
               grocery: data?.grocery ?? true,
+              food: data?.food ?? true,
               services: data?.services ?? true,
             };
             
@@ -960,14 +961,55 @@ function AppTabs() {
     // Update previous value
     prevGroceryRef.current = showGrocery;
   }, [showGrocery]);
+
+  // Switch from food mode to grocery mode when food becomes unavailable
+  useEffect(() => {
+    if (activeMode === 'food' && !showFood) {
+      console.log('[AppTabs] Food unavailable, switching mode');
+      // Switch to first available mode
+      if (showGrocery) {
+        setActiveMode('grocery');
+      } else if (showServices) {
+        setActiveMode('service');
+      }
+    }
+  }, [activeMode, showFood, showGrocery, showServices, setActiveMode]);
+
+  // Switch from grocery mode when grocery becomes unavailable
+  useEffect(() => {
+    if (activeMode === 'grocery' && !showGrocery) {
+      console.log('[AppTabs] Grocery unavailable, switching mode');
+      // Switch to first available mode
+      if (showServices) {
+        setActiveMode('service');
+      } else if (showFood) {
+        setActiveMode('food');
+      }
+    }
+  }, [activeMode, showGrocery, showServices, showFood, setActiveMode]);
+
+  // Switch from service mode when services becomes unavailable
+  useEffect(() => {
+    if (activeMode === 'service' && !showServices) {
+      console.log('[AppTabs] Services unavailable, switching mode');
+      // Switch to first available mode
+      if (showGrocery) {
+        setActiveMode('grocery');
+      } else if (showFood) {
+        setActiveMode('food');
+      }
+    }
+  }, [activeMode, showServices, showGrocery, showFood, setActiveMode]);
   
   // Debug logging
   if (__DEV__) {
     console.log('[AppTabs] Location flags:', {
       storeId: location?.storeId,
       grocery: location?.grocery,
+      food: location?.food,
       services: location?.services,
       showGrocery,
+      showFood,
       showServices,
     });
   }
@@ -1232,9 +1274,22 @@ function AppTabs() {
       )}
 
       {/* ── Food: curved tab bar ── */}
-      {activeMode === 'food' && (
+      {activeMode === 'food' && showFood && (
         <View style={{ flex: 1 }}>
           <FoodTabs />
+        </View>
+      )}
+
+      {/* ── Food unavailable fallback ── */}
+      {activeMode === 'food' && !showFood && (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+          <Ionicons name="restaurant-outline" size={80} color="#cbd5e1" />
+          <Text style={{ fontSize: 18, fontWeight: '600', color: '#64748b', marginTop: 16 }}>
+            Food service unavailable
+          </Text>
+          <Text style={{ fontSize: 14, color: '#94a3b8', marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>
+            Food delivery is not available in your area at the moment.
+          </Text>
         </View>
       )}
       

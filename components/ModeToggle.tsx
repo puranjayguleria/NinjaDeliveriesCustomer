@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocationContext } from '../context/LocationContext';
 
 type Mode = 'grocery' | 'service' | 'food';
 
@@ -16,21 +17,39 @@ type Props = {
 };
 
 export default function ModeToggle({ activeMode, onPress }: Props) {
-  const activeIndex = TABS.findIndex(t => t.mode === activeMode);
-  const slideAnim = useRef(new Animated.Value(activeIndex)).current;
+  const { location } = useLocationContext();
+  
+  // Get location flags (default to true if not set)
+  const showGrocery = location?.grocery !== false;
+  const showFood = location?.food !== false;
+  const showServices = location?.services !== false;
+
+  // Filter tabs based on availability
+  const availableTabs = TABS.filter(tab => {
+    if (tab.mode === 'grocery') return showGrocery;
+    if (tab.mode === 'service') return showServices;
+    if (tab.mode === 'food') return showFood;
+    return true;
+  });
+
+  const activeIndex = availableTabs.findIndex(t => t.mode === activeMode);
+  const slideAnim = useRef(new Animated.Value(activeIndex >= 0 ? activeIndex : 0)).current;
   const [wrapperWidth, setWrapperWidth] = useState(0);
 
-  const tabWidth = wrapperWidth > 0 ? wrapperWidth / TABS.length : 0;
+  const tabWidth = wrapperWidth > 0 ? wrapperWidth / availableTabs.length : 0;
 
   useEffect(() => {
     if (tabWidth === 0) return;
-    Animated.spring(slideAnim, {
-      toValue: activeIndex,
-      useNativeDriver: true,
-      tension: 180,
-      friction: 18,
-    }).start();
-  }, [activeIndex, tabWidth]);
+    const newIndex = availableTabs.findIndex(t => t.mode === activeMode);
+    if (newIndex >= 0) {
+      Animated.spring(slideAnim, {
+        toValue: newIndex,
+        useNativeDriver: true,
+        tension: 180,
+        friction: 18,
+      }).start();
+    }
+  }, [activeMode, tabWidth, availableTabs.length]);
 
   return (
     <View
@@ -38,7 +57,7 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
       onLayout={e => setWrapperWidth(e.nativeEvent.layout.width)}
     >
       {/* Sliding pill */}
-      {tabWidth > 0 && (
+      {tabWidth > 0 && availableTabs.length > 0 && (
         <Animated.View
           style={[
             s.slider,
@@ -47,8 +66,8 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
               transform: [
                 {
                   translateX: slideAnim.interpolate({
-                    inputRange: [0, 1, 2],
-                    outputRange: [3, tabWidth + 3, tabWidth * 2 + 3],
+                    inputRange: availableTabs.map((_, i) => i),
+                    outputRange: availableTabs.map((_, i) => tabWidth * i + 3),
                   }),
                 },
               ],
@@ -57,8 +76,9 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
         />
       )}
 
-      {TABS.map((tab, i) => {
+      {availableTabs.map((tab, i) => {
         const focused = activeMode === tab.mode;
+        
         return (
           <TouchableOpacity
             key={tab.mode}
@@ -72,7 +92,9 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
               color={focused ? '#fff' : '#64748b'}
               style={{ marginBottom: 1 }}
             />
-            <Text style={[s.label, focused && s.labelActive]}>{tab.label}</Text>
+            <Text style={[s.label, focused && s.labelActive]}>
+              {tab.label}
+            </Text>
           </TouchableOpacity>
         );
       })}

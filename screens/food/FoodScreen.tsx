@@ -76,11 +76,7 @@ export default function FoodScreen() {
   }
 
   return (
-    <ImageBackground
-      source={require("../../assets/foodScreenbg.png")}
-      style={s.container}
-      resizeMode="repeat"
-    >
+    <View style={s.container}>
       {!isVegMode && <View style={s.fullScreenRedOverlay} />}
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
@@ -137,6 +133,11 @@ export default function FoodScreen() {
           </View>
         </ImageBackground>
 
+        <ImageBackground
+          source={require("../../assets/foodScreenbg.png")}
+          style={s.bgPattern}
+          resizeMode="repeat"
+        >
         {categories.length > 0 && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>{"What's on your mind?"}</Text>
@@ -265,6 +266,7 @@ export default function FoodScreen() {
         </View>
 
         <View style={{ height: 90 }} />
+        </ImageBackground>
       </ScrollView>
 
       <DishModal
@@ -274,13 +276,14 @@ export default function FoodScreen() {
         restaurantName={dishModal.restaurantName}
         filterCategoryId={dishModal.filterCategoryId}
       />
-    </ImageBackground>
+    </View>
   );
 }
 
 
 const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: "#fff" },
+  bgPattern: { flex: 1 },
   fullScreenRedOverlay: {
     position: "absolute",
     top: 0,
