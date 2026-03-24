@@ -2146,7 +2146,14 @@ export default function ProductsHomeScreen() {
                   styles.toggleBtn,
                   activeVerticalMode === "grocery" && styles.toggleBtnActive,
                 ]}
-                onPress={() => setActiveVerticalMode("grocery")}
+                onPress={() => {
+                  setActiveVerticalMode("grocery");
+                  // Force navigation reset to ensure screen change
+                  nav.reset({
+                    index: 0,
+                    routes: [{ name: "ProductsHome" }],
+                  });
+                }}
               >
                 <MaterialCommunityIcons 
                   name="basket" 
@@ -2171,7 +2178,11 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveVerticalMode("service");
-                  nav.navigate("ServicesHome");
+                  // Force navigation reset to ensure screen change
+                  nav.reset({
+                    index: 0,
+                    routes: [{ name: "ProductsHome" }],
+                  });
                 }}
               >
                 <MaterialCommunityIcons 
@@ -2201,6 +2212,11 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveVerticalMode("food");
+                  // Force navigation reset to ensure screen change
+                  nav.reset({
+                    index: 0,
+                    routes: [{ name: "ProductsHome" }],
+                  });
                 }}
               >
                 <MaterialCommunityIcons 
