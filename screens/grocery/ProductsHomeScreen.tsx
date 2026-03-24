@@ -61,6 +61,7 @@ if (typeof globalThis !== "undefined") {
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_HEADER_HEIGHT = 210;
 const COLLAPSED_HEADER_HEIGHT = 100;
+const PAUSED_MESSAGE_EXTRA_TOP_PADDING = 120;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
@@ -1709,6 +1710,49 @@ export default function ProductsHomeScreen() {
 
   const listExtraData = useMemo(() => prodMap, [prodMap]);
 
+  // Keep message resolution in one place so both the header and list spacing
+  // react consistently when temporary paused-order messaging appears.
+  const displayHomeMessage = useMemo(() => {
+    let effectiveHomeMsg = homeMsg;
+    if (effectiveHomeMsg) {
+      const text = String(effectiveHomeMsg.text || "").toLowerCase();
+      if (
+        text.includes("riders occupied") ||
+        text.includes("high demand") ||
+        (text.includes("riders") && text.includes("occupied")) ||
+        text.includes("demand")
+      ) {
+        effectiveHomeMsg = null;
+      }
+    }
+
+    if (messageDismissed) return null;
+
+    const isOrdersPausedMsg = (msg: any) => {
+      const msgType = String(msg?.type || "").toLowerCase();
+      const iconKey = String(msg?.icon || "").toLowerCase();
+      const text = String(msg?.text || "").toLowerCase();
+      return (
+        msgType === "warning" ||
+        iconKey === "bolt" ||
+        text.includes("order") ||
+        text.includes("rider") ||
+        text.includes("busy")
+      );
+    };
+
+    let activeHomeMsg: any | null = null;
+    if (effectiveHomeMsg) {
+      if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
+        activeHomeMsg = effectiveHomeMsg;
+      }
+    }
+
+    return activeHomeMsg || pausedMessage;
+  }, [homeMsg, isOrderAcceptancePaused, messageDismissed, pausedMessage]);
+
+  const isPausedMessageVisible = displayHomeMessage === pausedMessage && !!displayHomeMessage;
+
   const loadHighlights = useCallback(async () => {
     if (!location.storeId) {
       setBestProducts([]);
@@ -1842,7 +1886,7 @@ export default function ProductsHomeScreen() {
       <BannerSwitcher storeId={location.storeId || ""} />
 
       {/* Feature Tiles - 3 Professional Carts */}
-      <View style={{ marginTop: -30, marginBottom: 2 }}>
+      <View style={{ marginTop: isPausedMessageVisible ? 6 : -30, marginBottom: 2 }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -2244,69 +2288,18 @@ export default function ProductsHomeScreen() {
                Show the highest priority message first (homeMsg from Firestore
                takes precedence over the local pausedMessage). Only one message
                is rendered at a time. */}
-            {(() => {
-              let effectiveHomeMsg = homeMsg;
-              // User request: Remove "High demand. Riders Occupied" banner
-              if (effectiveHomeMsg) {
-                const text = String(effectiveHomeMsg.text || "").toLowerCase();
-                if (
-                  text.includes("riders occupied") ||
-                  text.includes("high demand") ||
-                  (text.includes("riders") && text.includes("occupied")) ||
-                  text.includes("demand")
-                ) {
-                  effectiveHomeMsg = null;
-                }
-              }
-
-              // Determine which message should be displayed. Only one message
-              // (either from Firestore or the pausedMessage) is shown at a time.
-              // If the user has dismissed a message, no other messages will be
-              // displayed until a new one arrives.
-              if (messageDismissed) return null;
-
-              // Helper to determine if a home message is specifically about
-              // order acceptance being paused. We treat a message as an
-              // "orders paused" notification if its type is "warning", its icon
-              // is "bolt", or its text mentions orders, riders, or being busy.
-              const isOrdersPausedMsg = (msg: any) => {
-                const msgType = String(msg?.type || '').toLowerCase();
-                const iconKey = String(msg?.icon || '').toLowerCase();
-                const text = String(msg?.text || '').toLowerCase();
-                return (
-                  msgType === 'warning' ||
-                  iconKey === 'bolt' ||
-                  text.includes('order') ||
-                  text.includes('rider') ||
-                  text.includes('busy')
-                );
-              };
-
-              // Only show Firestore messages when they are not an orders-paused
-              // notification, or when orders are actually paused. This prevents
-              // a lingering "orders paused" message from showing after the
-              // store becomes active again.
-              let activeHomeMsg: any | null = null;
-              if (effectiveHomeMsg) {
-                if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
-                  activeHomeMsg = effectiveHomeMsg;
-                }
-              }
-              const displayMsg = activeHomeMsg || pausedMessage;
-              if (!displayMsg) return null;
-              return (
-                <HomeMessageBar
-                  msg={displayMsg}
-                  onClose={() => {
-                    // Dismiss the current message. Once dismissed, no other
-                    // messages (including fallback paused messages) will appear
-                    // until a new homeMsg is fetched from Firestore.
-                    setHomeMsg(null);
-                    setMessageDismissed(true);
-                  }}
-                />
-              );
-            })()}
+            {displayHomeMessage ? (
+              <HomeMessageBar
+                msg={displayHomeMessage}
+                onClose={() => {
+                  // Dismiss the current message. Once dismissed, no other
+                  // messages (including fallback paused messages) will appear
+                  // until a new homeMsg is fetched from Firestore.
+                  setHomeMsg(null);
+                  setMessageDismissed(true);
+                }}
+              />
+            ) : null}
 
             {/* Vertical switcher BELOW search */}
             {/* <View style={styles.verticalSwitcherRow}>
@@ -2329,7 +2322,11 @@ export default function ProductsHomeScreen() {
               { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingTop: INITIAL_HEADER_HEIGHT }}
+            contentContainerStyle={{
+              paddingTop:
+                INITIAL_HEADER_HEIGHT +
+                (isPausedMessageVisible ? PAUSED_MESSAGE_EXTRA_TOP_PADDING : 0),
+            }}
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}

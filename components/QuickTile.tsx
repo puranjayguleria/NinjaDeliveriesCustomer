@@ -12,6 +12,7 @@ const TILE_H = 195;
 const BLUR = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
 const CART_BAR_H = 22;
+const ADD_BAR_H = 18;
 const CART_BAR_MARGIN = 4;
 const RESERVED_BOTTOM = CART_BAR_H + CART_BAR_MARGIN + 2;
 
@@ -148,7 +149,7 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
               {
                 backgroundColor: stock > 0 ? "#009688" : "#bdbdbd",
                 borderColor: stock > 0 ? "#009688" : "#bdbdbd",
-                height: CART_BAR_H,
+                height: ADD_BAR_H,
                 bottom: CART_BAR_MARGIN,
               },
             ]}
@@ -157,7 +158,7 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
           >
             <View style={styles.addBtnContent}>
               <Text style={styles.cartBarAdd}>{stock > 0 ? "ADD" : "OUT OF STOCK"}</Text>
-              {stock > 0 && <MaterialIcons name="chevron-right" size={16} color="#fff" />}
+              {stock > 0 && <MaterialIcons name="chevron-right" size={14} color="#fff" />}
             </View>
           </Pressable>
         ) : (
@@ -292,7 +293,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "100%",
   },
-  cartBarAdd: { color: "#fff", fontWeight: "800", fontSize: 11, marginRight: 2 },
+  cartBarAdd: { color: "#fff", fontWeight: "800", fontSize: 10, marginRight: 2 },
   qtyBtn: {
     paddingHorizontal: 6,
     justifyContent: "center",
