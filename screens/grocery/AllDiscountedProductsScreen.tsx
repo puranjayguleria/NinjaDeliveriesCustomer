@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   Animated,
   ActivityIndicator,
-  SafeAreaViewBase,
+  Vibration,
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import {
@@ -45,25 +45,34 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
   const [lastVisible, setLastVisible] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
   const [scrollY] = useState(new Animated.Value(0));
-  const [sortOption, setSortOption] = useState(type === "sale" ? "discount" : "default");
+  const [sortOption, setSortOption] = useState("default");
   const [bannerImage, setBannerImage] = useState<string | null>(null);
   const [acceptedPan, setAcceptedPan] = useState(false);
   const [catAlert, setCatAlert] = useState(true);
+  const [showGate, setShowGate] = useState(false);
   const onAcceptRef = useRef<() => void>(() => {});
   const sortedProducts = useMemo(() => {
     let sorted = [...products];
     switch (sortOption) {
       case 'price_asc':
-        sorted.sort((a, b) => (a.price || 0) - (b.price || 0));
+        sorted.sort((a, b) => {
+          const priceA = Number(a.price ?? 0) + Number(a.CGST ?? 0) + Number(a.SGST ?? 0);
+          const priceB = Number(b.price ?? 0) + Number(b.CGST ?? 0) + Number(b.SGST ?? 0);
+          return priceA - priceB;
+        });
         break;
       case 'price_desc':
-        sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
+        sorted.sort((a, b) => {
+          const priceA = Number(a.price ?? 0) + Number(a.CGST ?? 0) + Number(a.SGST ?? 0);
+          const priceB = Number(b.price ?? 0) + Number(b.CGST ?? 0) + Number(b.SGST ?? 0);
+          return priceB - priceA;
+        });
         break;
       case 'discount':
-        sorted.sort((a, b) => (b.discount ?? 0) - (a.discount ?? 0));
+        sorted.sort((a, b) => (Number(b.discount ?? 0)) - (Number(a.discount ?? 0)));
         break;
       default:
-        // No sort for "Recommended" as it relies on Firestore's default order
+        // No sort for "Recommended"
         break;
     }
     return sorted;
@@ -193,10 +202,11 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
           }
         } else {
           // For "best" and "fresh", we fetch products by storeId and sort in memory
-          // to avoid needing a composite index. We'll fetch all products for the store.
+          // to avoid needing a composite index. We'll fetch a broad sample.
           query = firestore()
             .collection("products")
-            .where("storeId", "==", storeId);
+            .where("storeId", "==", storeId)
+            .limit(100);
         }
 
         const snapshot = await query.get();
@@ -212,20 +222,55 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
           ...doc.data(),
         }));
 
-        if (type === "best") {
-          newProducts = newProducts
-            .filter((p: any) => (p.weeklySold ?? 0) > 0)
-            .sort((a: any, b: any) => (b.weeklySold ?? 0) - (a.weeklySold ?? 0));
-          setHasMore(false); // Since we fetched all in one go
-        } else if (type === "fresh") {
-          newProducts = newProducts
-            .filter((p: any) => p.isNew === true)
-            .sort((a: any, b: any) => {
+        if (type === "best" || type === "fresh") {
+          // Filter products with stock
+          let filtered = newProducts.filter((p: any) => (p.quantity ?? 0) > 0);
+          
+          if (type === "best") {
+            // Filter best sellers and sort by sales
+            filtered = filtered.filter((p: any) => (p.weeklySold ?? 0) > 0);
+            filtered.sort((a: any, b: any) => (b.weeklySold ?? 0) - (a.weeklySold ?? 0));
+          } else {
+            // Filter fresh arrivals and sort by creation time
+            filtered = filtered.filter((p: any) => p.isNew === true);
+            filtered.sort((a: any, b: any) => {
               const aTime = a.createdAt?.toDate?.()?.getTime?.() ?? 0;
               const bTime = b.createdAt?.toDate?.()?.getTime?.() ?? 0;
               return bTime - aTime;
             });
-          setHasMore(false); // Since we fetched all in one go
+          }
+
+          // Mixed 20 products from all categories
+          const byCategory: Record<string, any[]> = {};
+          filtered.forEach((p: any) => {
+            const catId = p.categoryId || "uncategorized";
+            if (!byCategory[catId]) byCategory[catId] = [];
+            byCategory[catId].push(p);
+          });
+
+          const mixed20: any[] = [];
+          const categories = Object.keys(byCategory);
+          let catIdx = 0;
+          
+          // Keep picking one from each category until we have 20 or run out of products
+          while (mixed20.length < 20 && categories.length > 0) {
+            const currentCat = categories[catIdx % categories.length];
+            const productsInCat = byCategory[currentCat];
+            
+            if (productsInCat.length > 0) {
+              mixed20.push(productsInCat.shift());
+            } else {
+              // Remove category if it has no more products
+              categories.splice(catIdx % categories.length, 1);
+              if (categories.length === 0) break;
+              // Don't increment catIdx if we just removed one, to keep the flow
+              continue;
+            }
+            catIdx++;
+          }
+          
+          newProducts = mixed20;
+          setHasMore(false);
         }
 
         setProducts((prev) => {
@@ -336,13 +381,27 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
         </Animated.View>
 
         {/* Sorting Controls */}
-        <View style={styles.sortContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+        <Animated.View style={[styles.sortContainer, { 
+          opacity: headerOpacity,
+          transform: [{ translateY: headerOpacity.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-20, 0]
+          }) }]
+        }]}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center' }}
+          >
+            <MaterialIcons name="sort" size={18} color={Colors.text.muted} style={{ marginRight: 8 }} />
             {sortOptions.map((opt) => (
               <TouchableOpacity
                 key={opt.key}
                 style={[styles.sortButton, sortOption === opt.key && styles.activeSort]}
-                onPress={() => setSortOption(opt.key)}
+                onPress={() => {
+                  setSortOption(opt.key);
+                  Vibration.vibrate(10);
+                }}
               >
                 <Text style={[styles.sortText, sortOption === opt.key && styles.activeSortText]}>
                   {opt.label}
@@ -350,7 +409,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </Animated.View>
 
         {/* Animated Banner */}
         <Animated.View
@@ -362,7 +421,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
                 { scale: bannerScale },
               ],
               opacity: bannerOpacity,
-              top: 60, // Position below header
+              top: 110, // Position below header (60) and sort bar (50)
             },
           ]}
         >
@@ -389,7 +448,7 @@ const AllDiscountedProductsScreen: React.FC<{ route: any }> = ({ route }) => {
           numColumns={3}
           keyExtractor={keyExtractor}
           contentContainerStyle={{
-            paddingTop: BANNER_HEIGHT + 60, // products start below banner and header
+            paddingTop: BANNER_HEIGHT + 110, // header (60) + sort bar (50) + banner (170)
             paddingBottom: 20,
             paddingHorizontal: 8,
           }}
@@ -512,26 +571,42 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sortContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    height: 50,
+    backgroundColor: Colors.white,
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
+    alignItems: "center",
+    zIndex: 25,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
   sortButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#f8fafc",
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   activeSort: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
   },
   sortText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: Colors.text.muted,
+    fontSize: 13,
+    fontWeight: "700",
+    color: '#64748b',
   },
   activeSortText: {
-    color: Colors.white,
+    color: '#3b82f6',
   },
   listContent: {
     paddingHorizontal: ITEM_SPACING,

@@ -100,7 +100,14 @@ const FoodComingSoonScreen: React.FC = () => {
               styles.toggleBtn,
               activeMode === "grocery" && styles.toggleBtnActive,
             ]}
-            onPress={() => setActiveMode("grocery")}
+            onPress={() => {
+               setActiveMode("grocery");
+               // Force navigation reset to ensure screen change
+               navigation.reset({
+                 index: 0,
+                 routes: [{ name: "ProductsHome" }],
+               });
+             }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 
@@ -125,7 +132,11 @@ const FoodComingSoonScreen: React.FC = () => {
             ]}
             onPress={() => {
               setActiveMode("service");
-              navigation.navigate("ServicesHome");
+              // Force navigation reset to ensure screen change
+              navigation.reset({
+                index: 0,
+                routes: [{ name: "ProductsHome" }],
+              });
             }}
             activeOpacity={0.7}
           >
@@ -153,7 +164,14 @@ const FoodComingSoonScreen: React.FC = () => {
               styles.toggleBtn,
               activeMode === "food" && styles.toggleBtnActive,
             ]}
-            onPress={() => setActiveMode("food")}
+            onPress={() => {
+              setActiveMode("food");
+              // Force navigation reset to ensure screen change
+              navigation.reset({
+                index: 0,
+                routes: [{ name: "ProductsHome" }],
+              });
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 

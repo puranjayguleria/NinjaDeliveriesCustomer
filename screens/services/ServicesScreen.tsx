@@ -1361,34 +1361,6 @@ export default function ServicesScreen() {
     return sorted[0] || null;
   }, [liveBookings]);
 
-  // Auto-switch GIFs with different durations for each GIF
-  useEffect(() => {
-    console.log('🎬 GIF Auto-switch started');
-    let gifTimeout: ReturnType<typeof setTimeout>;
-    
-    const scheduleNextSwitch = (currentIndex: number) => {
-      // ninjaVideo1.gif is longer, ninjaVideo.gif is shorter
-      const duration = currentIndex === 0 ? 16000 : 5000; // 20s for first, 5s for second
-      console.log(`🎬 Scheduling next switch in ${duration}ms for GIF index ${currentIndex}`);
-      
-      gifTimeout = setTimeout(() => {
-        setActiveGifIndex((prevIndex) => {
-          const newIndex = prevIndex === 0 ? 1 : 0;
-          console.log('🎬 Switching GIF from', prevIndex, 'to', newIndex);
-          scheduleNextSwitch(newIndex);
-          return newIndex;
-        });
-      }, duration);
-    };
-    
-    scheduleNextSwitch(0);
-
-    return () => {
-      console.log('🎬 GIF Auto-switch cleanup');
-      if (gifTimeout) clearTimeout(gifTimeout);
-    };
-  }, []);
-
   // Blinking animation for View All button (light)
   useEffect(() => {
     const blinkAnimation = Animated.loop(
@@ -2038,7 +2010,7 @@ export default function ServicesScreen() {
                 // Force navigation reset to ensure screen change
                 navigation.reset({
                   index: 0,
-                  routes: [{ name: "HomeTab" }],
+                  routes: [{ name: "ProductsHome" }],
                 });
               }}
               activeOpacity={0.7}
@@ -2063,7 +2035,14 @@ export default function ServicesScreen() {
                 styles.toggleBtn,
                 activeMode === "service" && styles.toggleBtnActive,
               ]}
-              onPress={() => setActiveMode("service")}
+              onPress={() => {
+                setActiveMode("service");
+                // Force navigation reset to ensure screen change
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "ProductsHome" }],
+                });
+              }}
               activeOpacity={0.7}
             >
               <MaterialCommunityIcons 
@@ -2092,6 +2071,11 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("food");
+                // Force navigation reset to ensure screen change
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "ProductsHome" }],
+                });
               }}
               activeOpacity={0.7}
             >
