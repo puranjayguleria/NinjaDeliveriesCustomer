@@ -37,6 +37,9 @@ export default function ServiceCategoryScreen() {
   const [zoneCompanyIdsKey, setZoneCompanyIdsKey] = useState('');
   const [zoneCompanyNamesKey, setZoneCompanyNamesKey] = useState('');
   const [zoneCompaniesLoading, setZoneCompaniesLoading] = useState(true);
+  
+  // Ref for FlatList to enable scrolling
+  const flatListRef = React.useRef<FlatList>(null);
 
   // Description modal
   const [descriptionModal, setDescriptionModal] = useState<{
@@ -596,6 +599,7 @@ export default function ServiceCategoryScreen() {
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={displayedIssues}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
@@ -702,18 +706,18 @@ const styles = StyleSheet.create({
   serviceCard: {
     backgroundColor: "white",
     borderRadius: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     marginBottom: 8,
-    marginHorizontal: 8,
-    marginTop: 8,
+    marginHorizontal: 10,
+    marginTop: 2,
     flexDirection: "row",
     alignItems: "center",
     elevation: 1,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    shadowRadius: 4,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
@@ -722,6 +726,8 @@ const styles = StyleSheet.create({
     borderColor: "#4CAF50",
     backgroundColor: "#f0fdf4",
     elevation: 2,
+    shadowOpacity: 0.08,
+    shadowColor: '#4CAF50',
   },
 
   // Quantity Controls (Zomato-style)
@@ -729,15 +735,20 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderWidth: 1.5,
     borderColor: "#4CAF50",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginLeft: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 7,
+    marginLeft: 8,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   addButtonText: {
     color: "#4CAF50",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.5,
   },
@@ -746,34 +757,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#4CAF50",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    marginLeft: 12,
+    borderRadius: 7,
+    paddingHorizontal: 3,
+    paddingVertical: 3,
+    marginLeft: 8,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
   },
 
   quantityButton: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "white",
-    borderRadius: 6,
+    borderRadius: 5,
   },
 
   quantityButtonText: {
     color: "#4CAF50",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    lineHeight: 20,
+    lineHeight: 18,
   },
 
   quantityText: {
     color: "white",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
-    marginHorizontal: 12,
-    minWidth: 20,
+    marginHorizontal: 8,
+    minWidth: 16,
     textAlign: "center",
   },
 
@@ -793,28 +809,29 @@ const styles = StyleSheet.create({
   },
 
   serviceImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    marginRight: 10,
     flexShrink: 0,
+    backgroundColor: "#f8fafc",
   },
 
   serviceImagePlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    marginRight: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#e0e7ff",
+    backgroundColor: "#dbeafe",
     flexShrink: 0,
   },
 
   placeholderText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#4f46e5",
+    color: "#2563eb",
   },
 
   serviceIconPlaceholder: {
@@ -839,69 +856,85 @@ const styles = StyleSheet.create({
   },
 
   descriptionContainer: {
-    marginTop: 6,
+    marginTop: 1,
   },
 
   serviceDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#475569",
+    fontSize: 11,
+    lineHeight: 15,
+    color: "#64748b",
   },
 
   seeMoreText: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "700",
     color: "#2563eb",
+    textDecorationLine: "underline",
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
-    padding: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    padding: 20,
     justifyContent: "center",
   },
 
   modalCard: {
     backgroundColor: "white",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    maxHeight: "80%",
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    elevation: 10,
   },
 
   modalHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
 
   modalTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: "700",
     color: "#0f172a",
-    paddingRight: 10,
+    paddingRight: 12,
+    lineHeight: 26,
+    letterSpacing: -0.4,
   },
 
   modalCloseText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
     color: "#2563eb",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
 
   modalDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#334155",
+    fontSize: 15,
+    lineHeight: 24,
+    color: "#475569",
+    letterSpacing: -0.2,
   },
 
   serviceTitle: { 
-    fontSize: 15, 
-    fontWeight: "600", 
+    fontSize: 14, 
+    fontWeight: "700", 
     color: "#0f172a",
-    marginBottom: 4,
+    marginBottom: 3,
     flexWrap: "wrap",
+    letterSpacing: -0.1,
   },
 
   serviceSubTitle: {

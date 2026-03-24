@@ -255,7 +255,7 @@ const SERVICES_SEARCH_PLACEHOLDERS = [
   'automobile washing',
   'home cleaning',
   'astrology',
-  'painter',
+  'physiotherapy',
 ] as const;
 
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
@@ -443,6 +443,7 @@ export default function ServicesScreen() {
   const [randomServices, setRandomServices] = useState<any[]>([]);
   const [plumberServices, setPlumberServices] = useState<any[]>([]);
   const [automobileWashingServices, setAutomobileWashingServices] = useState<any[]>([]);
+  const [homeCleaningServices, setHomeCleaningServices] = useState<any[]>([]);
 
   const categorySnapshotSeqRef = React.useRef(0);
 
@@ -1788,6 +1789,128 @@ export default function ServicesScreen() {
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
+  // Fetch Home Cleaning services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchHomeCleaningServices = async () => {
+      try {
+        console.log('🏠 Fetching Home Cleaning services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Home Cleaning category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let cleaningCategoryId = '';
+        let cleaningMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // Specific matching for home cleaning
+          if ((name.includes('home') && name.includes('clean')) || 
+              name.includes('housekeep') || 
+              name.includes('maid') || 
+              name.includes('domestic')) {
+            cleaningCategoryId = doc.id;
+            cleaningMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Home Cleaning category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${cleaningMasterCategoryId}`);
+          }
+        });
+
+        if (!cleaningCategoryId) {
+          if (__DEV__) console.log('❌ Home Cleaning category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${cleaningMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', cleaningMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} home cleaning services`);
+
+        const cleaningServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          cleaningServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: cleaningCategoryId,
+            categoryMasterId: cleaningMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = cleaningServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Home Cleaning services loaded (zone-filtered): ${sorted.length}`);
+        setHomeCleaningServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch home cleaning services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchHomeCleaningServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
 
 
   // Continuous blinking animation for live dot
@@ -2145,7 +2268,7 @@ export default function ServicesScreen() {
                         <View style={[styles.quickServiceIconFallback, { backgroundColor: '#EFF6FF' }]}>
                           <Ionicons 
                             name="water-outline" 
-                            size={32} 
+                            size={28} 
                             color="#3B82F6" 
                           />
                         </View>
@@ -2168,7 +2291,7 @@ export default function ServicesScreen() {
                           end={{ x: 1, y: 0 }}
                           style={styles.addToCartIconContainer}
                         >
-                          <Ionicons name="arrow-forward" size={18} color="#fff" />
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
                         </LinearGradient>
                       </TouchableOpacity>
                     </View>
@@ -2241,7 +2364,7 @@ export default function ServicesScreen() {
                         <View style={[styles.quickServiceIconFallback, { backgroundColor: '#F0F9FF' }]}>
                           <Ionicons 
                             name="car-outline" 
-                            size={32} 
+                            size={28} 
                             color="#0EA5E9" 
                           />
                         </View>
@@ -2264,7 +2387,7 @@ export default function ServicesScreen() {
                           end={{ x: 1, y: 0 }}
                           style={styles.addToCartIconContainer}
                         >
-                          <Ionicons name="arrow-forward" size={18} color="#fff" />
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
                         </LinearGradient>
                       </TouchableOpacity>
                     </View>
@@ -2275,145 +2398,94 @@ export default function ServicesScreen() {
           </View>
         )}
 
-
-
-        {/* Trending Packages Section - After Quick Services */}
-        {randomServices.length > 0 && (
-          <View style={styles.trendingPackagesContainer}>
-            <View style={styles.trendingPackagesHeader}>
-              <View style={styles.trendingHeaderLeft}>
-                <Ionicons name="trending-up" size={18} color="#10b981" />
-                <Text style={styles.trendingPackagesTitle}>Trending Packages</Text>
-              </View>
-              <Text style={styles.trendingSubtitle}>Most Booked</Text>
+        {/* Home Cleaning Services Section */}
+        {homeCleaningServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Home Cleaning</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find home cleaning category and navigate
+                  const cleaningCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return (name.includes('home') && name.includes('clean')) || 
+                           name.includes('housekeep') || 
+                           name.includes('maid') || 
+                           name.includes('domestic');
+                  });
+                  if (cleaningCategory) {
+                    console.log('🏠 Navigating to Home Cleaning category:', cleaningCategory.name);
+                    handleCategoryPress(cleaningCategory);
+                  } else {
+                    console.log('❌ Home Cleaning category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
             </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.trendingPackagesScroll}
+              contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {randomServices.map((item, index) => {
-                if (!item || !item.package) return null;
-
-                const pkg = item.package;
-                
-                // Format price with lakh/crore notation
-                const formatPrice = (price: number) => {
-                  if (!price || isNaN(price)) return 'N/A';
-                  
-                  if (price >= 10000000) {
-                    // Crore (1,00,00,000)
-                    const crores = price / 10000000;
-                    return `₹${crores % 1 === 0 ? crores : crores.toFixed(1)} Crore`;
-                  } else if (price >= 100000) {
-                    // Lakh (1,00,000)
-                    const lakhs = price / 100000;
-                    return `₹${lakhs % 1 === 0 ? lakhs : lakhs.toFixed(1)} Lakh`;
-                  } else if (price >= 10000) {
-                    // Thousand (10,000+)
-                    const thousands = price / 1000;
-                    return `₹${thousands % 1 === 0 ? thousands : thousands.toFixed(1)} Thousand`;
-                  } else {
-                    // Below 10,000 - show normal value
-                    return `₹${price}`;
-                  }
-                };
-                
-                const displayPrice = formatPrice(pkg.price);
-                
-                // Format duration properly with unit
-                const formatDuration = () => {
-                  let duration = pkg?.duration || pkg?.durationDays;
-                  let unit = String(pkg?.durationUnit || pkg?.unit || '').toLowerCase().trim();
-                  
-                  if (!duration) return 'N/A';
-                  
-                  const count = Number(duration);
-                  
-                  // Remove "(s)" from unit if present
-                  unit = unit.replace(/\(s\)/g, '');
-                  
-                  // Format based on unit
-                  if (unit === 'day' || unit === 'days') {
-                    return `${count} ${count === 1 ? 'day' : 'days'}`;
-                  } else if (unit === 'week' || unit === 'weeks') {
-                    return `${count} ${count === 1 ? 'week' : 'weeks'}`;
-                  } else if (unit === 'month' || unit === 'months') {
-                    return `${count} ${count === 1 ? 'month' : 'months'}`;
-                  } else if (unit === 'hour' || unit === 'hours') {
-                    return `${count} ${count === 1 ? 'hour' : 'hours'}`;
-                  } else if (unit === 'minute' || unit === 'minutes' || unit === 'mins' || unit === 'min') {
-                    return `${count} ${count === 1 ? 'min' : 'mins'}`;
-                  } else if (unit === 'year' || unit === 'years') {
-                    return `${count} ${count === 1 ? 'year' : 'years'}`;
-                  } else {
-                    // Default to minutes if no unit specified
-                    return `${count} mins`;
-                  }
-                };
-                
-                const displayDuration = formatDuration();
-
-                const onModalPress = () => {
-                  if (!item.categoryId) {
-                    console.log('❌ Package missing categoryId; cannot open flow');
-                    return;
-                  }
-
-                  setTapLoading({ visible: true, message: 'Opening…' });
-                  try {
-                    navigation.navigate('PackageSelection', {
-                      serviceTitle: item.serviceName || 'Service',
-                      categoryId: item.categoryId,
-                      allCategories: serviceCategories,
-                      serviceId: item.serviceId,
-                      serviceName: item.serviceName,
-                    } as any);
-                  } catch (e) {
-                    console.log('❌ Failed to navigate from package modal', e);
-                    setTapLoading({ visible: false });
-                  }
-                };
+              {homeCleaningServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
 
                 return (
                   <TouchableOpacity
-                    key={`trending-${index}`}
-                    style={styles.packageCard}
+                    key={service.id}
+                    style={styles.quickServiceCard}
                     activeOpacity={0.7}
-                    onPress={onModalPress}
+                    onPress={() => onServicePress(service)}
                   >
-                    {/* Package Name */}
-                    <Text style={styles.packageCardTitle} numberOfLines={1}>
-                      {String(pkg.name || 'Package')}
-                    </Text>
-
-                    {/* Description */}
-                    <Text style={styles.packageCardDescription} numberOfLines={2}>
-                      {String(pkg.description || item.serviceName || 'Service package')}
-                    </Text>
-
-                    {/* Duration */}
-                    <View style={styles.packageCardDuration}>
-                      <Ionicons name="time-outline" size={16} color="#64748b" />
-                      <Text style={styles.packageCardDurationText}>{displayDuration}</Text>
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#ECFDF5' }]}>
+                          <Ionicons 
+                            name="home-outline" 
+                            size={28} 
+                            color="#10B981" 
+                          />
+                        </View>
+                      )}
                     </View>
-
-                    {/* Book Now Button */}
-                    <View style={styles.packageCardFooter}>
-                      <Animated.View style={{ opacity: blinkAnim, flex: 1 }}>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
                         <LinearGradient
                           colors={['#10b981', '#059669', '#047857']}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
-                          style={styles.packageBookNowButton}
+                          style={styles.addToCartIconContainer}
                         >
-                          <Text style={styles.packageBookNowText}>Book Now</Text>
-                          <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
-                            <Ionicons name="arrow-forward" size={18} color="#fff" />
-                          </Animated.View>
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
                         </LinearGradient>
-                      </Animated.View>
+                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2423,7 +2495,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, randomServices, navigation, serviceCategories, arrowAnim, handleViewAllCategories, handleCategoryPress, plumberServices, automobileWashingServices, onServicePress]);
+  }, [searchQuery, plumberServices, automobileWashingServices, homeCleaningServices, navigation, serviceCategories, handleCategoryPress, onServicePress]);
 
   // Render functions
   const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
@@ -2968,70 +3040,6 @@ export default function ServicesScreen() {
             </View>
           </Animated.View>
 
-          {/* Grocery/Service/Food Toggle */}
-          <Animated.View style={[styles.toggleRow, { opacity: toggleRowOpacity, height: toggleRowHeight, overflow: 'hidden' }]}>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "grocery" && styles.toggleBtnActive,
-              ]}
-              onPress={() => {
-                setActiveMode("grocery");
-                // Force navigation reset to ensure screen change
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "HomeTab" }],
-                });
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "grocery" && styles.toggleLabelActive,
-                ]}
-              >
-                Grocery
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "service" && styles.toggleBtnActive,
-              ]}
-              onPress={() => setActiveMode("service")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "service" && styles.toggleLabelActive,
-                ]}
-              >
-                Service
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                activeMode === "food" && styles.toggleBtnActive,
-              ]}
-              onPress={() => {
-                setActiveMode("food");
-                navigation.navigate("ProductsHome");
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  activeMode === "food" && styles.toggleLabelActive,
-                ]}
-              >
-                Food
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
         </View>
       </Animated.View>
     );
@@ -3052,6 +3060,70 @@ export default function ServicesScreen() {
         {/* Only show banner when not searching */}
         {searchQuery.length === 0 && (
           <>
+            {/* Grocery/Service/Food Toggle - Moved to top of content */}
+            <View style={styles.toggleRowContent}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  activeMode === "grocery" && styles.toggleBtnActive,
+                ]}
+                onPress={() => {
+                  setActiveMode("grocery");
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: "HomeTab" }],
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeMode === "grocery" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Grocery
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  activeMode === "service" && styles.toggleBtnActive,
+                ]}
+                onPress={() => setActiveMode("service")}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeMode === "service" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Service
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  activeMode === "food" && styles.toggleBtnActive,
+                ]}
+                onPress={() => {
+                  setActiveMode("food");
+                  navigation.navigate("ProductsHome");
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    activeMode === "food" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Food
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Service Banners */}
             {!bannersLoading && serviceBanners.length > 0 && (
               <View style={styles.bannerContainer}>
@@ -3168,7 +3240,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking, activeMode, setActiveMode, navigation]);
 
   return (
     <ImageBackground
@@ -3597,6 +3669,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 0,
     gap: 8,
+  },
+  toggleRowContent: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 0,
+    marginBottom: 0,
+    gap: 8,
+    backgroundColor: "#ffffff",
   },
   toggleBtn: {
     paddingHorizontal: 16,
@@ -4433,13 +4516,13 @@ const styles = StyleSheet.create({
 
   quickServicesScroll: {
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 10,
   },
 
   quickServiceCard: {
-    width: 140,
+    width: 110,
     backgroundColor: "#ffffff",
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     shadowColor: "#000",
@@ -4451,11 +4534,11 @@ const styles = StyleSheet.create({
 
   quickServiceImageContainer: {
     width: "100%",
-    height: 120,
+    height: 90,
     backgroundColor: "#f8fafc",
     overflow: "hidden",
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
   },
 
   quickServiceImage: {
@@ -4471,10 +4554,10 @@ const styles = StyleSheet.create({
   },
 
   quickServiceInfo: {
-    padding: 10,
+    padding: 6,
     width: "100%",
     position: "relative",
-    minHeight: 70,
+    minHeight: 55,
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
@@ -4482,14 +4565,14 @@ const styles = StyleSheet.create({
 
   quickServiceTextContainer: {
     flex: 1,
-    paddingRight: 8,
+    paddingRight: 4,
   },
 
   quickServiceName: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "600",
     color: "#0f172a",
-    lineHeight: 16,
+    lineHeight: 14,
   },
 
   quickServicePrice: {
@@ -4520,9 +4603,9 @@ const styles = StyleSheet.create({
   },
 
   addToCartIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
   },
