@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-git     width: "100%",
+    width: "100%",
   },
   cartBarAdd: { color: "#fff", fontWeight: "800", fontSize: 10, marginRight: 2 },
   qtyBtn: {
