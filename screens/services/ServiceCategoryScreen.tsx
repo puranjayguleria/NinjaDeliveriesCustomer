@@ -130,6 +130,12 @@ export default function ServiceCategoryScreen() {
   }, [location?.storeId]);
 
   const fetchServiceIssues = useCallback(async () => {
+    // Wait for zone companies to load first
+    if (zoneCompaniesLoading) {
+      console.log('⏳ Waiting for zone companies to load...');
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -138,12 +144,7 @@ export default function ServiceCategoryScreen() {
       if (!selectedCategoryId) {
         console.error('No categoryId provided');
         setIssues([]);
-        return;
-      }
-
-      // Wait for zone companies to load
-      if (zoneCompaniesLoading) {
-        console.log('⏳ Waiting for zone companies to load...');
+        setLoading(false);
         return;
       }
 
@@ -151,6 +152,7 @@ export default function ServiceCategoryScreen() {
       if (!zid) {
         console.log('❌ No zone selected');
         setIssues([]);
+        setLoading(false);
         return;
       }
 
@@ -166,6 +168,7 @@ export default function ServiceCategoryScreen() {
       if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
         console.log('❌ No companies available in this zone');
         setIssues([]);
+        setLoading(false);
         return;
       }
 
@@ -585,19 +588,23 @@ export default function ServiceCategoryScreen() {
 
       {/* Main Content: Services Only */}
       <View style={styles.servicesContainer}>
-        {loading ? (
+        {(loading || zoneCompaniesLoading) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#2563eb" />
             <Text style={styles.loadingText}>Loading services...</Text>
           </View>
-        ) : issues.length === 0 ? (
+        ) : displayedIssues.length === 0 && !loading && !zoneCompaniesLoading ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>No Direct-Price Services</Text>
+            <Text style={styles.emptyTitle}>
+              {searchQuery.trim() ? 'No Matching Services' : 'No Services Available'}
+            </Text>
             <Text style={styles.emptyText}>
-              No direct-price services available for this category. Check package plans instead.
+              {searchQuery.trim() 
+                ? 'Try adjusting your search terms.' 
+                : 'No services available for this category in your area.'}
             </Text>
           </View>
-        ) : (
+        ) : displayedIssues.length > 0 ? (
           <FlatList
             ref={flatListRef}
             data={displayedIssues}
@@ -606,10 +613,10 @@ export default function ServiceCategoryScreen() {
             ListFooterComponent={ListFooter}
             contentContainerStyle={{ paddingBottom: 100 }}
             showsVerticalScrollIndicator={false}
-            refreshing={loading}
+            refreshing={loading && !zoneCompaniesLoading}
             onRefresh={fetchServiceIssues}
           />
-        )}
+        ) : null}
       </View>
 
       {/* Bottom Continue Button */}
