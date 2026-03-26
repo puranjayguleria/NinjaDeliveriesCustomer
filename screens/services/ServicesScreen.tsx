@@ -444,6 +444,7 @@ export default function ServicesScreen() {
   const [plumberServices, setPlumberServices] = useState<any[]>([]);
   const [automobileWashingServices, setAutomobileWashingServices] = useState<any[]>([]);
   const [homeCleaningServices, setHomeCleaningServices] = useState<any[]>([]);
+  const [electricianServices, setElectricianServices] = useState<any[]>([]);
 
   const categorySnapshotSeqRef = React.useRef(0);
 
@@ -1911,6 +1912,125 @@ export default function ServicesScreen() {
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
+  // Fetch Electrician services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchElectricianServices = async () => {
+      try {
+        console.log('⚡ Fetching Electrician services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Electrician category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let electricianCategoryId = '';
+        let electricianMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // Specific matching for electrician
+          if (name.includes('electric') || name.includes('wiring') || name.includes('voltage')) {
+            electricianCategoryId = doc.id;
+            electricianMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Electrician category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${electricianMasterCategoryId}`);
+          }
+        });
+
+        if (!electricianCategoryId) {
+          if (__DEV__) console.log('❌ Electrician category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${electricianMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', electricianMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} electrician services`);
+
+        const electricianServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          electricianServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: electricianCategoryId,
+            categoryMasterId: electricianMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = electricianServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Electrician services loaded (zone-filtered): ${sorted.length}`);
+        setElectricianServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch electrician services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchElectricianServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
 
 
   // Continuous blinking animation for live dot
@@ -2210,6 +2330,99 @@ export default function ServicesScreen() {
 
     return (
       <View>
+        {/* Electrician Services Section */}
+        {electricianServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Electrician</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find electrician category and navigate
+                  const electricianCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return name.includes('electric') || name.includes('wiring') || name.includes('voltage');
+                  });
+                  if (electricianCategory) {
+                    console.log('⚡ Navigating to Electrician category:', electricianCategory.name);
+                    handleCategoryPress(electricianCategory);
+                  } else {
+                    console.log('❌ Electrician category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {electricianServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#FFFBEB' }]}>
+                          <Ionicons 
+                            name="flash-outline" 
+                            size={28} 
+                            color="#F59E0B" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Quick Services Section - Before Trending Packages */}
         {plumberServices.length > 0 && (
           <View style={styles.quickServicesContainer}>
@@ -2222,7 +2435,7 @@ export default function ServicesScreen() {
                     cat.name.toLowerCase().includes('plumb')
                   );
                   if (plumberCategory) {
-                    console.log('🔧 Navigating to Plumber category:', plumberCategory.name);
+                    console.log('� Navigating to Plumber category:', plumberCategory.name);
                     handleCategoryPress(plumberCategory);
                   } else {
                     console.log('❌ Plumber category not found in serviceCategories');
@@ -2495,7 +2708,7 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, plumberServices, automobileWashingServices, homeCleaningServices, navigation, serviceCategories, handleCategoryPress, onServicePress]);
+  }, [searchQuery, plumberServices, automobileWashingServices, homeCleaningServices, electricianServices, navigation, serviceCategories, handleCategoryPress, onServicePress]);
 
   // Render functions
   const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
