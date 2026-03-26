@@ -94,8 +94,6 @@ import CongratsScreen from "./screens/gamification/CongratsScreen";
 import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
 import FreshProduceScreen from "./screens/grocery/FreshProduceScreen";
-import NavratriPageScreen from "./screens/grocery/NavratriPageScreen";
-import NavratriContentScreen from "./screens/grocery/NavratriContentScreen";
 import BuyAgainScreen from "./screens/grocery/BuyAgainScreen";
 import FoodComingSoonScreen from "./screens/grocery/FoodComingSoonScreen";
 /* ──────────────────────────────────────────────────────────
@@ -343,16 +341,6 @@ function HomeStack() {
         name="AllDiscountedProducts"
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
-      />
-      <Stack.Screen
-        name="NavratriPage"
-        component={NavratriPageScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="NavratriContent"
-        component={NavratriContentScreen}
-        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="BuyAgain"

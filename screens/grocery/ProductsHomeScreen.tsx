@@ -2030,23 +2030,6 @@ export default function ProductsHomeScreen() {
         </ScrollView>
       </View>
 
-      {/* Navratri Banner */}
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => nav.navigate("NavratriPage")}
-        style={{ marginHorizontal: H, marginTop: 8, marginBottom: 4 }}
-      >
-        <Image
-          source={{ uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Fnavratri.png?alt=media&token=44d5774a-110c-4d89-8851-44ce3e10db5b" }}
-          style={{
-            width: '100%',
-            height: 160,
-            borderRadius: 16,
-          }}
-          contentFit="cover"
-        />
-      </TouchableOpacity>
-
       {/* Last order → Repeat order card */}
     </>
   );
@@ -2192,11 +2175,6 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveVerticalMode("grocery");
-                  // Force navigation reset to ensure screen change
-                  nav.reset({
-                    index: 0,
-                    routes: [{ name: "ProductsHome" }],
-                  });
                 }}
               >
                 <MaterialCommunityIcons 
@@ -2222,11 +2200,6 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveVerticalMode("service");
-                  // Force navigation reset to ensure screen change
-                  nav.reset({
-                    index: 0,
-                    routes: [{ name: "ProductsHome" }],
-                  });
                 }}
               >
                 <MaterialCommunityIcons 
@@ -2256,11 +2229,6 @@ export default function ProductsHomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveVerticalMode("food");
-                  // Force navigation reset to ensure screen change
-                  nav.reset({
-                    index: 0,
-                    routes: [{ name: "ProductsHome" }],
-                  });
                 }}
               >
                 <MaterialCommunityIcons 

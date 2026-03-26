@@ -79,6 +79,26 @@ const BuyAgainScreen: React.FC = () => {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
+  const isFoodProduct = useCallback((product: any) => {
+    const categoryName = String(product?.categoryName || "").toLowerCase();
+    const category = String(product?.category || "").toLowerCase();
+    const section = String(product?.section || "").toLowerCase();
+    const department = String(product?.department || "").toLowerCase();
+    const tags = Array.isArray(product?.tags)
+      ? product.tags.map((t: any) => String(t).toLowerCase())
+      : [];
+
+    return (
+      product?.isFood === true ||
+      product?.isFoodProduct === true ||
+      categoryName.includes("food") ||
+      category.includes("food") ||
+      section.includes("food") ||
+      department.includes("food") ||
+      tags.some((t: string) => t.includes("food"))
+    );
+  }, []);
+
   const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
   const activeFilterRef = useRef<FilterStatus>(activeFilter);
   const didRunBackgroundFixesRef = useRef(false);
@@ -262,18 +282,15 @@ const BuyAgainScreen: React.FC = () => {
 
         const finalProductsMap = new Map();
         [...Object.values(fetchedById), ...Object.values(fetchedByName)].forEach(p => {
-          // If in food mode, only include products that are likely food
-          if (activeMode === 'food') {
-            const isFood = p.isFood === true || 
-                           p.categoryName?.toLowerCase().includes('food') || 
-                           p.category?.toLowerCase().includes('food') ||
-                           p.isFoodProduct === true;
-            if (isFood) {
-              finalProductsMap.set(p.id, p);
-            }
-          } else {
-            finalProductsMap.set(p.id, p);
-          }
+          const foodProduct = isFoodProduct(p);
+
+          // Strict mode filtering for Order Again:
+          // - food mode: only food products
+          // - grocery mode: only non-food products
+          if (activeMode === 'food' && !foodProduct) return;
+          if (activeMode === 'grocery' && foodProduct) return;
+
+          finalProductsMap.set(p.id, p);
         });
 
         setProducts(Array.from(finalProductsMap.values()));
@@ -287,7 +304,7 @@ const BuyAgainScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [location.storeId, activeMode, activeFilter]);
+  }, [location.storeId, activeMode, activeFilter, isFoodProduct]);
 
   useEffect(() => {
     fetchBuyAgainData();

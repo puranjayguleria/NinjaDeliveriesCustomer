@@ -2007,11 +2007,6 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("grocery");
-                // Force navigation reset to ensure screen change
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "ProductsHome" }],
-                });
               }}
               activeOpacity={0.7}
             >
@@ -2037,11 +2032,6 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("service");
-                // Force navigation reset to ensure screen change
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "ProductsHome" }],
-                });
               }}
               activeOpacity={0.7}
             >
@@ -2071,11 +2061,6 @@ export default function ServicesScreen() {
               ]}
               onPress={() => {
                 setActiveMode("food");
-                // Force navigation reset to ensure screen change
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "ProductsHome" }],
-                });
               }}
               activeOpacity={0.7}
             >
