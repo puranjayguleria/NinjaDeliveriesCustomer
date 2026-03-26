@@ -1702,7 +1702,21 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.serviceDetails}>
         <Text style={styles.companyName}>{item.company.name}</Text>
         <View style={styles.ratingContainer}>
-          <Text style={styles.rating}>⭐ {item.company.rating}</Text>
+          {Array.from({ length: 5 }).map((_, index) => {
+            const rating = Number(item.company.rating) || 0;
+            const isFilled = index < Math.floor(rating);
+            const isHalf = !isFilled && index < Math.ceil(rating) && rating % 1 >= 0.5;
+            
+            return (
+              <Ionicons
+                key={index}
+                name={isFilled ? "star" : isHalf ? "star-half" : "star-outline"}
+                size={14}
+                color="#FFA500"
+                style={{ marginRight: 2 }}
+              />
+            );
+          })}
           <Text style={styles.experience}>{item.company.experience}</Text>
         </View>
       </View>
