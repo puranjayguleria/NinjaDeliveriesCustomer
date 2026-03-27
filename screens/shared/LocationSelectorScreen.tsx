@@ -489,6 +489,9 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           setPlaceLabel("");
           setShowSaveForm(true);
         }
+      } else if (fromScreenKey === "foodcheckout") {
+        // Navigate back to food checkout screen - location context is already updated
+        navigation.goBack();
       } else if (fromScreenKey === "servicecheckout") {
         // Navigate back to checkout screen
         navigation.goBack();

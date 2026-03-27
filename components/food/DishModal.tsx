@@ -112,20 +112,30 @@ export default function DishModal({
 
   const confirmAdd = () => {
     if (!selectedItem) return;
-    const price = selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price);
-    const addonTotal = selectedAddons.reduce((sum, aid) => {
-      const a = addons.find(x => x.id === aid);
-      return sum + (a ? Number(a.price) : 0);
-    }, 0);
+    const basePrice = selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price);
+    
+    // Map selected addon IDs to full addon objects with name, price, image
+    const selectedAddonObjects = selectedAddons
+      .map(aid => {
+        const addon = addons.find(x => x.id === aid);
+        if (!addon) return null;
+        return {
+          name: addon.name,
+          price: Number(addon.price),
+          image: addon.image || undefined,
+        };
+      })
+      .filter(Boolean) as { name: string; price: number; image?: string }[];
+    
     addItem({
       id: selectedItem.id + (selectedVariant?.size ?? ''),
       name: selectedItem.name + (selectedVariant ? ` (${selectedVariant.size})` : ''),
-      price: price + addonTotal,
+      price: basePrice, // Base price only, addons separate
       image: selectedItem.image,
       restaurantId,
       restaurantName,
       variant: selectedVariant?.size,
-      addons: selectedAddons.map(aid => addons.find(x => x.id === aid)?.name ?? '').filter(Boolean),
+      addons: selectedAddonObjects,
     });
     // Go back to dish list (don't close modal — user may want to add more)
     setSelectedItem(null);

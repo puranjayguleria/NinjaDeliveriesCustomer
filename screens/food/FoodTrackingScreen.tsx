@@ -129,7 +129,9 @@ export default function FoodTrackingScreen() {
     Animated.parallel([
       Animated.timing(scaleA, { toValue: 0.88, duration: 180, useNativeDriver: true }),
       Animated.timing(opacA,  { toValue: 0,    duration: 180, useNativeDriver: true }),
-    ]).start(() => setReviewModal(false));
+    ]).start(() => {
+      setReviewModal(false);
+    });
   };
   const submitReview = async () => {
     if (!rating) { Alert.alert("Rating Required", "Please select a star rating."); return; }
@@ -144,7 +146,28 @@ export default function FoodTrackingScreen() {
       });
       await firestore().collection("restaurant_Orders").doc(orderId).update({ reviewed: true });
       setReviewed(true);
-      setTimeout(closeReview, 1600);
+      
+      // Navigate to food home after 2 seconds
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'AppTabs',
+              state: {
+                routes: [
+                  {
+                    name: 'FoodTab',
+                    state: {
+                      routes: [{ name: 'FoodHome' }],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }, 2000);
     } catch { Alert.alert("Error", "Failed to submit review."); }
     finally { setSubmitting(false); }
   };

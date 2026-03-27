@@ -552,7 +552,15 @@ export default function RatingScreen() {
         userFeedback: feedback,
       });
       setShowRating(false);
-      Alert.alert("Thank You", "Your rating and feedback have been submitted.");
+      Alert.alert("Thank You", "Your rating and feedback have been submitted.", [
+        {
+          text: "OK",
+          onPress: () => {
+            // Navigate to food home screen
+            navigation.navigate("AppTabs", { screen: "FoodTab", params: { screen: "FoodHome" } });
+          }
+        }
+      ]);
     } catch (err) {
       console.error("Error submitting rating:", err);
       Alert.alert("Error", "Failed to submit rating.");

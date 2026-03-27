@@ -11,8 +11,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listenActiveRestaurants,
   listenFoodCategoriesWithItems,
+  listenAllMenuItems,
   type Restaurant,
   type FoodCategory,
+  type MenuItem,
 } from "@/firebase/foodFirebase";
 import DishModal from "@/components/food/DishModal";
 
@@ -22,7 +24,7 @@ const GRAY   = "#93959F";
 
 // Animated result row
 function ResultRow({ item, index, onPress }: {
-  item: { type: "category" | "restaurant"; data: any };
+  item: { type: "dish" | "restaurant"; data: any };
   index: number;
   onPress: () => void;
 }) {
@@ -39,20 +41,20 @@ function ResultRow({ item, index, onPress }: {
 
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
 
-  const isCategory = item.type === "category";
-  const cat = item.data as FoodCategory;
+  const isDish = item.type === "dish";
+  const dish = item.data as MenuItem;
   const rest = item.data as Restaurant;
 
   return (
     <Animated.View style={{ opacity: anim, transform: [{ translateY }] }}>
       <TouchableOpacity style={s.resultRow} onPress={onPress} activeOpacity={0.8}>
         <View style={s.resultIconWrap}>
-          {isCategory ? (
-            cat.image ? (
-              <Image source={{ uri: cat.image }} style={s.resultIcon} contentFit="cover" />
+          {isDish ? (
+            dish.image ? (
+              <Image source={{ uri: dish.image }} style={s.resultIcon} contentFit="cover" />
             ) : (
               <View style={[s.resultIcon, s.resultIconPlaceholder]}>
-                <Ionicons name="restaurant-outline" size={20} color={ORANGE} />
+                <Ionicons name="fast-food-outline" size={20} color={ORANGE} />
               </View>
             )
           ) : (
@@ -66,8 +68,12 @@ function ResultRow({ item, index, onPress }: {
           )}
         </View>
         <View style={s.resultInfo}>
-          <Text style={s.resultName}>{isCategory ? cat.name : rest.restaurantName}</Text>
-          <Text style={s.resultSub}>{isCategory ? "Dish / Category" : "Restaurant · 30-40 min"}</Text>
+          <Text style={s.resultName}>{isDish ? dish.name : rest.restaurantName}</Text>
+          <Text style={s.resultSub}>
+            {isDish 
+              ? `${dish.price ? `₹${dish.price}` : dish.variants?.[0]?.price ? `₹${dish.variants[0].price}` : 'Price not available'} · ${dish.category || "Dish"}` 
+              : "Restaurant · 30-40 min"}
+          </Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color={GRAY} />
       </TouchableOpacity>
@@ -80,26 +86,30 @@ function CatCard({ item, index, onPress }: { item: FoodCategory; index: number; 
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(anim, {
+    Animated.spring(anim, {
       toValue: 1,
-      duration: 300,
-      delay: index * 50,
+      tension: 50,
+      friction: 7,
+      delay: index * 40,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [index]);
 
-  const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] });
+  const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] });
 
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ scale }], flex: 1 }}>
-      <TouchableOpacity style={s.catCard} onPress={onPress} activeOpacity={0.8}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
-        ) : (
-          <View style={[s.catImg, s.catImgPlaceholder]}>
-            <Ionicons name="restaurant-outline" size={28} color={ORANGE} />
-          </View>
-        )}
+    <Animated.View style={{ opacity: anim, transform: [{ scale }, { translateY }], flex: 1, marginHorizontal: 4, marginVertical: 6 }}>
+      <TouchableOpacity style={s.catCard} onPress={onPress} activeOpacity={0.85}>
+        <View style={s.catImgContainer}>
+          {item.image ? (
+            <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
+          ) : (
+            <View style={[s.catImg, s.catImgPlaceholder]}>
+              <Ionicons name="restaurant-outline" size={32} color={ORANGE} />
+            </View>
+          )}
+        </View>
         <Text style={s.catName} numberOfLines={2}>{item.name}</Text>
       </TouchableOpacity>
     </Animated.View>
@@ -112,6 +122,7 @@ export default function FoodSearchScreen() {
   const [query, setQuery] = useState("");
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dishModal, setDishModal] = useState<{
     visible: boolean; restaurantId: string; restaurantName: string; filterCategoryId?: string | null;
@@ -123,21 +134,37 @@ export default function FoodSearchScreen() {
       () => setLoading(false)
     );
     const u2 = listenFoodCategoriesWithItems(setCategories);
-    return () => { u1(); u2(); };
+    const u3 = listenAllMenuItems(setMenuItems);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const filteredRestaurants = query.length > 1
     ? restaurants.filter(r => r.restaurantName?.toLowerCase().includes(query.toLowerCase()))
     : [];
 
-  const filteredCategories = query.length > 1
-    ? categories.filter(c => c.name?.toLowerCase().includes(query.toLowerCase()))
+  const filteredDishes = query.length > 1
+    ? menuItems.filter(m => 
+        m.name?.toLowerCase().includes(query.toLowerCase()) ||
+        m.description?.toLowerCase().includes(query.toLowerCase()) ||
+        m.category?.toLowerCase().includes(query.toLowerCase())
+      )
     : [];
 
   const results = [
-    ...filteredCategories.map(c => ({ type: "category" as const, data: c })),
+    ...filteredDishes.map(d => ({ type: "dish" as const, data: d })),
     ...filteredRestaurants.map(r => ({ type: "restaurant" as const, data: r })),
   ];
+
+  const openDish = (dish: MenuItem) => {
+    const rest = restaurants.find(r => r.id === dish.restaurantId);
+    if (!rest) return;
+    setDishModal({ 
+      visible: true, 
+      restaurantId: rest.id, 
+      restaurantName: rest.restaurantName,
+      filterCategoryId: dish.categoryId 
+    });
+  };
 
   const openCategory = (cat: FoodCategory) => {
     const restId = cat.companyIds?.[0] ?? "";
@@ -181,9 +208,15 @@ export default function FoodSearchScreen() {
           key="categories"
           data={categories}
           keyExtractor={i => i.id}
-          numColumns={2}
+          numColumns={3}
           contentContainerStyle={s.catGrid}
-          ListHeaderComponent={<Text style={s.sectionTitle}>Popular Categories</Text>}
+          columnWrapperStyle={s.catRow}
+          ListHeaderComponent={
+            <View style={s.headerSection}>
+              <Text style={s.sectionTitle}>Popular Categories</Text>
+              <Text style={s.sectionSubtitle}>Browse dishes by category</Text>
+            </View>
+          }
           renderItem={({ item, index }) => (
             <CatCard item={item} index={index} onPress={() => openCategory(item)} />
           )}
@@ -204,8 +237,8 @@ export default function FoodSearchScreen() {
               item={item}
               index={index}
               onPress={() => {
-                if (item.type === "category") {
-                  openCategory(item.data as FoodCategory);
+                if (item.type === "dish") {
+                  openDish(item.data as MenuItem);
                 } else {
                   const rest = item.data as Restaurant;
                   setDishModal({ visible: true, restaurantId: rest.id, restaurantName: rest.restaurantName });
@@ -245,17 +278,29 @@ const s = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: DARK, padding: 0 },
 
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: DARK, marginBottom: 12, paddingHorizontal: 16, paddingTop: 16 },
+  headerSection: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: DARK, marginBottom: 4 },
+  sectionSubtitle: { fontSize: 13, color: GRAY, fontWeight: "400" },
   catGrid:      { paddingBottom: 80, paddingHorizontal: 8 },
+  catRow:       { justifyContent: "flex-start" },
   catCard: {
-    margin: 6, backgroundColor: "#fff5f0", borderRadius: 12, padding: 14,
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 12,
     alignItems: "center",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  catImg:            { width: 64, height: 64, borderRadius: 32, marginBottom: 8 },
-  catImgPlaceholder: { backgroundColor: "#fff", justifyContent: "center", alignItems: "center" },
-  catName:           { fontSize: 12, fontWeight: "600", color: DARK, textAlign: "center" },
+  catImgContainer:   { marginBottom: 10 },
+  catImg:            { width: 56, height: 56, borderRadius: 28 },
+  catImgPlaceholder: { backgroundColor: "#fff5f0", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#ffe5d0" },
+  catName:           { fontSize: 11, fontWeight: "600", color: DARK, textAlign: "center", lineHeight: 14 },
 
   resultRow: {
     flexDirection: "row", alignItems: "center",

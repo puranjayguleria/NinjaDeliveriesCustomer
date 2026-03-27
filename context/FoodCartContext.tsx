@@ -1,14 +1,20 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
+export type AddonItem = {
+  name: string;
+  price: number;
+  image?: string;
+};
+
 export type FoodCartItem = {
   id: string;
   name: string;
-  price: number;
+  price: number; // Base item price (without addons)
   image?: string;
   restaurantId: string;
   restaurantName: string;
   variant?: string;
-  addons?: string[];
+  addons?: AddonItem[];
   qty: number;
 };
 
@@ -60,7 +66,13 @@ export const FoodCartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const clearCart = useCallback(() => setCartItems([]), []);
 
   const totalItems = cartItems.reduce((sum, i) => sum + i.qty, 0);
-  const totalPrice = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+  
+  // Calculate total price including addons
+  const totalPrice = cartItems.reduce((sum, item) => {
+    const itemPrice = item.price * item.qty;
+    const addonsPrice = (item.addons || []).reduce((addonSum, addon) => addonSum + addon.price, 0) * item.qty;
+    return sum + itemPrice + addonsPrice;
+  }, 0);
 
   return (
     <FoodCartContext.Provider value={{

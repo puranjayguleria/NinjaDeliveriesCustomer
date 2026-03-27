@@ -244,3 +244,20 @@ export function listenFoodCategoriesWithItems(
       onError
     );
 }
+
+/** Real-time listener for all available menu items across all restaurants */
+export function listenAllMenuItems(
+  onData: (items: MenuItem[]) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_menu')
+    .where('available', '==', true)
+    .onSnapshot(
+      snap => onData(snap.docs.map(d => {
+        const data = d.data() as any;
+        return { id: d.id, ...data, image: data.image || data.imageUrl || data.imageURL || '' };
+      })),
+      onError
+    );
+}

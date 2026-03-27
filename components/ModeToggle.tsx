@@ -34,6 +34,7 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
 
   const activeIndex = availableTabs.findIndex(t => t.mode === activeMode);
   const slideAnim = useRef(new Animated.Value(activeIndex >= 0 ? activeIndex : 0)).current;
+  const badgeBounce = useRef(new Animated.Value(0)).current;
   const [wrapperWidth, setWrapperWidth] = useState(0);
 
   const tabWidth = wrapperWidth > 0 ? wrapperWidth / availableTabs.length : 0;
@@ -50,6 +51,27 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
       }).start();
     }
   }, [activeMode, tabWidth, availableTabs.length]);
+
+  // Bounce animation for NEW badge
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.spring(badgeBounce, {
+          toValue: 1,
+          tension: 40,
+          friction: 3,
+          useNativeDriver: true,
+        }),
+        Animated.spring(badgeBounce, {
+          toValue: 0,
+          tension: 40,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+        Animated.delay(2000),
+      ])
+    ).start();
+  }, []);
 
   return (
     <View
@@ -78,6 +100,17 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
 
       {availableTabs.map((tab, i) => {
         const focused = activeMode === tab.mode;
+        const isFood = tab.mode === 'food';
+        
+        const badgeScale = badgeBounce.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.3],
+        });
+
+        const badgeTranslateY = badgeBounce.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -3],
+        });
         
         return (
           <TouchableOpacity
@@ -86,6 +119,21 @@ export default function ModeToggle({ activeMode, onPress }: Props) {
             onPress={() => onPress(tab.mode)}
             activeOpacity={0.8}
           >
+            {isFood && (
+              <Animated.View 
+                style={[
+                  s.newBadge,
+                  {
+                    transform: [
+                      { scale: badgeScale },
+                      { translateY: badgeTranslateY },
+                    ],
+                  },
+                ]}
+              >
+                <Text style={s.newBadgeText}>NEW</Text>
+              </Animated.View>
+            )}
             <Ionicons
               name={tab.icon}
               size={15}
@@ -133,6 +181,27 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 5,
     zIndex: 1,
+    position: 'relative',
+  },
+  newBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 0,
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  newBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
   },
   label: {
     fontSize: 13,
