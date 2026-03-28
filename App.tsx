@@ -52,7 +52,10 @@ import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContex
 import ProductsHomeScreen from "./screens/grocery/ProductsHomeScreen";
 import ServicesScreen from "./screens/services/ServicesScreen";
 import AllServicesScreen from "./screens/services/AllServicesScreen";
-import FoodScreen from "./screens/food/FoodScreen";
+import FoodScreen from "@/screens/food/FoodScreen";
+import RestaurantDetailScreen from "@/screens/food/RestaurantDetailScreen";
+import FoodCartScreen from "@/screens/food/FoodCartScreen";
+import { FoodCartProvider } from "./context/FoodCartContext";
 import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
 import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
 import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
@@ -93,7 +96,6 @@ import QuizScreen from "./screens/gamification/QuizScreen";
 import CongratsScreen from "./screens/gamification/CongratsScreen";
 import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
 import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
-import FreshProduceScreen from "./screens/grocery/FreshProduceScreen";
 import BuyAgainScreen from "./screens/grocery/BuyAgainScreen";
 import FoodComingSoonScreen from "./screens/grocery/FoodComingSoonScreen";
 /* ──────────────────────────────────────────────────────────
@@ -423,6 +425,18 @@ function HomeStack() {
       <Stack.Screen
         name="ServicesHome"
         component={ServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Food Screens */}
+      <Stack.Screen
+        name="RestaurantDetail"
+        component={RestaurantDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodCart"
+        component={FoodCartScreen}
         options={{ headerShown: false }}
       />
 
@@ -795,10 +809,14 @@ function AppTabs() {
     // If on Home or Categories tab and grocery becomes false
     if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
       console.log('[AppTabs] Current tab unavailable, navigating to available tab');
-      navigation.navigate('HomeTab' as never);
+      if (isServicesAvailable) {
+        navigation.navigate('CategoriesTab' as never);
+      } else {
+        navigation.navigate('HomeTab' as never);
+      }
     }
     
-    // If on Services tab and services becomes false
+    // If on Services tab and services becomes false (legacy guard, ServicesTab no longer exists as a tab)
     if (currentTab === 'ServicesTab' && !showServices) {
       console.log('[AppTabs] Services tab unavailable, navigating to available tab');
       navigation.navigate('HomeTab' as never);
@@ -940,13 +958,27 @@ function AppTabs() {
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
-    
-    // Use navigation object if available
-    const nav = pendingNavigation || navigationRef.current;
-    
-    if (nav) {
-      // Navigate to the Service Cart screen within the HomeTab stack
-      nav.navigate("HomeTab", { screen: "ServiceCart" });
+    if (pendingNavigation) {
+      // Navigate first, then show loader
+      pendingNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "HomeTab",
+              state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
+            },
+          ],
+        })
+      );
+      
+      // Show loader immediately
+      setServiceLoaderVisible(true);
+      
+      // Hide loader after animation
+      setTimeout(() => {
+        setServiceLoaderVisible(false);
+      }, 500);
     }
     
     setPendingNavigation(null);
@@ -977,13 +1009,17 @@ function AppTabs() {
         onGoToServices={() => {
           // Navigate from the ROOT navigator so this works from a global modal.
           if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)("HomeTab", { screen: "ProductsHome", params: { mode: "service" } });
+            (navigationRef.navigate as any)("CategoriesTab");
           }
         }}
       />
 
       <Tab.Navigator
-        initialRouteName="HomeTab"
+        initialRouteName={
+          showGrocery 
+            ? "HomeTab" 
+            : "Profile"  // Fallback to Profile if nothing else is available
+        }
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
@@ -1060,7 +1096,7 @@ function AppTabs() {
                 // they return to ProductsHome/ServicesScreen.
                 const state = navigation.getState();
                 const homeRoute = state.routes[state.index];
-                if (homeRoute.name === "HomeTab" && homeRoute.state && homeRoute.state.index > 0) {
+                if (homeRoute.name === "HomeTab" && homeRoute.state && (homeRoute.state.index ?? 0) > 0) {
                   // Navigate to the first screen of the HomeStack
                   navigation.navigate("HomeTab", { screen: "ProductsHome" });
                 }
@@ -1138,9 +1174,17 @@ function AppTabs() {
                 // If only service is active, go directly to service cart
                 else if (isServiceActive && !isGroceryActive) {
                   e.preventDefault();
-                  navigation.navigate("HomeTab", { 
-                    screen: "ServiceCart"
-                  });
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "HomeTab",
+                          state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
+                        },
+                      ],
+                    })
+                  );
                 }
                 // Empty cart or no active carts - go to unified cart
                 else {
@@ -1554,6 +1598,7 @@ const App: React.FC = () => {
         <ToggleProvider>
         <CustomerProvider>
         <CartProvider>
+            <FoodCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
@@ -1597,6 +1642,7 @@ const App: React.FC = () => {
                 </WeatherProvider>
               </LocationProvider>
             </ServiceCartProvider>
+            </FoodCartProvider>
         </CartProvider>
       </CustomerProvider>
         </ToggleProvider>
