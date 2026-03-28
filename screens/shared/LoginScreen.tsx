@@ -134,14 +134,17 @@ const LoginScreen: React.FC = () => {
 
   const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
   console.log("[OTP] E.164:", formattedPhoneNumber);
-if (__DEV__ && Platform.OS === "ios") {
-  try {
-    auth().settings.appVerificationDisabledForTesting = true;
-    console.log("[OTP] appVerificationDisabledForTesting enabled (iOS dev)");
-  } catch (e) {
-    console.log("[OTP] could not enable appVerificationDisabledForTesting", e);
+
+  // Disable app verification for development builds
+  if (__DEV__) {
+    try {
+      auth().settings.appVerificationDisabledForTesting = true;
+      console.log("[OTP] appVerificationDisabledForTesting enabled (dev mode)");
+    } catch (e) {
+      console.log("[OTP] could not enable appVerificationDisabledForTesting", e);
+    }
   }
-}
+
   try {
     setIsSendingOtp(true);
     console.log("[OTP] Calling RNFB auth().signInWithPhoneNumber...");
@@ -157,12 +160,21 @@ if (__DEV__ && Platform.OS === "ios") {
       message: error?.message,
     });
     
+    // Handle specific error codes
     if (error.code === "auth/invalid-phone-number") {
       showErrorModal("The phone number format is incorrect. Please enter a valid 10-digit mobile number.");
     } else if (error.code === "auth/too-many-requests") {
       showErrorModal("Too many attempts. Please try again after some time.");
     } else if (error.code === "auth/network-request-failed") {
       showErrorModal("Network error. Please check your internet connection.");
+    } else if (error.code === "auth/missing-client-identifier") {
+      // Development build error - provide helpful message
+      if (__DEV__) {
+        console.warn("[OTP] Development build detected. Phone auth may not work properly.");
+        showErrorModal("Development build: Phone authentication requires a production build or Firebase emulator. Please use a test phone number or build for production.");
+      } else {
+        showErrorModal("App verification failed. Please ensure you're using the latest version of the app.");
+      }
     } else {
       showErrorModal("Something went wrong while sending OTP. Please try again.");
     }
@@ -225,7 +237,7 @@ if (__DEV__ && Platform.OS === "ios") {
           // Clear the stored state
           await AsyncStorage.removeItem('returnToCheckout');
           
-          // Navigate back to ServicesTab -> ServiceCheckout
+          // Navigate back to CategoriesTab -> ServiceCheckout
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -235,7 +247,7 @@ if (__DEV__ && Platform.OS === "ios") {
                   state: {
                     routes: [
                       {
-                        name: "HomeTab",
+                        name: "CategoriesTab",
                         state: {
                           routes: [
                             { name: "ProductsHome" },

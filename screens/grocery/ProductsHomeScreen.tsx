@@ -46,6 +46,7 @@ import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
 import { Colors } from "@/constants/colors";
+import FoodScreen from "@/screens/food/FoodScreen";
 
 // Silence modular deprecation warnings from React Native Firebase. Once you
 // migrate to the modular API, you can remove this. See:
@@ -59,9 +60,10 @@ if (typeof globalThis !== "undefined") {
 }
 
 /* ------------------------------------------------------------------ CONSTANTS */
-const INITIAL_HEADER_HEIGHT = 210;
-const COLLAPSED_HEADER_HEIGHT = 100;
-const PAUSED_MESSAGE_EXTRA_TOP_PADDING = 120;
+const INITIAL_VIDEO_HEIGHT = 220;
+const COLLAPSED_VIDEO_HEIGHT = 100;
+const INITIAL_HEADER_HEIGHT = 270;
+const PAUSED_MESSAGE_EXTRA_TOP_PADDING = 60;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
@@ -1886,7 +1888,7 @@ export default function ProductsHomeScreen() {
       <BannerSwitcher storeId={location.storeId || ""} />
 
       {/* Feature Tiles - 3 Professional Carts */}
-      <View style={{ marginTop: isPausedMessageVisible ? 6 : -30, marginBottom: 2 }}>
+      <View style={{ marginTop: isPausedMessageVisible ? -35 : -80, marginBottom: 12 }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1950,7 +1952,7 @@ export default function ProductsHomeScreen() {
       </View>
 
       {/* Category Shortcuts - Circle Icons */}
-      <View style={{ marginTop: 4, marginBottom: 2 }}>
+      <View style={{ marginTop: 0, marginBottom: 8 }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -2179,9 +2181,9 @@ export default function ProductsHomeScreen() {
               >
                 <MaterialCommunityIcons 
                   name="basket" 
-                  size={15} 
-                  color={activeVerticalMode === "grocery" ? "#00b4a0" : "#6B7280"} 
-                  style={{ marginRight: 5 }}
+                  size={14} 
+                  color={activeVerticalMode === "grocery" ? "#ffffff" : "#666666"} 
+                  style={{ marginRight: 4 }}
                 />
                 <Text
                   style={[
@@ -2204,9 +2206,9 @@ export default function ProductsHomeScreen() {
               >
                 <MaterialCommunityIcons 
                   name="hammer-wrench" 
-                  size={15} 
-                  color={activeVerticalMode === "service" ? "#00b4a0" : "#6B7280"} 
-                  style={{ marginRight: 5 }}
+                  size={14} 
+                  color={activeVerticalMode === "service" ? "#ffffff" : "#666666"} 
+                  style={{ marginRight: 4 }}
                 />
                 <Text
                   style={[
@@ -2233,9 +2235,9 @@ export default function ProductsHomeScreen() {
               >
                 <MaterialCommunityIcons 
                   name="food" 
-                  size={15} 
-                  color={activeVerticalMode === "food" ? "#00b4a0" : "#6B7280"} 
-                  style={{ marginRight: 5 }}
+                  size={14} 
+                  color={activeVerticalMode === "food" ? "#ffffff" : "#666666"} 
+                  style={{ marginRight: 4 }}
                 />
                 <Text
                   style={[
@@ -2281,7 +2283,12 @@ export default function ProductsHomeScreen() {
 
         {error && <Text style={styles.errorTxt}>{error}</Text>}
 
-        {location.storeId ? (
+        {/* Show FoodScreen when Food tab is selected */}
+        {activeVerticalMode === "food" ? (
+          <FoodScreen />
+        ) : (
+          <>
+            {location.storeId ? (
           <AnimatedSectionList
             showsVerticalScrollIndicator={false}
             stickySectionHeadersEnabled={false}
@@ -2369,6 +2376,8 @@ export default function ProductsHomeScreen() {
             setHasPerm={setHasPerm}
             setSelectManually={setSelectManually}
           />
+        )}
+          </>
         )}
       </View>
 
@@ -3002,86 +3011,72 @@ searchFlex: {
   },
   toggleRow: {
     flexDirection: "row",
+    justifyContent: "flex-start",
     alignItems: "center",
-    marginHorizontal: 32,
-    marginTop: 6,
+    marginHorizontal: 16,
+    marginTop: 8,
     marginBottom: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.04)",
-    borderRadius: 20,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.01)",
+    gap: 8,
   },
   toggleBtn: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 18,
-    backgroundColor: "transparent",
+    borderRadius: 16,
+    backgroundColor: "#F5F5F5",
+    borderWidth: 0,
   },
   toggleBtnActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: "#00b4a0",
   },
   toggleLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#6B7280",
-    letterSpacing: 0.1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#666666",
   },
   toggleLabelActive: {
-    color: "#00b4a0",
+    color: "#ffffff",
   },
   newBadge: {
     position: "absolute",
-    top: -6,
-    right: 0,
+    top: -4,
+    right: -4,
     backgroundColor: "#FF3B30",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 8,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
   newBadgeText: {
     color: "#FFFFFF",
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
   soonBadge: {
     position: "absolute",
-    top: -6,
-    right: 4,
+    top: -4,
+    right: -4,
     backgroundColor: "#FF9500",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 8,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
   soonBadgeText: {
     color: "#FFFFFF",
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
-    letterSpacing: 0.2,
-  },
-   profileImg: {
-   width: 38,
-   height: 38,
-   borderRadius: 19,
+    letterSpacing: 0.3,
   },
 });
 
