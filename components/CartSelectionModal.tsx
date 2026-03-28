@@ -246,37 +246,7 @@ const CartSelectionModal: React.FC<CartSelectionModalProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Unified Cart Option */}
-            {(groceryItemCount > 0 && serviceItemCount > 0) && (
-              <>
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR</Text>
-                  <View style={styles.dividerLine} />
-                </View>
 
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.unifiedButton}
-                >
-                  <TouchableOpacity
-                    style={styles.unifiedButtonTouchable}
-                    onPress={() => {
-                      onClose();
-                      onSelectUnified?.();
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="layers" size={20} color="#fff" />
-                    <Text style={styles.unifiedButtonText}>
-                      View Combined Cart ({groceryItemCount + serviceItemCount} items)
-                    </Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-              </>
-            )}
 
             {/* Empty State */}
             {groceryItemCount === 0 && serviceItemCount === 0 && (
@@ -482,49 +452,7 @@ const styles = StyleSheet.create({
   disabledText: {
     color: '#9ca3af',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 12,
-    color: '#9ca3af',
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
-  unifiedButton: {
-    borderRadius: 16,
-    shadowColor: '#667eea',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 8,
-  },
-  unifiedButtonTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-  },
-  unifiedButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-    letterSpacing: 0.3,
-  },
+
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,

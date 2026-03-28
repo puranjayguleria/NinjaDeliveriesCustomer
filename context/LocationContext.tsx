@@ -13,6 +13,9 @@ export type LocationData = {
         active: boolean;
         fee: number;      
       };
+  grocery?: boolean;
+  food?: boolean;
+  services?: boolean;
 };
 
 type LocationContextType = {
@@ -27,7 +30,8 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children})=>{
   const [location, setLocation] = useState<LocationData>({
-    lat:null, lng:null, address:'', storeId:null, surge:{ active:false, fee:0 }
+    lat:null, lng:null, address:'', storeId:null, surge:{ active:false, fee:0 },
+    grocery: true, food: true, services: true // default to true
   });
 
   /** called from CategoriesScreen once we know the zone */
@@ -48,7 +52,7 @@ export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children
    const setSurge = (s:{active:boolean;fee:number}) =>
       setLocation(prev=>({ ...prev, surge:s }));
   return (
-  <LocationContext.Provider value={{location,updateLocation,clearLocation,setStoreId,setSurge}}>
+  <LocationContext.Provider value={{location, updateLocation, clearLocation, setStoreId, setSurge}}>
     {children}
     </LocationContext.Provider>
   );

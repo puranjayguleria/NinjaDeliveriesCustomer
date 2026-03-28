@@ -48,3 +48,9 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Alpha testing (Services flow)
+
+If you're doing consumer-style alpha testing for the Services booking flow (service + package bookings), use:
+
+- `docs/ALPHA_TESTING_SERVICES_BOOKING.md`

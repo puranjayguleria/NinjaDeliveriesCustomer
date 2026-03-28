@@ -13,8 +13,8 @@ import { QuickTile } from "./QuickTile";
 import Loader from "./VideoLoader";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const ITEM_WIDTH = 120;
-const ITEM_HEIGHT = 210;
+const ITEM_WIDTH = 100;
+const ITEM_HEIGHT = 170;
 const PAGE_SIZE = 10;
 
 interface Product {
@@ -152,7 +152,7 @@ const SalesBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
   };
 
   const renderItem = ({ item }: { item: Product }) => (
-    <QuickTile p={item as any} isPan={isPan} guard={maybeGate} />
+    <QuickTile p={item as any} isPan={isPan} guard={maybeGate} ribbonColor="#C2185B" />
   );
 
   const titleText = homeDiscountTitle?.trim() || "Discounted Products";
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   seeAll: {
-    color: "#009688",
+    color: "#C2185B",
     fontWeight: "600",
   },
   listContent: {

@@ -13,20 +13,24 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { FirestoreService, ServiceIssue } from "../services/firestoreService";
 import ServiceAddedSuccessModal from "./ServiceAddedSuccessModal";
+import { registerRazorpayWebViewCallbacks } from "../utils/razorpayWebViewCallbacks";
+import { openRazorpayNative } from "../utils/razorpayNative";
 
 interface AddOnService extends ServiceIssue {
   selected: boolean;
   price: number;
+  quantity?: number;
 }
 
 interface AddOnServicesModalProps {
   visible: boolean;
   onClose: () => void;
   onAddServices: (selectedServices: AddOnService[]) => void;
-  categoryId: string;
-  existingServices: string[]; // Services already booked
+  categoryId?: string;
+  existingServices: string[]; // Add-ons already added (used to avoid duplicates)
   bookingId?: string; // Add booking ID for payment integration
   companyId?: string; // Filter services by specific company
+  workerId?: string; // Filter services by specific worker (more specific than companyId)
 }
 
 export default function AddOnServicesModal({
@@ -36,7 +40,8 @@ export default function AddOnServicesModal({
   categoryId,
   existingServices,
   bookingId,
-  companyId, // Add companyId parameter
+  companyId,
+  workerId, // Add workerId parameter
 }: AddOnServicesModalProps) {
   const navigation = useNavigation<any>();
   const [services, setServices] = useState<AddOnService[]>([]);
@@ -51,24 +56,295 @@ export default function AddOnServicesModal({
   } | null>(null);
 
   useEffect(() => {
-    if (visible && categoryId) {
+    if (visible && (workerId || categoryId)) {
       console.log(`🔧 AddOnServicesModal opened with:`, {
         categoryId,
         companyId,
+        workerId,
         existingServices,
         bookingId
       });
       fetchAddOnServices();
     }
-  }, [visible, categoryId]);
+  }, [visible, categoryId, workerId, companyId]);
 
   const fetchAddOnServices = async () => {
     try {
       setLoading(true);
-      console.log(`🔧 Fetching add-on services for category: ${categoryId}`);
-      if (companyId) {
+      console.log(`🔧 Fetching add-on services`, { categoryId, workerId, companyId });
+      if (workerId) {
+        console.log(`👷 Filtering by specific worker: ${workerId}`);
+      } else if (companyId) {
         console.log(`🏢 Filtering by specific company: ${companyId}`);
       }
+
+      const normalizeServiceName = (name: string) =>
+        String(name || "")
+          .toLowerCase()
+          .replace(/[^\w\s]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const normalizedExisting = (existingServices || [])
+        .map((s) => normalizeServiceName(s))
+        .filter(Boolean);
+
+      const isAlreadyBookedService = (candidateName: string) => {
+        const candidate = normalizeServiceName(candidateName);
+        if (!candidate) return false;
+
+        // IMPORTANT: keep this strict.
+        // Add-on services should only exclude the *exact* service already booked.
+        // Loose matching (contains/keyword similarity) can wrongly exclude variants
+        // like "2 Seater ..." vs "4 Seater ...".
+        return normalizedExisting.some((existing) => {
+          if (!existing) return false;
+          return existing === candidate;
+        });
+      };
+      
+      // If workerId is provided, fetch worker's assigned services first
+      let workerAssignedServiceIds: string[] = [];
+      let workerAssignedServiceNames: string[] = [];
+      let workerAssignedServices: Array<{
+        id: string;
+        name: string;
+        price?: number;
+        imageUrl?: string | null;
+        masterCategoryId: string;
+        companyId?: string;
+        description?: string;
+        serviceKey?: string;
+        serviceType?: string;
+        packages?: any[];
+        isActive: boolean;
+      }> = [];
+      let workerServicePrices: Map<string, number> = new Map(); // Map service name to price
+      
+      if (workerId) {
+        try {
+          const firestore = require('@react-native-firebase/firestore').default;
+          const workerDoc = await firestore()
+            .collection('service_workers')
+            .doc(workerId)
+            .get();
+          
+          if (workerDoc.exists) {
+            const workerData = workerDoc.data();
+            workerAssignedServiceIds = workerData?.assignedServices || [];
+            console.log(`👷 Worker assigned services (${workerAssignedServiceIds.length} items):`, workerAssignedServiceIds);
+
+            const effectiveCompanyId: string | undefined = workerData?.companyId || companyId;
+
+            // Strategy A: Try direct doc-id fetch in service_services (works when assignedServices stores service_services IDs)
+            
+            // Fetch actual service details from service_services collection
+            console.log(`📦 Fetching service details from service_services collection...`);
+            const serviceDetailsPromises = workerAssignedServiceIds.map(async (serviceId) => {
+              try {
+                const serviceDoc = await firestore()
+                  .collection('service_services')
+                  .doc(serviceId)
+                  .get();
+                
+                if (serviceDoc.exists) {
+                  const serviceData = serviceDoc.data();
+                  const serviceName = serviceData?.serviceName || serviceData?.name;
+                  const servicePrice = serviceData?.price;
+                  const isActive = serviceData?.isActive !== false;
+                  
+                  if (serviceName) {
+                    console.log(`  ✅ ${serviceId} → "${serviceName}" (₹${servicePrice || 'N/A'})`);
+                    
+                    // Store price if available
+                    if (servicePrice && servicePrice > 0) {
+                      workerServicePrices.set(serviceName.toLowerCase().trim(), servicePrice);
+                    }
+
+                    return {
+                      id: serviceId,
+                      name: serviceName,
+                      price: servicePrice,
+                      imageUrl: serviceData?.imageUrl ?? null,
+                      masterCategoryId:
+                        String(serviceData?.categoryMasterId || serviceData?.masterCategoryId || serviceData?.categoryId || ""),
+                      companyId: serviceData?.companyId,
+                      description: serviceData?.description,
+                      serviceKey: serviceData?.serviceKey,
+                      serviceType: serviceData?.serviceType,
+                      packages: serviceData?.packages,
+                      isActive,
+                    };
+                  }
+                }
+                console.log(`  ⚠️ ${serviceId} → No service details found`);
+                return null;
+              } catch (error) {
+                console.error(`  ❌ Error fetching ${serviceId}:`, error);
+                return null;
+              }
+            });
+            
+            const serviceDetails = await Promise.all(serviceDetailsPromises);
+            workerAssignedServices = (serviceDetails.filter(Boolean) as any[]).filter((s) => !!s?.name);
+            workerAssignedServiceNames = workerAssignedServices.map((s) => s.name);
+            
+            console.log(`📋 Worker can provide these services:`, workerAssignedServiceNames);
+            console.log(`💰 Worker service prices:`, Object.fromEntries(workerServicePrices));
+
+            // Strategy B (robust): assignedServices may contain app_services IDs, adminServiceId/serviceKey, or titles.
+            // If direct doc-id fetch yielded nothing (or very little), fetch this company's service_services
+            // and filter using multiple match strategies.
+            if (effectiveCompanyId && workerAssignedServiceIds.length > 0 && workerAssignedServices.length === 0) {
+              console.log(`🧩 Direct service_services ID fetch found 0; falling back to company-wide mapping for companyId=${effectiveCompanyId}`);
+
+              const assignedTokens = workerAssignedServiceIds.map((x: any) => String(x)).filter(Boolean);
+              const assignedSet = new Set(assignedTokens);
+              const assignedNormalizedSet = new Set(assignedTokens.map((t) => normalizeServiceName(t)));
+
+              // Try to resolve any app_services IDs -> {adminServiceId, serviceKey, name}
+              const appAdminServiceIds = new Set<string>();
+              const appServiceKeys = new Set<string>();
+              const appServiceNames = new Set<string>();
+
+              const chunkSize = 10;
+              for (let i = 0; i < assignedTokens.length; i += chunkSize) {
+                const chunk = assignedTokens.slice(i, i + chunkSize);
+                try {
+                  const appSnap = await firestore()
+                    .collection('app_services')
+                    .where('__name__', 'in', chunk)
+                    .get();
+
+                  appSnap.forEach((doc: any) => {
+                    const d: any = doc.data();
+                    if (d?.adminServiceId) appAdminServiceIds.add(String(d.adminServiceId));
+                    if (d?.serviceKey) appServiceKeys.add(String(d.serviceKey));
+                    if (d?.name) appServiceNames.add(String(d.name));
+                  });
+                } catch (e) {
+                  // No-op: it's common that most tokens are not app_services IDs
+                }
+              }
+
+              const companyServicesSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', effectiveCompanyId)
+                .get();
+
+              const mapped: any[] = [];
+              companyServicesSnap.forEach((doc: any) => {
+                const d: any = doc.data();
+                const name = d?.serviceName || d?.name;
+                if (!name) return;
+
+                const serviceDocId = String(doc.id);
+                const adminServiceId = d?.adminServiceId ? String(d.adminServiceId) : undefined;
+                const serviceKey = d?.serviceKey ? String(d.serviceKey) : undefined;
+                const appServiceId = d?.appServiceId ? String(d.appServiceId) : undefined;
+                const normalizedName = normalizeServiceName(String(name));
+
+                const matches =
+                  assignedSet.has(serviceDocId) ||
+                  (adminServiceId ? assignedSet.has(adminServiceId) : false) ||
+                  (serviceKey ? assignedSet.has(serviceKey) : false) ||
+                  (appServiceId ? assignedSet.has(appServiceId) : false) ||
+                  (normalizedName ? assignedNormalizedSet.has(normalizedName) : false) ||
+                  (adminServiceId ? appAdminServiceIds.has(adminServiceId) : false) ||
+                  (serviceKey ? appServiceKeys.has(serviceKey) : false) ||
+                  (normalizedName ? Array.from(appServiceNames).some((n) => normalizeServiceName(n) === normalizedName) : false);
+
+                if (!matches) return;
+
+                mapped.push({
+                  id: serviceDocId,
+                  name: String(name),
+                  price: d?.price,
+                  imageUrl: d?.imageUrl ?? null,
+                  masterCategoryId: String(d?.categoryMasterId || d?.masterCategoryId || d?.categoryId || ''),
+                  companyId: d?.companyId,
+                  description: d?.description,
+                  serviceKey: d?.serviceKey,
+                  serviceType: d?.serviceType,
+                  packages: d?.packages,
+                  isActive: d?.isActive !== false,
+                });
+              });
+
+              if (mapped.length > 0) {
+                console.log(`✅ Mapped ${mapped.length} worker services via company-wide filtering`);
+                workerAssignedServices = mapped;
+                workerAssignedServiceNames = mapped.map((s) => s.name);
+              } else {
+                console.log(`⚠️ Company-wide mapping found 0 matching services for assignedServices tokens`);
+              }
+            }
+          } else {
+            console.warn(`⚠️ Worker ${workerId} not found`);
+          }
+        } catch (error) {
+          console.error('Error fetching worker data:', error);
+        }
+      }
+
+      // Worker-first behavior: show services the assigned worker can provide.
+      // If categoryId is provided (current booking category), restrict add-ons to that category.
+      if (workerId && workerAssignedServices.length > 0) {
+        console.log(`✅ Using worker-first add-on listing (workerId=${workerId})`);
+        const normalizedCategoryId = String(categoryId || '').trim();
+        const uniqueById = new Map<string, any>();
+        for (const service of workerAssignedServices) {
+          if (!service?.id) continue;
+          if (service.isActive === false) continue;
+          uniqueById.set(service.id, service);
+        }
+
+        const workerServicesList = Array.from(uniqueById.values())
+          .filter((service) => {
+            if (!normalizedCategoryId) return true;
+            const serviceCategoryId = String(service?.masterCategoryId || '').trim();
+            return serviceCategoryId === normalizedCategoryId;
+          })
+          .filter((service) => !isAlreadyBookedService(service.name))
+          .map((service) => {
+            const fallbackPrice =
+              typeof service.price === 'number' && service.price > 0
+                ? service.price
+                : workerServicePrices.get(String(service.name).toLowerCase().trim()) || 0;
+
+            return {
+              id: service.id,
+              name: service.name,
+              masterCategoryId: service.masterCategoryId || "",
+              companyId: service.companyId,
+              isActive: true,
+              imageUrl: service.imageUrl ?? null,
+              description: service.description,
+              serviceKey: service.serviceKey,
+              serviceType: service.serviceType,
+              packages: service.packages,
+              selected: false,
+              price: fallbackPrice,
+            } as AddOnService;
+          });
+
+        console.log(`📊 Worker-first add-ons: ${workerServicesList.length} services available after excluding existing services`);
+        setServices(workerServicesList);
+        setSelectedServices([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!categoryId) {
+        console.log('ℹ️ Falling back: no worker services and no categoryId');
+        console.warn('⚠️ No categoryId provided and no worker services found; cannot load add-on services');
+        setServices([]);
+        setSelectedServices([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log(`ℹ️ Falling back to category-based add-on listing (categoryId=${categoryId})`);
       
       // Fetch all services for the category with complete details
       const allServices = await FirestoreService.getServicesWithCompanies(categoryId);
@@ -98,24 +374,129 @@ export default function AddOnServicesModal({
         }
       }
       
-      // If companyId is provided, filter services to only those offered by this company
+      // Filter services based on worker or company
       let filteredServices = allServices;
-      if (companyId && companiesData.length > 0) {
-        console.log(`🏢 Filtering services by company ID: ${companyId}`);
-        const companyServiceNames = new Set(
-          companiesData.map(company => company.serviceName?.toLowerCase().trim()).filter(Boolean)
-        );
-        console.log(`🏢 Company offers these services:`, Array.from(companyServiceNames));
+      
+      // Priority 1: Filter by worker's assigned services (most specific)
+      if (workerId && workerAssignedServiceNames.length > 0) {
+        console.log(`👷 Filtering services by worker's assigned service names`);
+        console.log(`👷 Worker can provide ${workerAssignedServiceNames.length} services`);
+        console.log(`📊 Checking against ${allServices.length} services in category`);
+        console.log(`📊 Category services:`, allServices.map(s => s.name));
         
         filteredServices = allServices.filter(service => {
           const serviceName = service.name.toLowerCase().trim();
-          const isOffered = companyServiceNames.has(serviceName);
-          if (!isOffered) {
-            console.log(`🚫 Service "${service.name}" not offered by selected company`);
-          } else {
-            console.log(`✅ Service "${service.name}" IS offered by selected company`);
+          
+          console.log(`\n🔍 Checking service: "${service.name}"`);
+          
+          // Check if any assigned service matches this service
+          const isAssigned = workerAssignedServiceNames.some(assigned => {
+            const assignedLower = String(assigned).toLowerCase().trim();
+            
+            console.log(`  Comparing with assigned: "${assigned}"`);
+            
+            // Strategy 1: Exact match (ID or name)
+            if (assignedLower === serviceName || assignedLower === service.id) {
+              console.log(`  ✅ EXACT match!`);
+              return true;
+            }
+            
+            // Strategy 2: Partial match (name contains or is contained)
+            if (assignedLower.includes(serviceName) || serviceName.includes(assignedLower)) {
+              console.log(`  ✅ PARTIAL match!`);
+              return true;
+            }
+            
+            // Strategy 3: Normalize and compare (remove special chars, extra spaces)
+            const normalizeStr = (str: string) => str
+              .toLowerCase()
+              .replace(/[^\w\s]/g, '') // Remove special characters
+              .replace(/\s+/g, ' ')     // Normalize spaces
+              .trim();
+            
+            const normalizedService = normalizeStr(serviceName);
+            const normalizedAssigned = normalizeStr(assignedLower);
+            
+            console.log(`  Normalized: "${normalizedService}" vs "${normalizedAssigned}"`);
+            
+            if (normalizedService === normalizedAssigned) {
+              console.log(`  ✅ NORMALIZED match!`);
+              return true;
+            }
+            
+            // Strategy 4: Check if main keywords match
+            const serviceWords = normalizedService.split(' ').filter(w => w.length > 3);
+            const assignedWords = normalizedAssigned.split(' ').filter(w => w.length > 3);
+            
+            if (serviceWords.length > 0 && assignedWords.length > 0) {
+              const matchingWords = serviceWords.filter(sw => 
+                assignedWords.some(aw => sw === aw || sw.includes(aw) || aw.includes(sw))
+              );
+              
+              // If majority of words match (>60%), consider it a match
+              const matchPercentage = matchingWords.length / Math.min(serviceWords.length, assignedWords.length);
+              console.log(`  Keywords: ${matchingWords.length}/${Math.min(serviceWords.length, assignedWords.length)} match (${Math.round(matchPercentage * 100)}%)`);
+              
+              if (matchPercentage > 0.6) {
+                console.log(`  ✅ KEYWORD match!`);
+                return true;
+              }
+            }
+            
+            return false;
+          });
+          
+          if (!isAssigned) {
+            console.log(`  ❌ NO MATCH - Service NOT assigned to worker`);
           }
-          return isOffered;
+          
+          return isAssigned;
+        });
+        
+        console.log(`📊 After worker filter: ${filteredServices.length} services available`);
+      }
+      // Priority 2: Filter by company (if no worker specified)
+      else if (companyId && companiesData.length > 0) {
+        console.log(`🏢 Filtering services by company ID: ${companyId}`);
+        
+        // Create a map of service names offered by this company
+        const companyServiceNames = new Set(
+          companiesData.map(company => company.serviceName?.toLowerCase().trim()).filter(Boolean)
+        );
+        
+        // Also create a map of service IDs offered by this company
+        const companyServiceIds = new Set(
+          companiesData.map(company => company.serviceId || company.issueId).filter(Boolean)
+        );
+        
+        console.log(`🏢 Company offers these services:`, Array.from(companyServiceNames));
+        console.log(`🏢 Company service IDs:`, Array.from(companyServiceIds));
+        
+        filteredServices = allServices.filter(service => {
+          const serviceName = service.name.toLowerCase().trim();
+          
+          // Check 1: Exact service name match
+          if (companyServiceNames.has(serviceName)) {
+            console.log(`✅ Service "${service.name}" - exact name match`);
+            return true;
+          }
+          
+          // Check 2: Service ID match
+          if (companyServiceIds.has(service.id)) {
+            console.log(`✅ Service "${service.name}" - ID match`);
+            return true;
+          }
+          
+          // Check 3: Partial name match (company service name contains service name or vice versa)
+          for (const companyServiceName of companyServiceNames) {
+            if (serviceName.includes(companyServiceName) || companyServiceName.includes(serviceName)) {
+              console.log(`✅ Service "${service.name}" - partial match with "${companyServiceName}"`);
+              return true;
+            }
+          }
+          
+          console.log(`🚫 Service "${service.name}" not offered by selected company`);
+          return false;
         });
         
         console.log(`📊 After company filter: ${filteredServices.length} services available`);
@@ -206,26 +587,70 @@ export default function AddOnServicesModal({
 
       // Convert to AddOnService format with proper pricing from companies
       const addOnServices: AddOnService[] = availableServices.map(service => {
-        // Find the best price from companies offering this service
-        const serviceCompanies = companiesData.filter(company => 
-          company.serviceName && 
-          company.serviceName.toLowerCase().includes(service.name.toLowerCase())
-        );
-        
-        // Get the lowest price from available companies, or use service price, or default
         let bestPrice = service.price || 500; // Default fallback
+        const serviceName = service.name.toLowerCase().trim();
         
-        if (serviceCompanies.length > 0) {
-          const prices = serviceCompanies
-            .map(company => company.price)
-            .filter(price => price && price > 0);
+        // Priority 1: If workerId is provided, use worker's service price from service_services
+        if (workerId && workerServicePrices.size > 0) {
+          const workerPrice = workerServicePrices.get(serviceName);
           
-          if (prices.length > 0) {
-            bestPrice = Math.min(...prices);
+          if (workerPrice) {
+            bestPrice = workerPrice;
+            console.log(`💰 Service "${service.name}" - Using worker's price: ₹${bestPrice}`);
+          } else {
+            // Try partial match
+            for (const [name, price] of workerServicePrices.entries()) {
+              if (serviceName.includes(name) || name.includes(serviceName)) {
+                bestPrice = price;
+                console.log(`💰 Service "${service.name}" - Using worker's price (partial match): ₹${bestPrice}`);
+                break;
+              }
+            }
+            
+            if (bestPrice === (service.price || 500)) {
+              console.log(`  ⚠️ No worker price found for "${service.name}", using default: ₹${bestPrice}`);
+            }
           }
         }
-
-        console.log(`💰 Service "${service.name}" - Price: ₹${bestPrice} (from ${serviceCompanies.length} companies)`);
+        // Priority 2: If companyId is provided, try to get price from the specific company
+        else if (companyId && companiesData.length > 0) {
+          console.log(`💰 Looking for price of "${service.name}" from specific company ${companyId}`);
+          
+          // Find the company entry for this specific service
+          const companyService = companiesData.find(company => {
+            const companyServiceName = company.serviceName?.toLowerCase().trim();
+            
+            // Match by name
+            return companyServiceName === serviceName || 
+                   companyServiceName?.includes(serviceName) || 
+                   serviceName.includes(companyServiceName || '');
+          });
+          
+          if (companyService && companyService.price) {
+            bestPrice = companyService.price;
+            console.log(`  ✅ Found company-specific price: ₹${bestPrice}`);
+          } else {
+            console.log(`  ⚠️ No company-specific price found, using default: ₹${bestPrice}`);
+          }
+        }
+        // Priority 3: No specific worker/company, find the best price from all companies
+        else {
+          const serviceCompanies = companiesData.filter(company => 
+            company.serviceName && 
+            company.serviceName.toLowerCase().includes(service.name.toLowerCase())
+          );
+          
+          if (serviceCompanies.length > 0) {
+            const prices = serviceCompanies
+              .map(company => company.price)
+              .filter(price => price && price > 0);
+            
+            if (prices.length > 0) {
+              bestPrice = Math.min(...prices);
+              console.log(`💰 Service "${service.name}" - Best price: ₹${bestPrice} (from ${serviceCompanies.length} companies)`);
+            }
+          }
+        }
 
         return {
           ...service,
@@ -253,9 +678,34 @@ export default function AddOnServicesModal({
     setServices(prevServices =>
       prevServices.map(service =>
         service.id === serviceId
-          ? { ...service, selected: !service.selected }
+          ? { ...service, selected: !service.selected, quantity: service.selected ? 0 : 1 }
           : service
       )
+    );
+  };
+
+  const addServiceQuantity = (serviceId: string) => {
+    setServices(prevServices =>
+      prevServices.map(service =>
+        service.id === serviceId
+          ? { ...service, selected: true, quantity: (service.quantity || 1) + 1 }
+          : service
+      )
+    );
+  };
+
+  const removeServiceQuantity = (serviceId: string) => {
+    setServices(prevServices =>
+      prevServices.map(service => {
+        if (service.id === serviceId) {
+          const newQuantity = (service.quantity || 1) - 1;
+          if (newQuantity <= 0) {
+            return { ...service, selected: false, quantity: 0 };
+          }
+          return { ...service, quantity: newQuantity };
+        }
+        return service;
+      })
     );
   };
 
@@ -268,6 +718,14 @@ export default function AddOnServicesModal({
     }
 
     const totalAmount = getTotalPrice();
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      Alert.alert(
+        "Pricing Unavailable",
+        "Unable to proceed because pricing could not be determined for the selected services."
+      );
+      return;
+    }
     
     // Proceed directly to online payment
     handleRazorpayPayment(selected, totalAmount);
@@ -276,6 +734,9 @@ export default function AddOnServicesModal({
   const handleRazorpayPayment = async (selectedAddOns: AddOnService[], totalAmount: number) => {
     setPaymentLoading(true);
     try {
+      // Give React a tick to render the loading UI before heavy work/network calls.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       // Import auth and axios here to avoid issues
       const auth = require("@react-native-firebase/auth").default;
       const axios = require("axios").default;
@@ -326,7 +787,112 @@ export default function AddOnServicesModal({
 
       const contact = (user.phoneNumber || "").replace("+91", "");
 
-      // Navigate directly to Razorpay WebView
+      // --- Try Native Razorpay Checkout first (better UPI app detection/redirection) ---
+      try {
+        const nativeRes = await openRazorpayNative({
+          key: String(data.keyId),
+          order_id: String(data.orderId),
+          amount: String(amountPaise),
+          currency: String(data.currency ?? "INR"),
+          name: "Ninja Add-On Services",
+          description: `Add-on services payment for booking ${bookingId}`,
+          prefill: { contact, email: "", name: "" },
+          notes: {
+            uid: user.uid,
+            type: "addon_payment",
+            bookingId: bookingId || "",
+            serviceCount: String(selectedAddOns.length),
+          },
+          theme: { color: "#059669" },
+        });
+
+        const razorpayMeta = {
+          razorpay_order_id: nativeRes.razorpay_order_id,
+          razorpay_payment_id: nativeRes.razorpay_payment_id,
+          razorpay_signature: nativeRes.razorpay_signature,
+        };
+
+        const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+        const verifyHeaders = await getAuthHeaders();
+        const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, razorpayMeta, { headers: verifyHeaders });
+
+        if (!verifyData?.verified) {
+          throw new Error(verifyData?.error || "Payment verification failed");
+        }
+
+        await updateBookingWithAddOns(selectedAddOns, totalAmount, razorpayMeta, "online");
+        onAddServices(selectedAddOns);
+
+        // Close the add-on modal after successful payment
+        onClose();
+
+        setSuccessModalData({
+          serviceCount: selectedAddOns.length,
+          amount: totalAmount,
+          paymentMethod: "online",
+        });
+        setShowSuccessModal(true);
+        return; // don't fall through to WebView
+      } catch (nativeErr: any) {
+        // If user cancels native checkout, don't push them into WebView.
+        const msg = String(nativeErr?.description || nativeErr?.message || "");
+        if (nativeErr?.code === "payment_cancelled" || /cancel/i.test(msg)) {
+          Alert.alert("Payment Cancelled", "You cancelled the payment. Please try again.");
+          return;
+        }
+        if (__DEV__) {
+          console.warn("\uD83D\uDCB3[RZPNative] addon_fallback_to_webview", nativeErr);
+        }
+      }
+
+      const sessionId = registerRazorpayWebViewCallbacks({
+        onSuccess: async (response: any) => {
+          try {
+            console.log("Add-on payment successful:", response);
+
+            // Verify payment on server
+            const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+            const verifyHeaders = await getAuthHeaders();
+            const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, response, { headers: verifyHeaders });
+
+            if (!verifyData?.verified) {
+              throw new Error(verifyData?.error || "Payment verification failed");
+            }
+
+            console.log("Add-on payment verified, updating booking...");
+
+            // Update booking with add-on services and payment info
+            await updateBookingWithAddOns(selectedAddOns, totalAmount, response, 'online');
+
+            // Close modal and notify parent
+            onAddServices(selectedAddOns);
+            onClose();
+
+            // Show custom success modal
+            setSuccessModalData({
+              serviceCount: selectedAddOns.length,
+              amount: totalAmount,
+              paymentMethod: "online",
+            });
+            setShowSuccessModal(true);
+          } catch (error) {
+            console.error("Add-on payment verification failed:", error);
+            Alert.alert("Payment Verification Failed", "Please contact support.");
+          }
+        },
+        onFailure: (error: any) => {
+          console.log("Add-on payment failed:", error);
+          Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
+        },
+      });
+
+      // IMPORTANT:
+      // React Native <Modal> sits above the navigation stack.
+      // If we navigate to a WebView while the modal is still visible, the WebView renders behind it.
+      // Close the modal first, then navigate.
+      onClose();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
       navigation.navigate("RazorpayWebView", {
         orderId: String(data.orderId),
         amount: totalAmount,
@@ -339,45 +905,7 @@ export default function AddOnServicesModal({
           email: "",
           name: "",
         },
-        onSuccess: async (response: any) => {
-          try {
-            console.log("Add-on payment successful:", response);
-            
-            // Verify payment on server
-            const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
-            const verifyHeaders = await getAuthHeaders();
-            const { data: verifyData } = await api.post(VERIFY_RZP_PAYMENT_URL, response, { headers: verifyHeaders });
-
-            if (!verifyData?.verified) {
-              throw new Error(verifyData?.error || "Payment verification failed");
-            }
-            
-            console.log("Add-on payment verified, updating booking...");
-            
-            // Update booking with add-on services and payment info
-            await updateBookingWithAddOns(selectedAddOns, totalAmount, response, 'online');
-            
-            // Close modal and notify parent
-            onAddServices(selectedAddOns);
-            onClose();
-            
-            // Show custom success modal
-            setSuccessModalData({
-              serviceCount: selectedAddOns.length,
-              amount: totalAmount,
-              paymentMethod: "online",
-            });
-            setShowSuccessModal(true);
-            
-          } catch (error) {
-            console.error("Add-on payment verification failed:", error);
-            Alert.alert("Payment Verification Failed", "Please contact support.");
-          }
-        },
-        onFailure: (error: any) => {
-          console.log("Add-on payment failed:", error);
-          Alert.alert("Payment Failed", error?.description || "Payment was not completed.");
-        },
+        sessionId,
       });
 
     } catch (error: any) {
@@ -410,10 +938,12 @@ export default function AddOnServicesModal({
       }
 
       // Prepare updated add-ons
-      const newAddOns = selectedAddOns.map(service => ({
-        name: service.name,
-        price: service.price
-      }));
+      const newAddOns = selectedAddOns.flatMap(service => 
+        Array.from({ length: service.quantity || 1 }, () => ({
+          name: service.name,
+          price: service.price
+        }))
+      );
 
       const updatedAddOns = [
         ...(currentBooking.addOns || []),
@@ -432,6 +962,7 @@ export default function AddOnServicesModal({
       // Create payment record for add-on services
       const paymentData = {
         bookingId: bookingId,
+        customerId: currentBooking.customerId || '',
         amount: totalAmount,
         paymentMethod: paymentMethod,
         paymentStatus: paymentMethod === 'cash' ? 'pending' as const : 'paid' as const,
@@ -457,11 +988,13 @@ export default function AddOnServicesModal({
   const getTotalPrice = () => {
     return services
       .filter(service => service.selected)
-      .reduce((total, service) => total + service.price, 0);
+      .reduce((total, service) => total + (service.price * (service.quantity || 1)), 0);
   };
 
   const getSelectedCount = () => {
-    return services.filter(service => service.selected).length;
+    return services
+      .filter(service => service.selected)
+      .reduce((total, service) => total + (service.quantity || 1), 0);
   };
 
   const renderServiceItem = ({ item }: { item: AddOnService }) => (
@@ -481,11 +1014,40 @@ export default function AddOnServicesModal({
             <Text style={styles.priceLabel}>/ service</Text>
           </View>
         </View>
-        <View style={[styles.checkbox, item.selected && styles.checkboxSelected]}>
-          {item.selected && (
-            <Ionicons name="checkmark" size={18} color="#fff" />
-          )}
-        </View>
+        
+        {item.selected ? (
+          <View style={styles.quantityControls}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                removeServiceQuantity(item.id);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="remove" size={20} color="#10B981" />
+            </TouchableOpacity>
+            
+            <Text style={styles.quantityText}>{item.quantity || 1}</Text>
+            
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                addServiceQuantity(item.id);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={20} color="#10B981" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.checkbox, item.selected && styles.checkboxSelected]}>
+            {item.selected && (
+              <Ionicons name="checkmark" size={18} color="#fff" />
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -496,12 +1058,30 @@ export default function AddOnServicesModal({
         visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={onClose}
+        onRequestClose={() => {
+          if (!paymentLoading) onClose();
+        }}
       >
       <View style={styles.container}>
+        {paymentLoading && (
+          <View style={styles.paymentOverlay} pointerEvents="auto">
+            <View style={styles.paymentOverlayCard}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.paymentOverlayTitle}>Preparing payment…</Text>
+              <Text style={styles.paymentOverlaySubtitle}>Please wait</Text>
+            </View>
+          </View>
+        )}
+
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <TouchableOpacity
+            onPress={() => {
+              if (!paymentLoading) onClose();
+            }}
+            style={[styles.closeButton, paymentLoading && { opacity: 0.5 }]}
+            disabled={paymentLoading}
+          >
             <Ionicons name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add-On Services</Text>
@@ -542,9 +1122,14 @@ export default function AddOnServicesModal({
             {getSelectedCount() > 0 && (
               <View style={styles.summaryContainer}>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryText}>
-                    {getSelectedCount()} service{getSelectedCount() > 1 ? 's' : ''} selected
-                  </Text>
+                  <View>
+                    <Text style={styles.summaryText}>
+                      {getSelectedCount()} service{getSelectedCount() > 1 ? 's' : ''} selected
+                    </Text>
+                    <Text style={styles.summarySubtext}>
+                      {services.filter(s => s.selected).length} type{services.filter(s => s.selected).length > 1 ? 's' : ''}
+                    </Text>
+                  </View>
                   <Text style={styles.summaryPrice}>₹{getTotalPrice()}</Text>
                 </View>
               </View>
@@ -569,7 +1154,7 @@ export default function AddOnServicesModal({
                 <View style={styles.loadingButtonContent}>
                   <Ionicons name="card" size={20} color="#fff" />
                   <Text style={styles.addButtonText}>
-                    Pay ₹{getTotalPrice()} & Add {getSelectedCount()} Service{getSelectedCount() > 1 ? 's' : ''}
+                    Pay ₹{getTotalPrice()} & Add Service{getSelectedCount() > 1 ? 's' : ''}
                   </Text>
                 </View>
               )}
@@ -597,6 +1182,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F3F4F6",
+  },
+  paymentOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+  },
+  paymentOverlayCard: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 14,
+    width: "80%",
+    alignItems: "center",
+  },
+  paymentOverlayTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  paymentOverlaySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: "#6B7280",
   },
   header: {
     flexDirection: "row",
@@ -779,10 +1394,41 @@ const styles = StyleSheet.create({
     color: "#374151",
     fontWeight: "600",
   },
+  summarySubtext: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
   summaryPrice: {
     fontSize: 22,
     color: "#10B981",
     fontWeight: "800",
+  },
+  quantityControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#10B981",
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  quantityButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quantityText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#10B981",
+    minWidth: 24,
+    textAlign: "center",
   },
   addButton: {
     backgroundColor: "#10B981",

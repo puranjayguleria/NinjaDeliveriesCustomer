@@ -1,9 +1,6 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-import app from '@react-native-firebase/app';
-
-
 import { ensureFirebaseReady } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
@@ -26,6 +23,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
+import { navigationRef, setLastNonCartTab } from "./navigation/rootNavigation";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -34,59 +32,70 @@ import { auth, firestore } from './firebase.native';
 // import auth from "@react-native-firebase/auth";
 // import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { NativeModules, Platform } from 'react-native';
-import RestaurantCheckoutScreen from "./screens/RestaurantCheckoutScreen";
-
-try {
-  // RNFB v22-compatible way to check initialized apps:
-  // If zero on iOS, native didn't configure from GoogleService-Info.plist
-  console.log('[RNFB] apps length', app.apps?.length);
-} catch (e) {
-  console.log('[RNFB] apps check threw', e);
-}
-
-console.log('[RNFB] Native module present?', !!NativeModules.RNFBAppModule);
-console.log('[RNFB] Native apps constant', NativeModules.RNFBAppModule?.NATIVE_FIREBASE_APPS);
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
 import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
-import { LocationProvider } from "./context/LocationContext";
-import { useLocationContext } from "./context/LocationContext";
+import { LocationProvider, useLocationContext } from "./context/LocationContext";
+import { ToggleProvider, useToggleContext } from "./context/ToggleContext";
+import { fetchLocationFlags } from "./utils/fetchLocationFlags";
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
 /* ──────────────────────────────────────────────────────────
    Screens
    ────────────────────────────────────────────────────────── */
-import ProductsHomeScreen from "./screens/ProductsHomeScreen";
-import ServicesScreen from "./screens/ServicesScreen";
-import ServicesStack from "./navigation/ServicesStack";
+import ProductsHomeScreen from "./screens/grocery/ProductsHomeScreen";
+import ServicesScreen from "./screens/services/ServicesScreen";
+import AllServicesScreen from "./screens/services/AllServicesScreen";
+import FoodScreen from "./screens/food/FoodScreen";
+import BookingHistoryScreen from "./screens/services/BookingHistoryScreen";
+import ServiceCategoryScreen from "./screens/services/ServiceCategoryScreen";
+import PackageSelectionScreen from "./screens/services/PackageSelectionScreen";
+import CompanySelectionScreen from "./screens/services/CompanySelectionScreen";
+import SelectDateTimeScreen from "./screens/services/SelectDateTimeScreen";
+import PaymentScreen from "./screens/services/PaymentScreen";
+import BookingDetailsScreen from "./screens/services/BookingDetailsScreen";
+import BookingConfirmationScreen from "./screens/services/BookingConfirmationScreen";
+import TrackBookingScreen from "./screens/services/TrackBookingScreen";
+import ServiceCartScreen from "./screens/services/ServiceCartScreen";
+import ServiceCheckoutScreen from "./screens/services/ServiceCheckoutScreen";
+import ServiceAddOnScreen from "./screens/services/ServiceAddOnScreen";
+import ServiceCallingScreen from "./screens/services/ServiceCallingScreen";
+import ServiceVisitScreen from "./screens/services/ServiceVisitScreen";
+import ServiceEndScreen from "./screens/services/ServiceEndScreen";
+import FinalCheckoutScreen from "./screens/services/FinalCheckoutScreen";
 
-import CategoriesScreen from "./screens/CategoriesScreen";
-import FeaturedScreen from "./screens/FeaturedScreen";
-import ProductListingScreen from "./screens/ProductListingScreen";
-import CartScreen from "./screens/CartScreen";
-import CartPaymentScreen from "./screens/CartPaymentScreen";
-import UnifiedCartScreen from "./screens/UnifiedCartScreen";
+import CategoriesScreen from "./screens/grocery/CategoriesScreen";
+import ProductListingScreen from "./screens/grocery/ProductListingScreen";
+import CartScreen from "./screens/grocery/CartScreen";
+import CartPaymentScreen from "./screens/grocery/CartPaymentScreen";
+import UnifiedCartScreen from "./screens/shared/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
-import RazorpayWebView from "./screens/RazorpayWebView";
-import ProfileScreen from "./screens/ProfileScreen";
-import LocationSelectorScreen from "./screens/LocationSelectorScreen";
-import OrderAllocatingScreen from "./screens/OrderAllocatingScreen";
-import OrderTrackingScreen from "./screens/OrderTrackingScreen";
-import RatingScreen from "./screens/RatingScreen";
-import NewOrderCancelledScreen from "./screens/NewOrderCancelledScreen";
-import TermsAndConditionsScreen from "./screens/TermsAndConditionsScreen";
-import LoginScreen from "./screens/LoginScreen";
-import SearchScreen from "./screens/SearchScreen";
-import QuizScreen from "./screens/QuizScreen";
-import CongratsScreen from "./screens/CongratsScreen";
-import LeaderboardScreen from "./screens/LeaderBoardScreen";
-import AllDiscountedProductsScreen from "./screens/AllDiscountedProductsScreen";
+import AreaUnavailableModal from "./components/AreaUnavailableModal";
+import RazorpayWebView from "./screens/shared/RazorpayWebView";
+import ProfileScreen from "./screens/shared/ProfileScreen";
+import LocationSelectorScreen from "./screens/shared/LocationSelectorScreen";
+import OrderAllocatingScreen from "./screens/grocery/OrderAllocatingScreen";
+import OrderTrackingScreen from "./screens/grocery/OrderTrackingScreen";
+import RatingScreen from "./screens/shared/RatingScreen";
+import NewOrderCancelledScreen from "./screens/grocery/NewOrderCancelledScreen";
+import TermsAndConditionsScreen from "./screens/shared/TermsAndConditionsScreen";
+import LoginScreen from "./screens/shared/LoginScreen";
+import SearchScreen from "./screens/grocery/SearchScreen";
+import ProductDetailsScreen from "./screens/grocery/ProductDetailsScreen";
+import QuizScreen from "./screens/gamification/QuizScreen";
+import CongratsScreen from "./screens/gamification/CongratsScreen";
+import LeaderboardScreen from "./screens/gamification/LeaderBoardScreen";
+import AllDiscountedProductsScreen from "./screens/grocery/AllDiscountedProductsScreen";
+import FreshProduceScreen from "./screens/grocery/FreshProduceScreen";
+import BuyAgainScreen from "./screens/grocery/BuyAgainScreen";
+import FoodComingSoonScreen from "./screens/grocery/FoodComingSoonScreen";
 /* ──────────────────────────────────────────────────────────
    Utilities
    ────────────────────────────────────────────────────────── */
@@ -95,56 +104,109 @@ import { useOtaUpdate } from "./utils/useOtaUpdate";
 import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
-import HiddenCouponCard from "./screens/RewardScreen";
+import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import { Linking } from "react-native";
-import  firebase  from "@react-native-firebase/app";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
-import CuisinesScreen from './screens/CuisinesScreen';
-import RestaurantCategoryListingScreen from './screens/RestaurantCategoryListingScreen';
-import { RestaurantCartProvider } from './context/RestaurantCartContext';
-import RestaurantDetailsScreen from "./screens/RestaurantDetailsScreen";
+import OrdersScreen from "./screens/shared/OrdersScreen";
+import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
+
+import { ErrorBoundary } from "./components/ErrorBoundary";
+
+const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
+const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
+
+type ServiceConfirmedBannerPayload = {
+  razorpayOrderId: string;
+  createdAt: number;
+};
+
+const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolean }> = ({
+  user,
+  firebaseReady,
+}) => {
+  const { clearCart: clearServiceCart } = useServiceCart();
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    let cancelled = false;
+    const runServicePaymentRecovery = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SERVICE_PAYMENT_RECOVERY_KEY);
+        if (!raw) return;
+
+        const recovery = JSON.parse(raw);
+        const razorpayOrderId = String(recovery?.razorpayOrderId || "");
+        if (!razorpayOrderId) return;
+        if (cancelled) return;
+
+        const axios = require("axios").default;
+        const api = axios.create({
+          timeout: 20000,
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const token = await user.getIdToken(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+        const url = `${CLOUD_FUNCTIONS_BASE_URL}/servicePaymentsReconcile`;
+
+        const resp = await api.post(url, { orderIds: [razorpayOrderId] }, { headers });
+        const data = resp?.data;
+
+        const finalizedOrderIds: string[] = Array.isArray(data?.finalizedOrderIds)
+          ? data.finalizedOrderIds.map((x: any) => String(x))
+          : [];
+        const isFinalizedForThisOrder = finalizedOrderIds.includes(razorpayOrderId);
+
+        const shouldClear =
+          (data?.ok && isFinalizedForThisOrder) ||
+          (data?.ok &&
+            (Number(data?.createdBookings || 0) > 0 ||
+              Number(data?.updatedBookings || 0) > 0 ||
+              !!data?.alreadyFinalized ||
+              Number(data?.finalizedIntents || 0) > 0));
+
+        if (!shouldClear) return;
+
+        clearServiceCart();
+
+        const bannerPayload: ServiceConfirmedBannerPayload = {
+          razorpayOrderId,
+          createdAt: Date.now(),
+        };
+        await AsyncStorage.setItem(
+          SERVICE_CONFIRMED_BANNER_KEY,
+          JSON.stringify(bannerPayload)
+        );
+
+        await AsyncStorage.removeItem(SERVICE_PAYMENT_RECOVERY_KEY);
+      } catch (e) {
+        if (__DEV__) console.warn("🧾[SvcPay] app_start_recovery_failed_nonfatal", e);
+      }
+    };
+
+    runServicePaymentRecovery();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, firebaseReady, clearServiceCart]);
+
+  return null;
+};
+
+// NinjaEats screens (fallback mappings)
+// Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
+// Map them to existing screens to avoid launch-time crashes / compile failures.
+
 
 console.log("[RNFB] Native module present? RNFBApp:", !!NativeModules.RNFBAppModule);
 console.log("[RNFB] Native module present? RNFBAuth:", !!NativeModules.RNFBAuthModule);
 
-const NinjaEatsTab = createBottomTabNavigator();
-const NinjaEatsStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-    }}
-  >
-    <Stack.Screen
-      name="NinjaEatsHome"
-      component={NinjaEatsHomeScreen}
-    />
-     <Stack.Screen
-      name="RestaurantCategoryListing"
-      component={RestaurantCategoryListingScreen}
-    />
-    <Stack.Screen
-      name="RestaurantDetails"
-      component={RestaurantDetailsScreen}
-    /> 
-    <Stack.Screen
-      name="RestaurantCheckout"
-      component={RestaurantCheckoutScreen}
-    />
-  </Stack.Navigator>
-);
 
-const NinjaEatsOrdersStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen
-      name="NinjaEatsOrders"
-      component={NinjaEatsOrdersScreen}
-    />
-    <Stack.Screen
-      name="NinjaEatsOrderDetail"
-      component={NinjaEatsOrderDetailScreen}
-    />
-  </Stack.Navigator>
-);
 
 /**
  * Bottom tabs for Ninja Eats:
@@ -153,78 +215,8 @@ const NinjaEatsOrdersStack = () => (
  * - Orders
  * - Profile
  */
-const NinjaEatsTabs = () => (
-  <Tab.Navigator
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: "#00b4a0",
-      tabBarInactiveTintColor: "#777",
-      tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: "600",
-      },
-      tabBarStyle: {
-        backgroundColor: "#ffffff",
-        borderTopColor: "#eee",
-        elevation: 8,
-        height: 56,
-      },
-    }}
-  >
-    <Tab.Screen
-      name="NinjaEatsHomeTab"
-      component={NinjaEatsStack}
-      options={{
-        title: "Home",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="home-filled" size={size} color={color} />
-        ),
-      }}
-    />
-
-    <Tab.Screen
-      name="CuisinesTab"
-      component={CuisinesScreen}
-      options={{
-        title: "Cuisines",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="restaurant-menu" size={size} color={color} />
-        ),
-      }}
-    />
-
-   <Tab.Screen
-  name="OrdersTab"
-  component={NinjaEatsOrdersStack}
-  options={{
-    title: "Orders",
-    tabBarIcon: ({ color, size }) => (
-      <MaterialIcons name="receipt-long" size={size} color={color} />
-    ),
-  }}
-/>
 
 
-    <Tab.Screen
-      name="ProfileTab"
-      component={ProfileScreen}
-      options={{
-        title: "Profile",
-        tabBarIcon: ({ color, size }) => (
-          <MaterialIcons name="person" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
-
-
-try {
-  const def = firebase.app();
-  console.log("[RNFB] default app:", def?.name, def?.options);
-} catch (e) {
-  console.log("[RNFB] firebase.app() threw:", e);
-}
 
 // Log inbound deep links (for the reCAPTCHA return)
 Linking.addEventListener("url", ({ url }) => console.log("[Linking] open url:", url));
@@ -255,7 +247,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           {
             text: "Log In",
             onPress: () =>
-              navigation.navigate("HomeTab", { screen: "LoginInHomeStack" }),
+              navigation.navigate("LoginInHomeStack"),
           },
         ]
       );
@@ -276,10 +268,25 @@ const RootStack = createNativeStackNavigator();
 /* ==========================================================
    STACK COMPOSITIONS
    ========================================================== */
+
+// Wrapper component that shows the right home screen based on toggle
+const HomeScreenWrapper = () => {
+  const { activeMode } = useToggleContext();
+  
+  if (activeMode === "service") {
+    return <ServicesScreen />;
+  } else if (activeMode === "food") {
+    // If food is selected, we show the coming soon screen
+    // Note: We keep the mode as 'food' so the toggle bar reflects it
+    return <FoodComingSoonScreen />;
+  }
+  return <ProductsHomeScreen />;
+};
+
 function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ProductsHome" component={ProductsHomeScreen} />
+      <Stack.Screen name="ProductsHome" component={HomeScreenWrapper} />
 
       {/* Quiz flow (gated) */}
       <Stack.Screen name="Quiz" options={{ title: "Quiz & Win" }}>
@@ -318,10 +325,15 @@ function HomeStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="ProductDetails"
+        component={ProductDetailsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="ProductListingFromHome"
-        component={ProductListingScreen}
+        component={ProductListingScreen as any}
         options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
+          title: (route.params as any)?.categoryName || "Products",
           headerShown: true,
         })}
       />
@@ -330,6 +342,17 @@ function HomeStack() {
         component={AllDiscountedProductsScreen}
         options={{ title: "Discounted Products", headerShown: false }}
       />
+      <Stack.Screen
+        name="BuyAgain"
+        component={BuyAgainScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodComingSoon"
+        component={FoodComingSoonScreen}
+        options={{ headerShown: false }}
+      />
+
 
       {/* Order flow */}
       <Stack.Screen
@@ -341,10 +364,8 @@ function HomeStack() {
         name="OrderTracking"
         component={OrderTrackingScreen}
         options={{
-          headerShown: true,
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
-          title: "Order Tracking",
         }}
       />
       {/* Reward */}
@@ -357,8 +378,7 @@ function HomeStack() {
         name="OrderCancelled"
         component={NewOrderCancelledScreen}
         options={{
-          title: "Order Cancelled",
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
         }}
       />
@@ -366,8 +386,7 @@ function HomeStack() {
         name="RatingScreen"
         component={RatingScreen}
         options={{
-          title: "Rate Your Rider",
-          headerLeft: () => null,
+          headerShown: false,
           gestureEnabled: false,
         }}
       />
@@ -378,43 +397,273 @@ function HomeStack() {
         component={LoginScreen}
         options={{ headerShown: false }}
       />
-    </Stack.Navigator>
-  );
-}
 
-function CategoriesStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
+      {/* Profile Screen - accessible via profile icon in header */}
       <Stack.Screen
-        name="ProductListingFromCats"
-        component={ProductListingScreen}
-        options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
-          headerShown: true,
-        })}
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Orders Screen */}
+      <Stack.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{ title: "Your Orders", headerShown: false }}
+      />
+
+      {/* Contact Us Screen */}
+      <Stack.Screen
+        name="ContactUs"
+        component={require("./screens/shared/ContactUsScreen").default}
+        options={{ title: "Contact Us", headerShown: false }}
+      />
+
+      {/* Services Screen - accessible via toggle in header */}
+      <Stack.Screen
+        name="ServicesHome"
+        component={ServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* All Services Screen - accessible via View All button in ServicesScreen */}
+      <Stack.Screen
+        name="AllServices"
+        component={AllServicesScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Category Screen */}
+      <Stack.Screen
+        name="ServiceCategory"
+        component={ServiceCategoryScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Package Selection Screen */}
+      <Stack.Screen
+        name="PackageSelection"
+        component={PackageSelectionScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Company Selection Screen */}
+      <Stack.Screen
+        name="CompanySelection"
+        component={CompanySelectionScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Select Date Time Screen */}
+      <Stack.Screen
+        name="SelectDateTime"
+        component={SelectDateTimeScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Payment Screen */}
+      <Stack.Screen
+        name="Payment"
+        component={PaymentScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking Details Screen */}
+      <Stack.Screen
+        name="BookingDetails"
+        component={BookingDetailsScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking History Screen - accessible via booking history icon in ServicesScreen */}
+      <Stack.Screen
+        name="BookingHistory"
+        component={BookingHistoryScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Booking Confirmation Screen */}
+      <Stack.Screen
+        name="BookingConfirmation"
+        component={BookingConfirmationScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Track Booking Screen */}
+      <Stack.Screen
+        name="TrackBooking"
+        component={TrackBookingScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Cart Screen */}
+      <Stack.Screen
+        name="ServiceCart"
+        component={ServiceCartScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Checkout Screen */}
+      <Stack.Screen
+        name="ServiceCheckout"
+        component={ServiceCheckoutScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Add On Screen */}
+      <Stack.Screen
+        name="ServiceAddOn"
+        component={ServiceAddOnScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Calling Screen */}
+      <Stack.Screen
+        name="ServiceCalling"
+        component={ServiceCallingScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service Visit Screen */}
+      <Stack.Screen
+        name="ServiceVisit"
+        component={ServiceVisitScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Service End Screen */}
+      <Stack.Screen
+        name="ServiceEnd"
+        component={ServiceEndScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Final Checkout Screen */}
+      <Stack.Screen
+        name="FinalCheckout"
+        component={FinalCheckoutScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
-        name="OrderAllocating"
-        component={OrderAllocatingScreen}
+        name="RazorpayWebView"
+        component={RazorpayWebView}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
 }
 
-function FeaturedStack() {
+function CategoriesStack() {
+  const { activeMode } = useToggleContext();
+  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="FeaturedHome" component={FeaturedScreen} />
-      <Stack.Screen
-        name="ProductListingFromFeatured"
-        component={ProductListingScreen}
-        options={({ route }) => ({
-          title: route.params?.categoryName || "Products",
-          headerShown: true,
-        })}
-      />
+      {activeMode === "grocery" ? (
+        <>
+          <Stack.Screen name="CategoriesHome" component={CategoriesScreen} />
+          <Stack.Screen
+            name="ProductListingFromCats"
+            component={ProductListingScreen as any}
+            options={({ route }) => ({
+              title: (route.params as any)?.categoryName || "Products",
+              headerShown: true,
+            })}
+          />
+          <Stack.Screen
+            name="OrderAllocating"
+            component={OrderAllocatingScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      ) : activeMode === "service" ? (
+        <>
+          <Stack.Screen name="CategoriesHome" component={AllServicesScreen} options={{ headerShown: false }} />
+          
+          {/* Service flow screens - needed for navigation from AllServicesScreen */}
+          <Stack.Screen
+            name="ServiceCategory"
+            component={ServiceCategoryScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PackageSelection"
+            component={PackageSelectionScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CompanySelection"
+            component={CompanySelectionScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SelectDateTime"
+            component={SelectDateTimeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Payment"
+            component={PaymentScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BookingDetails"
+            component={BookingDetailsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BookingConfirmation"
+            component={BookingConfirmationScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TrackBooking"
+            component={TrackBookingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCart"
+            component={ServiceCartScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCheckout"
+            component={ServiceCheckoutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceAddOn"
+            component={ServiceAddOnScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceCalling"
+            component={ServiceCallingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceVisit"
+            component={ServiceVisitScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceEnd"
+            component={ServiceEndScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="FinalCheckout"
+            component={FinalCheckoutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="RazorpayWebView"
+            component={RazorpayWebView}
+            options={{ headerShown: false }}
+          />
+        </>
+      ) : (
+        <Stack.Screen name="CategoriesHome" component={FoodScreen} options={{ headerShown: false }} />
+      )}
     </Stack.Navigator>
   );
 }
@@ -443,6 +692,21 @@ const ProfileStack = () => (
       component={HiddenCouponCard}
       options={{ title: "Reward Screen", headerShown: false }}
     />
+    <Stack.Screen
+      name="Orders"
+      component={OrdersScreen}
+      options={{ title: "Your Orders", headerShown: false }}
+    />
+    <Stack.Screen
+      name="ContactUs"
+      component={require("./screens/shared/ContactUsScreen").default}
+      options={{ title: "Contact Us", headerShown: false }}
+    />
+    <Stack.Screen
+      name="TermsAndConditions"
+      component={TermsAndConditionsScreen}
+      options={{ title: "Terms & Conditions", headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -452,12 +716,121 @@ const ProfileStack = () => (
 function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
-  const { location } = useLocationContext(); // Add location context
+  const { location, updateLocation } = useLocationContext(); // Add updateLocation
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
   const route = useRoute();
   const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+  
+  // Get location flags (default to true if not set)
+  const showGrocery = location?.grocery !== false;
+  const showFood = location?.food !== false;
+  const showServices = location?.services !== false;
+  
+  // Derived: all services off for this area
+  const allServicesOff = !showGrocery && !showServices && !showFood;
+  
+  // Fetch location flags when storeId changes
+  useEffect(() => {
+    if (!location?.storeId) {
+      return;
+    }
+
+    console.log('[AppTabs] Setting up real-time listener for storeId:', location.storeId);
+
+    // Real-time listener for location flags
+    const unsubscribe = firestore()
+      .collection('locations')
+      .where('storeId', '==', location.storeId)
+      .limit(1)
+      .onSnapshot(
+        (querySnapshot) => {
+          if (!querySnapshot.empty) {
+            const data = querySnapshot.docs[0].data();
+            console.log('[AppTabs] Real-time update - Document data:', data);
+            
+            const flags = {
+              grocery: data?.grocery ?? true,
+              services: data?.services ?? true,
+            };
+            
+            console.log('[AppTabs] Real-time update - Updating flags:', flags);
+            updateLocation(flags);
+          } else {
+            console.warn('[AppTabs] Real-time update - No document found');
+          }
+        },
+        (error) => {
+          console.error('[AppTabs] Real-time listener error:', error);
+        }
+      );
+
+    // Cleanup listener on unmount or storeId change
+    return () => {
+      console.log('[AppTabs] Cleaning up real-time listener');
+      unsubscribe();
+    };
+  }, [location?.storeId]);
+
+  // Show modal when ALL services are off for this area
+  useEffect(() => {
+    if (allServicesOff && location?.storeId) {
+      setAreaUnavailableVisible(true);
+    } else {
+      setAreaUnavailableVisible(false);
+    }
+  }, [allServicesOff, location?.storeId]);
+
+  // Navigate away if current tab becomes unavailable
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+
+    // Check if current tab is still available
+    const isHomeAvailable = showGrocery;
+    const isCategoriesAvailable = showGrocery;
+    const isServicesAvailable = showServices;
+
+    // If on Home or Categories tab and grocery becomes false
+    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
+      console.log('[AppTabs] Current tab unavailable, navigating to available tab');
+      navigation.navigate('HomeTab' as never);
+    }
+    
+    // If on Services tab and services becomes false
+    if (currentTab === 'ServicesTab' && !showServices) {
+      console.log('[AppTabs] Services tab unavailable, navigating to available tab');
+      navigation.navigate('HomeTab' as never);
+    }
+  }, [showGrocery, showServices, currentTab]);
+
+  // Navigate to HomeTab when grocery becomes true (from false)
+  const prevGroceryRef = useRef(showGrocery);
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+
+    // Check if grocery flag changed from false to true
+    if (!prevGroceryRef.current && showGrocery) {
+      console.log('[AppTabs] Grocery enabled, navigating to HomeTab');
+      navigation.navigate('HomeTab' as never);
+    }
+
+    // Update previous value
+    prevGroceryRef.current = showGrocery;
+  }, [showGrocery]);
+  
+  // Debug logging
+  if (__DEV__) {
+    console.log('[AppTabs] Location flags:', {
+      storeId: location?.storeId,
+      grocery: location?.grocery,
+      services: location?.services,
+      showGrocery,
+      showServices,
+    });
+  }
   
   // Cart selection modal state
   const [cartModalVisible, setCartModalVisible] = useState(false);
@@ -466,11 +839,15 @@ function AppTabs() {
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
+  // Area unavailable modal state (all services off)
+  const [areaUnavailableVisible, setAreaUnavailableVisible] = useState(false);
+
+
+  // One-time welcome modal -> jump user to Services (uses root navigation ref)
   /*animation of blink and Side to Side (vibration)*/
      const blinkAnim = useRef(new Animated.Value(1)).current;
      const shakeAnim = useRef(new Animated.Value(0)).current;
-     // Services tab bounce animation
-     const serviceBounceAnim = useRef(new Animated.Value(0)).current;
+     // Services tab bounce animation removed
 
    useEffect(() => {
     Animated.loop(
@@ -504,22 +881,6 @@ function AppTabs() {
             useNativeDriver: true,
           }),
         ]),
-      ])
-    ).start();
-
-    // Services tab bounce animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(serviceBounceAnim, {
-          toValue: -8,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(serviceBounceAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
       ])
     ).start();
   }, []);
@@ -579,16 +940,15 @@ function AppTabs() {
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Show loader briefly, then navigate to services tab and service cart
-      setServiceLoaderVisible(true);
-      setTimeout(() => {
-        pendingNavigation.navigate("ServicesTab", { 
-          screen: "ServiceCart" 
-        });
-        setServiceLoaderVisible(false);
-      }, 500);
+    
+    // Use navigation object if available
+    const nav = pendingNavigation || navigationRef.current;
+    
+    if (nav) {
+      // Navigate to the Service Cart screen within the HomeTab stack
+      nav.navigate("HomeTab", { screen: "ServiceCart" });
     }
+    
     setPendingNavigation(null);
   };
 
@@ -613,25 +973,44 @@ function AppTabs() {
 
   return (
     <>
-      <View style={{ flex: 1 }}>
+      <WelcomeServicesOnceModal
+        onGoToServices={() => {
+          // Navigate from the ROOT navigator so this works from a global modal.
+          if (navigationRef.isReady()) {
+            (navigationRef.navigate as any)("HomeTab", { screen: "ProductsHome", params: { mode: "service" } });
+          }
+        }}
+      />
+
       <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
             CategoriesTab: "apps-outline",
-            FeaturedTab: "star-outline",
+            BuyAgainTab: "repeat-outline",
             CartFlow: "cart-outline",
             Profile: "person-outline",
-            ServicesTab: "construct-outline",
           };
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
+            tabBarStyle: {
+              backgroundColor: "#ffffff",
+              borderTopWidth: 1,
+              borderTopColor: "#f0f0f0",
+              height: Platform.OS === "android" ? 60 : 85,
+              paddingBottom: Platform.OS === "android" ? 10 : 30,
+              elevation: 8,
+            },
             // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
-              const isService = route.name === "ServicesTab";
+              // Hide Profile tab icon
+              if (route.name === "Profile") {
+                return null;
+              }
+
               const iconName = iconMap[route.name];
 
               return (
@@ -641,134 +1020,84 @@ function AppTabs() {
                     height: size + 12,
                     alignItems: "center",
                     justifyContent: "center",
-                    transform: isService ? [{ translateY: serviceBounceAnim }] : [],
                   }}
                 >
-                  {isService && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        backgroundColor: "red",
-                        paddingHorizontal: 4,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>
-                        NEW
-                      </Text>
-                    </View>
+                  {/* Render the actual icon */}
+                  {iconName && (
+                    <Ionicons name={iconName} size={size} color={color} />
                   )}
 
-                  <Ionicons
-                    name={iconName}
-                    size={size}
-                    color={isService ? "red" : color}
-                  />
+                  {route.name === "CartFlow" && (() => {
+                    // Calculate active cart items based on location flags
+                    const activeGroceryItems = showGrocery ? groceryTotalItems : 0;
+                    const activeServiceItems = showServices ? serviceTotalItems : 0;
+                    const activeTotalItems = activeGroceryItems + activeServiceItems;
+                    
+                    return activeTotalItems > 0 ? (
+                      <View style={styles.badgeContainer}>
+                        <Text style={styles.badgeText}>{activeTotalItems}</Text>
+                      </View>
+                    ) : null;
+                  })()}
 
-                  {route.name === "CartFlow" && totalItems > 0 && (
-                    <View style={styles.badgeContainer}>
-                      <Text style={styles.badgeText}>{totalItems}</Text>
-                    </View>
-                  )}
                 </Animated.View>
               );
             },
           };
         }}
       >
-        {/* ⿡ Home Tab (with listener to reset nested stack) */}
-        <Tab.Screen
-          name="HomeTab"
-          component={HomeStack}
-          options={{ title: "Home" }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (e) => {
-              if (route.state && route.state.index > 0) {
-                e.preventDefault();
-                navigation.dispatch(
-                  CommonActions.reset({
-                    index: 0,
-                    routes: [
-                      {
-                        name: "HomeTab",
-                        state: { routes: [{ name: "ProductsHome" }] },
-                      },
-                    ],
-                  })
-                );
-              }
-            },
-          })}
-        />
 
-        {/* ⿢ Categories Tab */}
-        <Tab.Screen
-          name="CategoriesTab"
-          component={CategoriesStack}
-          options={{ title: "Categories" }}
-        />
-        
-        {/* ⿣ Featured Tab */}
-        <Tab.Screen
-          name="FeaturedTab"
-          component={FeaturedStack}
-          options={{ title: "Featured" }}
-        />
-
-        {/* ⿣ Services Tab */}
-        <Tab.Screen
-          name="ServicesTab"
-          component={ServicesStack}
-          options={{
-            title: "Services",
-          }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (e) => {
-              // Check if user is in Tanda location or other restricted locations
-              // Tanda storeId from logs: i0h9WGnOlkhk0mD4Lfv3
-              const restrictedStoreIds = ["i0h9WGnOlkhk0mD4Lfv3"]; // Tanda storeId
-              
-              // Debug: Log current storeId to help identify location
-              console.log("[Services Tab] Current storeId:", location?.storeId);
-              console.log("[Services Tab] Is restricted?", location?.storeId && restrictedStoreIds.includes(location.storeId));
-              console.log("[Services Tab] Restricted IDs:", restrictedStoreIds);
-              
-              if (location?.storeId && restrictedStoreIds.includes(location.storeId)) {
-                e.preventDefault();
-                setServicesUnavailableModalVisible(true);
-                return;
-              }
-              
-              // For non-restricted locations, show the service loader, then reset or navigate after a short delay
-              e.preventDefault();
-              console.log("[Services Tab] Showing service loader for non-restricted location");
-              setServiceLoaderVisible(true);
-              setTimeout(() => {
-                console.log("[Services Tab] Loader timeout completed, navigating...");
-                if (route.state && route.state.index > 0) {
-                  console.log("[Services Tab] Resetting navigation stack");
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: "ServicesTab",
-                          state: { routes: [{ name: "ServicesHome" }] },
-                        },
-                      ],
-                    })
-                  );
-                } else {
-                  console.log("[Services Tab] Navigating to ServicesTab");
-                  navigation.navigate("ServicesTab");
+        {/* Home Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="HomeTab"
+            component={HomeStack}
+            options={{ title: "Home" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                // If we are already on HomeTab, pop to the top of its stack.
+                // This ensures that if the user is on ServiceCart (which is in HomeStack),
+                // they return to ProductsHome/ServicesScreen.
+                const state = navigation.getState();
+                const homeRoute = state.routes[state.index];
+                if (homeRoute.name === "HomeTab" && homeRoute.state && homeRoute.state.index > 0) {
+                  // Navigate to the first screen of the HomeStack
+                  navigation.navigate("HomeTab", { screen: "ProductsHome" });
                 }
-                console.log("[Services Tab] Hiding service loader");
-                setServiceLoaderVisible(false);
-              }, 900);
-            },
-          })}
-        />
+              },
+            })}
+          />
+        )}
+
+        {/* ⿢ Categories Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="CategoriesTab"
+            component={CategoriesStack}
+            options={{ title: "Categories" }}
+          />
+        )}
+
+        {/* ⿣ Buy Again Tab - Only show if grocery is enabled */}
+        {showGrocery && (
+          <Tab.Screen
+            name="BuyAgainTab"
+            component={BuyAgainScreen}
+            options={{ title: "Order Again" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                if (!auth().currentUser) {
+                  e.preventDefault();
+                  promptLogin(navigation, "Order Again");
+                }
+              },
+            })}
+          />
+        )}
+        
+        {/* Services Tab removed - now accessible via toggle in ProductsHomeScreen */}
+
+        {/* ⿣ Featured Tab */}
 
         {/* ⿤ Cart (with modal selection) */}
         <Tab.Screen
@@ -781,14 +1110,42 @@ function AppTabs() {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
               } else {
-                // Show modal if both grocery and services have items, or if user wants to choose
-                if (groceryTotalItems > 0 || serviceTotalItems > 0) {
+                // Determine which carts are active based on location flags
+                const isGroceryActive = showGrocery && groceryTotalItems > 0;
+                const isServiceActive = showServices && serviceTotalItems > 0;
+                
+                // If both are active, show modal to choose
+                if (isGroceryActive && isServiceActive) {
                   e.preventDefault();
                   setPendingNavigation(navigation);
                   setCartModalVisible(true);
-                } else {
-                  // Empty cart - go to unified cart
-                  if (route.state && route.state.index > 0) {
+                }
+                // If only grocery is active, go directly to grocery cart
+                else if (isGroceryActive && !isServiceActive) {
+                  e.preventDefault();
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "CartFlow",
+                          state: { routes: [{ name: "GroceryCart" }] },
+                        },
+                      ],
+                    })
+                  );
+                }
+                // If only service is active, go directly to service cart
+                else if (isServiceActive && !isGroceryActive) {
+                  e.preventDefault();
+                  navigation.navigate("HomeTab", { 
+                    screen: "ServiceCart"
+                  });
+                }
+                // Empty cart or no active carts - go to unified cart
+                else {
+                  const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
+                  if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
                     e.preventDefault();
                     navigation.dispatch(
                       CommonActions.reset({
@@ -807,52 +1164,58 @@ function AppTabs() {
             },
           })}
         />
-
-        {/* ⿥ Profile */}
-        <Tab.Screen
-          name="Profile"
-          component={ProfileStack}
-          options={{ title: "Profile" }}
-          listeners={({ navigation }) => ({
-            tabPress: (e) => {
-              if (!auth().currentUser) {
-                promptLogin(navigation, "Profile");
-                e.preventDefault();
-                // ...login prompt...
-              }
-            },
-          })}
-        />
       </Tab.Navigator>
       
       {/* Service Loader Modal */}
-      <RNModal visible={serviceLoaderVisible} transparent animationType="fade">
-        <View style={styles.serviceLoaderOverlay}>
-          <Image
-            source={require("./assets/ninjaServiceLoader.gif")}
-            style={styles.serviceLoaderImage}
-            resizeMode="contain"
-          />
-        </View>
-      </RNModal>
+      {serviceLoaderVisible && (
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <View style={styles.serviceLoaderOverlay}>
+            <Image
+              source={require("./assets/ninjaServiceLoader3.gif")}
+              style={styles.serviceLoaderImage}
+              resizeMode="contain"
+            />
+          </View>
+        </RNModal>
+      )}
 
       {/* Services Unavailable Modal */}
-      <ServicesUnavailableModal
-        visible={servicesUnavailableModalVisible}
-        onClose={() => setServicesUnavailableModalVisible(false)}
+      {servicesUnavailableModalVisible && (
+        <ServicesUnavailableModal
+          visible
+          onClose={() => setServicesUnavailableModalVisible(false)}
+        />
+      )}
+
+      {/* Area Unavailable Modal (all services off) */}
+      <AreaUnavailableModal
+        visible={areaUnavailableVisible}
+        onClose={() => setAreaUnavailableVisible(false)}
+        onChangeLocation={() => {
+          setAreaUnavailableVisible(false);
+          if (navigationRef.isReady()) {
+            (navigationRef.navigate as any)('LocationSelector');
+          }
+        }}
       />
 
       {/* Cart Selection Modal */}
-      <CartSelectionModal
-        visible={cartModalVisible}
-        onClose={handleCartModalClose}
-        onSelectGrocery={handleSelectGrocery}
-        onSelectServices={handleSelectServices}
-        onSelectUnified={handleSelectUnified}
-        groceryItemCount={groceryTotalItems}
-        serviceItemCount={serviceTotalItems}
-      />
-          </View>
+      {cartModalVisible && (
+        <CartSelectionModal
+          visible
+          onClose={handleCartModalClose}
+          onSelectGrocery={handleSelectGrocery}
+          onSelectServices={handleSelectServices}
+          onSelectUnified={handleSelectUnified}
+          groceryItemCount={groceryTotalItems}
+          serviceItemCount={serviceTotalItems}
+        />
+      )}
     </>
   );
 }
@@ -913,42 +1276,107 @@ const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
 /* ==========================================================
    ROOT APP COMPONENT
    ========================================================== */
+const getActiveRoutePath = (state: any): string[] => {
+  if (!state || !Array.isArray(state.routes) || typeof state.index !== "number") return [];
+  const active = state.routes[state.index];
+  const childState = (active as any)?.state;
+  return [String(active?.name ?? ""), ...(childState ? getActiveRoutePath(childState) : [])].filter(
+    Boolean
+  );
+};
+
+const updateLastNonCartTabFromState = (state: any) => {
+  try {
+    const path = getActiveRoutePath(state);
+    const appTabsIndex = path.indexOf("AppTabs");
+    const activeTab = appTabsIndex >= 0 ? path[appTabsIndex + 1] : null;
+    if (activeTab && activeTab !== "CartFlow") {
+      setLastNonCartTab(activeTab);
+    }
+  } catch {
+    // non-fatal
+  }
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<null | any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
-  const checkingOta = useOtaUpdate();
+  useOtaUpdate();
 
   useEffect(() => {
     (async () => {
       await ensureFirebaseReady();
       setFirebaseReady(true);
-      // Optional: verify
-      // import { getApps } from '@react-native-firebase/app';
-      // console.log('[RNFB] post-init apps:', getApps().map(a => a.name));
     })();
   }, []);
 
-   useEffect(() => {
+  // DEV-only: prove whether native Razorpay module is actually bundled in this build
+  useEffect(() => {
+    if (!__DEV__) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { probeRazorpayNative } = require("./utils/razorpayProbe");
+      const res = probeRazorpayNative();
+      console.log("💳[RZPProbe]", res);
+    } catch (e) {
+      console.log("💳[RZPProbe] probe_failed", e);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!firebaseReady) return;
-    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
+
+    const unsub = auth().onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
-      if (firebaseUser) {
-        const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
-        // ... your terms logic
-      }
+      // Do NOT block app startup on a Firestore round-trip.
       setLoadingAuth(false);
+
+      if (!firebaseUser) {
+        setTermsAccepted(null);
+        return;
+      }
+
+      (async () => {
+        try {
+          const doc = await firestore().collection('users').doc(firebaseUser.uid).get();
+          setTermsAccepted(doc.exists ? doc.data()?.hasAcceptedTerms === true : false);
+        } catch (e) {
+          console.log('[Auth] termsAccepted fetch failed (non-fatal):', e);
+          // Keep as null so we don't accidentally block the user on a transient network error.
+          setTermsAccepted(null);
+        }
+      })();
     });
+
     return () => unsub();
   }, [firebaseReady]);
 
+  // If we learn later that terms are not accepted, push the user to Terms.
+  useEffect(() => {
+    if (!user) return;
+    if (termsAccepted !== false) return;
+    try {
+      if ((navigationRef as any)?.isReady?.()) {
+        navigationRef.dispatch(
+          CommonActions.navigate({ name: 'TermsAndConditions' as never } as any)
+        );
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [user, termsAccepted]);
+
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const NOTIF_MODAL_SNOOZE_UNTIL_KEY = "notif_modal_snooze_until_v1";
+  const NOTIF_MODAL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   useEffect(() => {
     (async () => {
       // (optional) prove the plist is bundled
+      if (!__DEV__) return;
       const p = FileSystem.bundleDirectory + "GoogleService-Info.plist";
       const info = await FileSystem.getInfoAsync(p);
       console.log("[RNFB] Plist in bundle?", info.exists, p);
@@ -957,11 +1385,40 @@ const App: React.FC = () => {
   /* ask for push-permission on first mount */
   useEffect(() => {
     (async () => {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== "granted") {
-        setShowNotifModal(true);
-      } else {
-        await ensurePushTokenSynced();
+      try {
+        const snoozeRaw = await AsyncStorage.getItem(NOTIF_MODAL_SNOOZE_UNTIL_KEY);
+        const snoozeUntil = snoozeRaw ? Number(snoozeRaw) : 0;
+        if (Number.isFinite(snoozeUntil) && snoozeUntil > Date.now()) {
+          return;
+        }
+
+        const perms = await Notifications.getPermissionsAsync();
+        if (__DEV__) {
+          console.log("[NotifModal] permissions", {
+            status: perms?.status,
+            granted: perms?.granted,
+            canAskAgain: perms?.canAskAgain,
+          });
+        }
+        const isEnabled = (perms?.granted === true) || (perms?.status === "granted");
+        const canAskAgain = perms?.canAskAgain !== false;
+
+        if (!isEnabled) {
+          // If the OS won't show the permission prompt again, don't nag the user every launch.
+          if (!canAskAgain) {
+            await AsyncStorage.setItem(
+              NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+              String(Date.now() + (30 * 24 * 60 * 60 * 1000))
+            );
+            return;
+          }
+          setShowNotifModal(true);
+        } else {
+          await ensurePushTokenSynced();
+        }
+      } catch (e) {
+        // Non-fatal: if storage/permissions read fails, don't block app start.
+        console.log("[NotifModal] permissions check failed", e);
       }
     })();
   }, []);
@@ -969,10 +1426,11 @@ const App: React.FC = () => {
   /* listen for token rotation → store in Firestore */
   useEffect(() => {
     const sub = Notifications.addPushTokenListener(({ type, data }) => {
-      if (type === "expo" && auth().currentUser) {
+      const uid = auth().currentUser?.uid;
+      if (type === "expo" && uid) {
         firestore()
           .collection("users")
-          .doc(auth().currentUser.uid)
+          .doc(uid)
           .set({ expoPushToken: data }, { merge: true });
       }
     });
@@ -987,25 +1445,92 @@ const App: React.FC = () => {
     return () => sub.remove();
   }, []);
 
-  /* auth listener */
-  useEffect(() => {
-    const unsub = auth().onAuthStateChanged(async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        const doc = await firestore()
-          .collection("users")
-          .doc(firebaseUser.uid)
-          .get();
-        setTermsAccepted(
-          doc.exists ? doc.data()?.hasAcceptedTerms === true : false
-        );
-      }
-      setLoadingAuth(false);
-    });
-    return () => unsub();
-  }, []);
+  // NOTE: auth listener is handled above (gated by firebaseReady)
 
-  if (!firebaseReady || loadingAuth || checkingOta) {
+  /* Check for pending payments on app startup - SILENT RECOVERY */
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    const checkPendingPayments = async () => {
+      try {
+        console.log('🔍 Silently checking for pending payments on app startup...');
+        
+        // Simplified query - get recent bookings with pending payment status
+        // No orderBy to avoid index requirement
+        const bookingsSnapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', user.uid)
+          .where('paymentStatus', '==', 'pending')
+          .where('paymentMethod', '==', 'online')
+          .limit(10)
+          .get();
+
+        if (bookingsSnapshot.empty) {
+          console.log('✅ No pending payments found');
+          return;
+        }
+
+        console.log(`📋 Found ${bookingsSnapshot.size} bookings with pending payments`);
+
+        // Filter to only recent bookings (last 24 hours) in memory
+        const oneDayAgo = new Date();
+        oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+        
+        const recentBookings = bookingsSnapshot.docs.filter(doc => {
+          const booking = doc.data();
+          const createdAt = booking.createdAt?.toDate?.() || new Date(booking.createdAt);
+          return createdAt > oneDayAgo;
+        });
+
+        console.log(`📋 ${recentBookings.length} recent bookings (last 24 hours)`);
+
+        // Check each booking's payment status in service_payments collection
+        for (const bookingDoc of recentBookings) {
+          const booking = bookingDoc.data();
+          const bookingId = bookingDoc.id;
+          
+          console.log(`🔍 Checking payment for booking ${bookingId}...`);
+          
+          // Check if payment was actually completed
+          const paymentSnapshot = await firestore()
+            .collection('service_payments')
+            .where('bookingId', '==', bookingId)
+            .where('paymentStatus', '==', 'paid')
+            .limit(1)
+            .get();
+
+          if (!paymentSnapshot.empty) {
+            // Payment was completed but booking status wasn't updated
+            console.log(`✅ Found completed payment for booking ${bookingId}, silently updating booking status...`);
+            
+            await firestore()
+              .collection('service_bookings')
+              .doc(bookingId)
+              .update({
+                paymentStatus: 'paid',
+                updatedAt: new Date(),
+              });
+            
+            console.log(`✅ Silently updated booking ${bookingId} payment status to paid`);
+            console.log(`📱 User stays on current screen - no navigation to confirmation`);
+          }
+        }
+        
+        console.log('✅ Silent payment recovery completed - user remains on home screen');
+      } catch (error) {
+        console.error('❌ Error checking pending payments:', error);
+      }
+    };
+
+    // Run check after a short delay to ensure Firebase is fully initialized
+    const timer = setTimeout(checkPendingPayments, 2000);
+    return () => clearTimeout(timer);
+  }, [user, firebaseReady]);
+
+
+  // IMPORTANT: do not block UI on OTA checks (network can take 10s+).
+  // OTA checks run in the background and will reload when an update is fetched.
+  if (!firebaseReady || loadingAuth) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00C853" />
@@ -1021,17 +1546,30 @@ const App: React.FC = () => {
     : "AppTabs";
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="dark" translucent backgroundColor="transparent" />
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ErrorBoundary>
+        <StatusBar style="dark" translucent backgroundColor="transparent" />
 
-      <CustomerProvider>
+        <ToggleProvider>
+        <CustomerProvider>
         <CartProvider>
-          <RestaurantCartProvider>
             <ServiceCartProvider>
+              <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>
-                <NavigationContainer>
+                <NavigationContainer
+                  ref={navigationRef}
+                  onReady={() => {
+                    updateLastNonCartTabFromState(
+                      navigationRef.getRootState?.() ?? (navigationRef as any).getState?.()
+                    );
+                  }}
+                  onStateChange={(state) => {
+                    updateLastNonCartTabFromState(state);
+                  }}
+                >
                   <GlobalCongrats />
                   <RootStack.Navigator
                     initialRouteName={initialRoute}
@@ -1042,7 +1580,7 @@ const App: React.FC = () => {
                       component={TermsAndConditionsScreen}
                     />
                     <RootStack.Screen name="AppTabs" component={AppTabs} />
-                      <RootStack.Screen name="NinjaEatsTabs" component={NinjaEatsTabs} />
+
                     <RootStack.Screen
                       name="LocationSelector"
                       component={LocationSelectorScreen}
@@ -1059,50 +1597,96 @@ const App: React.FC = () => {
                 </WeatherProvider>
               </LocationProvider>
             </ServiceCartProvider>
-          </RestaurantCartProvider>
         </CartProvider>
       </CustomerProvider>
+        </ToggleProvider>
 
       {/* push-permission modal */}
-      <RNModal
-        visible={showNotifModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotifModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Enable Notifications</Text>
-            <Text style={styles.modalMessage}>
-              We use push notifications to keep you updated on your orders and
-              exclusive offers.
-            </Text>
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={async () => {
-                  setShowNotifModal(false);
-                  await ensurePushTokenSynced();
-                }}
-              >
-                <Text style={styles.modalButtonText}>Enable</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => setShowNotifModal(false)}
-              >
-                <Text
-                  style={[styles.modalButtonText, styles.modalCancelButtonText]}
+      {showNotifModal && (
+        <RNModal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={async () => {
+            setShowNotifModal(false);
+            try {
+              await AsyncStorage.setItem(
+                NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+              );
+            } catch {}
+          }}
+          statusBarTranslucent
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Enable Notifications</Text>
+              <Text style={styles.modalMessage}>
+                We use push notifications to keep you updated on your orders and
+                exclusive offers.
+              </Text>
+              <View style={styles.modalButtonContainer}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={async () => {
+                    setShowNotifModal(false);
+
+                    // Request OS permission even if the user isn't logged in yet.
+                    // (ensurePushTokenSynced() short-circuits when auth().currentUser is null.)
+                    try {
+                      const perms = await Notifications.requestPermissionsAsync();
+                      const isEnabled = (perms?.granted === true) || (perms?.status === "granted");
+                      if (isEnabled) {
+                        // Don't show again once enabled.
+                        await AsyncStorage.removeItem(NOTIF_MODAL_SNOOZE_UNTIL_KEY);
+                        await ensurePushTokenSynced();
+                      } else {
+                        // User denied or didn't enable: snooze so it doesn't reappear every launch.
+                        const canAskAgain = perms?.canAskAgain !== false;
+                        const snoozeMs = canAskAgain ? NOTIF_MODAL_SNOOZE_MS : (30 * 24 * 60 * 60 * 1000);
+                        await AsyncStorage.setItem(
+                          NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                          String(Date.now() + snoozeMs)
+                        );
+                      }
+                    } catch (e) {
+                      console.log("[NotifModal] request permissions failed", e);
+                      await AsyncStorage.setItem(
+                        NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                        String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+                      );
+                    }
+                  }}
                 >
-                  Later
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.modalButtonText}>Enable</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={async () => {
+                    setShowNotifModal(false);
+                    try {
+                      await AsyncStorage.setItem(
+                        NOTIF_MODAL_SNOOZE_UNTIL_KEY,
+                        String(Date.now() + NOTIF_MODAL_SNOOZE_MS)
+                      );
+                    } catch {}
+                  }}
+                >
+                  <Text
+                    style={[styles.modalButtonText, styles.modalCancelButtonText]}
+                  >
+                    Later
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </RNModal>
+        </RNModal>
+      )}
       <Toast />
-    </GestureHandlerRootView>
+      </ErrorBoundary>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 };
 
@@ -1131,14 +1715,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 9999,
   },
   serviceLoaderImage: {
-    width: 160,
-    height: 160,
+    width: "100%",
+    height: "100%",
   },
 
   inProgressBar: {

@@ -53,27 +53,18 @@ const BannerSwitcher: React.FC<BannerSwitcherProps> = ({ storeId }) => {
     );
   }
 
-  if (
-    !bannerConfig ||
-    (!bannerConfig.showQuiz &&
-      !bannerConfig.showSliderBanner &&
-      !bannerConfig.showSales)
-  ) {
-    return null; // No banners to show, avoid rendering space
-  }
-
   return (
     <View style={styles.container}>
-      {bannerConfig.showQuiz && <QuizBanner storeId={storeId} />}
-      {bannerConfig.showSliderBanner && <SliderBanner storeId={storeId} />}
-      {bannerConfig.showSales && <SalesBanner storeId={storeId} />}
+      {/* {bannerConfig?.showQuiz && <QuizBanner storeId={storeId} />} */}
+      {bannerConfig?.showSliderBanner && <SliderBanner storeId={storeId} />}
+      {bannerConfig?.showSales && <SalesBanner storeId={storeId} />}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   errorText: {
     color: "red",

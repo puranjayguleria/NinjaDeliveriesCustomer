@@ -1,22 +1,27 @@
 // navigation/BottomTabNavigator.tsx
 
 import React from 'react';
+import { Alert } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import OrdersStack from './OrdersStack';
 import NewOrderStack from './NewOrderStack';
-import ContactUsScreen from '../screens/ContactUsScreen';
-import BusinessStack from './BusinessStack';
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileScreen from '../screens/shared/ProfileScreen';
+import ServicesStack from './ServicesStack';
+import { useLocationContext } from '../context/LocationContext';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const Tab = createBottomTabNavigator();
 
 const BottomTabNavigator: React.FC = () => {
+  const { location } = useLocationContext();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
-          let iconName: string;
+          let iconName: IoniconName;
 
           switch (route.name) {
             case "Orders":
@@ -25,11 +30,8 @@ const BottomTabNavigator: React.FC = () => {
             case "NewOrder":
               iconName = "add-circle-outline";
               break;
-            case "ContactUs":
-              iconName = "call-outline";
-              break;
-            case "Business":
-              iconName = "briefcase-outline";
+            case "Services":
+              iconName = "grid-outline";
               break;
             case "Profile":
               iconName = "person-outline";
@@ -47,18 +49,52 @@ tabBarInactiveTintColor: "#64748b",   // Slate gray
       })}
     >
       <Tab.Screen name="Orders" component={OrdersStack} />
-      <Tab.Screen
-        name="NewOrder"
-        component={NewOrderStack}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            e.preventDefault();
-            navigation.navigate("NewOrder", { screen: "GroceryCatalog" });
-          },
-        })}
-      />
-      <Tab.Screen name="ContactUs" component={ContactUsScreen} />
-      <Tab.Screen name="Business" component={BusinessStack} />
+      {(location?.grocery !== false) && (
+        <Tab.Screen
+          name="NewOrder"
+          component={NewOrderStack}
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              e.preventDefault();
+              navigation.navigate("NewOrder", { screen: "GroceryCatalog" });
+            },
+          })}
+        />
+      )}
+      {(location?.services !== false) && (
+        <Tab.Screen
+          name="Services"
+          component={ServicesStack}
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              // If the current area isn't deliverable (no storeId), block Services entry
+              // and prompt the user to select a deliverable location.
+              if (!location?.storeId) {
+                e.preventDefault();
+                Alert.alert(
+                  "Delivery Unavailable",
+                  "Sorry, we don’t deliver to this location yet. Please select another location.",
+                  [
+                    {
+                      text: "Select Location",
+                      onPress: () => {
+                        const parentNav: any = (navigation as any).getParent?.();
+                        const targetNav: any = parentNav || navigation;
+                        try {
+                          targetNav.navigate("LocationSelector", { fromScreen: "Services" });
+                        } catch {
+                          // no-op
+                        }
+                      },
+                    },
+                    { text: "Cancel", style: "cancel" },
+                  ]
+                );
+              }
+            },
+          })}
+        />
+      )}
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

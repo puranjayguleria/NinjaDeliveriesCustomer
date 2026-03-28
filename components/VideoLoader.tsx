@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Image, Text, StyleSheet } from "react-native";
 
-const Loader = () => {
+const Loader: React.FC = () => {
   return (
     <View style={styles.container}>
       <Image source={require("../assets/loader.gif")} style={styles.gif} />
@@ -28,3 +28,4 @@ const styles = StyleSheet.create({
 });
 
 export default Loader;
+

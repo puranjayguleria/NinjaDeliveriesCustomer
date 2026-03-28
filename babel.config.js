@@ -14,6 +14,15 @@ module.exports = function (api) {
           allowUndefined: true,
         },
       ],
+      [
+        'module-resolver',
+        {
+          alias: {
+            '@': './',
+          },
+        },
+      ],
+      'react-native-reanimated/plugin',
     ],
   };
 };

@@ -7,12 +7,13 @@ import { useLocationContext } from "@/context/LocationContext";
 import { useCart, useCartQty } from "@/context/CartContext"; // ⬅️ useCartQty here
 import { Image } from "expo-image";
 
-const TILE_W = 120;
-const TILE_H = 210;
+const TILE_W = 110;
+const TILE_H = 195;
 const BLUR = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay";
 
-const CART_BAR_H = 30;
-const CART_BAR_MARGIN = 6;
+const CART_BAR_H = 22;
+const ADD_BAR_H = 18;
+const CART_BAR_MARGIN = 4;
 const RESERVED_BOTTOM = CART_BAR_H + CART_BAR_MARGIN + 2;
 
 export type QuickTileProps = {
@@ -41,9 +42,10 @@ export type QuickTileProps = {
   };
   guard?: (cb: () => void, isPan: boolean) => void;
   isPan?: boolean;
+  ribbonColor?: string;
 };
 
-function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
+function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
   const { addToCart, increaseQuantity, decreaseQuantity } = useCart();
   const qty = useCartQty(p.id); // ⬅️ subscribe per item — no parent cart prop
   const { location } = useLocationContext();
@@ -103,10 +105,10 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
           {
             width: TILE_W,
             height: TILE_H,
-            backgroundColor: theme.productCardBg,
-            borderColor: (theme as any).productBorder ?? "#e0e0e0",
+            backgroundColor: "#ffffff", // ⬅ ️Hardcoded to white as requested
+            borderColor: "#f0f0f0",     // ⬅️ Subtle border
             borderWidth: 1,
-            padding: 6,
+            padding: 4,
             paddingBottom: RESERVED_BOTTOM,
           },
         ]}
@@ -116,7 +118,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
           style={[styles.imageContainer, { backgroundColor: theme.productImageBg }]}
         >
           {discountPercent > 0 && (
-            <View style={[styles.discountTag, { backgroundColor: theme.discountTagBg }]}>
+            <View style={[styles.discountTag, { backgroundColor: "#FF2C5E" }]}>
               <Text style={styles.discountTagTxt}>{discountPercent}% OFF</Text>
             </View>
           )}
@@ -134,7 +136,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
         {/* Content */}
         <Text style={styles.tileName} numberOfLines={2}>{name}</Text>
 
-        <View style={[styles.ribbon, { backgroundColor: theme.priceOverlayBg }]}>
+        <View style={styles.priceRow}>
           <Text style={styles.priceNow}>₹{price}</Text>
           {discountPercent > 0 && <Text style={styles.priceMRP}>₹{mrp}</Text>}
         </View>
@@ -145,41 +147,44 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
             style={[
               styles.cartBar,
               {
-                backgroundColor: stock > 0 ? theme.addToCartBg : "#bdbdbd",
-                borderColor: stock > 0 ? theme.addToCartBg : "#bdbdbd",
-                height: CART_BAR_H,
+                backgroundColor: stock > 0 ? "#009688" : "#bdbdbd",
+                borderColor: stock > 0 ? "#009688" : "#bdbdbd",
+                height: ADD_BAR_H,
                 bottom: CART_BAR_MARGIN,
               },
             ]}
             onPress={handleAdd}
             disabled={stock <= 0}
           >
-            <Text style={styles.cartBarAdd}>{stock > 0 ? "ADD" : "OUT OF STOCK"}</Text>
+            <View style={styles.addBtnContent}>
+              <Text style={styles.cartBarAdd}>{stock > 0 ? "ADD" : "OUT OF STOCK"}</Text>
+              {stock > 0 && <MaterialIcons name="chevron-right" size={14} color="#fff" />}
+            </View>
           </Pressable>
         ) : (
           <View
             style={[
               styles.cartBar,
               {
-                backgroundColor: theme.qtyBarBg,
-                borderColor: theme.qtyBtnBorder,
+                backgroundColor: "#009688",
+                borderColor: "#009688",
                 flexDirection: "row",
                 height: CART_BAR_H,
                 bottom: CART_BAR_MARGIN,
               },
             ]}
           >
-            <Pressable onPress={handleDec} hitSlop={12}>
-              <MaterialIcons name="remove" size={18} color={theme.qtyBtnBg} />
+            <Pressable onPress={handleDec} hitSlop={12} style={styles.qtyBtn}>
+              <MaterialIcons name="remove" size={18} color="#fff" />
             </Pressable>
 
-            <Text style={[styles.qtyNum, { color: theme.qtyBtnBg }]}>{qty}</Text>
+            <Text style={[styles.qtyNum, { color: "#fff" }]}>{qty}</Text>
 
-            <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock}>
+            <Pressable onPress={handleInc} hitSlop={12} disabled={qty >= stock} style={styles.qtyBtn}>
               <MaterialIcons
                 name="add"
                 size={18}
-                color={qty >= stock ? "#bdbdbd" : theme.qtyBtnBg}
+                color={qty >= stock ? "rgba(255,255,255,0.5)" : "#fff"}
               />
             </Pressable>
           </View>
@@ -193,6 +198,7 @@ function QuickTileBase({ p, guard, isPan }: QuickTileProps) {
 export const QuickTile = memo(QuickTileBase, (prev, next) => {
   if (prev.isPan !== next.isPan) return false;
   if (prev.guard !== next.guard) return false;
+  if (prev.ribbonColor !== next.ribbonColor) return false;
 
   const a = prev.p;
   const b = next.p;
@@ -217,73 +223,81 @@ const styles = StyleSheet.create({
   tile: {
     marginRight: 8,
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 12,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   imageContainer: {
     position: "relative",
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: "hidden",
     marginBottom: 6,
-    height: TILE_W - 12,
+    height: TILE_W - 8,
     justifyContent: "center",
     alignItems: "center",
   },
   tileImg: {
     width: "100%",
     height: "100%",
-    borderRadius: 6,
+    borderRadius: 8,
     alignSelf: "center",
   },
   discountTag: {
     position: "absolute",
-    top: 6,
-    left: 6,
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    top: 0,
+    left: 0,
+    borderBottomRightRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     zIndex: 2,
   },
-  discountTagTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  discountTagTxt: { color: "#fff", fontSize: 9, fontWeight: "800" },
   tileName: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: "600",
     color: "#333",
     marginTop: 4,
-    marginBottom: 2,
-    height: 28,
-  },
-  ribbon: {
-    marginTop: 0,
     marginBottom: 4,
+    height: 32,
+    paddingHorizontal: 2,
+  },
+  priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#004d40",
-    borderRadius: 4,
-    alignSelf: "flex-start",
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    marginBottom: 6,
+    paddingHorizontal: 2,
   },
-  priceNow: { fontSize: 12, fontWeight: "700", color: "#fff" },
+  priceNow: { fontSize: 13, fontWeight: "800", color: "#111" },
   priceMRP: {
     fontSize: 10,
-    color: "rgba(255,255,255,0.8)",
+    color: "#999",
     textDecorationLine: "line-through",
-    marginLeft: 4,
+    marginLeft: 6,
   },
   cartBar: {
     position: "absolute",
-    left: 6,
-    right: 6,
-    borderRadius: 16,
+    left: 8,
+    right: 8,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 0,
     zIndex: 3,
   },
-  cartBarAdd: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  qtyNum: { fontWeight: "700", fontSize: 14, marginHorizontal: 10 },
+  addBtnContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  cartBarAdd: { color: "#fff", fontWeight: "800", fontSize: 10, marginRight: 2 },
+  qtyBtn: {
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  qtyNum: { fontWeight: "800", fontSize: 13, marginHorizontal: 6 },
 });

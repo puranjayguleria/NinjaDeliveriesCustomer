@@ -1,5 +1,11 @@
 import { firestore, auth } from '../firebase.native';
 
+const console = {
+  log: (..._args: any[]) => {},
+  warn: (..._args: any[]) => {},
+  error: (..._args: any[]) => {},
+} as const;
+
 export interface ServiceCategory {
   id: string;
   name: string;
@@ -17,6 +23,7 @@ export interface ServiceIssue {
   companyId?: string;
   isActive: boolean;
   imageUrl?: string | null; // Service image from service_services collection
+  description?: string;
   serviceKey?: string;
   serviceType?: string;
   price?: number;
@@ -32,8 +39,13 @@ export interface ServiceCompany {
   serviceName: string; // Service name like "Yoga sessions (beginneradvanced)"
   companyName?: string; // Actual company name
   price?: number;
+  // Duration metadata for dynamic slot generation (service_services.duration + service_services.durationUnit)
+  duration?: any;
+  durationUnit?: any;
+  quantityOffers?: any[]; // Quantity-based offers from service_services
   isActive: boolean;
   imageUrl?: string | null;
+  logoUrl?: string | null; // Company logo URL from service_company collection
   packages?: any[];
   serviceType?: string;
   adminServiceId?: string;
@@ -90,6 +102,10 @@ export interface ServiceBanner {
   redirectType?: string;
   redirectUrl?: string;
   categoryId?: string;
+  categoryName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  companyId?: string;
   offerText?: string;
   iconName?: string;
   priority?: number;
@@ -101,6 +117,8 @@ export interface ServiceBooking {
   id: string;
   serviceName: string;
   workName: string;
+  // Category ID (from app_categories) to support add-on services lookup
+  categoryId?: string;
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -110,24 +128,33 @@ export interface ServiceBooking {
   status: 'pending' | 'assigned' | 'started' | 'completed' | 'rejected' | 'cancelled' | 'expired' | 'reject';
   companyId?: string;
   companyName?: string; // Add company name field for website compatibility
+  // Payment fields (some flows read these)
+  paymentStatus?: string;
+  paymentMethod?: string;
   // Worker/Technician fields (using actual database field names)
   workerName?: string;    // Primary field name in database
   workerId?: string;      // Primary field name in database
   technicianName?: string; // Legacy/fallback field name
   technicianId?: string;   // Legacy/fallback field name
   totalPrice?: number;
-  addOns?: Array<{
+  addOns?: {
     name: string;
     price: number;
-  }>;
+  }[];
   // Package information (for monthly/weekly service packages)
   isPackage?: boolean; // Whether this booking is for a package
+  // Some backends/clients use isPackageBooking instead of isPackage
+  isPackageBooking?: boolean;
   packageId?: string; // Package ID from service_services
   packageName?: string; // Package name (e.g., "Monthly Package", "Weekly Package")
   packageType?: 'monthly' | 'weekly' | 'custom'; // Package frequency type
   packagePrice?: number; // Package price
   packageDuration?: string; // Package duration description
   packageDescription?: string; // Package description
+  // Plan metadata used for grouping recurring bookings
+  packageUnit?: string; // e.g. day/week/month
+  planGroupId?: string; // same across all occurrences of a purchased plan
+  selectedPackage?: any;
   // Location data for website access
   location?: {
     lat: number | null;
@@ -175,6 +202,937 @@ export interface ServiceBooking {
 }
 
 export class FirestoreService {
+  private static readonly ACTIVE_BOOKING_STATUSES: string[] = [
+    'assigned',
+    'started',
+    'pending',
+    'confirmed',
+    'in_progress',
+  ];
+
+  private static normalizeServiceBookingStatus(value: any): ServiceBooking['status'] {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? ((value as any).status || (value as any).state || (value as any).value || (value as any).key || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+
+    if (!s || s === '[object object]') return 'pending';
+
+    // Common variants seen across mixed client/server setups
+    if (s === 'reject') return 'rejected';
+    if (s === 'canceled' || s === 'cancel') return 'cancelled';
+    if (s === 'payment_pending' || s === 'payment-pending' || s === 'pending_payment' || s === 'pending-payment') return 'pending';
+    if (s === 'confirmed') return 'pending';
+    if (s === 'in_progress' || s === 'in-progress' || s === 'inprogress') return 'started';
+
+    const allowed: Set<string> = new Set([
+      'pending',
+      'assigned',
+      'started',
+      'completed',
+      'rejected',
+      'cancelled',
+      'expired',
+    ]);
+
+    if (allowed.has(s)) return s as ServiceBooking['status'];
+    return 'pending';
+  }
+
+  // ---- Lightweight in-memory caches (screen-level perf) ----
+  // NOTE: These caches are per JS runtime session (cleared on app restart).
+  // They exist to avoid repeating expensive Firestore reads on every date tap.
+  private static companiesByServiceIdsCache = new Map<
+    string,
+    { ts: number; companies: ServiceCompany[] }
+  >();
+  private static companiesByServiceIdsInFlight = new Map<string, Promise<ServiceCompany[]>>();
+  private static readonly COMPANIES_BY_SERVICE_IDS_CACHE_TTL_MS = 2 * 60 * 1000;
+
+  private static companyAverageRatingCache = new Map<
+    string,
+    { ts: number; data: { averageRating: number; reviewCount: number } }
+  >();
+  private static readonly COMPANY_AVERAGE_RATING_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  private static chunkArray<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    const s = Math.max(1, Math.floor(size || 10));
+    for (let i = 0; i < arr.length; i += s) out.push(arr.slice(i, i + s));
+    return out;
+  }
+
+  private static buildCompaniesByServiceIdsCacheKey(serviceIds: string[], categoryId?: string) {
+    const ids = (Array.isArray(serviceIds) ? serviceIds : [])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .sort();
+    return `${ids.join(',')}|${String(categoryId || '').trim()}`;
+  }
+
+  private static serviceServicesIdsCache = new Map<string, { ids: string[]; ts: number }>();
+  private static readonly SERVICE_SERVICES_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  private static relevantWorkersCache = new Map<string, { workerIds: string[]; ts: number }>();
+  private static readonly RELEVANT_WORKERS_CACHE_TTL_MS = 3 * 60 * 1000;
+
+  private static buildServiceServicesCacheKey(companyId: string, serviceIds: string[], serviceTitle?: string) {
+    return `${String(companyId).trim()}|${serviceIds.map((s) => String(s).trim()).sort().join(',')}|${String(serviceTitle || '').trim()}`;
+  }
+
+  private static buildRelevantWorkersCacheKey(
+    companyId: string,
+    serviceServicesIds: string[],
+    serviceIds: string[],
+    serviceTitle?: string
+  ) {
+    const ss = Array.isArray(serviceServicesIds) ? serviceServicesIds.map((x) => String(x).trim()).filter(Boolean).sort() : [];
+    const s = Array.isArray(serviceIds) ? serviceIds.map((x) => String(x).trim()).filter(Boolean).sort() : [];
+    return `${String(companyId).trim()}|ss:${ss.join(',')}|s:${s.join(',')}|t:${String(serviceTitle || '').trim()}`;
+  }
+
+  private static async resolveServiceServicesIdsForCompany(
+    companyId: string,
+    serviceIds: string[] | undefined,
+    serviceTitle?: string
+  ): Promise<string[]> {
+    const serviceIdsArray = Array.isArray(serviceIds) ? serviceIds : [];
+    const key = this.buildServiceServicesCacheKey(companyId, serviceIdsArray, serviceTitle);
+    const now = Date.now();
+    const cached = this.serviceServicesIdsCache.get(key);
+    if (cached && now - cached.ts < this.SERVICE_SERVICES_CACHE_TTL_MS) {
+      return cached.ids;
+    }
+
+    let serviceServicesIds: string[] = [];
+
+    // Fast-path: if upstream already passes service_services doc IDs, accept those.
+    if (serviceIdsArray.length > 0) {
+      try {
+        const snapshotByIds = await firestore()
+          .collection('service_services')
+          .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+          .get();
+        if (!snapshotByIds.empty) {
+          snapshotByIds.forEach((doc) => serviceServicesIds.push(doc.id));
+        }
+      } catch {
+        // ignore, fall back
+      }
+    }
+
+    if (serviceServicesIds.length === 0 && serviceTitle) {
+      try {
+        // 1) Exact title match in service_services for this company.
+        const serviceServicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('companyId', '==', companyId)
+          .where('name', '==', serviceTitle)
+          .get();
+        serviceServicesSnapshot.forEach((doc) => serviceServicesIds.push(doc.id));
+
+        // 2) If still not found, map app_services -> service_services using adminServiceId/serviceKey.
+        if (serviceServicesIds.length === 0 && serviceIdsArray.length > 0) {
+          const appSnapshot = await firestore()
+            .collection('app_services')
+            .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+            .get();
+
+          const adminServiceIds = new Set<string>();
+          const serviceKeys = new Set<string>();
+          const appNames = new Set<string>();
+
+          appSnapshot.forEach((doc) => {
+            const d: any = doc.data();
+            if (d?.adminServiceId) adminServiceIds.add(String(d.adminServiceId));
+            if (d?.serviceKey) serviceKeys.add(String(d.serviceKey));
+            if (d?.name) appNames.add(String(d.name));
+          });
+
+          for (const adminServiceId of adminServiceIds) {
+            const ssSnap = await firestore()
+              .collection('service_services')
+              .where('companyId', '==', companyId)
+              .where('adminServiceId', '==', adminServiceId)
+              .get();
+            ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+          }
+
+          if (serviceServicesIds.length === 0) {
+            for (const key of serviceKeys) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('serviceKey', '==', key)
+                .get();
+              ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+            }
+          }
+
+          if (serviceServicesIds.length === 0) {
+            for (const name of appNames) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('name', '==', name)
+                .get();
+              ssSnap.forEach((doc) => serviceServicesIds.push(doc.id));
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    serviceServicesIds = Array.from(new Set(serviceServicesIds));
+    this.serviceServicesIdsCache.set(key, { ids: serviceServicesIds, ts: now });
+    return serviceServicesIds;
+  }
+
+  static async getCompanyAvailabilityForDateTimes(
+    companyId: string,
+    date: string,
+    times: string[],
+    serviceIds?: string[] | string,
+    serviceTitle?: string
+  ): Promise<{
+    totalWorkers: number;
+    availabilityByTime: Record<string, boolean>;
+  }> {
+    const uniqTimes = Array.from(new Set((Array.isArray(times) ? times : []).map((t) => String(t))));
+    const availabilityByTime: Record<string, boolean> = {};
+
+    if (!companyId || !date || uniqTimes.length === 0) {
+      return { totalWorkers: 0, availabilityByTime };
+    }
+
+    // Normalize service IDs.
+    const serviceIdsArray: string[] = !serviceIds
+      ? []
+      : Array.isArray(serviceIds)
+        ? serviceIds.map((x) => String(x))
+        : [String(serviceIds)];
+
+    // Resolve service_services IDs once.
+    const serviceServicesIds = await this.resolveServiceServicesIdsForCompany(
+      String(companyId),
+      serviceIdsArray,
+      serviceTitle
+    );
+
+    // Fetch active workers once per company+service (cached).
+    const relevantWorkersKey = this.buildRelevantWorkersCacheKey(String(companyId), serviceServicesIds, serviceIdsArray, serviceTitle);
+    const nowWorkers = Date.now();
+    const cachedWorkers = this.relevantWorkersCache.get(relevantWorkersKey);
+    let relevantWorkers: string[] = [];
+
+    if (cachedWorkers && nowWorkers - cachedWorkers.ts < this.RELEVANT_WORKERS_CACHE_TTL_MS) {
+      relevantWorkers = cachedWorkers.workerIds;
+    } else {
+      const allWorkersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+
+      allWorkersSnapshot.docs.forEach((doc) => {
+        const worker: any = doc.data();
+        const workerId = doc.id;
+
+        let hasService = false;
+
+        if (serviceServicesIds.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+        }
+
+        if (!hasService && serviceIdsArray.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+        }
+
+        if (!hasService && serviceTitle) {
+          const title = String(serviceTitle).toLowerCase();
+          hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+            const raw = String(s || '').toLowerCase();
+            return raw.includes(title) || title.includes(raw);
+          });
+        }
+
+        if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+          hasService = true;
+        }
+
+        if (hasService) relevantWorkers.push(workerId);
+      });
+
+      this.relevantWorkersCache.set(relevantWorkersKey, { workerIds: relevantWorkers, ts: nowWorkers });
+    }
+
+    const totalRelevantWorkers = relevantWorkers.length;
+    if (totalRelevantWorkers === 0) {
+      uniqTimes.forEach((t) => (availabilityByTime[t] = false));
+      return { totalWorkers: 0, availabilityByTime };
+    }
+
+    // Pull bookings once for the company/day; derive per-time counts.
+    // If this query fails in some environments (e.g. index), fall back to the existing per-time query.
+    try {
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('companyId', '==', String(companyId))
+        .where('date', '==', String(date))
+        .get();
+
+      const activeStatuses = new Set(this.ACTIVE_BOOKING_STATUSES);
+      const busyWorkersByTime = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByTime = new Map<string, number>();
+
+      bookingsSnapshot.docs.forEach((doc) => {
+        const booking: any = doc.data();
+        const status = String(booking?.status || '');
+        if (!activeStatuses.has(status)) return;
+
+        const t = String(booking?.time || '').trim();
+        if (!t) return;
+
+        const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+        // Count unassigned active bookings for this same company + service.
+        if (!workerId) {
+          const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+          const matchesById = bookingServiceIds.length > 0 && serviceServicesIds.some((id) => bookingServiceIds.includes(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+          if (matchesById || matchesByName) {
+            unassignedActiveForServiceByTime.set(t, (unassignedActiveForServiceByTime.get(t) || 0) + 1);
+          }
+        }
+
+        // Track busy workers only if relevant.
+        if (workerId && relevantWorkers.includes(workerId)) {
+          if (!busyWorkersByTime.has(t)) busyWorkersByTime.set(t, new Set());
+          busyWorkersByTime.get(t)!.add(workerId);
+        }
+      });
+
+      for (const t of uniqTimes) {
+        const busyCount = busyWorkersByTime.get(t)?.size || 0;
+        const unassigned = unassignedActiveForServiceByTime.get(t) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByTime[t] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByTime };
+    } catch {
+      // Fallback: run the existing single-time check, but without repeating worker/service mapping.
+      // IMPORTANT: on errors, keep the entry undefined (unknown) so UI can show "Verifying" instead of incorrectly "Booked".
+      const next: Record<string, boolean> = {};
+      const maxConcurrency = 4;
+      let idx = 0;
+      const worker = async () => {
+        while (idx < uniqTimes.length) {
+          const t = uniqTimes[idx++];
+          try {
+            const res = await this.checkCompanyWorkerAvailability(companyId, date, t, serviceIdsArray, serviceTitle);
+            next[t] = res?.available === true;
+          } catch {
+            // leave unknown
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(maxConcurrency, uniqTimes.length) }, () => worker()));
+      return { totalWorkers: totalRelevantWorkers, availabilityByTime: next };
+    }
+  }
+
+  static async getCompanyAvailabilityForDatesAtTime(
+    companyId: string,
+    dates: string[],
+    time: string,
+    serviceIds?: string[] | string,
+    serviceTitle?: string
+  ): Promise<{
+    totalWorkers: number;
+    availabilityByDate: Record<string, boolean>;
+  }> {
+    const uniqDates = Array.from(new Set((Array.isArray(dates) ? dates : []).map((d) => String(d)).filter(Boolean)));
+    const availabilityByDate: Record<string, boolean> = {};
+
+    if (!companyId || !time || uniqDates.length === 0) {
+      return { totalWorkers: 0, availabilityByDate };
+    }
+
+    const serviceIdsArray: string[] = !serviceIds
+      ? []
+      : Array.isArray(serviceIds)
+        ? serviceIds.map((x) => String(x))
+        : [String(serviceIds)];
+    const serviceIdSet = new Set(serviceIdsArray.map((x) => String(x)));
+
+    const serviceServicesIds = await this.resolveServiceServicesIdsForCompany(
+      String(companyId),
+      serviceIdsArray,
+      serviceTitle
+    );
+    const serviceServicesIdSet = new Set(serviceServicesIds.map((x) => String(x)));
+
+    // Fetch active workers once per company+service (cached).
+    const relevantWorkersKey = this.buildRelevantWorkersCacheKey(String(companyId), serviceServicesIds, serviceIdsArray, serviceTitle);
+    const nowWorkers = Date.now();
+    const cachedWorkers = this.relevantWorkersCache.get(relevantWorkersKey);
+    let relevantWorkers: string[] = [];
+
+    if (cachedWorkers && nowWorkers - cachedWorkers.ts < this.RELEVANT_WORKERS_CACHE_TTL_MS) {
+      relevantWorkers = cachedWorkers.workerIds;
+    } else {
+      const allWorkersSnapshot = await firestore()
+        .collection('service_workers')
+        .where('companyId', '==', companyId)
+        .where('isActive', '==', true)
+        .get();
+
+      allWorkersSnapshot.docs.forEach((doc) => {
+        const worker: any = doc.data();
+        const workerId = doc.id;
+
+        let hasService = false;
+
+        if (serviceServicesIds.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceServicesIds.some((id) => worker.assignedServices.includes(id));
+        }
+
+        if (!hasService && serviceIdsArray.length > 0) {
+          hasService = Array.isArray(worker?.assignedServices) && serviceIdsArray.some((id) => worker.assignedServices.includes(id));
+        }
+
+        if (!hasService && serviceTitle) {
+          const title = String(serviceTitle).toLowerCase();
+          hasService = Array.isArray(worker?.assignedServices) && worker.assignedServices.some((s: any) => {
+            const raw = String(s || '').toLowerCase();
+            return raw.includes(title) || title.includes(raw);
+          });
+        }
+
+        if (!hasService && serviceIdsArray.length === 0 && serviceServicesIds.length === 0 && !serviceTitle) {
+          hasService = true;
+        }
+
+        if (hasService) relevantWorkers.push(workerId);
+      });
+
+      this.relevantWorkersCache.set(relevantWorkersKey, { workerIds: relevantWorkers, ts: nowWorkers });
+    }
+
+    const totalRelevantWorkers = relevantWorkers.length;
+    if (totalRelevantWorkers === 0) {
+      uniqDates.forEach((d) => (availabilityByDate[d] = false));
+      return { totalWorkers: 0, availabilityByDate };
+    }
+
+    const relevantWorkerSet = new Set(relevantWorkers.map((x) => String(x)));
+    const activeStatuses = new Set(this.ACTIVE_BOOKING_STATUSES);
+    const targetTime = String(time).trim();
+
+    // Fast path: one bookings query for the whole date window (works well for monthly precheck).
+    // If this requires an index in some environments, fall back to per-date reads.
+    const sortedDates = [...uniqDates].sort();
+    const minDate = sortedDates[0];
+    const maxDate = sortedDates[sortedDates.length - 1];
+    const dateSet = new Set(uniqDates.map((d) => String(d)));
+
+    try {
+      const bookingsSnapshot = await firestore()
+        .collection('service_bookings')
+        .where('companyId', '==', String(companyId))
+        .where('date', '>=', String(minDate))
+        .where('date', '<=', String(maxDate))
+        .get();
+
+      const busyWorkersByDate = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByDate = new Map<string, number>();
+
+      bookingsSnapshot.docs.forEach((doc) => {
+        const booking: any = doc.data();
+        const status = String(booking?.status || '');
+        if (!activeStatuses.has(status)) return;
+
+        const t = String(booking?.time || '').trim();
+        if (!t || t !== targetTime) return;
+
+        const dateISO = String(booking?.date || '').trim();
+        if (!dateISO || !dateSet.has(dateISO)) return;
+
+        const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+        if (!workerId) {
+          const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+          const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+          const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+          if (matchesAll || matchesById || matchesByName) {
+            unassignedActiveForServiceByDate.set(dateISO, (unassignedActiveForServiceByDate.get(dateISO) || 0) + 1);
+          }
+        }
+
+        if (workerId && relevantWorkerSet.has(workerId)) {
+          if (!busyWorkersByDate.has(dateISO)) busyWorkersByDate.set(dateISO, new Set());
+          busyWorkersByDate.get(dateISO)!.add(workerId);
+        }
+      });
+
+      for (const dateISO of uniqDates) {
+        const busyCount = busyWorkersByDate.get(dateISO)?.size || 0;
+        const unassigned = unassignedActiveForServiceByDate.get(dateISO) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByDate[dateISO] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+    } catch {
+    }
+
+    // Fallback A: chunked `in` queries (<=10) to reduce reads for monthly/weekly windows.
+    try {
+      const busyWorkersByDate = new Map<string, Set<string>>();
+      const unassignedActiveForServiceByDate = new Map<string, number>();
+      const chunkSize = 10;
+
+      for (let i = 0; i < sortedDates.length; i += chunkSize) {
+        const chunk = sortedDates.slice(i, i + chunkSize);
+        if (chunk.length === 0) continue;
+
+        const snap = await firestore()
+          .collection('service_bookings')
+          .where('companyId', '==', String(companyId))
+          .where('date', 'in', chunk)
+          .get();
+
+        snap.docs.forEach((doc) => {
+          const booking: any = doc.data();
+          const status = String(booking?.status || '');
+          if (!activeStatuses.has(status)) return;
+
+          const t = String(booking?.time || '').trim();
+          if (!t || t !== targetTime) return;
+
+          const dateISO = String(booking?.date || '').trim();
+          if (!dateISO || !dateSet.has(dateISO)) return;
+
+          const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+          if (!workerId) {
+            const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+            const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+              ? bookingServiceIdsRaw.map((x: any) => String(x))
+              : bookingServiceIdsRaw
+                ? [String(bookingServiceIdsRaw)]
+                : [];
+
+            const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+            const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+            const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+            const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+            if (matchesAll || matchesById || matchesByName) {
+              unassignedActiveForServiceByDate.set(dateISO, (unassignedActiveForServiceByDate.get(dateISO) || 0) + 1);
+            }
+          }
+
+          if (workerId && relevantWorkerSet.has(workerId)) {
+            if (!busyWorkersByDate.has(dateISO)) busyWorkersByDate.set(dateISO, new Set());
+            busyWorkersByDate.get(dateISO)!.add(workerId);
+          }
+        });
+      }
+
+      for (const dateISO of uniqDates) {
+        const busyCount = busyWorkersByDate.get(dateISO)?.size || 0;
+        const unassigned = unassignedActiveForServiceByDate.get(dateISO) || 0;
+        const consumedRaw = busyCount + unassigned;
+        const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+        const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+        availabilityByDate[dateISO] = availableWorkers > 0;
+      }
+
+      return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+    } catch {
+    }
+
+    const maxConcurrency = 4;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < uniqDates.length) {
+        const dateISO = uniqDates[idx++];
+        try {
+          const bookingsSnapshot = await firestore()
+            .collection('service_bookings')
+            .where('companyId', '==', String(companyId))
+            .where('date', '==', String(dateISO))
+            .get();
+
+          const busyWorkers = new Set<string>();
+          let unassignedForService = 0;
+
+          bookingsSnapshot.docs.forEach((doc) => {
+            const booking: any = doc.data();
+            const status = String(booking?.status || '');
+            if (!activeStatuses.has(status)) return;
+
+            const t = String(booking?.time || '').trim();
+            if (!t || t !== targetTime) return;
+
+            const workerId = String(booking.workerId || booking.technicianId || '').trim();
+
+            if (!workerId) {
+              const bookingServiceIdsRaw: any = booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds;
+              const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+                ? bookingServiceIdsRaw.map((x: any) => String(x))
+                : bookingServiceIdsRaw
+                  ? [String(bookingServiceIdsRaw)]
+                  : [];
+
+              const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '').trim();
+              const matchesById = bookingServiceIds.some((id) => serviceServicesIdSet.has(String(id)) || serviceIdSet.has(String(id)));
+              const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+              const matchesAll = serviceServicesIds.length === 0 && serviceIdsArray.length === 0 && !serviceTitle;
+
+              if (matchesAll || matchesById || matchesByName) {
+                unassignedForService += 1;
+              }
+            }
+
+            if (workerId && relevantWorkerSet.has(workerId)) {
+              busyWorkers.add(workerId);
+            }
+          });
+
+          const busyCount = busyWorkers.size;
+          const consumedRaw = busyCount + unassignedForService;
+          const consumed = Math.min(consumedRaw, totalRelevantWorkers);
+          const availableWorkers = Math.max(0, totalRelevantWorkers - consumed);
+          availabilityByDate[dateISO] = availableWorkers > 0;
+        } catch {
+          availabilityByDate[dateISO] = false;
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(maxConcurrency, uniqDates.length) }, () => worker()));
+    return { totalWorkers: totalRelevantWorkers, availabilityByDate };
+  }
+  private static categoryImageMapCache: Map<string, string> | null = null;
+  private static categoryImageMapLoadedAt = 0;
+  private static categoryImageMapInFlight: Promise<Map<string, string>> | null = null;
+  private static readonly CATEGORY_IMAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  // Cache for zone -> allowed category ids derived from service_company.
+  private static zoneCategoryIdsCache: Map<string, { ids: string[]; loadedAt: number }> = new Map();
+  private static readonly ZONE_CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  /**
+   * Returns the set of service category IDs allowed for a delivery zone (storeId),
+   * based on mapping stored in `service_company` docs.
+   */
+  static async getServiceCategoryIdsForZone(zoneId: string): Promise<string[]> {
+    try {
+      const zid = String(zoneId || '').trim();
+      if (!zid) return [];
+
+      const cached = this.zoneCategoryIdsCache.get(zid);
+      const now = Date.now();
+      if (cached && cached.ids.length > 0 && (now - cached.loadedAt) < this.ZONE_CATEGORY_CACHE_TTL_MS) {
+        if (__DEV__) {
+          console.log('[ZoneCategories] cache_hit', { zoneId: zid, categoryIds: cached.ids.length });
+        }
+        return cached.ids;
+      }
+
+      // Your schema uses `deliveryZoneId` to map a company to a delivery zone.
+      // Prefer a targeted query to avoid scanning the whole collection.
+      let snapshot = await firestore()
+        .collection('service_company')
+        .where('deliveryZoneId', '==', zid)
+        .get();
+
+      // Fallback: if the app's storeId corresponds to a delivery_zones doc id but service_company
+      // stores a different id, try matching by zone name.
+      if (snapshot.empty) {
+        try {
+          const zoneDoc = await firestore().collection('delivery_zones').doc(zid).get();
+          const zoneName = String(zoneDoc.data()?.name || '').trim();
+          if (zoneName) {
+            snapshot = await firestore()
+              .collection('service_company')
+              .where('deliveryZoneName', '==', zoneName)
+              .get();
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const allowedCategoryIds = new Set<string>();
+      const companyIdsForZone = new Set<string>();
+      const companyNamesForZone = new Set<string>();
+
+      const companyServesZone = (data: any): boolean => {
+        const zoneFields = [
+          'deliveryZones',
+          'deliveryZoneIds',
+          'deliveryZoneId',
+          'serviceZones',
+          'serviceZoneIds',
+          'zoneIds',
+          'zones',
+          'storeIds',
+          'stores',
+          'deliveryZone',
+          'zoneId',
+          'storeId',
+
+          // snake_case variants
+          'delivery_zones',
+          'delivery_zone_ids',
+          'delivery_zone_id',
+          'service_zones',
+          'service_zone_ids',
+          'zone_ids',
+          'store_ids',
+        ];
+
+        for (const field of zoneFields) {
+          const val = data?.[field];
+          if (val === undefined || val === null) continue;
+
+          if (Array.isArray(val)) {
+            // support primitive arrays and arrays of objects
+            for (const v of val) {
+              if (typeof v === 'string' || typeof v === 'number') {
+                if (String(v) === zid) return true;
+                continue;
+              }
+              if (v && typeof v === 'object') {
+                const candidates = [v.id, v.storeId, v.zoneId, v.deliveryZoneId, v.delivery_zone_id, v.store_id, v.zone_id];
+                if (candidates.map((c) => String(c || '')).includes(zid)) return true;
+              }
+            }
+            continue;
+          }
+          if (typeof val === 'string' || typeof val === 'number') {
+            if (String(val) === zid) return true;
+            continue;
+          }
+          if (typeof val === 'object') {
+            // Map-like: { [zoneId]: true }
+            if (Object.prototype.hasOwnProperty.call(val, zid)) {
+              if (Boolean((val as any)[zid])) return true;
+              continue;
+            }
+          }
+        }
+
+        // Strict: if company has no zone mapping fields, treat as not mapped.
+        return false;
+      };
+
+      const collectCategoryIds = (data: any): string[] => {
+        const ids: string[] = [];
+        const pushId = (v: any) => {
+          const s = String(v || '').trim();
+          if (s) ids.push(s);
+        };
+
+        // Common direct fields
+        pushId(data?.categoryId);
+        pushId(data?.masterCategoryId);
+        pushId(data?.categoryMasterId);
+        pushId(data?.category_id);
+        pushId(data?.master_category_id);
+        pushId(data?.category_master_id);
+
+        // Common array fields
+        const arrayFields = [
+          'categoryIds',
+          'categoryMasterIds',
+          'masterCategoryIds',
+          'appCategoryIds',
+          // snake_case variants
+          'category_ids',
+          'category_master_ids',
+          'master_category_ids',
+          'app_category_ids',
+        ];
+        for (const f of arrayFields) {
+          const arr = data?.[f];
+          if (Array.isArray(arr)) arr.forEach(pushId);
+        }
+
+        // Categories array may contain strings or objects
+        const cats = data?.categories;
+        if (Array.isArray(cats)) {
+          cats.forEach((c: any) => {
+            if (typeof c === 'string' || typeof c === 'number') {
+              pushId(c);
+              return;
+            }
+            pushId(c?.id);
+            pushId(c?.categoryId);
+            pushId(c?.masterCategoryId);
+            pushId(c?.categoryMasterId);
+            pushId(c?.category_id);
+            pushId(c?.master_category_id);
+            pushId(c?.category_master_id);
+          });
+        }
+
+        // Some schemas store service objects under services/serviceList
+        const serviceArrays = [data?.services, data?.serviceList, data?.serviceCategories];
+        for (const arr of serviceArrays) {
+          if (!Array.isArray(arr)) continue;
+          arr.forEach((s: any) => {
+            pushId(s?.categoryId);
+            pushId(s?.masterCategoryId);
+            pushId(s?.categoryMasterId);
+          });
+        }
+
+        return ids;
+      };
+
+      snapshot.forEach((doc) => {
+        const data = doc.data() as any;
+
+        if (data?.isActive === false) return;
+
+        // Most setups store the service_company doc id as the companyId referenced by service_services.
+        companyIdsForZone.add(String(doc.id));
+        if (data?.companyId) companyIdsForZone.add(String(data.companyId));
+
+        const companyName = String(data?.companyName || data?.name || '').trim();
+        if (companyName) companyNamesForZone.add(companyName);
+
+        // Optional: some schemas may also store categories directly in service_company.
+        // Keep collecting them as a fallback.
+        if (companyServesZone(data)) {
+          const ids = collectCategoryIds(data);
+          ids.forEach((id) => allowedCategoryIds.add(id));
+        }
+      });
+
+      // Primary source of truth: service_services. CategoryMasterId lives here per service.
+      // We derive zone-specific categories by looking at active services for companies in this zone.
+      const companyIds = Array.from(companyIdsForZone).filter(Boolean);
+      let serviceDocsMatched = 0;
+      if (companyIds.length > 0) {
+        const batchSize = 10; // Firestore 'in' query limit
+        for (let i = 0; i < companyIds.length; i += batchSize) {
+          const batch = companyIds.slice(i, i + batchSize);
+          if (batch.length === 0) continue;
+
+          const svcSnap = await firestore()
+            .collection('service_services')
+            .where('companyId', 'in', batch)
+            .get();
+
+          svcSnap.forEach((svcDoc) => {
+            const s = svcDoc.data() as any;
+            if (s?.isActive === false) return;
+
+            serviceDocsMatched += 1;
+
+            const catCandidates = [
+              s?.categoryMasterId,
+              s?.masterCategoryId,
+              s?.categoryId,
+              s?.category_id,
+              s?.category_master_id,
+              s?.master_category_id,
+            ];
+            catCandidates.forEach((c) => {
+              const id = String(c || '').trim();
+              if (id) allowedCategoryIds.add(id);
+            });
+          });
+        }
+      }
+
+      // Fallback: if the service_company doc ids don't match service_services.companyId
+      // but service_services carries a company name field, try to match by name.
+      // This is best-effort and only used when the primary join yields nothing.
+      if (allowedCategoryIds.size === 0 && companyNamesForZone.size > 0) {
+        const names = Array.from(companyNamesForZone).filter(Boolean);
+        const batchSize = 10;
+        const tryField = async (field: string) => {
+          for (let i = 0; i < names.length; i += batchSize) {
+            const batch = names.slice(i, i + batchSize);
+            if (batch.length === 0) continue;
+            try {
+              const svcSnap = await firestore()
+                .collection('service_services')
+                .where(field, 'in', batch)
+                .get();
+
+              svcSnap.forEach((svcDoc) => {
+                const s = svcDoc.data() as any;
+                if (s?.isActive === false) return;
+                const id = String(s?.categoryMasterId || s?.masterCategoryId || s?.categoryId || '').trim();
+                if (id) allowedCategoryIds.add(id);
+              });
+            } catch (e) {
+              // ignore field mismatch/index issues
+              if (__DEV__) console.log(`[ZoneCategories] fallback '${field}' query failed`, e);
+            }
+          }
+        };
+
+        await tryField('companyName');
+        if (allowedCategoryIds.size === 0) await tryField('company');
+      }
+
+      if (__DEV__) {
+        console.log('[ZoneCategories]', {
+          zoneId: zid,
+          companiesInZone: snapshot.size,
+          companyIdsConsidered: companyIds.length,
+          companyNamesConsidered: companyNamesForZone.size,
+          serviceDocsMatched,
+          categoryIds: allowedCategoryIds.size,
+        });
+      }
+
+      const result = Array.from(allowedCategoryIds).sort();
+      // Only cache non-empty results so a transient mismatch doesn't hide services for TTL.
+      if (result.length > 0) {
+        this.zoneCategoryIdsCache.set(zid, { ids: result, loadedAt: now });
+      }
+      return result;
+    } catch (error) {
+      console.error('❌ Error deriving zone category IDs from service_company:', error);
+      // Fail-safe: return empty so UI shows none rather than wrong-zone categories.
+      return [];
+    }
+  }
   /**
    * Check if a category has any package-based services
    * Returns true if category has at least one service with packages
@@ -306,65 +1264,159 @@ export class FirestoreService {
       throw new Error('Failed to fetch service categories. Please check your internet connection.');
     }
   }
+  /**
+   * Get only categories that have active workers/companies
+   */
+  static async getCategoriesWithActiveWorkers(): Promise<ServiceCategory[]> {
+    try {
+      console.log('🏷️ Fetching categories with active workers...');
+
+      // First, get all active categories
+      const allCategories = await this.getServiceCategories();
+      console.log(`📊 Total active categories from app_categories: ${allCategories.length}`);
+
+      // Get all active companies from service_services
+      const companiesSnapshot = await firestore()
+        .collection('service_services')
+        .where('isActive', '==', true)
+        .get();
+
+      console.log(`Found ${companiesSnapshot.size} active companies in service_services`);
+
+      // Collect all unique categoryMasterIds that have active companies
+      const activeCategoryIds = new Set<string>();
+      const categoryWorkerCount = new Map<string, number>();
+
+      companiesSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.categoryMasterId) {
+          activeCategoryIds.add(data.categoryMasterId);
+          categoryWorkerCount.set(
+            data.categoryMasterId, 
+            (categoryWorkerCount.get(data.categoryMasterId) || 0) + 1
+          );
+          console.log(`🔍 Worker found: ${data.name} -> categoryMasterId: ${data.categoryMasterId}`);
+        }
+      });
+
+      console.log(`Found ${activeCategoryIds.size} unique categories with active workers`);
+      console.log('Active category IDs with worker counts:', 
+        Array.from(categoryWorkerCount.entries()).map(([id, count]) => `${id}: ${count} workers`)
+      );
+
+      // Filter categories to only include those with active workers
+      const categoriesWithWorkers = allCategories.filter(category => {
+        // Check both the category's own ID and its masterCategoryId
+        const hasWorkersWithOwnId = activeCategoryIds.has(category.id);
+        const hasWorkersWithMasterId = category.masterCategoryId ? activeCategoryIds.has(category.masterCategoryId) : false;
+        const hasWorkers = hasWorkersWithOwnId || hasWorkersWithMasterId;
+
+        const workerCount = categoryWorkerCount.get(category.masterCategoryId || category.id) || 0;
+
+        if (hasWorkers) {
+          console.log(`✅ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has ${workerCount} active workers`);
+        } else {
+          console.log(`❌ Category "${category.name}" (ID: ${category.id}, Master: ${category.masterCategoryId}) has NO active workers`);
+        }
+
+        return hasWorkers;
+      });
+
+      console.log(`✅ Returning ${categoriesWithWorkers.length}/${allCategories.length} categories with active workers`);
+
+      return categoriesWithWorkers;
+    } catch (error: any) {
+      console.error('❌ Error fetching categories with active workers:', error);
+      throw new Error('Failed to fetch categories with active workers. Please check your internet connection.');
+    }
+  }
+
 
   /**
    * Populate category images from service_categories_master collection
    */
   static async populateCategoryImages(categories: ServiceCategory[]): Promise<void> {
     try {
-      console.log('🖼️ Fetching category images from service_categories_master collection...');
+      if (__DEV__) console.log(`🖼️ Fetching category images for ${categories.length} categories...`);
       
-      // Fetch all documents from service_categories_master
-      const masterSnapshot = await firestore()
-        .collection('service_categories_master')
-        .get();
-
-      console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
-
-      // Create a map of category names to images for efficient lookup
-      const imageMap = new Map<string, string>();
+      if (categories.length === 0) {
+        if (__DEV__) console.log('⚠️ No categories to populate images for');
+        return;
+      }
       
-      masterSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.name && data.imageUrl) {
-          // Store both exact name and lowercase name for flexible matching
-          imageMap.set(data.name.toLowerCase().trim(), data.imageUrl);
-          console.log(`📸 Found image for "${data.name}": ${data.imageUrl.substring(0, 50)}...`);
+      const now = Date.now();
+      const cacheFresh =
+        FirestoreService.categoryImageMapCache &&
+        (now - FirestoreService.categoryImageMapLoadedAt) < FirestoreService.CATEGORY_IMAGE_CACHE_TTL_MS;
+
+      const loadImageMap = async (): Promise<Map<string, string>> => {
+        // Coalesce concurrent calls.
+        if (FirestoreService.categoryImageMapInFlight) return FirestoreService.categoryImageMapInFlight;
+
+        FirestoreService.categoryImageMapInFlight = (async () => {
+          const masterSnapshot = await firestore()
+            .collection('service_categories_master')
+            .get();
+
+          if (__DEV__) console.log(`Found ${masterSnapshot.size} master categories for image lookup`);
+
+          if (masterSnapshot.size === 0) {
+            if (__DEV__) console.log('⚠️ WARNING: service_categories_master collection is empty!');
+          }
+
+          const imageMap = new Map<string, string>();
+          masterSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.name && data.imageUrl) {
+              imageMap.set(String(data.name).toLowerCase().trim(), String(data.imageUrl));
+            }
+          });
+
+          FirestoreService.categoryImageMapCache = imageMap;
+          FirestoreService.categoryImageMapLoadedAt = Date.now();
+          if (__DEV__) console.log(`🔍 Image map has ${imageMap.size} entries`);
+
+          return imageMap;
+        })();
+
+        try {
+          return await FirestoreService.categoryImageMapInFlight;
+        } finally {
+          FirestoreService.categoryImageMapInFlight = null;
         }
-      });
+      };
+
+      const imageMap = cacheFresh
+        ? (FirestoreService.categoryImageMapCache as Map<string, string>)
+        : await loadImageMap();
 
       // Match categories with their images
       let imagesFound = 0;
       categories.forEach(category => {
         const categoryNameLower = category.name.toLowerCase().trim();
+        // Don't log per-category matching (very noisy)
         
         // Try exact match first
         if (imageMap.has(categoryNameLower)) {
           category.imageUrl = imageMap.get(categoryNameLower) || null;
           imagesFound++;
-          console.log(`✅ Matched image for "${category.name}"`);
         } else {
           // Try partial matching for similar names
           for (const [masterName, imageUrl] of imageMap.entries()) {
             if (masterName.includes(categoryNameLower) || categoryNameLower.includes(masterName)) {
               category.imageUrl = imageUrl;
               imagesFound++;
-              console.log(`✅ Partial match: "${category.name}" matched with "${masterName}"`);
               break;
             }
           }
         }
-        
-        if (!category.imageUrl) {
-          console.log(`⚠️ No image found for "${category.name}"`);
-        }
       });
 
-      console.log(`🖼️ Successfully matched ${imagesFound}/${categories.length} categories with images`);
+      if (__DEV__) console.log(`🖼️ Image matching complete: ${imagesFound}/${categories.length} categories matched`);
     } catch (error) {
-      console.error('❌ Error fetching category images from service_categories_master:', error);
+      console.error('❌ Error in populateCategoryImages:', error);
       // Don't throw error - just continue without images
-      console.log('⚠️ Continuing without category images...');
+      if (__DEV__) console.log('⚠️ Continuing without category images...');
     }
   }
 
@@ -677,8 +1729,10 @@ export class FirestoreService {
         }
       }
 
-      const services: ServiceIssue[] = [];
-      const serviceNames = new Set<string>(); // Track unique service names
+  const services: ServiceIssue[] = [];
+  // Track unique services for this category.
+  // A service is considered the same if it has the same category master + same name.
+  const serviceKeys = new Set<string>();
       
       snapshot.forEach(doc => {
         const data = doc.data();
@@ -719,14 +1773,17 @@ export class FirestoreService {
 
         console.log(`✅ SERVICE APPROVED: "${data.name}" has isActive: true - WILL BE SHOWN`);
 
-        // Check for duplicate service names - only add if not already added
-        if (serviceNames.has(data.name.toLowerCase().trim())) {
-          console.log(`⚠️ Skipping duplicate service: ${data.name} (already exists)`);
+        // Check for duplicates within the same category master.
+        const normalizedName = String(data.name).toLowerCase().trim();
+        const normalizedCategory = String(data.masterCategoryId || searchCategoryId || '').trim();
+        const dedupeKey = `${normalizedCategory}::${normalizedName}`;
+
+        if (serviceKeys.has(dedupeKey)) {
+          console.log(`⚠️ Skipping duplicate service: ${data.name} (category: ${normalizedCategory})`);
           return;
         }
 
-        // Add to unique services
-        serviceNames.add(data.name.toLowerCase().trim());
+        serviceKeys.add(dedupeKey);
         
         services.push({
           id: doc.id,
@@ -809,14 +1866,17 @@ export class FirestoreService {
             categoryIds.add(data.masterCategoryId);
           }
           if (data.name) {
-            serviceNames.add(data.name.toLowerCase().trim());
+            // IMPORTANT: Firestore '==' string match is case-sensitive.
+            // Keep original casing for querying `service_services.name`.
+            serviceNames.add(String(data.name).trim());
           }
         });
       } else {
         // NOT found in app_services - assume these are service NAMES from service_services
         console.log(`💡 No services found in app_services - treating input as service NAMES from service_services`);
         issueIds.forEach(name => {
-          serviceNames.add(name.toLowerCase().trim());
+          // IMPORTANT: Keep casing to match `service_services.name` exactly.
+          serviceNames.add(String(name).trim());
         });
       }
 
@@ -872,6 +1932,8 @@ export class FirestoreService {
             serviceName: data.name || '', // This is the service name
             companyName: '', // Will be populated below with actual company name
             price: data.price,
+            duration: data.duration,
+            durationUnit: data.durationUnit,
             isActive: data.isActive || false,
             imageUrl: data.imageUrl,
             packages: data.packages,
@@ -926,9 +1988,10 @@ export class FirestoreService {
             const details = companyDetails.get(company.companyId);
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
@@ -1086,6 +2149,13 @@ export class FirestoreService {
           
           snapshot.forEach(doc => {
             const data = doc.data();
+            
+            // Skip inactive companies
+            if (data?.isActive === false) {
+              console.log(`🚫 Skipping inactive company ${doc.id} (${data?.companyName || data?.name})`);
+              return;
+            }
+            
             const companyName = data?.companyName || data?.name || `Company ${doc.id}`;
             // Check multiple possible logo field names: logoUrl, logo, imageUrl
             const companyLogo = data?.logoUrl || data?.logo || data?.imageUrl || null;
@@ -1260,9 +2330,10 @@ export class FirestoreService {
             const details = companyDetails.get(company.companyId);
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
@@ -1342,19 +2413,40 @@ export class FirestoreService {
         console.log(`🏢 Fetching actual company details (name + logo) for ${companyIds.length} companies...`);
         const companyDetails = await this.getMultipleCompanyDetails([...new Set(companyIds)]);
         
-        // Update company names and logos with actual data from service_company collection
+        // ⭐ Fetch ratings for all companies in batch
+        const uniqueCompanyIds = [...new Set(companyIds)];
+        const ratingsMap = new Map<string, { averageRating: number; reviewCount: number }>();
+        
+        console.log(`⭐ Fetching ratings for ${uniqueCompanyIds.length} companies...`);
+        await Promise.all(
+          uniqueCompanyIds.map(async (companyId) => {
+            const ratingData = await this.getCompanyAverageRating(companyId);
+            ratingsMap.set(companyId, ratingData);
+          })
+        );
+        
+        // Update company names, logos, and ratings with actual data from service_company collection
         companies.forEach(company => {
           if (company.companyId) {
             const details = companyDetails.get(company.companyId);
+            const ratingData = ratingsMap.get(company.companyId);
+            
             if (details) {
               company.companyName = details.name;
-              // Update imageUrl with logo from service_company if available
+              // Update imageUrl and logoUrl with logo from service_company if available
               if (details.logo) {
                 company.imageUrl = details.logo;
+                company.logoUrl = details.logo;
               }
               console.log(`Updated company ${company.companyId} → ${company.companyName} (logo: ${details.logo ? 'Yes' : 'No'})`);
             } else {
               company.companyName = `Company ${company.companyId}`;
+            }
+            
+            // Update rating with real data if available
+            if (ratingData && ratingData.averageRating > 0) {
+              company.rating = ratingData.averageRating;
+              company.reviewCount = ratingData.reviewCount;
             }
           } else {
             company.companyName = 'Unknown Company';
@@ -2132,19 +3224,20 @@ export class FirestoreService {
           id: doc.id,
           serviceName: data.serviceName || '',
           workName: data.workName || data.serviceName || '',
+          categoryId: data.categoryId,
           customerName: data.customerName || '',
           customerPhone: data.customerPhone || data.phone,
           customerAddress: data.customerAddress || data.address,
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
           totalPrice: data.totalPrice,
           addOns: data.addOns || [],
-          estimatedDuration: data.estimatedDuration || 2, // Default 2 hours
+          estimatedDuration: data.estimatedDuration,
           startOtp: data.startOtp,
           completionOtp: data.completionOtp,
           otpVerified: data.otpVerified,
@@ -2205,13 +3298,14 @@ export class FirestoreService {
         id: doc.id,
         serviceName: data.serviceName || '',
         workName: data.workName || data.serviceName || '',
+        categoryId: data.categoryId,
         customerName: data.customerName || '',
         customerPhone: data.customerPhone || data.phone,
         customerAddress: data.customerAddress || data.address,
         customerId: data.customerId,
         date: data.date || '',
         time: data.time || '',
-        status: data.status || 'pending',
+        status: this.normalizeServiceBookingStatus(data.status),
         companyId: data.companyId,
         // Use actual database field names first (workerName, workerId), then fallbacks
         workerName: data.workerName || data.worker_name,
@@ -2906,6 +4000,137 @@ export class FirestoreService {
       throw new Error('Failed to fetch service ratings. Please check your internet connection.');
     }
   }
+  /**
+   * Calculate average rating for a company from serviceRatings collection
+   */
+  static async getCompanyAverageRating(companyId: string): Promise<{ averageRating: number; reviewCount: number }> {
+    try {
+      const key = String(companyId || '').trim();
+      if (!key) return { averageRating: 0, reviewCount: 0 };
+
+      const now = Date.now();
+      const cached = this.companyAverageRatingCache.get(key);
+      if (cached && now - cached.ts < this.COMPANY_AVERAGE_RATING_CACHE_TTL_MS) {
+        return cached.data;
+      }
+
+      if (__DEV__) console.log(`⭐ Calculating average rating for company: ${companyId}`);
+
+      // Support both collection names:
+      // - `service_rating` (current production in some environments)
+      // - `serviceRatings` (legacy / app-writer path)
+      const tryCollections = ['service_rating', 'serviceRatings'];
+      let ratingsSnapshot: any | null = null;
+
+      for (const col of tryCollections) {
+        try {
+          const snap = await firestore()
+            .collection(col)
+            .where('companyId', '==', companyId)
+            .get();
+
+          if (!snap.empty) {
+            ratingsSnapshot = snap;
+            break;
+          }
+
+          // Keep the snapshot for empty-case logs/handling.
+          ratingsSnapshot = snap;
+        } catch (e) {
+          // Ignore and try the next collection.
+          if (__DEV__) console.warn(`[FirestoreService] getCompanyAverageRating failed for ${col}`, e);
+        }
+      }
+
+      if (!ratingsSnapshot) {
+        const empty = { averageRating: 0, reviewCount: 0 };
+        this.companyAverageRatingCache.set(key, { ts: now, data: empty });
+        return empty;
+      }
+
+      if (ratingsSnapshot.empty) {
+        if (__DEV__) console.log(`   ℹ️ No ratings found for company ${companyId}`);
+        const empty = { averageRating: 0, reviewCount: 0 };
+        this.companyAverageRatingCache.set(key, { ts: now, data: empty });
+        return empty;
+      }
+
+      let totalRating = 0;
+      let count = 0;
+
+      ratingsSnapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        if (typeof data.rating === 'number' && data.rating > 0) {
+          totalRating += data.rating;
+          count++;
+        }
+      });
+
+      const averageRating = count > 0 ? totalRating / count : 0;
+
+      if (__DEV__) console.log(`   ✅ Company ${companyId}: ${averageRating.toFixed(2)} stars (${count} reviews)`);
+
+      const out = {
+        averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+        reviewCount: count
+      };
+
+      this.companyAverageRatingCache.set(key, { ts: now, data: out });
+      return out;
+    } catch (error: any) {
+      console.error(`❌ Error calculating average rating for company ${companyId}:`, error);
+      const empty = { averageRating: 0, reviewCount: 0 };
+      const key = String(companyId || '').trim();
+      if (key) this.companyAverageRatingCache.set(key, { ts: Date.now(), data: empty });
+      return empty;
+    }
+  }
+
+  /**
+   * Fetch a small set of reviews for a company (for UI rotators).
+   * Avoids orderBy to reduce index requirements.
+   */
+  static async getCompanyReviews(
+    companyId: string,
+    limit: number = 10
+  ): Promise<{ id: string; customerName?: string; rating?: number; feedback?: string; createdAt?: any }[]> {
+    try {
+      if (!companyId) return [];
+
+      const tryCollections = ['service_rating', 'serviceRatings'];
+      for (const col of tryCollections) {
+        try {
+          const snap = await firestore()
+            .collection(col)
+            .where('companyId', '==', companyId)
+            .limit(limit)
+            .get();
+
+          if (snap.empty) continue;
+
+          return snap.docs.map((d: any) => {
+            const data: any = d.data() || {};
+            return {
+              id: String(d.id),
+              customerName: data.customerName,
+              rating: typeof data.rating === 'number' ? data.rating : undefined,
+              feedback: (typeof data.feedback === 'string' && data.feedback.trim().length > 0)
+                ? data.feedback
+                : (typeof data.customerFeedback === 'string' ? data.customerFeedback : undefined),
+              createdAt: data.createdAt,
+            };
+          });
+        } catch (e) {
+          if (__DEV__) console.warn(`[FirestoreService] getCompanyReviews failed for ${col}`, e);
+        }
+      }
+
+      return [];
+    } catch (e) {
+      console.error('❌ Error fetching company reviews:', e);
+      return [];
+    }
+  }
 
   /**
    * Get rating for a specific booking
@@ -3053,9 +4278,21 @@ export class FirestoreService {
         }
       }
       
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const bookingDataNormalized: any = { ...bookingData };
+      const normalizedPaymentMethod = this.normalizeBookingPaymentMethod((bookingDataNormalized as any)?.paymentMethod);
+      const normalizedPaymentStatus = this.normalizeBookingPaymentStatus((bookingDataNormalized as any)?.paymentStatus);
+      if (normalizedPaymentMethod) (bookingDataNormalized as any).paymentMethod = normalizedPaymentMethod;
+      else if ((bookingDataNormalized as any).paymentMethod != null) delete (bookingDataNormalized as any).paymentMethod;
+      if (normalizedPaymentStatus) (bookingDataNormalized as any).paymentStatus = normalizedPaymentStatus;
+      else if ((bookingDataNormalized as any).paymentStatus != null) delete (bookingDataNormalized as any).paymentStatus;
+
+      // Normalize status to avoid invalid values like "[object Object]".
+      (bookingDataNormalized as any).status = this.normalizeServiceBookingStatus((bookingDataNormalized as any)?.status);
+
       // Clean the booking data to remove undefined values
       const cleanedData = this.cleanBookingData({
-        ...bookingData,
+        ...bookingDataNormalized,
         customerId: userId, // Always set the logged-in user ID
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -3068,7 +4305,7 @@ export class FirestoreService {
           const companyName = await this.getActualCompanyName(cleanedData.companyId);
           cleanedData.companyName = companyName;
           console.log(`✅ Added company name to booking: ${companyName}`);
-        } catch (error) {
+        } catch {
           console.log(`⚠️ Could not fetch company name, using fallback`);
           cleanedData.companyName = `Company ${cleanedData.companyId}`;
         }
@@ -3124,6 +4361,36 @@ export class FirestoreService {
     return cleaned;
   }
 
+  private static normalizeBookingPaymentMethod(value: any): string | undefined {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? (value.value || value.method || value.type || value.key || value.name || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+    if (!s || s === '[object object]') return undefined;
+    if (s === 'cash' || s === 'cod' || s.includes('cash')) return 'cash';
+    if (s === 'online' || s.includes('razorpay') || s.includes('upi') || s.includes('card')) return 'online';
+    return undefined;
+  }
+
+  private static normalizeBookingPaymentStatus(value: any): string | undefined {
+    const raw =
+      typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object')
+          ? (value.value || value.status || value.state || value.key || '')
+          : '';
+    const s = String(raw || '').trim().toLowerCase();
+    if (!s || s === '[object object]') return undefined;
+    if (s === 'pending') return 'pending';
+    if (s === 'paid' || s === 'success' || s === 'captured' || s === 'completed') return 'paid';
+    if (s === 'failed' || s === 'failure') return 'failed';
+    if (s === 'refunded' || s === 'refund') return 'refunded';
+    return undefined;
+  }
+
   /**
    * Update an existing service booking
    */
@@ -3136,10 +4403,27 @@ export class FirestoreService {
       }
       
       console.log(`🔥 Updating service booking ${bookingId} for user: ${userId}`);
-      
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const updatesNormalized: any = { ...updates };
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentMethod')) {
+        const normalized = this.normalizeBookingPaymentMethod((updatesNormalized as any).paymentMethod);
+        if (normalized) (updatesNormalized as any).paymentMethod = normalized;
+        else delete (updatesNormalized as any).paymentMethod;
+      }
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentStatus')) {
+        const normalized = this.normalizeBookingPaymentStatus((updatesNormalized as any).paymentStatus);
+        if (normalized) (updatesNormalized as any).paymentStatus = normalized;
+        else delete (updatesNormalized as any).paymentStatus;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'status')) {
+        (updatesNormalized as any).status = this.normalizeServiceBookingStatus((updatesNormalized as any).status);
+      }
+
       // Clean the update data to remove undefined values
       const cleanedUpdates = this.cleanBookingData({
-        ...updates,
+        ...updatesNormalized,
         updatedAt: new Date(),
       });
       
@@ -3191,7 +4475,7 @@ export class FirestoreService {
             customerId: data.customerId || '',
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId || '',
             workerName: data.workerName || data.technicianName || '',
             workerId: data.workerId || data.technicianId || '',
@@ -3401,30 +4685,50 @@ export class FirestoreService {
       if (!userId) {
         throw new Error('Please log in to view your bookings');
       }
-      
-      console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
-      
-      // Direct query to service_bookings collection
-      const snapshot = await firestore()
-        .collection('service_bookings')
-        .where('customerId', '==', userId)
-        .get();
 
-      console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId}`);
+      if (__DEV__) {
+        console.log(`🔥 SIMPLE FETCH: Getting all bookings for user: ${userId}`);
+      }
+      
+      // IMPORTANT: apply `limit` in the query to avoid downloading the user's full history.
+      // Prefer server-side sort (fast + stable). Fallback to unordered limit if an index is missing.
+      let snapshot;
+      try {
+        snapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', userId)
+          .orderBy('createdAt', 'desc')
+          .limit(limit)
+          .get();
+      } catch (e: any) {
+        const isIndexError =
+          e?.code === 'firestore/failed-precondition' &&
+          typeof e?.message === 'string' &&
+          e.message.toLowerCase().includes('index');
+
+        if (__DEV__) {
+          console.warn('⚠️ SIMPLE FETCH: orderBy(createdAt) failed, falling back to unordered limited query', {
+            isIndexError,
+            code: e?.code,
+            message: e?.message,
+          });
+        }
+
+        snapshot = await firestore()
+          .collection('service_bookings')
+          .where('customerId', '==', userId)
+          .limit(limit)
+          .get();
+      }
+
+      if (__DEV__) {
+        console.log(`📊 Found ${snapshot.size} bookings in service_bookings for user ${userId} (limit=${limit})`);
+      }
 
       const bookings: ServiceBooking[] = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
-        
-        console.log(`📋 Processing booking ${doc.id}:`, {
-          serviceName: data.serviceName,
-          customerName: data.customerName,
-          status: data.status,
-          date: data.date,
-          time: data.time,
-          customerId: data.customerId
-        });
         
         // Add ALL bookings for this user (no filtering)
         bookings.push({
@@ -3437,7 +4741,7 @@ export class FirestoreService {
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
@@ -3475,21 +4779,10 @@ export class FirestoreService {
 
       const result = bookings.slice(0, limit);
 
-      console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
-      
-      if (result.length === 0) {
-        console.log(`ℹ️ No bookings found for user ${userId} in service_bookings collection`);
-        console.log(`💡 Check if:`);
-        console.log(`   - User is logged in correctly`);
-        console.log(`   - Bookings have correct customerId field`);
-        console.log(`   - Bookings are in service_bookings collection`);
-      } else {
-        console.log(`📋 Bookings found:`);
-        result.forEach((booking, index) => {
-          console.log(`   ${index + 1}. ${booking.serviceName} | ${booking.customerName} | ${booking.status}`);
-        });
+      if (__DEV__) {
+        console.log(`✅ SIMPLE FETCH RESULT: Returning ${result.length} bookings for user ${userId}`);
       }
-      
+
       return result;
     } catch (error: any) {
       console.error('❌ Error in simple fetch:', error);
@@ -3571,7 +4864,7 @@ export class FirestoreService {
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             technicianName: data.technicianName,
             technicianId: data.technicianId,
@@ -3714,7 +5007,7 @@ export class FirestoreService {
           customerId: data.customerId,
           date: data.date || '',
           time: data.time || '',
-          status: data.status || 'pending',
+          status: this.normalizeServiceBookingStatus(data.status),
           companyId: data.companyId,
           technicianName: data.technicianName,
           technicianId: data.technicianId,
@@ -3950,6 +5243,10 @@ export class FirestoreService {
    */
   static async debugBookingStatuses(): Promise<void> {
     try {
+      if (!__DEV__) {
+        return;
+      }
+
       const userId = this.getCurrentUserId();
       
       if (!userId) {
@@ -3957,14 +5254,14 @@ export class FirestoreService {
         return;
       }
       
-      console.log(`🔍 Checking all booking statuses for user: ${userId}`);
+  console.log(`🔍 Checking all booking statuses for user: ${userId}`);
       
       const snapshot = await firestore()
         .collection('service_bookings')
         .where('customerId', '==', userId)
         .get();
 
-      console.log(`📊 Found ${snapshot.size} bookings:`);
+  console.log(`📊 Found ${snapshot.size} bookings:`);
       
       const statusCounts: Record<string, number> = {};
       const statusExamples: Record<string, string[]> = {};
@@ -4158,13 +5455,14 @@ export class FirestoreService {
             id: doc.id,
             serviceName: data.serviceName || '',
             workName: data.workName || data.serviceName || '',
+            categoryId: data.categoryId,
             customerName: data.customerName || '',
             customerPhone: data.customerPhone || data.phone,
             customerAddress: data.customerAddress || data.address,
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             // Use actual database field names first (workerName, workerId), then fallbacks
             workerName: data.workerName || data.worker_name,
@@ -4741,7 +6039,7 @@ export class FirestoreService {
             customerId: data.customerId,
             date: data.date || '',
             time: data.time || '',
-            status: data.status || 'pending',
+            status: this.normalizeServiceBookingStatus(data.status),
             companyId: data.companyId,
             technicianName: data.technicianName,
             technicianId: data.technicianId,
@@ -4826,10 +6124,23 @@ export class FirestoreService {
         companyName: paymentData.companyName,
         companyId: paymentData.companyId
       });
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const paymentDataNormalized: any = { ...paymentData };
+      const normalizedMethod = this.normalizeBookingPaymentMethod((paymentDataNormalized as any).paymentMethod);
+      const normalizedStatus = this.normalizeBookingPaymentStatus((paymentDataNormalized as any).paymentStatus);
+      const gw = String((paymentDataNormalized as any).paymentGateway || '').trim().toLowerCase();
+      const hasRzpIds = Boolean(
+        String((paymentDataNormalized as any).transactionId || '').trim() ||
+        String((paymentDataNormalized as any).razorpayOrderId || '').trim() ||
+        String((paymentDataNormalized as any).razorpaySignature || '').trim()
+      );
+      (paymentDataNormalized as any).paymentMethod = normalizedMethod || (gw && gw !== 'cash' ? 'online' : 'cash');
+      (paymentDataNormalized as any).paymentStatus = normalizedStatus || (hasRzpIds ? 'paid' : 'pending');
       
       // Filter out undefined values to prevent Firestore errors
       const cleanPaymentData = Object.fromEntries(
-        Object.entries(paymentData).filter(([_, value]) => value !== undefined)
+        Object.entries(paymentDataNormalized).filter(([_, value]) => value !== undefined)
       );
       
       console.log('Clean payment data (no undefined values):', cleanPaymentData);
@@ -4841,7 +6152,7 @@ export class FirestoreService {
           customerId: userId, // Always set the logged-in user ID
           createdAt: new Date(),
           updatedAt: new Date(),
-          paidAt: paymentData.paymentStatus === 'paid' ? new Date() : null,
+          paidAt: (cleanPaymentData as any).paymentStatus === 'paid' ? new Date() : null,
         });
 
       console.log(`✅ Created payment record with ID: ${docRef.id} for user: ${userId}`);
@@ -4874,10 +6185,23 @@ export class FirestoreService {
       }
       
       console.log(`💳 Updating payment record ${paymentId} for user: ${userId}`);
+
+      // Normalize payment fields to prevent accidental object writes / "[object Object]" strings.
+      const updatesNormalized: any = { ...updates };
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentMethod')) {
+        const normalized = this.normalizeBookingPaymentMethod((updatesNormalized as any).paymentMethod);
+        if (normalized) (updatesNormalized as any).paymentMethod = normalized;
+        else delete (updatesNormalized as any).paymentMethod;
+      }
+      if (Object.prototype.hasOwnProperty.call(updatesNormalized, 'paymentStatus')) {
+        const normalized = this.normalizeBookingPaymentStatus((updatesNormalized as any).paymentStatus);
+        if (normalized) (updatesNormalized as any).paymentStatus = normalized;
+        else delete (updatesNormalized as any).paymentStatus;
+      }
       
       // Filter out undefined values to prevent Firestore errors
       const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([_, value]) => value !== undefined)
+        Object.entries(updatesNormalized).filter(([_, value]) => value !== undefined)
       );
       
       const updateData: any = {
@@ -4886,7 +6210,7 @@ export class FirestoreService {
       };
 
       // Set paidAt timestamp when payment status changes to paid
-      if (updates.paymentStatus === 'paid' && !updates.paidAt) {
+      if ((cleanUpdates as any).paymentStatus === 'paid' && !(cleanUpdates as any).paidAt) {
         updateData.paidAt = new Date();
       }
       
@@ -5049,6 +6373,95 @@ export class FirestoreService {
       
       throw new Error('Failed to fetch payment history. Please check your internet connection.');
     }
+  }
+
+  /**
+   * DEV ONLY: Delete service bookings for the currently logged-in user.
+   *
+   * This is meant to help QA/payment flow testing so BookingHistory starts clean.
+   * It also deletes any linked `service_payments` documents for deleted bookings.
+   */
+  static async devDeleteUserServiceBookings(options?: {
+    statuses?: (ServiceBooking['status'] | 'reject' | 'rejected')[];
+    limit?: number;
+    includePayments?: boolean;
+  }): Promise<{ deletedBookings: number; deletedPayments: number }>
+  {
+    if (!__DEV__) {
+      throw new Error('This action is only available in DEV builds');
+    }
+
+    const userId = this.getCurrentUserId();
+    if (!userId) {
+      throw new Error('Please log in to clear bookings');
+    }
+
+    const statuses = options?.statuses ?? ['pending', 'cancelled', 'rejected', 'reject'];
+    const limit = options?.limit ?? 200;
+    const includePayments = options?.includePayments ?? true;
+
+    console.log('🧹 DEV CLEANUP: Deleting user service bookings', { userId, statuses, limit, includePayments });
+
+    // Fetch bookings for user (client side filter by status to avoid composite index requirements)
+    const snapshot = await firestore()
+      .collection('service_bookings')
+      .where('customerId', '==', userId)
+      .get();
+
+    const bookingDocs = snapshot.docs
+      .filter((d) => statuses.includes(String(d.data()?.status ?? 'pending') as any))
+      .slice(0, limit);
+
+    const bookingIds = bookingDocs.map((d) => d.id);
+
+    let deletedBookings = 0;
+    let deletedPayments = 0;
+
+    // Delete payments first (query by bookingId)
+    if (includePayments && bookingIds.length > 0) {
+      const paymentDeletes: Promise<void>[] = [];
+      for (const bookingId of bookingIds) {
+        const paySnap = await firestore()
+          .collection('service_payments')
+          .where('customerId', '==', userId)
+          .where('bookingId', '==', bookingId)
+          .get();
+
+        paySnap.docs.forEach((p) => {
+          paymentDeletes.push(p.ref.delete());
+        });
+      }
+
+      if (paymentDeletes.length > 0) {
+        await Promise.all(paymentDeletes);
+        deletedPayments = paymentDeletes.length;
+      }
+    }
+
+    if (bookingDocs.length > 0) {
+      // Use batched writes (500 limit)
+      let batch = firestore().batch();
+      let batchCount = 0;
+
+      for (const doc of bookingDocs) {
+        batch.delete(doc.ref);
+        deletedBookings++;
+        batchCount++;
+
+        if (batchCount >= 450) {
+          await batch.commit();
+          batch = firestore().batch();
+          batchCount = 0;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+    }
+
+    console.log('✅ DEV CLEANUP DONE', { deletedBookings, deletedPayments });
+    return { deletedBookings, deletedPayments };
   }
 
   /**
@@ -5490,7 +6903,6 @@ export class FirestoreService {
       console.log(`🏢 Fetching companies for direct-price services:`, serviceNames);
       console.log(`   Category ID:`, categoryId);
       
-      const companies: ServiceCompany[] = [];
       const companyMap = new Map<string, ServiceCompany>();
       
       // For each service name, find companies in service_services
@@ -5557,6 +6969,9 @@ export class FirestoreService {
             
             console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
             
+            // ⭐ Fetch real-time rating from serviceRatings collection
+            const ratingData = await this.getCompanyAverageRating(companyId);
+            
             // Create company object
             const company: ServiceCompany = {
               id: serviceDoc.id, // Use service_services doc ID
@@ -5565,13 +6980,17 @@ export class FirestoreService {
               serviceName: serviceName,
               companyName: companyData.companyName || companyData.name || 'Unknown Company',
               price: serviceData.price || 0,
-              isActive: true,
-              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              duration: serviceData.duration,
+              durationUnit: serviceData.durationUnit,
+              isActive: companyData.isActive !== false, // Use company's isActive status
+              // 🖼️ Company logos live in service_company.logoUrl (direct-price flow)
+              imageUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null,
+              logoUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null, // Explicitly set logoUrl
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,
-              rating: companyData.rating,
-              reviewCount: companyData.reviewCount,
+              rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating, // Use real rating if available
+              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount, // Use real review count
               contactInfo: companyData.contactInfo,
               createdAt: serviceData.createdAt,
               updatedAt: serviceData.updatedAt,
@@ -5581,27 +7000,17 @@ export class FirestoreService {
             
             companyMap.set(companyId, company);
             
-          } catch (error) {
-            console.error(`   ❌ Error fetching company ${companyId}:`, error);
+          } catch {
           }
         }
       }
       
       // Convert map to array
       const companiesArray = Array.from(companyMap.values());
-      
-      console.log(`✅ Found ${companiesArray.length} unique companies for direct-price services`);
-      console.log(`   Companies:`, companiesArray.map(c => ({
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        price: c.price,
-        companyId: c.companyId
-      })));
-      
+
       return companiesArray;
       
-    } catch (error) {
-      console.error('❌ Error fetching companies by service names:', error);
+    } catch {
       throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
     }
   }
@@ -5611,120 +7020,131 @@ export class FirestoreService {
    * This is used when services are selected from PackageSelectionScreen (both packages and direct-price)
    */
   static async getCompaniesByServiceIds(serviceIds: string[], categoryId?: string): Promise<ServiceCompany[]> {
-    try {
-      console.log(`\n🏢 ========== getCompaniesByServiceIds CALLED ==========`);
-      console.log(`🏢 Service IDs to fetch:`, serviceIds);
-      console.log(`🏢 Service IDs count:`, serviceIds.length);
-      console.log(`🏢 Category ID filter:`, categoryId || 'None');
-      console.log(`🏢 ====================================================\n`);
-      
-      const companyMap = new Map<string, ServiceCompany>();
-      let servicesWithoutCompanyId: any[] = [];
-      
-      // For each service ID, fetch the service and its company
-      for (const serviceId of serviceIds) {
-        console.log(`\n🔍 ========== Processing Service ${serviceIds.indexOf(serviceId) + 1}/${serviceIds.length} ==========`);
-        console.log(`🔍 Service ID: "${serviceId}"`);
-        console.log(`🔍 Service ID type: ${typeof serviceId}`);
-        console.log(`🔍 Service ID length: ${serviceId?.length || 0}`);
-        
-        try {
-          console.log(`📡 Querying Firestore: service_services/${serviceId}`);
-          const serviceDoc = await firestore()
-            .collection('service_services')
-            .doc(serviceId)
-            .get();
-          
-          console.log(`📄 Document exists: ${serviceDoc.exists}`);
-          
-          if (!serviceDoc.exists) {
-            console.log(`   ❌ Service document "${serviceId}" not found in service_services collection`);
-            console.log(`   💡 Check if this ID exists in your Firestore database`);
-            continue;
-          }
-          
-          const serviceData = serviceDoc.data();
-          
-          if (!serviceData) {
-            console.log(`   ⚠️ Service ${serviceId} has no data`);
-            continue;
-          }
-          
-          console.log(`   📋 Service data:`, {
-            name: serviceData.name,
-            hasCompanyId: !!serviceData.companyId,
-            companyId: serviceData.companyId,
-            categoryMasterId: serviceData.categoryMasterId,
-            hasPackages: !!(serviceData.packages && Array.isArray(serviceData.packages)),
-            packagesCount: serviceData.packages?.length || 0,
-            price: serviceData.price,
-            allFields: Object.keys(serviceData)
-          });
-          
-          if (serviceData.isActive === false) {
-            console.log(`   ⚠️ Service ${serviceId} is not active, skipping`);
-            continue;
-          }
-          
-          // Check category filter if provided - but be lenient for service_services
-          // Since we're querying by specific service ID, the category filter is less critical
-          if (categoryId && categoryId.trim() !== '' && serviceData.categoryMasterId && serviceData.categoryMasterId !== categoryId) {
-            console.log(`   ⚠️ Service ${serviceId} category mismatch:`);
-            console.log(`      Service categoryMasterId: ${serviceData.categoryMasterId}`);
-            console.log(`      Filter categoryId: ${categoryId}`);
-            console.log(`   💡 Skipping category filter since we're querying by specific service ID`);
-            // Don't skip - continue processing since we have a specific service ID
-            // continue;
-          }
-          
-          const companyId = serviceData.companyId;
-          
+    const cleanedServiceIds = Array.from(
+      new Set(
+        (Array.isArray(serviceIds) ? serviceIds : [])
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+      )
+    );
+
+    const cacheKey = this.buildCompaniesByServiceIdsCacheKey(cleanedServiceIds, categoryId);
+    const now = Date.now();
+    const cached = this.companiesByServiceIdsCache.get(cacheKey);
+    if (cached && now - cached.ts < this.COMPANIES_BY_SERVICE_IDS_CACHE_TTL_MS) {
+      return cached.companies;
+    }
+
+    const existingInFlight = this.companiesByServiceIdsInFlight.get(cacheKey);
+    if (existingInFlight) {
+      return await existingInFlight;
+    }
+
+    const run = (async () => {
+      try {
+        const companyMap = new Map<string, ServiceCompany>();
+        const servicesWithoutCompanyId: { id: string; data: any }[] = [];
+
+        if (cleanedServiceIds.length === 0) {
+          return [];
+        }
+
+        // Batch-fetch service docs (Firestore `in` limit: 10)
+        const serviceDataById = new Map<string, any>();
+        const serviceBatches = this.chunkArray(cleanedServiceIds, 10);
+        const serviceSnapshots = await Promise.all(
+          serviceBatches.map((batch) =>
+            firestore().collection('service_services').where('__name__', 'in', batch).get()
+          )
+        );
+        serviceSnapshots.forEach((snap) => {
+          snap.forEach((doc) => serviceDataById.set(doc.id, doc.data()));
+        });
+
+        // Choose one representative service per company (we return unique companies)
+        const representativeServiceByCompanyId = new Map<string, { serviceId: string; serviceData: any }>();
+
+        for (const [serviceId, serviceData] of serviceDataById.entries()) {
+          if (!serviceData) continue;
+          if (serviceData.isActive === false) continue;
+
+          const companyId = String(serviceData.companyId || '').trim();
           if (!companyId) {
-            console.log(`   ⚠️ Service ${serviceId} has NO companyId field - will use fallback approach`);
             servicesWithoutCompanyId.push({ id: serviceId, data: serviceData });
             continue;
           }
-          
-          // Skip if we already have this company
-          if (companyMap.has(companyId)) {
-            console.log(`   ℹ️ Company ${companyId} already added, skipping duplicate`);
-            continue;
+
+          if (!representativeServiceByCompanyId.has(companyId)) {
+            representativeServiceByCompanyId.set(companyId, { serviceId, serviceData });
           }
-          
-          // Fetch company details
-          console.log(`   🔍 Fetching company document: ${companyId} from service_company collection`);
-          const companyDoc = await firestore()
-            .collection('service_company')
-            .doc(companyId)
-            .get();
-          
-          console.log(`   📄 Company document exists: ${companyDoc.exists}`);
-          
-          if (!companyDoc.exists) {
-            console.log(`   ⚠️ Company ${companyId} not found in service_company collection`);
-            console.log(`   💡 Trying to use service data as company data (embedded approach)`);
-            
-            // FALLBACK: Use service data as company data if company document doesn't exist
-            const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
-            
-            // Try to fetch company logo separately even if company doc doesn't exist
-            let companyLogo = serviceData.imageUrl || null;
-            console.log(`   🖼️ Using service imageUrl as fallback: ${companyLogo ? 'Found' : 'Not found'}`);
-            
+        }
+
+        const companyIds = Array.from(representativeServiceByCompanyId.keys());
+
+        // Batch-fetch company docs by id
+        const companyDataById = new Map<string, any>();
+        const companyBatches = this.chunkArray(companyIds, 10);
+        const companySnapshots = await Promise.all(
+          companyBatches.map((batch) =>
+            firestore().collection('service_company').where(firestore.FieldPath.documentId(), 'in', batch).get()
+          )
+        );
+        companySnapshots.forEach((snap) => {
+          snap.forEach((doc) => companyDataById.set(doc.id, doc.data()));
+        });
+
+        // Preload ratings with bounded concurrency (uses cache internally)
+        const ratingByCompanyId = new Map<string, { averageRating: number; reviewCount: number }>();
+        const maxRatingConcurrency = 4;
+        let ratingIdx = 0;
+        const ratingWorker = async () => {
+          while (ratingIdx < companyIds.length) {
+            const cid = companyIds[ratingIdx++];
+            try {
+              const r = await this.getCompanyAverageRating(cid);
+              ratingByCompanyId.set(cid, r);
+            } catch {
+              ratingByCompanyId.set(cid, { averageRating: 0, reviewCount: 0 });
+            }
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(maxRatingConcurrency, companyIds.length) }, () => ratingWorker())
+        );
+
+        for (const companyId of companyIds) {
+          const rep = representativeServiceByCompanyId.get(companyId);
+          if (!rep) continue;
+
+          const serviceData = rep.serviceData;
+          const serviceId = rep.serviceId;
+          const companyData = companyDataById.get(companyId);
+
+          // Skip inactive companies
+          if (companyData && companyData.isActive === false) continue;
+
+          const hasPackages = !!(serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0);
+          const companyLogo = (companyData?.logoUrl || companyData?.imageUrl || serviceData.imageUrl || null);
+          const ratingData = ratingByCompanyId.get(companyId) || { averageRating: 0, reviewCount: 0 };
+
+          // Company doc missing => fall back to embedded service fields
+          if (!companyData) {
             const company: ServiceCompany = {
-              id: serviceDoc.id,
-              companyId: companyId,
+              id: serviceId,
+              companyId,
               categoryMasterId: serviceData.categoryMasterId,
               serviceName: serviceData.name || 'Unknown Service',
               companyName: serviceData.companyName || serviceData.name || 'Unknown Company',
               price: serviceData.price || 0,
-              isActive: true,
+              quantityOffers: (serviceData as any).quantityOffers,
+              isActive: serviceData.isActive !== false,
               imageUrl: companyLogo,
+              logoUrl: companyLogo, // Explicitly set logoUrl for easy access
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: serviceData.description,
-              rating: serviceData.rating,
-              reviewCount: serviceData.reviewCount,
+              rating: ratingData.averageRating > 0 ? ratingData.averageRating : serviceData.rating,
+              reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : serviceData.reviewCount,
               contactInfo: serviceData.contactInfo || {
                 phone: serviceData.phone,
                 email: serviceData.email,
@@ -5734,79 +7154,38 @@ export class FirestoreService {
               updatedAt: serviceData.updatedAt,
               packages: hasPackages ? serviceData.packages : undefined,
             };
-            
             companyMap.set(companyId, company);
-            console.log(`   ✅ Added company from service data: ${company.companyName}`);
             continue;
           }
-          
-          const companyData = companyDoc.data();
-          
-          if (!companyData) {
-            console.log(`   ⚠️ Company ${companyId} has no data`);
-            continue;
-          }
-          
-          console.log(`   📋 Company data:`, {
-            companyName: companyData.companyName,
-            name: companyData.name,
-            isActive: companyData.isActive,
-            categoryMasterId: companyData.categoryMasterId,
-            allFields: Object.keys(companyData)
-          });
-          
-          // Check if company is active
-          if (companyData.isActive === false) {
-            console.log(`   ⚠️ Company ${companyId} (${companyData.companyName || companyData.name}) is not active (isActive: false), skipping`);
-            continue;
-          }
-          
-          console.log(`   ✅ Found company: ${companyData.companyName || companyId}`);
-          
-          // 🖼️ Fetch company logo - prioritize logoUrl from service_company
-          const companyLogo = companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null;
-          console.log(`   🖼️ Company logo URL: ${companyLogo ? 'Found' : 'Not found'}`);
-          if (companyLogo) {
-            console.log(`      Logo source: ${companyData.logoUrl ? 'logoUrl' : companyData.imageUrl ? 'imageUrl (company)' : 'imageUrl (service)'}`);
-          }
-          
-          // Check if service has packages
-          const hasPackages = serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0;
-          
-          // Create company object
+
           const company: ServiceCompany = {
-            id: serviceDoc.id, // Use service_services doc ID
-            companyId: companyId,
+            id: serviceId,
+            companyId,
             categoryMasterId: serviceData.categoryMasterId,
             serviceName: serviceData.name || 'Unknown Service',
             companyName: companyData.companyName || companyData.name || 'Unknown Company',
             price: serviceData.price || 0,
-            isActive: true,
-            imageUrl: companyLogo, // Use the logo from service_company
+            quantityOffers: (serviceData as any).quantityOffers,
+            isActive: companyData.isActive !== false,
+            imageUrl: companyLogo,
+            logoUrl: companyLogo, // Explicitly set logoUrl for easy access
             serviceType: serviceData.serviceType,
             adminServiceId: serviceData.adminServiceId,
             description: companyData.description,
-            rating: companyData.rating,
-            reviewCount: companyData.reviewCount,
+            rating: ratingData.averageRating > 0 ? ratingData.averageRating : companyData.rating,
+            reviewCount: ratingData.reviewCount > 0 ? ratingData.reviewCount : companyData.reviewCount,
             contactInfo: companyData.contactInfo,
             createdAt: serviceData.createdAt,
             updatedAt: serviceData.updatedAt,
-            // Include packages if they exist
             packages: hasPackages ? serviceData.packages : undefined,
           };
-          
+
           companyMap.set(companyId, company);
-          
-        } catch (error) {
-          console.error(`   ❌ Error fetching service ${serviceId}:`, error);
         }
-      }
       
-      // FALLBACK: If services don't have companyId, fetch ALL companies for the category
-      if (servicesWithoutCompanyId.length > 0) {
-        console.log(`\n🔄 FALLBACK: ${servicesWithoutCompanyId.length} services without companyId`);
-        console.log(`   Fetching ALL companies for category: ${categoryId}`);
-        
+        // FALLBACK: If services don't have companyId, fetch ALL companies for the category
+        if (servicesWithoutCompanyId.length > 0) {
+
         try {
           let companiesQuery = firestore()
             .collection('service_company')
@@ -5818,7 +7197,7 @@ export class FirestoreService {
           }
           
           const companiesSnapshot = await companiesQuery.get();
-          console.log(`   Found ${companiesSnapshot.size} companies`);
+          
           
           companiesSnapshot.forEach(companyDoc => {
             const companyData = companyDoc.data();
@@ -5841,7 +7220,7 @@ export class FirestoreService {
               serviceName: serviceData.name || 'Unknown Service',
               companyName: companyData.companyName || companyData.name || 'Unknown Company',
               price: serviceData.price || 0,
-              isActive: true,
+              isActive: companyData.isActive !== false, // Use company's isActive status
               imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
@@ -5855,32 +7234,28 @@ export class FirestoreService {
             };
             
             companyMap.set(companyId, company);
-            console.log(`   ✅ Added company: ${company.companyName}`);
           });
           
-        } catch (fallbackError) {
-          console.error(`   ❌ Fallback error:`, fallbackError);
+        } catch {
         }
+        }
+      
+        const companiesArray = Array.from(companyMap.values());
+
+        return companiesArray;
+      } catch {
+        throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
       }
-      
-      // Convert map to array
-      const companiesArray = Array.from(companyMap.values());
-      
-      console.log(`\n✅ FINAL RESULT: Found ${companiesArray.length} unique companies for service IDs`);
-      console.log(`   Companies:`, companiesArray.map(c => ({
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        price: c.price,
-        hasPackages: !!c.packages,
-        packagesCount: c.packages?.length || 0,
-        companyId: c.companyId
-      })));
-      
-      return companiesArray;
-      
-    } catch (error) {
-      console.error('❌ Error fetching companies by service IDs:', error);
-      throw new Error('Failed to fetch companies for selected services. Please check your internet connection.');
+    })();
+
+    this.companiesByServiceIdsInFlight.set(cacheKey, run);
+
+    try {
+      const companies = await run;
+      this.companiesByServiceIdsCache.set(cacheKey, { ts: Date.now(), companies });
+      return companies;
+    } finally {
+      this.companiesByServiceIdsInFlight.delete(cacheKey);
     }
   }
 
@@ -5964,12 +7339,6 @@ export class FirestoreService {
     busyWorkers: string[];
   }> {
     try {
-      console.log(`🔍 SERVICE-SPECIFIC AVAILABILITY CHECK:`);
-      console.log(`   Company: ${companyId}`);
-      console.log(`   Date: ${date}, Time: ${time}`);
-      console.log(`   Service IDs (from app_services):`, serviceIds, `(type: ${typeof serviceIds})`);
-      console.log(`   Service Title:`, serviceTitle);
-      
       // 🔥 CRITICAL: Ensure serviceIds is always an array
       let serviceIdsArray: string[] = [];
       if (serviceIds) {
@@ -5980,30 +7349,90 @@ export class FirestoreService {
         }
       }
       
-      console.log(`   Processed Service IDs Array:`, serviceIdsArray);
-      
       // 🔥 NEW: Get service_services IDs for this company and service
       // Workers have service_services IDs in their assignedServices, not app_services IDs
       let serviceServicesIds: string[] = [];
+
+      // Fast-path: sometimes upstream already passes service_services doc IDs.
+      // If so, we can use them as-is (workers.assignedServices stores service_services ids).
+      if (serviceIdsArray.length > 0) {
+        const snapshotByIds = await firestore()
+          .collection('service_services')
+          .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+          .get();
+        if (!snapshotByIds.empty) {
+          snapshotByIds.forEach(doc => serviceServicesIds.push(doc.id));
+        }
+      }
       
-      if (serviceTitle) {
+      if (serviceServicesIds.length === 0 && serviceTitle) {
         try {
-          console.log(`🔍 Finding service_services IDs for company ${companyId} and service "${serviceTitle}"`);
-          
+          // 1) Most reliable when titles match exactly.
           const serviceServicesSnapshot = await firestore()
             .collection('service_services')
             .where('companyId', '==', companyId)
             .where('name', '==', serviceTitle)
             .get();
-          
-          serviceServicesSnapshot.forEach(doc => {
-            serviceServicesIds.push(doc.id);
-            console.log(`   ✅ Found service_services ID: ${doc.id} for "${serviceTitle}"`);
-          });
-          
-          console.log(`   📊 Total service_services IDs found: ${serviceServicesIds.length}`);
-        } catch (error) {
-          console.log(`   ⚠️ Error fetching service_services IDs:`, error);
+
+          serviceServicesSnapshot.forEach(doc => serviceServicesIds.push(doc.id));
+
+          // 2) If not found, try to map app_services -> service_services using adminServiceId/serviceKey.
+          if (serviceServicesIds.length === 0 && serviceIdsArray.length > 0) {
+            const appSnapshot = await firestore()
+              .collection('app_services')
+              .where('__name__', 'in', serviceIdsArray.slice(0, 10))
+              .get();
+
+            const adminServiceIds = new Set<string>();
+            const serviceKeys = new Set<string>();
+            const appNames = new Set<string>();
+
+            appSnapshot.forEach(doc => {
+              const d: any = doc.data();
+              if (d?.adminServiceId) adminServiceIds.add(String(d.adminServiceId));
+              if (d?.serviceKey) serviceKeys.add(String(d.serviceKey));
+              if (d?.name) appNames.add(String(d.name));
+            });
+
+            // Prefer adminServiceId mapping.
+            for (const adminServiceId of adminServiceIds) {
+              const ssSnap = await firestore()
+                .collection('service_services')
+                .where('companyId', '==', companyId)
+                .where('adminServiceId', '==', adminServiceId)
+                .get();
+              ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
+            }
+
+            // Next try serviceKey mapping.
+            if (serviceServicesIds.length === 0) {
+              for (const key of serviceKeys) {
+                const ssSnap = await firestore()
+                  .collection('service_services')
+                  .where('companyId', '==', companyId)
+                  .where('serviceKey', '==', key)
+                  .get();
+                ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
+              }
+            }
+
+            // Last resort: try app service name exact match.
+            if (serviceServicesIds.length === 0) {
+              for (const name of appNames) {
+                const ssSnap = await firestore()
+                  .collection('service_services')
+                  .where('companyId', '==', companyId)
+                  .where('name', '==', name)
+                  .get();
+                ssSnap.forEach(doc => serviceServicesIds.push(doc.id));
+              }
+            }
+          }
+
+          // Dedupe
+          serviceServicesIds = Array.from(new Set(serviceServicesIds));
+        } catch {
+          // ignore
         }
       }
       
@@ -6015,14 +7444,10 @@ export class FirestoreService {
         .where('companyId', '==', companyId)
         .get();
       
-      console.log(`📊 Total workers in company: ${allWorkersSnapshot.size}`);
-      
       // ================================
       // STEP 2: Filter for ACTIVE workers with SPECIFIC SERVICE
       // ================================
       const relevantWorkers: string[] = [];
-      const inactiveWorkers: string[] = [];
-      const workersWithoutService: string[] = [];
       
       allWorkersSnapshot.docs.forEach(doc => {
         const worker = doc.data();
@@ -6039,10 +7464,6 @@ export class FirestoreService {
           hasService = worker.assignedServices && 
                       Array.isArray(worker.assignedServices) && 
                       serviceServicesIds.some(serviceServiceId => worker.assignedServices.includes(serviceServiceId));
-          
-          if (hasService) {
-            console.log(`   ✅ CORRECT MATCH: Worker has service_services ID`);
-          }
         }
         
         // Strategy 2: Fallback to app_services IDs (legacy)
@@ -6050,10 +7471,6 @@ export class FirestoreService {
           hasService = worker.assignedServices && 
                       Array.isArray(worker.assignedServices) && 
                       serviceIdsArray.some(serviceId => worker.assignedServices.includes(serviceId));
-          
-          if (hasService) {
-            console.log(`   ✅ LEGACY MATCH: Worker has app_services ID`);
-          }
         }
         
         // Strategy 3: Service title matching
@@ -6064,50 +7481,19 @@ export class FirestoreService {
                         service.toLowerCase().includes(serviceTitle.toLowerCase()) ||
                         serviceTitle.toLowerCase().includes(service.toLowerCase())
                       );
-          
-          if (hasService) {
-            console.log(`   ✅ TITLE MATCH: Worker matched via service title`);
-          }
         }
         
         // Strategy 4: If no specific service filtering, accept all active workers
         if (!hasService && !serviceIdsArray.length && !serviceServicesIds.length && !serviceTitle) {
           hasService = true;
-          console.log(`   ✅ NO FILTER: Accepting all active workers`);
         }
-        
-        console.log(`👷 Worker ${worker.name || workerId}:`, {
-          isActive: worker.isActive,
-          isTrulyActive,
-          assignedServices: worker.assignedServices,
-          hasRequiredService: hasService,
-          requiredAppServicesIds: serviceIdsArray,
-          requiredServiceServicesIds: serviceServicesIds,
-          matchStrategy: hasService ? 'matched' : 'no_match'
-        });
-        
-        if (!isTrulyActive) {
-          inactiveWorkers.push(workerId);
-          console.log(`   ❌ INACTIVE - isActive: ${worker.isActive}`);
-        } else if (!hasService) {
-          workersWithoutService.push(workerId);
-          console.log(`   ⚠️ ACTIVE but doesn't have required service(s)`);
-        } else {
-          relevantWorkers.push(workerId);
-          console.log(`   ✅ ACTIVE and has required service`);
-        }
+
+        if (isTrulyActive && hasService) relevantWorkers.push(workerId);
       });
       
       const totalRelevantWorkers = relevantWorkers.length;
       
-      console.log(`📊 WORKER BREAKDOWN:`);
-      console.log(`   Total workers: ${allWorkersSnapshot.size}`);
-      console.log(`   Active with required service: ${totalRelevantWorkers}`);
-      console.log(`   Inactive: ${inactiveWorkers.length}`);
-      console.log(`   Active but no required service: ${workersWithoutService.length}`);
-      
       if (totalRelevantWorkers === 0) {
-        console.log(`❌ NO WORKERS with required service(s)`);
         return {
           available: false,
           status: 'no_workers',
@@ -6124,32 +7510,65 @@ export class FirestoreService {
         .collection('service_bookings')
         .where('date', '==', date)
         .where('time', '==', time)
-        .where('status', 'in', ['assigned', 'started', 'pending'])
+        .where('status', 'in', ['assigned', 'started', 'pending', 'confirmed'])
         .get();
       
       const busyWorkers: string[] = [];
       
-      console.log(`📋 Checking ${bookingsSnapshot.size} bookings for busy workers...`);
-      
+  let unassignedActiveForServiceCount = 0;
+
       bookingsSnapshot.docs.forEach(doc => {
         const booking = doc.data();
         const workerId = booking.workerId || booking.technicianId;
         
+        // IMPORTANT:
+        // When pending bookings exceed worker capacity, the time slot must show as booked
+        // even if workers have not yet been assigned.
+        // So we count active *unassigned* bookings for this same company + service.
+        const bookingCompanyId = String(booking.companyId || '');
+        const isSameCompany = bookingCompanyId === String(companyId);
+
+        const hasWorkerAssigned = !!workerId;
+        if (isSameCompany && !hasWorkerAssigned) {
+          // Prefer strict matching on service IDs to avoid counting unrelated pending bookings.
+          // Bookings may store either:
+          //  - serviceId/serviceIds (service_services doc id)
+          //  - serviceKey/adminServiceId
+          //  - serviceName/serviceTitle (fallback)
+
+          const bookingServiceIdsRaw = (booking.serviceIds || booking.serviceId || booking.serviceServicesIds || booking.selectedIssueIds) as any;
+          const bookingServiceIds: string[] = Array.isArray(bookingServiceIdsRaw)
+            ? bookingServiceIdsRaw.map((x: any) => String(x))
+            : bookingServiceIdsRaw
+              ? [String(bookingServiceIdsRaw)]
+              : [];
+
+          const bookingServiceName = String(booking.serviceName || booking.serviceTitle || '');
+
+          const matchesById = bookingServiceIds.length > 0 && serviceServicesIds.some((id: string) => bookingServiceIds.includes(String(id)));
+          const matchesByName = !!serviceTitle && bookingServiceName && bookingServiceName === String(serviceTitle);
+
+          const matchesService = matchesById || matchesByName;
+
+          if (matchesService) {
+            unassignedActiveForServiceCount += 1;
+          }
+        }
+
         if (workerId && relevantWorkers.includes(workerId)) {
           busyWorkers.push(workerId);
-          console.log(`   🚫 Worker ${workerId} is BUSY (booking: ${doc.id}, status: ${booking.status})`);
         }
       });
       
-      const availableWorkers = totalRelevantWorkers - busyWorkers.length;
-      
-      console.log(`📊 FINAL RESULT:`);
-      console.log(`   Total relevant workers: ${totalRelevantWorkers}`);
-      console.log(`   Busy workers: ${busyWorkers.length}`);
-      console.log(`   Available workers: ${availableWorkers}`);
+      // Capacity rule:
+      // totalRelevantWorkers is the slot capacity.
+      // If (assigned-busy + pending-unassigned) >= capacity => slot is booked.
+  const consumedCapacityRaw = busyWorkers.length + unassignedActiveForServiceCount;
+  // Guardrail: capacity math should never go below 0 available.
+  const consumedCapacity = Math.min(consumedCapacityRaw, totalRelevantWorkers);
+  const availableWorkers = Math.max(0, totalRelevantWorkers - consumedCapacity);
       
       if (availableWorkers <= 0) {
-        console.log(`❌ ALL ${totalRelevantWorkers} RELEVANT WORKERS ARE BUSY`);
         return {
           available: false,
           status: 'all_busy',
@@ -6158,8 +7577,6 @@ export class FirestoreService {
           busyWorkers
         };
       }
-      
-      console.log(`✅ ${availableWorkers} WORKERS AVAILABLE for this service`);
       return {
         available: true,
         status: 'available',
@@ -6200,59 +7617,26 @@ export class FirestoreService {
     }
   })[]> {
     try {
-      console.log(`🏢 Fetching companies with slot availability for ${date} at ${time}`);
-      console.log(`📋 Selected service IDs:`, selectedIssueIds);
-      console.log(`🏷️ Service type:`, serviceType);
-      console.log(`📂 Category ID:`, categoryId);
-      console.log(`🔍 From service_services:`, fromServiceServices);
-      
       // Get companies based on selected issues
       let companies: ServiceCompany[];
       if (selectedIssueIds && selectedIssueIds.length > 0) {
         // 🔥 CRITICAL FIX: Use correct method based on data source
         if (fromServiceServices) {
-          console.log(`🔍 Using getCompaniesByServiceIds for service_services IDs:`, selectedIssueIds);
           companies = await this.getCompaniesByServiceIds(selectedIssueIds, categoryId);
-          console.log(`📊 getCompaniesByServiceIds returned ${companies.length} companies`);
         } else {
-          console.log(`🔍 Using getCompaniesWithDetailedPackages for app_services IDs:`, selectedIssueIds);
           companies = await this.getCompaniesWithDetailedPackages(selectedIssueIds);
-          console.log(`📊 getCompaniesWithDetailedPackages returned ${companies.length} companies`);
         }
       } else if (categoryId) {
-        console.log(`🔍 Using getCompaniesByCategory for category:`, categoryId);
         companies = await this.getCompaniesByCategory(categoryId);
-        console.log(`📊 getCompaniesByCategory returned ${companies.length} companies`);
         companies = await this.getDetailedPackagesForCompanies(companies);
-        console.log(`📊 After package enhancement: ${companies.length} companies`);
       } else {
-        console.log(`🔍 Using getServiceCompanies (fallback)`);
         companies = await this.getServiceCompanies();
-        console.log(`📊 getServiceCompanies returned ${companies.length} companies`);
         companies = await this.getDetailedPackagesForCompanies(companies);
-        console.log(`📊 After package enhancement: ${companies.length} companies`);
       }
-
-      console.log(`🏢 COMPANIES FOUND:`, companies.map(c => ({
-        id: c.id,
-        companyName: c.companyName,
-        serviceName: c.serviceName,
-        companyId: c.companyId,
-        isActive: c.isActive
-      })));
 
       if (companies.length === 0) {
-        console.log(`❌ NO COMPANIES FOUND - This is why nothing is showing in the app`);
-        console.log(`💡 Possible reasons:`);
-        console.log(`   1. No companies provide the selected service`);
-        console.log(`   2. Service IDs don't match between app_services and service_services`);
-        console.log(`   3. All companies are inactive`);
-        console.log(`   4. Category mapping issue`);
-        
         return [];
       }
-      
-      console.log(`🏢 Found ${companies.length} companies, checking availability...`);
       
       // Check availability for each company with SERVICE-SPECIFIC filtering
       const companiesWithAvailability = await Promise.all(
@@ -6301,28 +7685,6 @@ export class FirestoreService {
         const { status } = company.availabilityInfo;
         return status === 'available'; // Only show companies with available workers
       });
-      
-      console.log(`🏢 After slot filtering: ${filteredCompanies.length}/${companies.length} companies shown (only available workers)`);
-      console.log('Available companies only:', filteredCompanies.map(c => ({
-        name: c.companyName || c.serviceName,
-        status: c.availabilityInfo.status,
-        message: c.availabilityInfo.statusMessage,
-        availableWorkers: c.availabilityInfo.availableWorkers
-      })));
-      
-      // Log hidden companies for debugging
-      const hiddenCompanies = companiesWithAvailability.filter(company => {
-        const { status } = company.availabilityInfo;
-        return status !== 'available';
-      });
-      
-      if (hiddenCompanies.length > 0) {
-        console.log(`🚫 Hidden ${hiddenCompanies.length} companies:`, hiddenCompanies.map(c => ({
-          name: c.companyName || c.serviceName,
-          reason: c.availabilityInfo.status,
-          message: c.availabilityInfo.statusMessage
-        })));
-      }
       
       return filteredCompanies;
       
