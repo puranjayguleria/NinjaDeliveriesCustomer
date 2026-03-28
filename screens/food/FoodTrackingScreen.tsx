@@ -13,23 +13,39 @@ import Loader from "@/components/VideoLoader";
 import riderIcon     from "../../assets/rider-icon-1.png";
 import dropoffMarker from "../../assets/dropoff-marker.png";
 
-const { height: SH, width: SW } = Dimensions.get("window");
+const { height: SH } = Dimensions.get("window");
 const ORANGE = "#FC8019";
 const DARK   = "#1C1C1C";
 const GRAY   = "#686B78";
-const LIGHT  = "#F5F5F5";
 
-type OrderStatus = "pending"|"confirmed"|"preparing"|"delivery"|"delivered"|"cancelled";
+type OrderStatus = "Preparing" | "Ready" | "Delivered" | "Cancelled";
 
-const STEPS: { key: OrderStatus; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "pending",   label: "Order\nPlaced",   icon: "receipt-outline" },
-  { key: "confirmed", label: "Restaurant\nAccepted", icon: "checkmark-circle-outline" },
-  { key: "preparing", label: "Food Being\nPrepared", icon: "restaurant-outline" },
-  { key: "delivery",  label: "Out for\nDelivery",    icon: "bicycle-outline" },
-  { key: "delivered", label: "Delivered",            icon: "home-outline" },
-];
-const STATUS_ORDER: OrderStatus[] = ["pending","confirmed","preparing","delivery","delivered"];
-const getIdx = (s: OrderStatus) => STATUS_ORDER.indexOf(s);
+const getStepsForStatus = (status: OrderStatus): { key: OrderStatus; label: string; icon: keyof typeof Ionicons.glyphMap }[] => {
+  if (status === "Cancelled") {
+    return [
+      { key: "Preparing",  label: "Order\nPlaced",     icon: "receipt-outline" },
+      { key: "Cancelled",  label: "Order\nCancelled",  icon: "close-circle-outline" },
+    ];
+  }
+  
+  return [
+    { key: "Preparing", label: "Preparing",            icon: "restaurant-outline" },
+    { key: "Ready",     label: "Ready for\nPickup",    icon: "checkmark-done-outline" },
+    { key: "Delivered", label: "Delivered",            icon: "home-outline" },
+  ];
+};
+
+const getIdx = (s: OrderStatus, steps: any[]) => steps.findIndex(step => step.key === s);
+
+const getStatusColor = (status: OrderStatus): string => {
+  switch (status) {
+    case "Preparing": return "#FF9500";
+    case "Ready": return "#34C759";
+    case "Delivered": return "#10B981";
+    case "Cancelled": return "#FF3B30";
+    default: return "#007AFF";
+  }
+};
 
 const haversine = (a: LatLng, b: LatLng) => {
   const R = 6371, r = (v: number) => (v * Math.PI) / 180;
@@ -43,7 +59,7 @@ export default function FoodTrackingScreen() {
   const { orderId } = useRoute<any>().params ?? {};
 
   const [orderDoc,    setOrderDoc]    = useState<any>(null);
-  const [status,      setStatus]      = useState<OrderStatus>("pending");
+  const [status,      setStatus]      = useState<OrderStatus>("Preparing");
   const [riderLoc,    setRiderLoc]    = useState<LatLng|null>(null);
   const [riderInfo,   setRiderInfo]   = useState({ name: "", phone: "" });
   const [riderId,     setRiderId]     = useState<string|null>(null);
@@ -85,8 +101,11 @@ export default function FoodTrackingScreen() {
     return firestore().collection("restaurant_Orders").doc(orderId).onSnapshot(snap => {
       const d = snap.data();
       if (!d) { setLoading(false); return; }
-      setOrderDoc(d); setStatus(d.status);
-      if (d.status === "delivered" && !reviewShown.current && !d.reviewed) {
+      setOrderDoc(d); 
+      // Normalize status to match our type
+      const normalizedStatus = d.status.charAt(0).toUpperCase() + d.status.slice(1).toLowerCase();
+      setStatus(normalizedStatus as OrderStatus);
+      if (normalizedStatus === "Delivered" && !reviewShown.current && !d.reviewed) {
         reviewShown.current = true;
         setTimeout(openReview, 900);
       }
@@ -174,33 +193,37 @@ export default function FoodTrackingScreen() {
 
   if (loading) return <View style={s.center}><Loader /></View>;
 
-  const stepIdx     = getIdx(status);
-  const isDelivered = status === "delivered";
-  const isCancelled = status === "cancelled";
-  const isOnWay     = status === "delivery";
+  const STEPS = getStepsForStatus(status);
+  const stepIdx = getIdx(status, STEPS);
+  const isDelivered = status === "Delivered";
+  const isCancelled = status === "Cancelled";
+  const isOnWay     = status === "Ready" || status === "Delivered";
+  const statusColor = getStatusColor(status);
+
+  console.log("Current status:", status, "isDelivered:", isDelivered, "isCancelled:", isCancelled);
 
   // Swiggy header color: orange always
   const headerMsg =
     isDelivered ? "Order Delivered!" :
     isCancelled ? "Order Cancelled"  :
-    isOnWay && eta > 0 ? `Arriving in ${eta} mins` :
-    status === "preparing" ? "Preparing your order" :
-    status === "confirmed" ? "Order Confirmed" :
+    status === "Ready" && eta > 0 ? `Arriving in ${eta} mins` :
+    status === "Ready" ? "Order is ready!" :
+    status === "Preparing" ? "Preparing your order" :
     "Order Placed";
 
   const headerSub =
     isDelivered ? `Your order from ${orderDoc?.restaurantName} has been delivered` :
     isCancelled ? "Your order was cancelled" :
-    isOnWay     ? `Your order from ${orderDoc?.restaurantName} is on the way` :
-    status === "preparing" ? `${orderDoc?.restaurantName} is preparing your food` :
-    `Waiting for ${orderDoc?.restaurantName} to confirm`;
+    status === "Ready" ? `Your order is ready for pickup by delivery partner` :
+    status === "Preparing" ? `${orderDoc?.restaurantName} is preparing your food` :
+    `${orderDoc?.restaurantName} will start preparing your order soon`;
 
   return (
     <View style={s.root}>
-      <StatusBar backgroundColor={ORANGE} barStyle="light-content" />
+      <StatusBar backgroundColor={statusColor} barStyle="light-content" />
 
-      {/* ─── ORANGE HEADER ─── */}
-      <View style={s.header}>
+      {/* ─── HEADER ─── */}
+      <View style={[s.header, { backgroundColor: statusColor }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.headerBack}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
@@ -238,7 +261,7 @@ export default function FoodTrackingScreen() {
             </Marker>
           )}
           {path.length > 1 && (
-            <Polyline coordinates={path} strokeColor={ORANGE} strokeWidth={4} />
+            <Polyline coordinates={path} strokeColor={statusColor} strokeWidth={4} />
           )}
         </MapView>
 
@@ -246,7 +269,7 @@ export default function FoodTrackingScreen() {
         {riderLoc && (
           <TouchableOpacity style={s.locateBtn}
             onPress={() => mapRef.current?.animateToRegion({ ...riderLoc, latitudeDelta: 0.012, longitudeDelta: 0.012 }, 500)}>
-            <Ionicons name="locate" size={20} color={ORANGE} />
+            <Ionicons name="locate" size={20} color={statusColor} />
           </TouchableOpacity>
         )}
       </View>
@@ -255,69 +278,76 @@ export default function FoodTrackingScreen() {
       <View style={s.card}>
 
         {/* ── STEPPER ── */}
-        {!isCancelled && (
-          <View style={s.stepperBox}>
-            {STEPS.map((step, i) => {
-              const done   = i <= stepIdx;
-              const active = i === stepIdx;
-              const last   = i === STEPS.length - 1;
-              return (
-                <React.Fragment key={step.key}>
-                  <View style={s.stepCol}>
-                    {/* circle */}
-                    <View style={[
-                      s.stepCircle,
-                      done   && { backgroundColor: ORANGE, borderColor: ORANGE },
-                      active && { shadowColor: ORANGE, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 },
-                    ]}>
-                      {done
-                        ? <Ionicons name={step.icon} size={13} color="#fff" />
-                        : <View style={s.stepDotInner} />
-                      }
-                    </View>
-                    <Text style={[s.stepLbl, done && { color: ORANGE }]} numberOfLines={2}>
-                      {step.label}
-                    </Text>
+        <View style={s.stepperBox}>
+          {STEPS.map((step, i) => {
+            const done   = i <= stepIdx;
+            const active = i === stepIdx;
+            const last   = i === STEPS.length - 1;
+            const isCancelStep = step.key === "Cancelled";
+            return (
+              <React.Fragment key={step.key}>
+                <View style={s.stepCol}>
+                  {/* circle */}
+                  <View style={[
+                    s.stepCircle,
+                    done && !isCancelStep && { backgroundColor: statusColor, borderColor: statusColor },
+                    isCancelStep && done && { backgroundColor: "#FF3B30", borderColor: "#FF3B30" },
+                    active && { shadowColor: isCancelStep ? "#FF3B30" : statusColor, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 },
+                  ]}>
+                    {done
+                      ? <Ionicons name={step.icon} size={14} color="#fff" />
+                      : <View style={s.stepDotInner} />
+                    }
                   </View>
-                  {!last && (
-                    <View style={[s.stepConnector, done && i < stepIdx && { backgroundColor: ORANGE }]} />
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </View>
-        )}
+                  <Text style={[s.stepLbl, done && !isCancelStep && { color: statusColor }, isCancelStep && done && { color: "#FF3B30" }]} numberOfLines={2}>
+                    {step.label}
+                  </Text>
+                </View>
+                {!last && (
+                  <View style={[
+                    s.stepConnector, 
+                    done && i < stepIdx && !isCancelStep && { backgroundColor: statusColor },
+                    isCancelStep && { backgroundColor: "#FF3B30" }
+                  ]} />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </View>
 
         <View style={s.sep} />
 
         {/* ── RIDER ROW ── */}
-        {riderId ? (
-          <View style={s.riderRow}>
-            <View style={s.riderLeft}>
-              <View style={s.riderImgWrap}>
-                <Image source={riderIcon} style={{ width: 32, height: 32 }} resizeMode="contain" />
+        {!isDelivered && !isCancelled && (
+          <>
+            {riderId ? (
+              <View style={s.riderRow}>
+                <View style={s.riderLeft}>
+                  <View style={s.riderImgWrap}>
+                    <Image source={riderIcon} style={{ width: 32, height: 32 }} resizeMode="contain" />
+                  </View>
+                  <View>
+                    <Text style={s.riderName}>{riderInfo.name}</Text>
+                    <Text style={s.riderSub}>Delivery Partner</Text>
+                  </View>
+                </View>
+                {!!riderInfo.phone && (
+                  <TouchableOpacity style={[s.callBtn, { backgroundColor: statusColor }]}
+                    onPress={() => Linking.openURL(`tel:${riderInfo.phone}`).catch(() => Alert.alert("Error","Cannot make call"))}>
+                    <Ionicons name="call" size={15} color="#fff" />
+                    <Text style={s.callTxt}>Call</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <View>
-                <Text style={s.riderName}>{riderInfo.name}</Text>
-                <Text style={s.riderSub}>Delivery Partner</Text>
+            ) : (
+              <View style={s.noRiderRow}>
+                <Ionicons name="bicycle-outline" size={18} color={GRAY} />
+                <Text style={s.noRiderTxt}>Assigning a delivery partner...</Text>
               </View>
-            </View>
-            {!!riderInfo.phone && (
-              <TouchableOpacity style={s.callBtn}
-                onPress={() => Linking.openURL(`tel:${riderInfo.phone}`).catch(() => Alert.alert("Error","Cannot make call"))}>
-                <Ionicons name="call" size={15} color="#fff" />
-                <Text style={s.callTxt}>Call</Text>
-              </TouchableOpacity>
             )}
-          </View>
-        ) : (
-          <View style={s.noRiderRow}>
-            <Ionicons name="bicycle-outline" size={18} color={GRAY} />
-            <Text style={s.noRiderTxt}>Assigning a delivery partner...</Text>
-          </View>
+            <View style={s.sep} />
+          </>
         )}
-
-        <View style={s.sep} />
 
         {/* ── ORDER SUMMARY ── */}
         <TouchableOpacity style={s.billToggle} onPress={() => setShowBill(v => !v)} activeOpacity={0.8}>
@@ -362,7 +392,7 @@ export default function FoodTrackingScreen() {
 
         {/* ── RATE CTA ── */}
         {isDelivered && !reviewed && !orderDoc?.reviewed && (
-          <TouchableOpacity style={s.rateCta} onPress={openReview} activeOpacity={0.9}>
+          <TouchableOpacity style={[s.rateCta, { backgroundColor: statusColor }]} onPress={openReview} activeOpacity={0.9}>
             <Text style={s.rateCtaTxt}>Rate your order</Text>
           </TouchableOpacity>
         )}
@@ -395,7 +425,7 @@ export default function FoodTrackingScreen() {
                   <Ionicons name="close" size={18} color="#aaa" />
                 </TouchableOpacity>
                 <View style={s.mIconWrap}>
-                  <Ionicons name="restaurant" size={28} color={ORANGE} />
+                  <Ionicons name="restaurant" size={28} color={statusColor} />
                 </View>
                 <Text style={s.mTitle}>Rate your order</Text>
                 <Text style={s.mSub}>from {orderDoc?.restaurantName}</Text>
@@ -414,7 +444,7 @@ export default function FoodTrackingScreen() {
                   value={reviewText} onChangeText={setReviewText}
                   multiline maxLength={300}
                 />
-                <TouchableOpacity style={[s.submitBtn, submitting && {opacity:0.65}]} onPress={submitReview} disabled={submitting} activeOpacity={0.9}>
+                <TouchableOpacity style={[s.submitBtn, { backgroundColor: statusColor }, submitting && {opacity:0.65}]} onPress={submitReview} disabled={submitting} activeOpacity={0.9}>
                   <Text style={s.submitTxt}>{submitting ? "Submitting..." : "Submit"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={closeReview} style={{ marginTop: 14 }}>
@@ -508,7 +538,6 @@ const s = StyleSheet.create({
   riderSub:  { fontSize: 12, color: GRAY, marginTop: 1 },
   callBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: ORANGE,
     paddingVertical: 9, paddingHorizontal: 18, borderRadius: 8,
   },
   callTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
@@ -547,7 +576,7 @@ const s = StyleSheet.create({
 
   // rate cta
   rateCta: {
-    marginTop: 12, backgroundColor: ORANGE,
+    marginTop: 12,
     borderRadius: 8, paddingVertical: 14, alignItems: "center",
   },
   rateCtaTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
@@ -583,7 +612,7 @@ const s = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   submitBtn: {
-    width: "100%", backgroundColor: ORANGE,
+    width: "100%",
     borderRadius: 10, paddingVertical: 14, alignItems: "center",
   },
   submitTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
