@@ -82,6 +82,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const fromScreenKey = fromScreen.trim().toLowerCase();
 
   const resetToServicesHome = () => {
+    // Navigate to AppTabs and set Services tab as active
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
@@ -89,16 +90,19 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           {
             name: "AppTabs" as any,
             state: {
-              index: 0,
               routes: [
-                {
-                  name: "CategoriesTab",
+                { name: "Orders" },
+                { name: "NewOrder" },
+                { 
+                  name: "Services",
                   state: {
                     index: 0,
-                    routes: [{ name: "ProductsHome" }],
+                    routes: [{ name: "ServicesHome" }],
                   },
                 },
+                { name: "Profile" },
               ],
+              index: 2, // Services tab is at index 2
             },
           },
         ],
@@ -115,7 +119,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       const tabsState: any = prevRoute?.state;
       const tabIndex = typeof tabsState?.index === "number" ? tabsState.index : -1;
       const activeTab = tabsState?.routes?.[tabIndex]?.name;
-      return activeTab === "CategoriesTab";
+      return activeTab === "Services";
     } catch {
       return false;
     }
