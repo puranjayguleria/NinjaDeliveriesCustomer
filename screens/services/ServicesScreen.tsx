@@ -2143,12 +2143,36 @@ export default function ServicesScreen() {
 
       setTapLoading({ visible: true, message: 'Opening…' });
       try {
-        // Navigate directly to CompanySelection screen
+        // Prepare complete service object with all details
+        const serviceObject = {
+          id: svc.id,
+          name: svc.name || 'Service',
+          description: svc.description || '',
+          price: svc.price || (Array.isArray(svc.packages) && svc.packages.length > 0 ? svc.packages[0]?.price : null),
+          imageUrl: svc.imageUrl || null,
+          categoryId: svc.categoryId || svc.categoryMasterId,
+          companyId: svc.companyId,
+          companyName: svc.companyName,
+          packages: svc.packages || [],
+        };
+
+        console.log('🚀 Navigating to CompanySelection with:', {
+          serviceTitle: svc.name,
+          categoryId,
+          serviceId: svc.id,
+          hasDescription: !!svc.description,
+          hasPrice: !!svc.price,
+        });
+
+        // Navigate directly to CompanySelection screen with complete service details
         navigation.navigate('CompanySelection', {
           serviceTitle: svc.name || 'Service',
           categoryId,
-          issues: [svc.name],
+          issues: [serviceObject], // Pass complete service object instead of just name
+          selectedIssues: [serviceObject], // Also pass in selectedIssues for compatibility
           serviceIds: [svc.id],
+          selectedIssueIds: [svc.id],
+          fromServiceServices: true, // CRITICAL: Tell CompanySelection this is from service_services collection
           allCategories: serviceCategories,
         } as any);
       } catch (e) {
