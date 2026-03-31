@@ -279,6 +279,14 @@ export class FirestoreService {
   private static relevantWorkersCache = new Map<string, { workerIds: string[]; ts: number }>();
   private static readonly RELEVANT_WORKERS_CACHE_TTL_MS = 3 * 60 * 1000;
 
+  // Method to clear company-related caches (useful after data updates)
+  static clearCompanyCache() {
+    this.companiesByServiceIdsCache.clear();
+    this.companiesByServiceIdsInFlight.clear();
+    this.companyAverageRatingCache.clear();
+    console.log('🧹 Cleared all company-related caches');
+  }
+
   private static buildServiceServicesCacheKey(companyId: string, serviceIds: string[], serviceTitle?: string) {
     return `${String(companyId).trim()}|${serviceIds.map((s) => String(s).trim()).sort().join(',')}|${String(serviceTitle || '').trim()}`;
   }
@@ -6983,9 +6991,9 @@ export class FirestoreService {
               duration: serviceData.duration,
               durationUnit: serviceData.durationUnit,
               isActive: companyData.isActive !== false, // Use company's isActive status
-              // 🖼️ Company logos live in service_company.logoUrl (direct-price flow)
-              imageUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null,
-              logoUrl: companyData.logoUrl || companyData.imageUrl || serviceData.imageUrl || null, // Explicitly set logoUrl
+              // 🖼️ STRICT: Only use company logo fields, never service image
+              imageUrl: companyData.logoUrl || companyData.companyLogoUrl || companyData.companyLogo || null,
+              logoUrl: companyData.logoUrl || companyData.companyLogoUrl || companyData.companyLogo || null, // Explicitly set logoUrl
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,
@@ -7124,7 +7132,22 @@ export class FirestoreService {
           if (companyData && companyData.isActive === false) continue;
 
           const hasPackages = !!(serviceData.packages && Array.isArray(serviceData.packages) && serviceData.packages.length > 0);
-          const companyLogo = (companyData?.logoUrl || companyData?.imageUrl || serviceData.imageUrl || null);
+          // STRICT: Only use company logo fields, never service image
+          const companyLogo = (companyData?.logoUrl || companyData?.companyLogoUrl || companyData?.companyLogo || null);
+          
+          // Debug: Log what logo fields are available
+          if (__DEV__) {
+            console.log(`🖼️ Logo fields for company ${companyId}:`, {
+              logoUrl: companyData?.logoUrl,
+              companyLogoUrl: companyData?.companyLogoUrl,
+              companyLogo: companyData?.companyLogo,
+              selectedLogo: companyLogo,
+              // These should NOT be used:
+              imageUrl_IGNORED: companyData?.imageUrl,
+              serviceImageUrl_IGNORED: serviceData.imageUrl,
+            });
+          }
+          
           const ratingData = ratingByCompanyId.get(companyId) || { averageRating: 0, reviewCount: 0 };
 
           // Company doc missing => fall back to embedded service fields
@@ -7221,7 +7244,9 @@ export class FirestoreService {
               companyName: companyData.companyName || companyData.name || 'Unknown Company',
               price: serviceData.price || 0,
               isActive: companyData.isActive !== false, // Use company's isActive status
-              imageUrl: serviceData.imageUrl || companyData.imageUrl || null,
+              // STRICT: Only use company logo fields, never service image
+              imageUrl: companyData.logoUrl || companyData.companyLogoUrl || companyData.companyLogo || null,
+              logoUrl: companyData.logoUrl || companyData.companyLogoUrl || companyData.companyLogo || null,
               serviceType: serviceData.serviceType,
               adminServiceId: serviceData.adminServiceId,
               description: companyData.description,

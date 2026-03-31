@@ -182,9 +182,10 @@ export default function CompanySelectionScreen() {
   }, [companies]);
 
   const getCompanyLogoUrl = (c: any) => {
-    // Prioritize company-specific logo fields only (avoid service imageUrl)
-    // Check in order: logoUrl (primary), companyLogoUrl, companyLogo, photoUrl
-    const raw = c?.logoUrl ?? c?.companyLogoUrl ?? c?.companyLogo ?? c?.photoUrl;
+    // STRICT: Only check company-specific logo fields, never service image fields
+    // Check in order: logoUrl (primary), companyLogoUrl, companyLogo
+    // Explicitly EXCLUDE: photoUrl, imageUrl, image (these are often service images)
+    const raw = c?.logoUrl ?? c?.companyLogoUrl ?? c?.companyLogo;
     let u = typeof raw === 'string' ? raw.trim() : '';
     if (!u) return null;
 
@@ -625,6 +626,9 @@ export default function CompanySelectionScreen() {
     try {
       setLoading(true);
       
+      // 🧹 Clear cache to ensure fresh data with correct logo fields
+      FirestoreService.clearCompanyCache();
+      
       let fetchedCompanies: ServiceCompany[];
       
       // Check if this is from service_services collection (both packages and direct-price)
@@ -1060,20 +1064,33 @@ export default function CompanySelectionScreen() {
                   >
                     <View style={styles.providerHeader}>
                       <View style={styles.providerTitleRow}>
-                        {getCompanyLogoUrl(company) && !logoErrorIds[company.id] ? (
-                          <Image
-                            source={{ uri: getCompanyLogoUrl(company) as string }}
-                            style={styles.companyLogo}
-                            resizeMode="contain"
-                            onError={() => setLogoErrorIds((p) => ({ ...p, [company.id]: true }))}
-                          />
-                        ) : (
-                          <View style={styles.companyLogoPlaceholder}>
-                            <Text style={styles.companyLogoText}>
-                              {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                        )}
+                        {(() => {
+                          const logoUrl = getCompanyLogoUrl(company);
+                          // Debug: Log what we're trying to display
+                          if (__DEV__ && logoUrl) {
+                            console.log(`🖼️ Rendering logo for ${company.companyName || company.serviceName}:`, {
+                              logoUrl: company.logoUrl,
+                              companyLogoUrl: (company as any).companyLogoUrl,
+                              companyLogo: (company as any).companyLogo,
+                              imageUrl: (company as any).imageUrl,
+                              selectedUrl: logoUrl,
+                            });
+                          }
+                          return logoUrl && !logoErrorIds[company.id] ? (
+                            <Image
+                              source={{ uri: logoUrl }}
+                              style={styles.companyLogo}
+                              resizeMode="contain"
+                              onError={() => setLogoErrorIds((p) => ({ ...p, [company.id]: true }))}
+                            />
+                          ) : (
+                            <View style={styles.companyLogoPlaceholder}>
+                              <Text style={styles.companyLogoText}>
+                                {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                         <View style={{ flex: 1 }}>
                           <Text style={styles.providerName}>{company.companyName || company.serviceName}</Text>
                           {(typeof (company as any)?.description === 'string' && String((company as any).description).trim().length > 0) ? (
@@ -1201,20 +1218,33 @@ export default function CompanySelectionScreen() {
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
                     {/* Company Logo */}
-                    {getCompanyLogoUrl(item) && !logoErrorIds[item.id] ? (
-                      <Image 
-                        source={{ uri: getCompanyLogoUrl(item) as string }} 
-                        style={styles.companyLogo}
-                        resizeMode="contain"
-                        onError={() => setLogoErrorIds((p) => ({ ...p, [item.id]: true }))}
-                      />
-                    ) : (
-                      <View style={styles.companyLogoPlaceholder}>
-                        <Text style={styles.companyLogoText}>
-                          {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    {(() => {
+                      const logoUrl = getCompanyLogoUrl(item);
+                      // Debug: Log what we're trying to display
+                      if (__DEV__ && logoUrl) {
+                        console.log(`🖼️ Rendering logo for ${item.companyName || item.serviceName}:`, {
+                          logoUrl: item.logoUrl,
+                          companyLogoUrl: (item as any).companyLogoUrl,
+                          companyLogo: (item as any).companyLogo,
+                          imageUrl: (item as any).imageUrl,
+                          selectedUrl: logoUrl,
+                        });
+                      }
+                      return logoUrl && !logoErrorIds[item.id] ? (
+                        <Image 
+                          source={{ uri: logoUrl }} 
+                          style={styles.companyLogo}
+                          resizeMode="contain"
+                          onError={() => setLogoErrorIds((p) => ({ ...p, [item.id]: true }))}
+                        />
+                      ) : (
+                        <View style={styles.companyLogoPlaceholder}>
+                          <Text style={styles.companyLogoText}>
+                            {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                   </View>
                     {(typeof (item as any)?.description === 'string' && String((item as any).description).trim().length > 0) ? (

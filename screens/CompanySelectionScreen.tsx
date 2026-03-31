@@ -551,10 +551,10 @@ export default function CompanySelectionScreen() {
                 {/* Provider Header */}
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
-                    {/* Company Logo */}
-                    {item.imageUrl ? (
+                    {/* Company Logo - Only use company-specific logo fields */}
+                    {(item.logoUrl || item.companyLogoUrl || item.companyLogo) ? (
                       <Image 
-                        source={{ uri: item.imageUrl }} 
+                        source={{ uri: item.logoUrl || item.companyLogoUrl || item.companyLogo }} 
                         style={styles.companyLogo}
                         resizeMode="cover"
                       />
