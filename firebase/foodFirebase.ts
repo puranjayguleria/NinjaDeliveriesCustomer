@@ -54,6 +54,14 @@ export type MenuItem = {
   createdAt?: any;
 };
 
+export type FoodBanner = {
+  id: string;
+  imageUrl: string;
+  isActive: boolean;
+  type: string[];
+  createdAt?: any;
+};
+
 export type MenuAddon = {
   id: string;
   name: string;
@@ -69,6 +77,17 @@ export type MenuAddon = {
   createdAt?: any;
   lastUpdated?: any;
 };
+
+// ─── Banner Queries ───────────────────────────────────────────────────────────
+
+/** Fetch all active food banners */
+export async function getFoodBanners(): Promise<FoodBanner[]> {
+  const snap = await firestore()
+    .collection('banner')
+    .where('isActive', '==', true)
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<FoodBanner, 'id'>) }));
+}
 
 // ─── Restaurant Queries ───────────────────────────────────────────────────────
 

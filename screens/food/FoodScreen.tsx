@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, ActivityIndicator, StatusBar, ImageBackground, Modal,
+  FlatList, ActivityIndicator, StatusBar, ImageBackground, Modal, Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -10,10 +10,12 @@ import { useLocationContext } from "@/context/LocationContext";
 import { useToggleContext } from "@/context/ToggleContext";
 import ModeToggle from "@/components/ModeToggle";
 import {
-  listenActiveRestaurants,
-  listenFoodCategoriesWithItems,
+  getActiveRestaurants,
+  getFoodCategories,
+  getFoodBanners,
   type Restaurant,
   type FoodCategory as Category,
+  type FoodBanner,
 } from "@/firebase/foodFirebase";
 import DishModal from "@/components/food/DishModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,9 +47,13 @@ export default function FoodScreen() {
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [banners, setBanners] = useState<FoodBanner[]>([]);
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
   const [isVegMode, setIsVegMode] = useState(true);
+  const [showVegToggleModal, setShowVegToggleModal] = useState(false);
+  const [pendingVegMode, setPendingVegMode] = useState<boolean | null>(null);
   const [dishModal, setDishModal] = useState<{
     visible: boolean;
     restaurantId: string;
@@ -88,9 +94,31 @@ export default function FoodScreen() {
       setShowSearchModal(true);
     }
     
-    const u1 = listenActiveRestaurants(
-      (d) => { 
-        setRestaurants(d);
+    // Fetch data
+    const fetchData = async () => {
+      try {
+        const [restData, catData, bannerData] = await Promise.all([
+          getActiveRestaurants(),
+          getFoodCategories(),
+          getFoodBanners(),
+        ]);
+        setRestaurants(restData);
+        setCategories(catData);
+        setBanners(bannerData);
+        console.log('[FoodScreen] Banners loaded:', bannerData.length, bannerData);
+        
+        // Temporary test banner for debugging
+        if (bannerData.length === 0) {
+          console.log('[FoodScreen] No banners from Firebase, adding test banner');
+          setBanners([{
+            id: 'test1',
+            imageUrl: 'https://via.placeholder.com/400x120/FF6B35/FFFFFF?text=Test+Banner',
+            isActive: true,
+            type: ['test'],
+            createdAt: new Date()
+          }]);
+        }
+        
         if (shouldShowModal) {
           console.log('[FoodScreen] Data loaded, hiding modal after 800ms');
           setTimeout(() => {
@@ -98,8 +126,8 @@ export default function FoodScreen() {
             hasShownModalInFoodSession = true;
           }, 800);
         }
-      },
-      () => {
+      } catch (error) {
+        console.error('[FoodScreen] Data fetch error:', error);
         if (shouldShowModal) {
           console.log('[FoodScreen] Data load error, hiding modal after 800ms');
           setTimeout(() => {
@@ -108,15 +136,42 @@ export default function FoodScreen() {
           }, 800);
         }
       }
-    );
-    const u2 = listenFoodCategoriesWithItems(setCategories);
-    
-    return () => { 
-      console.log('[FoodScreen] Component unmounting');
-      u1(); 
-      u2(); 
     };
+    
+    fetchData();
   }, []);
+
+  // Auto slide banners
+  useEffect(() => {
+    if (banners.length > 1) {
+      const interval = setInterval(() => {
+        setCurrentBannerIndex((prevIndex) => 
+          prevIndex === banners.length - 1 ? 0 : prevIndex + 1
+        );
+      }, 3000); // 3 seconds auto slide
+
+      return () => clearInterval(interval);
+    }
+  }, [banners.length]);
+
+  const handleVegToggle = () => {
+    const newMode = !isVegMode;
+    setPendingVegMode(newMode);
+    setShowVegToggleModal(true);
+  };
+
+  const confirmVegToggle = () => {
+    if (pendingVegMode !== null) {
+      setIsVegMode(pendingVegMode);
+    }
+    setShowVegToggleModal(false);
+    setPendingVegMode(null);
+  };
+
+  const cancelVegToggle = () => {
+    setShowVegToggleModal(false);
+    setPendingVegMode(null);
+  };
 
   const openDishModal = (
     restaurantId: string,
@@ -146,106 +201,210 @@ export default function FoodScreen() {
         </View>
       </Modal>
 
-      {!showSearchModal && (
-        <>
-          {!isVegMode && <View style={s.fullScreenRedOverlay} />}
-          <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-        <ImageBackground
-          key={isVegMode ? "veg" : "nonveg"}
-          source={
-            isVegMode
-              ? require("../../assets/ninjafoodVeg.png")
-              : require("../../assets/ninjafoodNonVeg.png")
-          }
-          style={s.hero}
-          resizeMode="stretch"
-        >
-          {!isVegMode && <View style={s.redOverlay} />}
-          <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
-            <TouchableOpacity 
-              style={s.locationRow}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
-            >
-              <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.locationLabel} numberOfLines={1}>
-                  {location?.address || "Set delivery location"}
-                </Text>
+      {/* Veg Toggle Confirmation Modal */}
+      <Modal
+        visible={showVegToggleModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={s.vegModalOverlay}>
+          <View style={s.vegModalContent}>
+            <View style={s.vegModalIconContainer}>
+              <View style={s.vegModalIconCircle}>
+                <Ionicons name="alert" size={32} color="#ff4757" />
               </View>
-              <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
-              <View style={{ width: 8 }} />
-              <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-                <Ionicons name="person-circle" size={34} color={DARK} />
-              </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
+            
+            <Text style={s.vegModalTitle}>
+              {pendingVegMode ? "Switch to Veg Mode?" : "Switch off Veg Mode?"}
+            </Text>
+            
+            <Text style={s.vegModalSubtitle}>
+              {pendingVegMode 
+                ? "You'll see only vegetarian restaurants and dishes"
+                : "You'll see all restaurants, including those serving non-veg dishes"
+              }
+            </Text>
 
-            <View style={s.searchRow}>
+            <View style={s.vegModalButtons}>
               <TouchableOpacity
-                style={s.searchBar}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate("FoodSearch")}
-              >
-                <Ionicons name="search" size={18} color={GRAY} style={{ marginRight: 8 }} />
-                <Text style={s.searchPlaceholder}>Search restaurants, cuisines...</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.toggleSwitch}
-                onPress={() => setIsVegMode(!isVegMode)}
+                style={s.vegModalButtonSecondary}
+                onPress={cancelVegToggle}
                 activeOpacity={0.8}
               >
-                <View style={[s.toggleTrack, isVegMode && s.toggleTrackActive]}>
-                  <View style={[s.toggleThumb, isVegMode && s.toggleThumbActive]}>
-                    <View style={[s.toggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
-                  </View>
-                </View>
+                <Text style={s.vegModalButtonSecondaryText}>
+                  Keep using this mode
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={s.vegModalButtonPrimary}
+                onPress={confirmVegToggle}
+                activeOpacity={0.8}
+              >
+                <Text style={s.vegModalButtonPrimaryText}>
+                  {pendingVegMode ? "Switch to Veg" : "Switch off"}
+                </Text>
               </TouchableOpacity>
             </View>
-
-            <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
           </View>
-        </ImageBackground>
+        </View>
+      </Modal>
 
-        <ImageBackground
-          source={require("../../assets/foodScreenbg.png")}
-          style={s.bgPattern}
-          resizeMode="repeat"
-        >
-        {categories.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>{"What's on your mind?"}</Text>
-            <View style={s.categoriesBorder}>
-            <FlatList
-              data={categories}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(i) => i.id}
-              contentContainerStyle={{ paddingLeft: 16, paddingRight: 8, paddingBottom: 4 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={s.catItem}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    const restId = item.companyIds?.[0] ?? "";
-                    const rest = restaurants.find((r) => r.id === restId);
-                    if (rest) openDishModal(rest.id, rest.restaurantName, item.id);
-                  }}
+      {!showSearchModal && (
+        <>
+          <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+          
+          {/* Fixed Background Pattern */}
+          <ImageBackground
+            source={require("../../assets/foodScreenbg.png")}
+            style={s.fixedBgPattern}
+            resizeMode="cover"
+          >
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={s.scrollContent}>
+              {/* Header Section */}
+              <View style={s.headerBannerContainer}>
+                {/* Default VEG/NonVEG Banner */}
+                <ImageBackground
+                  key={isVegMode ? "veg" : "nonveg"}
+                  source={
+                    isVegMode
+                      ? require("../../assets/ninjafoodVeg.png")
+                      : require("../../assets/ninjafoodNonVeg.png")
+                  }
+                  style={s.hero}
+                  resizeMode="stretch"
                 >
-                  {item.image ? (
-                    <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
-                  ) : (
-                    <View style={[s.catImg, s.catImgPlaceholder]}>
-                      <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
+                  {!isVegMode && <View style={s.redTint} />}
+                  <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
+                    <TouchableOpacity 
+                      style={s.locationRow}
+                      activeOpacity={0.7}
+                      onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
+                    >
+                      <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.locationLabel} numberOfLines={1}>
+                          {location?.address || "Set delivery location"}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
+                      <View style={{ width: 8 }} />
+                      <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+                        <Ionicons name="person-circle" size={34} color={DARK} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+
+                    <View style={s.searchRow}>
+                      <TouchableOpacity
+                        style={s.searchBar}
+                        activeOpacity={0.85}
+                        onPress={() => navigation.navigate("FoodSearch")}
+                      >
+                        <Ionicons name="search" size={18} color={GRAY} style={{ marginRight: 8 }} />
+                        <Text style={s.searchPlaceholder}>Search restaurants, cuisines...</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.toggleSwitch}
+                        onPress={handleVegToggle}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[s.toggleTrack, isVegMode && s.toggleTrackActive]}>
+                          <View style={[s.toggleThumb, isVegMode && s.toggleThumbActive]}>
+                            <View style={[s.toggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
+                          </View>
+                        </View>
+                      </TouchableOpacity>
                     </View>
-                  )}
-                  <Text style={s.catName} numberOfLines={1}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-            />
-            </View>
-          </View>
-        )}
+
+                    <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
+                  </View>
+                </ImageBackground>
+
+                {/* Firebase Banners Overlay */}
+                {banners.length > 0 && (
+                  <View style={s.bannersOverlay}>
+                    <FlatList
+                      data={banners}
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={s.bannerSlide}
+                          activeOpacity={0.9}
+                        >
+                          <Image 
+                            source={{ uri: item.imageUrl }} 
+                            style={s.bannerSlideImg} 
+                            contentFit="cover" 
+                          />
+                        </TouchableOpacity>
+                      )}
+                      ref={(ref) => {
+                        if (ref && banners.length > 0) {
+                          ref.scrollToIndex({ 
+                            index: currentBannerIndex, 
+                            animated: true 
+                          });
+                        }
+                      }}
+                    />
+                    
+                    {/* Banner Indicators */}
+                    <View style={s.bannerIndicators}>
+                      {banners.map((_, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            s.bannerDot,
+                            index === currentBannerIndex && s.bannerDotActive
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Content Area */}
+              <View style={s.contentArea}>
+                {categories.length > 0 && (
+                  <View style={s.section}>
+                    <Text style={s.sectionTitle}>{"What's on your mind?"}</Text>
+                    <View style={s.categoriesBorder}>
+                    <FlatList
+                      data={categories}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(i) => i.id}
+                      contentContainerStyle={{ paddingLeft: 16, paddingRight: 8, paddingBottom: 4 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={s.catItem}
+                          activeOpacity={0.75}
+                          onPress={() => {
+                            const restId = item.companyIds?.[0] ?? "";
+                            const rest = restaurants.find((r) => r.id === restId);
+                            if (rest) openDishModal(rest.id, rest.restaurantName, item.id);
+                          }}
+                        >
+                          {item.image ? (
+                            <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
+                          ) : (
+                            <View style={[s.catImg, s.catImgPlaceholder]}>
+                              <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
+                            </View>
+                          )}
+                          <Text style={s.catName} numberOfLines={1}>{item.name}</Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                    </View>
+                  </View>
+                )}
 
         <View style={s.divider} />
 
@@ -340,8 +499,9 @@ export default function FoodScreen() {
         </View>
 
         <View style={{ height: 90 }} />
-        </ImageBackground>
-      </ScrollView>
+              </View>
+            </ScrollView>
+          </ImageBackground>
 
       <DishModal
         visible={dishModal.visible}
@@ -359,30 +519,15 @@ export default function FoodScreen() {
 
 const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: "#fff" },
+  fixedBgPattern: { flex: 1 },
   bgPattern: { flex: 1 },
-  fullScreenRedOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(220, 38, 38, 0.12)",
-    zIndex: 1,
-    pointerEvents: "none",
-  },
+  scrollContent: { flex: 1 },
+  contentArea: { flex: 1 },
   loader:     { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
   loaderText: { marginTop: 12, color: GRAY, fontSize: 14 },
 
   hero:        { width: "100%", height: 320 },
   heroContent: { paddingHorizontal: 16, paddingBottom: 20 },
-  redOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(220, 38, 38, 0.15)",
-  },
 
   locationRow:   { flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 4 },
   locationBtn:   { flexDirection: "row", alignItems: "center" },
@@ -511,6 +656,60 @@ const s = StyleSheet.create({
   catImgPlaceholder: { backgroundColor: "#fff5f0", justifyContent: "center", alignItems: "center" },
   catName:           { fontSize: 11, color: DARK, marginTop: 6, textAlign: "center", fontWeight: "500", width: 72 },
 
+  // Banner Styles
+  headerBannerContainer: {
+    position: 'relative',
+  },
+  bannersOverlay: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    height: 120,
+  },
+  bannerSlide: {
+    width: Dimensions.get('window').width - 32,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  bannerSlideImg: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+  },
+  bannerIndicators: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  bannerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  bannerDotActive: {
+    backgroundColor: '#fff',
+    width: 20,
+  },
+  bannerItem: { 
+    borderRadius: 12, 
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  bannerImg: { 
+    width: 280, 
+    height: 140, 
+    borderRadius: 12,
+  },
+
   divider: { height: 1, backgroundColor: "#f0f0f0", marginTop: 16 },
 
   filtersWrap:    { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0", backgroundColor: "#fff" },
@@ -601,5 +800,86 @@ const s = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     paddingHorizontal: 8,
+  },
+
+  // Veg Toggle Modal Styles
+  vegModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  vegModalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    width: "90%",
+    maxWidth: 360,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  vegModalIconContainer: {
+    marginBottom: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vegModalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255, 71, 87, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255, 71, 87, 0.2)",
+  },
+  vegModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: DARK,
+    textAlign: "center",
+    marginBottom: 12,
+    letterSpacing: -0.2,
+  },
+  vegModalSubtitle: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  vegModalButtons: {
+    width: "100%",
+    gap: 12,
+  },
+  vegModalButtonPrimary: {
+    backgroundColor: "#ff4757",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  vegModalButtonPrimaryText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  vegModalButtonSecondary: {
+    backgroundColor: "transparent",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  vegModalButtonSecondaryText: {
+    color: DARK,
+    fontSize: 16,
+    fontWeight: "500",
   },
 });
