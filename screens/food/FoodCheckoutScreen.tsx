@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, Platform, StatusBar, Animated,
+  ActivityIndicator, Alert, Platform, StatusBar, Animated, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import firestore from '@react-native-firebase/firestore';
 import { useFoodCart } from '@/context/FoodCartContext';
 import { useLocationContext } from '@/context/LocationContext';
 import { Image } from 'expo-image';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const ORANGE = '#FC8019';
 const DARK   = '#282C3F';
@@ -40,6 +41,12 @@ export default function FoodCheckoutScreen() {
   const [placing, setPlacing] = useState(false);
 
   const [deliveryAddress, setDeliveryAddress] = useState(location?.address || '');
+  
+  // Scheduled order states
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Update delivery address when location changes
   useEffect(() => {
@@ -90,12 +97,24 @@ export default function FoodCheckoutScreen() {
     const user = auth().currentUser;
     if (!user)            { Alert.alert('Login Required', 'Please login to place an order.'); return; }
     if (!deliveryAddress) { Alert.alert('Address Missing', 'Please set a delivery address first.'); return; }
+    
+    // Validate scheduled time
+    if (isScheduled && scheduledDate) {
+      const now = new Date();
+      const minScheduleTime = new Date(now.getTime() + 30 * 60000); // 30 minutes from now
+      
+      if (scheduledDate < minScheduleTime) {
+        Alert.alert('Invalid Time', 'Scheduled time must be at least 30 minutes from now.');
+        return;
+      }
+    }
 
     setPlacing(true);
     try {
       const restaurantId = cartItems[0]?.restaurantId ?? '';
       const orderRef = firestore().collection('restaurant_Orders').doc();
-      await orderRef.set({
+      
+      const orderData: any = {
         userId: user.uid, userPhone: user.phoneNumber ?? '',
         restaurantId, restaurantName,
         items: cartItems.map((item: any) => ({
@@ -105,14 +124,22 @@ export default function FoodCheckoutScreen() {
         subtotal, deliveryFee, taxes, grandTotal,
         paymentMethod,
         deliveryAddress, deliveryLat: location?.lat ?? null, deliveryLng: location?.lng ?? null,
-        status: 'pending',
+        status: isScheduled ? 'scheduled' : 'pending',
         createdAt: firestore.FieldValue.serverTimestamp(),
         orderId: orderRef.id,
-      });
+      };
+      
+      // Add scheduled time if applicable
+      if (isScheduled && scheduledDate) {
+        orderData.scheduledFor = firestore.Timestamp.fromDate(scheduledDate);
+        orderData.isScheduled = true;
+      }
+      
+      await orderRef.set(orderData);
       clearCart();
       navigation.reset({
         index: 0,
-        routes: [{ name: 'FoodOrderSuccess', params: { grandTotal, restaurantName, orderId: orderRef.id } }],
+        routes: [{ name: 'FoodOrderSuccess', params: { grandTotal, restaurantName, orderId: orderRef.id, isScheduled } }],
       });
     } catch (err) {
       console.error('[FoodCheckout] order error:', err);
@@ -120,6 +147,63 @@ export default function FoodCheckoutScreen() {
     } finally {
       setPlacing(false);
     }
+  };
+  
+  const handleScheduleToggle = () => {
+    if (!isScheduled) {
+      // Set default to 1 hour from now
+      const defaultTime = new Date();
+      defaultTime.setHours(defaultTime.getHours() + 1);
+      defaultTime.setMinutes(0);
+      setScheduledDate(defaultTime);
+    }
+    setIsScheduled(!isScheduled);
+  };
+  
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const newDate = new Date(scheduledDate || new Date());
+      newDate.setFullYear(selectedDate.getFullYear());
+      newDate.setMonth(selectedDate.getMonth());
+      newDate.setDate(selectedDate.getDate());
+      setScheduledDate(newDate);
+    }
+  };
+  
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      const newDate = new Date(scheduledDate || new Date());
+      newDate.setHours(selectedTime.getHours());
+      newDate.setMinutes(selectedTime.getMinutes());
+      setScheduledDate(newDate);
+    }
+  };
+  
+  const formatScheduledTime = () => {
+    if (!scheduledDate) return '';
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const isToday = scheduledDate.toDateString() === today.toDateString();
+    const isTomorrow = scheduledDate.toDateString() === tomorrow.toDateString();
+    
+    const timeStr = scheduledDate.toLocaleTimeString('en-IN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    
+    if (isToday) return `Today, ${timeStr}`;
+    if (isTomorrow) return `Tomorrow, ${timeStr}`;
+    
+    const dateStr = scheduledDate.toLocaleDateString('en-IN', { 
+      day: 'numeric', 
+      month: 'short' 
+    });
+    return `${dateStr}, ${timeStr}`;
   };
 
   return (
@@ -254,6 +338,88 @@ export default function FoodCheckoutScreen() {
           ))}
         </View>
 
+        {/* ── SCHEDULE ORDER CARD ── */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={s.iconCircle}>
+              <Ionicons name="time" size={18} color={ORANGE} />
+            </View>
+            <Text style={s.cardTitle}>Delivery Time</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[s.scheduleOption, isScheduled && s.scheduleOptionActive]}
+            onPress={handleScheduleToggle}
+            activeOpacity={0.7}
+          >
+            <View style={s.scheduleLeft}>
+              <View style={[s.scheduleIconBox, isScheduled && s.scheduleIconBoxActive]}>
+                <Ionicons name="flash" size={20} color={isScheduled ? GRAY : ORANGE} />
+              </View>
+              <View style={s.scheduleInfo}>
+                <Text style={[s.scheduleLabel, !isScheduled && s.scheduleLabelActive]}>Deliver Now</Text>
+                <Text style={s.scheduleSub}>Get it in 30-40 mins</Text>
+              </View>
+            </View>
+            <View style={[s.radio, !isScheduled && s.radioSelected]}>
+              {!isScheduled && <View style={s.radioDot} />}
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.scheduleOption, isScheduled && s.scheduleOptionActive]}
+            onPress={handleScheduleToggle}
+            activeOpacity={0.7}
+          >
+            <View style={s.scheduleLeft}>
+              <View style={[s.scheduleIconBox, isScheduled && s.scheduleIconBoxActive]}>
+                <Ionicons name="calendar" size={20} color={isScheduled ? ORANGE : GRAY} />
+              </View>
+              <View style={s.scheduleInfo}>
+                <Text style={[s.scheduleLabel, isScheduled && s.scheduleLabelActive]}>Schedule Order</Text>
+                <Text style={s.scheduleSub}>Choose your delivery time</Text>
+              </View>
+            </View>
+            <View style={[s.radio, isScheduled && s.radioSelected]}>
+              {isScheduled && <View style={s.radioDot} />}
+            </View>
+          </TouchableOpacity>
+
+          {isScheduled && scheduledDate && (
+            <View style={s.scheduleTimeBox}>
+              <View style={s.scheduleTimeHeader}>
+                <Ionicons name="time-outline" size={16} color={ORANGE} />
+                <Text style={s.scheduleTimeLabel}>Scheduled for</Text>
+              </View>
+              <View style={s.scheduleTimeButtons}>
+                <TouchableOpacity 
+                  style={s.scheduleTimeBtn}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="calendar-outline" size={16} color={ORANGE} />
+                  <Text style={s.scheduleTimeBtnText}>
+                    {scheduledDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={s.scheduleTimeBtn}
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={16} color={ORANGE} />
+                  <Text style={s.scheduleTimeBtnText}>
+                    {scheduledDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={s.scheduleTimeSummary}>
+                <Text style={s.scheduleTimeSummaryText}>{formatScheduledTime()}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* ── PAYMENT METHOD CARD ── */}
         <View style={s.card}>
           <View style={s.cardHeader}>
@@ -334,12 +500,36 @@ export default function FoodCheckoutScreen() {
 
       </ScrollView>
 
+      {/* Date/Time Pickers */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={scheduledDate || new Date()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          minimumDate={new Date()}
+          maximumDate={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)} // 7 days ahead
+        />
+      )}
+      
+      {showTimePicker && (
+        <DateTimePicker
+          value={scheduledDate || new Date()}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleTimeChange}
+          minuteInterval={15}
+        />
+      )}
+
       {/* ── PLACE ORDER FOOTER ── */}
       <View style={[s.footer, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]}>
         <View style={s.footerContent}>
           <View style={s.footerLeft}>
             <Text style={s.footerTotal}>₹{grandTotal}</Text>
-            <Text style={s.footerSubtext}>{paymentMethod}</Text>
+            <Text style={s.footerSubtext}>
+              {isScheduled ? `Scheduled • ${paymentMethod}` : paymentMethod}
+            </Text>
           </View>
           <TouchableOpacity
             style={[s.placeOrderBtn, placing && { opacity: 0.7 }]}
@@ -787,5 +977,111 @@ const s = StyleSheet.create({
     fontSize: 15, 
     fontWeight: '700', 
     color: '#fff',
+  },
+
+  /* schedule order */
+  scheduleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#fafafa',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  scheduleOptionActive: {
+    backgroundColor: '#fff5f0',
+    borderColor: ORANGE,
+  },
+  scheduleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  scheduleIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#fff5f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scheduleIconBoxActive: {
+    backgroundColor: '#fff',
+  },
+  scheduleInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  scheduleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: DARK,
+  },
+  scheduleLabelActive: {
+    color: ORANGE,
+  },
+  scheduleSub: {
+    fontSize: 11,
+    color: GRAY,
+    marginTop: 2,
+  },
+  scheduleTimeBox: {
+    backgroundColor: '#fff5f0',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: ORANGE,
+  },
+  scheduleTimeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  scheduleTimeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ORANGE,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scheduleTimeButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scheduleTimeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ORANGE,
+  },
+  scheduleTimeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: DARK,
+  },
+  scheduleTimeSummary: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(252, 128, 25, 0.2)',
+    alignItems: 'center',
+  },
+  scheduleTimeSummaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: ORANGE,
   },
 });

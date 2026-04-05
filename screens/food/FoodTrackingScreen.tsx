@@ -18,31 +18,24 @@ const ORANGE = "#FC8019";
 const DARK   = "#1C1C1C";
 const GRAY   = "#686B78";
 
-type OrderStatus = "Preparing" | "Ready" | "Delivered" | "Cancelled";
+type OrderStatus = "preparing" | "ready" | "out_for_delivery" | "scheduled" | "completed" | "cancelled";
 
-const getStepsForStatus = (status: OrderStatus): { key: OrderStatus; label: string; icon: keyof typeof Ionicons.glyphMap }[] => {
-  if (status === "Cancelled") {
-    return [
-      { key: "Preparing",  label: "Order\nPlaced",     icon: "receipt-outline" },
-      { key: "Cancelled",  label: "Order\nCancelled",  icon: "close-circle-outline" },
-    ];
-  }
-  
-  return [
-    { key: "Preparing", label: "Preparing",            icon: "restaurant-outline" },
-    { key: "Ready",     label: "Ready for\nPickup",    icon: "checkmark-done-outline" },
-    { key: "Delivered", label: "Delivered",            icon: "home-outline" },
-  ];
-};
-
-const getIdx = (s: OrderStatus, steps: any[]) => steps.findIndex(step => step.key === s);
+const tabs = [
+  { key: "preparing", label: "Preparing", icon: "restaurant" },
+  { key: "ready", label: "Ready", icon: "checkmark-circle" },
+  { key: "out_for_delivery", label: "Out for Delivery", icon: "car" },
+  { key: "scheduled", label: "Scheduled", icon: "calendar" },
+  { key: "completed", label: "Completed", icon: "checkmark-done" },
+];
 
 const getStatusColor = (status: OrderStatus): string => {
   switch (status) {
-    case "Preparing": return "#FF9500";
-    case "Ready": return "#34C759";
-    case "Delivered": return "#10B981";
-    case "Cancelled": return "#FF3B30";
+    case "preparing": return "#FF9500";
+    case "ready": return "#34C759";
+    case "out_for_delivery": return "#007AFF";
+    case "scheduled": return "#9333EA";
+    case "completed": return "#10B981";
+    case "cancelled": return "#FF3B30";
     default: return "#007AFF";
   }
 };
@@ -59,7 +52,7 @@ export default function FoodTrackingScreen() {
   const { orderId } = useRoute<any>().params ?? {};
 
   const [orderDoc,    setOrderDoc]    = useState<any>(null);
-  const [status,      setStatus]      = useState<OrderStatus>("Preparing");
+  const [status,      setStatus]      = useState<OrderStatus>("preparing");
   const [riderLoc,    setRiderLoc]    = useState<LatLng|null>(null);
   const [riderInfo,   setRiderInfo]   = useState({ name: "", phone: "" });
   const [riderId,     setRiderId]     = useState<string|null>(null);
@@ -102,10 +95,11 @@ export default function FoodTrackingScreen() {
       const d = snap.data();
       if (!d) { setLoading(false); return; }
       setOrderDoc(d); 
-      // Normalize status to match our type
-      const normalizedStatus = d.status.charAt(0).toUpperCase() + d.status.slice(1).toLowerCase();
-      setStatus(normalizedStatus as OrderStatus);
-      if (normalizedStatus === "Delivered" && !reviewShown.current && !d.reviewed) {
+      // Get status from Firebase and normalize to lowercase
+      const firebaseStatus = (d.status || "preparing").toLowerCase().trim();
+      setStatus(firebaseStatus as OrderStatus);
+      
+      if (firebaseStatus === "completed" && !reviewShown.current && !d.reviewed) {
         reviewShown.current = true;
         setTimeout(openReview, 900);
       }
@@ -193,29 +187,59 @@ export default function FoodTrackingScreen() {
 
   if (loading) return <View style={s.center}><Loader /></View>;
 
-  const STEPS = getStepsForStatus(status);
-  const stepIdx = getIdx(status, STEPS);
-  const isDelivered = status === "Delivered";
-  const isCancelled = status === "Cancelled";
-  const isOnWay     = status === "Ready" || status === "Delivered";
+  const isCompleted = status === "completed";
+  const isCancelled = status === "cancelled";
+  const isScheduled = status === "scheduled";
   const statusColor = getStatusColor(status);
 
-  console.log("Current status:", status, "isDelivered:", isDelivered, "isCancelled:", isCancelled);
+  console.log("Current status:", status, "isCompleted:", isCompleted, "isCancelled:", isCancelled, "isScheduled:", isScheduled);
 
-  // Swiggy header color: orange always
+  // Format scheduled time
+  const formatScheduledTime = () => {
+    if (!orderDoc?.scheduledFor) return '';
+    const scheduledDate = orderDoc.scheduledFor.toDate();
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const isToday = scheduledDate.toDateString() === today.toDateString();
+    const isTomorrow = scheduledDate.toDateString() === tomorrow.toDateString();
+    
+    const timeStr = scheduledDate.toLocaleTimeString('en-IN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    
+    if (isToday) return `Today at ${timeStr}`;
+    if (isTomorrow) return `Tomorrow at ${timeStr}`;
+    
+    const dateStr = scheduledDate.toLocaleDateString('en-IN', { 
+      day: 'numeric', 
+      month: 'short',
+      year: 'numeric'
+    });
+    return `${dateStr} at ${timeStr}`;
+  };
+
+  // Header messages based on status
   const headerMsg =
-    isDelivered ? "Order Delivered!" :
+    isCompleted ? "Order Completed!" :
     isCancelled ? "Order Cancelled"  :
-    status === "Ready" && eta > 0 ? `Arriving in ${eta} mins` :
-    status === "Ready" ? "Order is ready!" :
-    status === "Preparing" ? "Preparing your order" :
+    isScheduled ? "Order Scheduled" :
+    status === "out_for_delivery" && eta > 0 ? `Arriving in ${eta} mins` :
+    status === "out_for_delivery" ? "Out for delivery!" :
+    status === "ready" ? "Order is ready!" :
+    status === "preparing" ? "Preparing your order" :
     "Order Placed";
 
   const headerSub =
-    isDelivered ? `Your order from ${orderDoc?.restaurantName} has been delivered` :
+    isCompleted ? `Your order from ${orderDoc?.restaurantName} has been completed` :
     isCancelled ? "Your order was cancelled" :
-    status === "Ready" ? `Your order is ready for pickup by delivery partner` :
-    status === "Preparing" ? `${orderDoc?.restaurantName} is preparing your food` :
+    isScheduled ? formatScheduledTime() :
+    status === "out_for_delivery" ? `Your order is on the way` :
+    status === "ready" ? `Your order is ready for pickup by delivery partner` :
+    status === "preparing" ? `${orderDoc?.restaurantName} is preparing your food` :
     `${orderDoc?.restaurantName} will start preparing your order soon`;
 
   return (
@@ -277,48 +301,78 @@ export default function FoodTrackingScreen() {
       {/* ─── BOTTOM CARD ─── */}
       <View style={s.card}>
 
-        {/* ── STEPPER ── */}
-        <View style={s.stepperBox}>
-          {STEPS.map((step, i) => {
-            const done   = i <= stepIdx;
-            const active = i === stepIdx;
-            const last   = i === STEPS.length - 1;
-            const isCancelStep = step.key === "Cancelled";
-            return (
-              <React.Fragment key={step.key}>
-                <View style={s.stepCol}>
-                  {/* circle */}
-                  <View style={[
-                    s.stepCircle,
-                    done && !isCancelStep && { backgroundColor: statusColor, borderColor: statusColor },
-                    isCancelStep && done && { backgroundColor: "#FF3B30", borderColor: "#FF3B30" },
-                    active && { shadowColor: isCancelStep ? "#FF3B30" : statusColor, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 },
-                  ]}>
-                    {done
-                      ? <Ionicons name={step.icon} size={14} color="#fff" />
-                      : <View style={s.stepDotInner} />
-                    }
+        {/* ── HORIZONTAL TABS ── */}
+        {!isCancelled && !isScheduled && (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={s.tabsScroll}
+            contentContainerStyle={s.tabsContent}
+          >
+            {tabs.filter(tab => tab.key !== 'scheduled').map((tab, index) => {
+              const isActive = tab.key === status;
+              const tabIndex = tabs.findIndex(t => t.key === tab.key);
+              const currentIndex = tabs.findIndex(t => t.key === status);
+              const isPassed = tabIndex < currentIndex;
+              const tabColor = isActive ? statusColor : isPassed ? "#10B981" : "#E5E7EB";
+              const isLast = index === tabs.filter(t => t.key !== 'scheduled').length - 1;
+              
+              return (
+                <React.Fragment key={tab.key}>
+                  <View style={s.tabItem}>
+                    <View style={[s.tabIconWrap, { backgroundColor: tabColor }]}>
+                      <Ionicons 
+                        name={tab.icon as any} 
+                        size={14} 
+                        color="#fff" 
+                      />
+                    </View>
+                    <Text style={[
+                      s.tabLabel, 
+                      isActive && { color: statusColor, fontWeight: "700" },
+                      isPassed && { color: "#10B981", fontWeight: "600" }
+                    ]}>
+                      {tab.label}
+                    </Text>
+                    {isActive && <View style={[s.tabIndicator, { backgroundColor: statusColor }]} />}
                   </View>
-                  <Text style={[s.stepLbl, done && !isCancelStep && { color: statusColor }, isCancelStep && done && { color: "#FF3B30" }]} numberOfLines={2}>
-                    {step.label}
-                  </Text>
-                </View>
-                {!last && (
-                  <View style={[
-                    s.stepConnector, 
-                    done && i < stepIdx && !isCancelStep && { backgroundColor: statusColor },
-                    isCancelStep && { backgroundColor: "#FF3B30" }
-                  ]} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </View>
+                  {!isLast && (
+                    <View style={[
+                      s.tabConnector,
+                      isPassed && { backgroundColor: "#10B981" }
+                    ]} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {isScheduled && (
+          <View style={s.scheduledBox}>
+            <View style={s.scheduledIconWrap}>
+              <Ionicons name="calendar" size={32} color="#9333EA" />
+            </View>
+            <Text style={s.scheduledTitle}>Order Scheduled</Text>
+            <Text style={s.scheduledTime}>{formatScheduledTime()}</Text>
+            <Text style={s.scheduledSub}>
+              We'll start preparing your order at the scheduled time
+            </Text>
+          </View>
+        )}
+
+        {isCancelled && (
+          <View style={s.cancelledBox}>
+            <Ionicons name="close-circle" size={48} color="#FF3B30" />
+            <Text style={s.cancelledTitle}>Order Cancelled</Text>
+            <Text style={s.cancelledSub}>Your order has been cancelled</Text>
+          </View>
+        )}
 
         <View style={s.sep} />
 
         {/* ── RIDER ROW ── */}
-        {!isDelivered && !isCancelled && (
+        {!isCompleted && !isCancelled && !isScheduled && (
           <>
             {riderId ? (
               <View style={s.riderRow}>
@@ -391,12 +445,12 @@ export default function FoodTrackingScreen() {
         )}
 
         {/* ── RATE CTA ── */}
-        {isDelivered && !reviewed && !orderDoc?.reviewed && (
+        {isCompleted && !reviewed && !orderDoc?.reviewed && (
           <TouchableOpacity style={[s.rateCta, { backgroundColor: statusColor }]} onPress={openReview} activeOpacity={0.9}>
             <Text style={s.rateCtaTxt}>Rate your order</Text>
           </TouchableOpacity>
         )}
-        {(reviewed || orderDoc?.reviewed) && isDelivered && (
+        {(reviewed || orderDoc?.reviewed) && isCompleted && (
           <View style={s.reviewedRow}>
             <Ionicons name="checkmark-circle" size={16} color="#60b246" />
             <Text style={s.reviewedTxt}>Thanks for your feedback!</Text>
@@ -478,144 +532,306 @@ const s = StyleSheet.create({
   headerSub:   { fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
 
   // ── map ──
-  mapWrap: { height: SH * 0.38, backgroundColor: "#e8e8e8" },
+  mapWrap: { height: SH * 0.42, backgroundColor: "#e8e8e8" },
   locateBtn: {
-    position: "absolute", bottom: 14, right: 14,
-    width: 42, height: 42, borderRadius: 21,
+    position: "absolute", bottom: 16, right: 16,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: "#fff",
     justifyContent: "center", alignItems: "center",
-    shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6,
+    shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 8,
   },
 
   // ── bottom card ──
   card: {
     flex: 1,
     backgroundColor: "#fff",
-    borderTopWidth: 1, borderTopColor: "#f0f0f0",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: Platform.OS === "ios" ? 30 : 12,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 30 : 16,
   },
 
-  // stepper
-  stepperBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  sep: { height: 1, backgroundColor: "#f0f0f0", marginVertical: 12 },
+
+  // tabs
+  tabsScroll: {
+    marginBottom: 6,
+    marginTop: 6,
+  },
+  tabsContent: {
+    paddingHorizontal: 2,
+    alignItems: "center",
+  },
+  tabItem: {
+    alignItems: "center",
+    minWidth: 68,
+    paddingVertical: 6,
+  },
+  tabIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  tabLabel: {
+    fontSize: 9.5,
+    color: "#9CA3AF",
+    textAlign: "center",
+    fontWeight: "600",
+    lineHeight: 12,
+  },
+  tabIndicator: {
+    width: 22,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 5,
+  },
+  tabConnector: {
+    width: 28,
+    height: 2.5,
+    backgroundColor: "#E5E7EB",
+    marginTop: 25,
+    borderRadius: 2,
+  },
+
+  // cancelled
+  cancelledBox: {
+    alignItems: "center",
+    paddingVertical: 28,
+    backgroundColor: "#FFF5F5",
+    marginVertical: 8,
+  },
+  cancelledTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FF3B30",
+    marginTop: 12,
+  },
+  cancelledSub: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 6,
+  },
+
+  // scheduled
+  scheduledBox: {
+    alignItems: "center",
+    paddingVertical: 32,
+    backgroundColor: "#FAF5FF",
+    marginVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+  },
+  scheduledIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#F3E8FF",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
-    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: "#E9D5FF",
   },
-  stepCol: { alignItems: "center", width: 58 },
-  stepCircle: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: "#f0f0f0", borderWidth: 1.5, borderColor: "#ddd",
-    justifyContent: "center", alignItems: "center",
+  scheduledTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#9333EA",
+    marginBottom: 8,
   },
-  stepDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#ccc" },
-  stepLbl: {
-    fontSize: 9, color: "#aaa", marginTop: 5,
-    textAlign: "center", lineHeight: 13, fontWeight: "500",
+  scheduledTime: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 8,
   },
-  stepConnector: {
-    flex: 1, height: 2, backgroundColor: "#e8e8e8",
-    marginTop: 15, // align with circle center
+  scheduledSub: {
+    fontSize: 13,
+    color: "#6B7280",
+    textAlign: "center",
+    paddingHorizontal: 24,
+    lineHeight: 19,
   },
-
-  sep: { height: 1, backgroundColor: "#f5f5f5", marginVertical: 12 },
 
   // rider
   riderRow: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row", 
+    alignItems: "center",
     justifyContent: "space-between",
+    backgroundColor: "#FAFAFA",
+    padding: 14,
+    marginVertical: 4,
   },
   riderLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
   riderImgWrap: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: "#fff5ee",
-    justifyContent: "center", alignItems: "center",
-    borderWidth: 1, borderColor: "#ffe0c8",
+    width: 52, 
+    height: 52, 
+    borderRadius: 26,
+    backgroundColor: "#FFF5EE",
+    justifyContent: "center", 
+    alignItems: "center",
+    borderWidth: 2, 
+    borderColor: "#FFE0C8",
   },
-  riderName: { fontSize: 14, fontWeight: "700", color: DARK },
-  riderSub:  { fontSize: 12, color: GRAY, marginTop: 1 },
+  riderName: { fontSize: 15, fontWeight: "700", color: DARK },
+  riderSub:  { fontSize: 12, color: "#6B7280", marginTop: 2 },
   callBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingVertical: 9, paddingHorizontal: 18, borderRadius: 8,
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 6,
+    paddingVertical: 10, 
+    paddingHorizontal: 20, 
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   callTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
 
   noRiderRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 6,
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F9FAFB",
+    marginVertical: 4,
   },
-  noRiderTxt: { fontSize: 13, color: GRAY },
+  noRiderTxt: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
 
   // bill toggle
   billToggle: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "space-between",
+    paddingVertical: 4,
   },
   billToggleLeft: { flexDirection: "row", alignItems: "center" },
-  billToggleTitle: { fontSize: 14, fontWeight: "700", color: DARK },
-  billToggleSub:   { fontSize: 12, color: GRAY, marginTop: 1 },
+  billToggleTitle: { fontSize: 15, fontWeight: "700", color: DARK },
+  billToggleSub:   { fontSize: 12, color: "#6B7280", marginTop: 2 },
 
-  billBox: { maxHeight: 200, marginTop: 10 },
-  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 10 },
+  billBox: { maxHeight: 220, marginTop: 12, paddingHorizontal: 4 },
+  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 10 },
   itemQtyBox: {
-    width: 22, height: 22, borderRadius: 4,
-    borderWidth: 1.5, borderColor: ORANGE,
-    justifyContent: "center", alignItems: "center",
+    width: 24, 
+    height: 24, 
+    borderWidth: 1.5, 
+    borderColor: ORANGE,
+    justifyContent: "center", 
+    alignItems: "center",
+    backgroundColor: "#FFF5EE",
   },
   itemQtyTxt: { fontSize: 11, fontWeight: "700", color: ORANGE },
-  itemName:   { flex: 1, fontSize: 13, color: DARK },
-  itemPrice:  { fontSize: 13, fontWeight: "600", color: DARK },
-  billSep:    { height: 1, backgroundColor: "#f0f0f0", marginVertical: 8 },
-  billRow:    { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  billLbl:    { fontSize: 13, color: GRAY },
-  billVal:    { fontSize: 13, color: DARK },
-  billTotalRow: { borderTopWidth: 1, borderTopColor: "#f0f0f0", paddingTop: 8, marginTop: 2 },
-  billTotalLbl: { fontSize: 14, fontWeight: "700", color: DARK },
-  billTotalVal: { fontSize: 14, fontWeight: "800", color: DARK },
+  itemName:   { flex: 1, fontSize: 13, color: DARK, fontWeight: "500" },
+  itemPrice:  { fontSize: 13, fontWeight: "700", color: DARK },
+  billSep:    { height: 1, backgroundColor: "#E5E7EB", marginVertical: 10 },
+  billRow:    { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+  billLbl:    { fontSize: 13, color: "#6B7280", fontWeight: "500" },
+  billVal:    { fontSize: 13, color: DARK, fontWeight: "600" },
+  billTotalRow: { 
+    borderTopWidth: 1.5, 
+    borderTopColor: "#E5E7EB", 
+    paddingTop: 10, 
+    backgroundColor: "#FAFAFA",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  billTotalLbl: { fontSize: 15, fontWeight: "700", color: DARK },
+  billTotalVal: { fontSize: 15, fontWeight: "800", color: DARK },
 
   // rate cta
   rateCta: {
-    marginTop: 12,
-    borderRadius: 8, paddingVertical: 14, alignItems: "center",
+    marginTop: 16,
+    paddingVertical: 15, 
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
   rateCtaTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
   reviewedRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    marginTop: 12, backgroundColor: "#f1faf1", borderRadius: 8, paddingVertical: 12,
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    gap: 8,
+    marginTop: 16, 
+    backgroundColor: "#F0FDF4", 
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
   },
-  reviewedTxt: { color: "#60b246", fontWeight: "600", fontSize: 14 },
+  reviewedTxt: { color: "#16A34A", fontWeight: "700", fontSize: 14 },
 
   // modal
   overlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center", alignItems: "center", padding: 20,
+    flex: 1, 
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center", 
+    alignItems: "center", 
+    padding: 24,
   },
   modalCard: {
-    backgroundColor: "#fff", borderRadius: 20, padding: 28,
-    width: "100%", alignItems: "center",
-    shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 14,
+    backgroundColor: "#fff", 
+    padding: 32,
+    width: "100%", 
+    alignItems: "center",
+    shadowColor: "#000", 
+    shadowOpacity: 0.25, 
+    shadowRadius: 30, 
+    shadowOffset: { width: 0, height: 10 }, 
+    elevation: 20,
   },
-  mClose: { position: "absolute", top: 16, right: 16, padding: 6 },
+  mClose: { position: "absolute", top: 18, right: 18, padding: 8 },
   mIconWrap: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: "#fff5ee", justifyContent: "center", alignItems: "center", marginBottom: 12,
+    width: 68, 
+    height: 68, 
+    borderRadius: 34,
+    backgroundColor: "#FFF5EE", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: "#FFE0C8",
   },
-  mTitle: { fontSize: 20, fontWeight: "800", color: DARK, marginBottom: 4 },
-  mSub:   { fontSize: 13, color: GRAY, marginBottom: 20 },
-  starsRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
-  ratingLbl: { fontSize: 13, fontWeight: "700", color: "#f59e0b", marginBottom: 14 },
+  mTitle: { fontSize: 22, fontWeight: "800", color: DARK, marginBottom: 6 },
+  mSub:   { fontSize: 14, color: "#6B7280", marginBottom: 24 },
+  starsRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  ratingLbl: { fontSize: 14, fontWeight: "700", color: "#f59e0b", marginBottom: 16 },
   reviewInput: {
-    width: "100%", borderWidth: 1, borderColor: "#e8e8e8",
-    borderRadius: 10, padding: 14, fontSize: 13, color: DARK,
-    minHeight: 88, textAlignVertical: "top", marginBottom: 18, marginTop: 6,
-    backgroundColor: "#fafafa",
+    width: "100%", 
+    borderWidth: 1.5, 
+    borderColor: "#E5E7EB",
+    padding: 16, 
+    fontSize: 14, 
+    color: DARK,
+    minHeight: 100, 
+    textAlignVertical: "top", 
+    marginBottom: 20, 
+    marginTop: 8,
+    backgroundColor: "#FAFAFA",
   },
   submitBtn: {
     width: "100%",
-    borderRadius: 10, paddingVertical: 14, alignItems: "center",
+    paddingVertical: 16, 
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  submitTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  skipTxt:   { fontSize: 13, color: "#aaa" },
-  successWrap: { alignItems: "center", paddingVertical: 20 },
+  submitTxt: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  skipTxt:   { fontSize: 14, color: "#9CA3AF", fontWeight: "500" },
+  successWrap: { alignItems: "center", paddingVertical: 24 },
 });

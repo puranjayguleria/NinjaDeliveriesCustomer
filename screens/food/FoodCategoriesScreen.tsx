@@ -47,39 +47,45 @@ export default function FoodCategoriesScreen() {
   return (
     <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="arrow-back" size={22} color="#1e293b" />
+      <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="arrow-back" size={24} color="#3d4152" />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Menu Categories</Text>
-        <View style={{ width: 36 }} />
+        <View style={{ width: 40 }} />
       </View>
+
       <View style={s.searchWrap}>
         <View style={s.searchBox}>
-          <Ionicons name="search-outline" size={16} color="#94a3b8" />
+          <Ionicons name="search" size={20} color="#686b78" />
           <TextInput
             style={s.searchInput}
-            placeholder="Search categories..."
-            placeholderTextColor="#94a3b8"
+            placeholder="Search for dishes & categories"
+            placeholderTextColor="#93959f"
             value={search}
             onChangeText={setSearch}
           />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color="#93959f" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       <FlatList
         data={filtered}
         keyExtractor={i => i.id}
-        numColumns={3}
-        contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+        numColumns={4}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 20, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <TouchableOpacity style={s.catCard} onPress={() => openCategory(item)} activeOpacity={0.8}>
+          <TouchableOpacity style={s.catCard} onPress={() => openCategory(item)} activeOpacity={0.7}>
             {item.image ? (
               <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
             ) : (
               <View style={[s.catImg, s.catImgPlaceholder]}>
-                <Ionicons name="restaurant-outline" size={28} color="#FF6B35" />
+                <Ionicons name="restaurant" size={32} color="#fc8019" />
               </View>
             )}
             <Text style={s.catName} numberOfLines={2}>{item.name}</Text>
@@ -99,24 +105,83 @@ export default function FoodCategoriesScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
   header: {
     backgroundColor: '#fff',
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    flexDirection: 'row', 
+    alignItems: 'center',
+    paddingHorizontal: 16, 
+    paddingBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+      },
+      android: { elevation: 2 },
+    }),
   },
-  backBtn:     { width: 36 },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: '800', color: '#1e293b', textAlign: 'center' },
-  searchWrap:  { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  backBtn: { width: 40, height: 40, justifyContent: 'center' },
+  headerTitle: { 
+    flex: 1, 
+    fontSize: 20, 
+    fontWeight: '700', 
+    color: '#3d4152', 
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  searchWrap: { 
+    backgroundColor: '#fff', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f5',
+  },
   searchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#f1f5f9', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10,
+    backgroundColor: '#f0f0f5', 
+    borderRadius: 12, 
+    paddingHorizontal: 14, 
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: '#e9e9ef',
   },
-  searchInput: { flex: 1, fontSize: 14, color: '#1e293b', padding: 0 },
-  catCard: { flex: 1, margin: 6, alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  catImg: { width: 64, height: 64, borderRadius: 32, marginBottom: 8 },
-  catImgPlaceholder: { backgroundColor: '#fff5f0', justifyContent: 'center', alignItems: 'center' },
-  catName: { fontSize: 12, fontWeight: '600', color: '#1e293b', textAlign: 'center' },
+  searchInput: { 
+    flex: 1, 
+    fontSize: 15, 
+    color: '#3d4152', 
+    padding: 0,
+    fontWeight: '400',
+  },
+  catCard: { 
+    width: '25%',
+    alignItems: 'center', 
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  catImg: { 
+    width: 72, 
+    height: 72, 
+    borderRadius: 36, 
+    marginBottom: 10,
+    borderWidth: 0.5,
+    borderColor: '#e9e9ef',
+  },
+  catImgPlaceholder: { 
+    backgroundColor: '#fff7ed', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+  },
+  catName: { 
+    fontSize: 11.5, 
+    fontWeight: '500', 
+    color: '#3d4152', 
+    textAlign: 'center',
+    lineHeight: 14,
+    letterSpacing: -0.2,
+  },
 });

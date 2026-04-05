@@ -1,19 +1,33 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 type ToggleMode = 'grocery' | 'service' | 'food';
 
 type ToggleContextType = {
   activeMode: ToggleMode;
   setActiveMode: (mode: ToggleMode) => void;
+  previousMode: ToggleMode | null;
 };
 
 const ToggleContext = createContext<ToggleContextType | undefined>(undefined);
 
 export const ToggleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeMode, setActiveMode] = useState<ToggleMode>('grocery');
+  const [previousMode, setPreviousMode] = useState<ToggleMode | null>(null);
+
+  useEffect(() => {
+    // Track previous mode when active mode changes
+    return () => {
+      setPreviousMode(activeMode);
+    };
+  }, [activeMode]);
+
+  const handleSetActiveMode = (mode: ToggleMode) => {
+    setPreviousMode(activeMode);
+    setActiveMode(mode);
+  };
 
   return (
-    <ToggleContext.Provider value={{ activeMode, setActiveMode }}>
+    <ToggleContext.Provider value={{ activeMode, setActiveMode: handleSetActiveMode, previousMode }}>
       {children}
     </ToggleContext.Provider>
   );

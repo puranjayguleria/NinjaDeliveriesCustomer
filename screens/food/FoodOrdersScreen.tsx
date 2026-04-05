@@ -33,6 +33,8 @@ type FoodOrder = {
   status: string;
   paymentMethod: string;
   createdAt: any;
+  scheduledFor?: any;
+  isScheduled?: boolean;
 };
 
 // mode: 'reorder' shows only delivered orders with reorder CTA
@@ -112,6 +114,7 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
       case 'cancelled': return '#dc2626';
       case 'preparing': return '#f59e0b';
       case 'out_for_delivery': return '#3b82f6';
+      case 'scheduled': return '#9333ea';
       default: return '#f59e0b';
     }
   };
@@ -123,8 +126,37 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
       case 'preparing': return 'Preparing';
       case 'out_for_delivery': return 'On the way';
       case 'pending': return 'Pending';
+      case 'scheduled': return 'Scheduled';
       default: return status;
     }
+  };
+  
+  const formatScheduledTime = (order: FoodOrder) => {
+    if (!order.scheduledFor) return '';
+    try {
+      const scheduledDate = order.scheduledFor.toDate();
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const isToday = scheduledDate.toDateString() === today.toDateString();
+      const isTomorrow = scheduledDate.toDateString() === tomorrow.toDateString();
+      
+      const timeStr = scheduledDate.toLocaleTimeString('en-IN', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+      
+      if (isToday) return `Today, ${timeStr}`;
+      if (isTomorrow) return `Tomorrow, ${timeStr}`;
+      
+      const dateStr = scheduledDate.toLocaleDateString('en-IN', { 
+        day: 'numeric', 
+        month: 'short' 
+      });
+      return `${dateStr}, ${timeStr}`;
+    } catch { return ''; }
   };
 
   const formatDate = (ts: any) => {
@@ -191,7 +223,14 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
               <View style={s.cardHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.restName} numberOfLines={1}>{item.restaurantName}</Text>
-                  <Text style={s.date}>{formatDate(item.createdAt)}</Text>
+                  {item.isScheduled && item.scheduledFor ? (
+                    <View style={s.scheduledRow}>
+                      <Ionicons name="calendar-outline" size={11} color="#9333ea" />
+                      <Text style={s.scheduledText}>{formatScheduledTime(item)}</Text>
+                    </View>
+                  ) : (
+                    <Text style={s.date}>{formatDate(item.createdAt)}</Text>
+                  )}
                 </View>
                 <View style={[s.statusBadge, { backgroundColor: statusColor(item.status) + '18' }]}>
                   <View style={[s.statusDot, { backgroundColor: statusColor(item.status) }]} />
@@ -272,6 +311,8 @@ const s = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, gap: 8 },
   restName: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
   date: { fontSize: 11, color: '#94a3b8', marginTop: 3 },
+  scheduledRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  scheduledText: { fontSize: 11, color: '#9333ea', fontWeight: '600' },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, gap: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontWeight: '700' },

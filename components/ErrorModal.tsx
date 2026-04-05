@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Modal,
   Animated,
   Dimensions,
+  Easing,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,9 +33,10 @@ const ErrorModal: React.FC<ErrorModalProps> = ({
   confirmText = "Okay",
   cancelText = "Cancel",
 }) => {
-  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible) {
@@ -43,49 +44,50 @@ const ErrorModal: React.FC<ErrorModalProps> = ({
         Animated.spring(scaleAnim, {
           toValue: 1,
           useNativeDriver: true,
-          tension: 100,
-          friction: 8,
+          tension: 80,
+          friction: 10,
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 300,
+          duration: 350,
           useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
         }),
       ]).start();
 
-      // Add a subtle shake animation for error emphasis
-      Animated.sequence([
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: -10,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 5,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 0,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Pulse animation for icon
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.1,
+            duration: 1000,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ).start();
     } else {
       Animated.parallel([
         Animated.timing(scaleAnim, {
-          toValue: 0,
-          duration: 200,
+          toValue: 0.8,
+          duration: 250,
           useNativeDriver: true,
         }),
         Animated.timing(fadeAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 250,
           useNativeDriver: true,
         }),
       ]).start();
@@ -101,77 +103,61 @@ const ErrorModal: React.FC<ErrorModalProps> = ({
             {
               transform: [
                 { scale: scaleAnim },
-                { translateX: shakeAnim }
+                { translateY: slideAnim }
               ],
+              opacity: fadeAnim,
             },
           ]}
         >
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 248, 248, 0.9)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.modalContainer}
-          >
-            {/* Decorative background pattern */}
-            <View style={styles.backgroundPattern}>
-              <View style={[styles.patternCircle, styles.circle1]} />
-              <View style={[styles.patternCircle, styles.circle2]} />
-              <View style={[styles.patternCircle, styles.circle3]} />
-            </View>
-
-            {/* Error Icon Container */}
-            <View style={styles.iconContainer}>
-              <LinearGradient
-                colors={['#ff6b6b', '#ee5a52']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGradient}
+          <View style={styles.card}>
+            <LinearGradient
+              colors={['#ffffff', '#fafafa']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.cardGradient}
+            >
+              {/* Animated Icon */}
+              <Animated.View 
+                style={[
+                  styles.iconWrapper,
+                  { transform: [{ scale: pulseAnim }] }
+                ]}
               >
-                <Ionicons name="alert-circle" size={36} color="#fff" />
-              </LinearGradient>
-              
-              {/* Pulsing ring effect */}
-              <Animated.View style={[styles.pulseRing, { opacity: fadeAnim }]} />
-            </View>
+                <View style={styles.iconCircle}>
+                  <Ionicons name="location-outline" size={36} color="#fff" />
+                </View>
+              </Animated.View>
 
-            {/* Content */}
-            <View style={styles.content}>
-              {title && <Text style={styles.title}>{title}</Text>}
-              <Text style={styles.message}>{message}</Text>
-            </View>
+              {/* Content */}
+              <View style={styles.textContent}>
+                {title && <Text style={styles.titleText}>{title}</Text>}
+                <Text style={styles.messageText}>{message}</Text>
+              </View>
 
-            {/* Actions */}
-            <View style={styles.actions}>
-              {onCancel && (
+              {/* Buttons */}
+              <View style={styles.buttonContainer}>
                 <TouchableOpacity
-                  style={[styles.button, styles.cancelButton]}
-                  onPress={onCancel}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.buttonText, styles.cancelText]}>
-                    {cancelText}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              <LinearGradient
-                colors={['#ff6b6b', '#ee5a52']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.button, styles.confirmButton]}
-              >
-                <TouchableOpacity
-                  style={styles.confirmButtonTouchable}
+                  style={styles.primaryButton}
                   onPress={onClose}
-                  activeOpacity={0.8}
+                  activeOpacity={0.9}
                 >
-                  <Text style={[styles.buttonText, styles.confirmText]}>
-                    {confirmText}
-                  </Text>
+                  <View style={styles.primaryButtonGradient}>
+                    <Text style={styles.primaryButtonText}>{confirmText}</Text>
+                  </View>
                 </TouchableOpacity>
-              </LinearGradient>
-            </View>
-          </LinearGradient>
+
+                {onCancel && (
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={onCancel}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.secondaryButtonText}>{cancelText}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </LinearGradient>
+          </View>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -186,151 +172,109 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   modalWrapper: {
-    width: width * 0.9,
-    maxWidth: 400,
-    shadowColor: '#ff6b6b',
+    width: '100%',
+    maxWidth: 360,
+  },
+  card: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 20,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 30,
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
     elevation: 20,
   },
-  modalContainer: {
-    borderRadius: 24,
-    padding: 28,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 107, 0.2)',
-    overflow: 'hidden',
+  cardGradient: {
+    padding: 32,
+    alignItems: 'center',
   },
-  backgroundPattern: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  iconWrapper: {
+    marginBottom: 24,
   },
-  patternCircle: {
-    position: 'absolute',
-    borderRadius: 50,
-    opacity: 0.08,
-  },
-  circle1: {
-    width: 120,
-    height: 120,
-    backgroundColor: '#ff6b6b',
-    top: -30,
-    right: -30,
-  },
-  circle2: {
+  iconCircle: {
     width: 80,
     height: 80,
-    backgroundColor: '#ee5a52',
-    bottom: -20,
-    left: -20,
-  },
-  circle3: {
-    width: 50,
-    height: 50,
-    backgroundColor: '#ff6b6b',
-    top: '60%',
-    left: -25,
-  },
-  iconContainer: {
-    marginBottom: 20,
-    position: 'relative',
-  },
-  iconGradient: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    borderRadius: 40,
+    backgroundColor: '#10b981',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
+    shadowColor: '#10b981',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  textContent: {
+    alignItems: 'center',
+    marginBottom: 28,
+    width: '100%',
+  },
+  titleText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a202c',
+    textAlign: 'center',
+    marginBottom: 10,
+    letterSpacing: -0.5,
+  },
+  messageText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#718096',
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 8,
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: 12,
+  },
+  primaryButton: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#14b8a6',
     shadowOffset: {
       width: 0,
       height: 8,
     },
     shadowOpacity: 0.4,
-    shadowRadius: 16,
+    shadowRadius: 12,
     elevation: 10,
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 55,
     borderWidth: 2,
-    borderColor: '#ff6b6b',
-    top: -11,
-    left: -11,
-    opacity: 0.3,
+    borderColor: '#0d9488',
   },
-  content: {
+  primaryButtonGradient: {
+    paddingVertical: 18,
     alignItems: 'center',
-    marginBottom: 28,
+    justifyContent: 'center',
+    backgroundColor: '#14b8a6',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#dc2626",
-    textAlign: "center",
-    marginBottom: 12,
-    letterSpacing: -0.5,
+  primaryButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  message: {
-    fontSize: 16,
-    color: "#4a5568",
-    textAlign: "center",
-    lineHeight: 24,
-    fontWeight: "500",
-  },
-  actions: {
-    flexDirection: "row",
+  secondaryButton: {
     width: '100%',
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmButton: {
-    shadowColor: '#ff6b6b',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  confirmButtonTouchable: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 2,
-  },
-  cancelButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  confirmText: {
-    color: "#fff",
-  },
-  cancelText: {
-    color: "#4a5568",
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#a0aec0',
   },
 });

@@ -97,6 +97,7 @@ import AreaUnavailableModal from "./components/AreaUnavailableModal";
 import RazorpayWebView from "./screens/shared/RazorpayWebView";
 import ProfileScreen from "./screens/shared/ProfileScreen";
 import LocationSelectorScreen from "./screens/shared/LocationSelectorScreen";
+import DropoffLocationScreen from "./screens/shared/DropoffLocationScreen";
 import OrderAllocatingScreen from "./screens/grocery/OrderAllocatingScreen";
 import OrderTrackingScreen from "./screens/grocery/OrderTrackingScreen";
 import RatingScreen from "./screens/shared/RatingScreen";
@@ -710,6 +711,8 @@ function FoodHomeStack() {
       <FoodStack.Screen name="FoodHome" component={FoodScreen} />
       <FoodStack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
       <FoodStack.Screen name="FoodSearch" component={FoodSearchScreen} />
+      <FoodStack.Screen name="LocationSelector" component={LocationSelectorScreen} />
+      <FoodStack.Screen name="DropoffLocation" component={DropoffLocationScreen} />
       <FoodStack.Screen name="Profile" component={ProfileScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
     </FoodStack.Navigator>

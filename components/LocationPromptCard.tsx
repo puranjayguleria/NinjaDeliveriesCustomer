@@ -10,11 +10,14 @@ import {
   Alert,
   Platform,
   StyleSheet,
+  Dimensions,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useNavigation } from "@react-navigation/native";
 import { useLocationContext } from "@/context/LocationContext";
+
+const { width } = Dimensions.get("window");
 
 const LocationPromptCard: React.FC = () => {
   const nav = useNavigation<any>();
@@ -61,29 +64,35 @@ const LocationPromptCard: React.FC = () => {
     }
   }, [updateLocation]);
 
-  /* UI – simple bottom-sheet card */
+  /* UI – elegant bottom-sheet card */
   return (
     <View style={styles.sheet}>
       <View style={styles.handle} />
 
-      <View style={styles.headerRow}>
-        <MaterialIcons name="location-on" size={26} color="#009688" />
-        <Text style={styles.title}>Set your delivery location</Text>
+      <View style={styles.iconContainer}>
+        <View style={styles.iconCircle}>
+          <MaterialIcons name="location-on" size={40} color="#009688" />
+        </View>
       </View>
 
+      <Text style={styles.title}>Enable Location Services</Text>
       <Text style={styles.sub}>
-        Turn on location services or select your address manually.
+        We need your location to show nearby stores and provide accurate delivery estimates
       </Text>
 
       <TouchableOpacity
-        style={[styles.btn, styles.btnPrimary]}
+        style={[styles.btn, styles.btnPrimary, busy && styles.btnDisabled]}
         onPress={enableLocation}
         disabled={busy}
+        activeOpacity={0.8}
       >
         {busy ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Text style={styles.btnPrimaryTxt}>Enable Location</Text>
+          <>
+            <Ionicons name="navigate" size={20} color="#fff" style={styles.btnIcon} />
+            <Text style={styles.btnPrimaryTxt}>Use Current Location</Text>
+          </>
         )}
       </TouchableOpacity>
 
@@ -93,15 +102,17 @@ const LocationPromptCard: React.FC = () => {
           nav.navigate("LocationSelector", { fromScreen: "Products" })
         }
         disabled={busy}
+        activeOpacity={0.8}
       >
-        <Text style={styles.btnSecondaryTxt}>Select Manually</Text>
+        <Ionicons name="search-outline" size={20} color="#009688" style={styles.btnIcon} />
+        <Text style={styles.btnSecondaryTxt}>Enter Address Manually</Text>
       </TouchableOpacity>
     </View>
   );
 };
 
 /* ------------------------------------------------------------------
-   styles (only for the card – keep or merge with your main sheet styles)
+   styles
 ------------------------------------------------------------------- */
 const styles = StyleSheet.create({
   sheet: {
@@ -110,40 +121,98 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: Platform.OS === "ios" ? 32 : 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 12,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 16,
   },
   handle: {
     alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#ccc",
-    marginBottom: 12,
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#e0e0e0",
+    marginBottom: 20,
   },
-  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  title: { fontSize: 18, fontWeight: "700", color: "#333", marginLeft: 6 },
-  sub: { fontSize: 14, color: "#555", lineHeight: 20, marginBottom: 20 },
-
-  btn: {
-    paddingVertical: 14,
-    borderRadius: 26,
+  iconContainer: {
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#e0f2f1",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    shadowColor: "#009688",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  btnPrimary: { backgroundColor: "#009688" },
-  btnSecondary: { backgroundColor: "#e0f2f1" },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    textAlign: "center",
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  sub: {
+    fontSize: 15,
+    color: "#666",
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 28,
+    paddingHorizontal: 8,
+  },
 
-  btnPrimaryTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  btnSecondaryTxt: { color: "#00796b", fontSize: 16, fontWeight: "700" },
+  btn: {
+    flexDirection: "row",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  btnPrimary: {
+    backgroundColor: "#009688",
+  },
+  btnSecondary: {
+    backgroundColor: "#f5f5f5",
+    borderWidth: 1.5,
+    borderColor: "#e0e0e0",
+  },
+  btnDisabled: {
+    opacity: 0.7,
+  },
+  btnIcon: {
+    marginRight: 8,
+  },
+  btnPrimaryTxt: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  btnSecondaryTxt: {
+    color: "#009688",
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
 });
 
 export default LocationPromptCard;

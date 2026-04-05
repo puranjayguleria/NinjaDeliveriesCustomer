@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, ActivityIndicator, StatusBar, ImageBackground,
+  FlatList, ActivityIndicator, StatusBar, ImageBackground, Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -32,6 +32,11 @@ const FILTER_CHIPS = [
   { id: "price",    label: "Rs.300-Rs.600",  icon: false },
 ];
 
+// Global flag to track if modal has been shown in current food session
+let hasShownModalInFoodSession = false;
+// Track the last mode to detect actual mode switches
+let lastKnownMode: string | null = null;
+
 export default function FoodScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -40,7 +45,7 @@ export default function FoodScreen() {
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
   const [isVegMode, setIsVegMode] = useState(true);
   const [dishModal, setDishModal] = useState<{
@@ -50,14 +55,67 @@ export default function FoodScreen() {
     filterCategoryId?: string | null;
   }>({ visible: false, restaurantId: "", restaurantName: "" });
 
+  // Detect actual mode switches (not just component remounts)
   useEffect(() => {
-    setLoading(true);
+    console.log('[FoodScreen] Component mounted/updated');
+    console.log('[FoodScreen] activeMode:', activeMode);
+    console.log('[FoodScreen] lastKnownMode:', lastKnownMode);
+    console.log('[FoodScreen] hasShownModalInFoodSession:', hasShownModalInFoodSession);
+    
+    // Check if we actually switched TO food mode from a different mode
+    const justSwitchedToFood = lastKnownMode !== null && lastKnownMode !== 'food' && activeMode === 'food';
+    
+    if (justSwitchedToFood) {
+      console.log('[FoodScreen] Just switched to food mode from', lastKnownMode);
+      // Reset the flag when actually switching to food mode
+      hasShownModalInFoodSession = false;
+    }
+    
+    // Update last known mode
+    lastKnownMode = activeMode;
+  }, [activeMode]);
+
+  // Initial data load
+  useEffect(() => {
+    console.log('[FoodScreen] Data load effect running');
+    console.log('[FoodScreen] hasShownModalInFoodSession:', hasShownModalInFoodSession);
+    
+    // Show modal only if we haven't shown it in this food session
+    const shouldShowModal = !hasShownModalInFoodSession;
+    
+    if (shouldShowModal) {
+      console.log('[FoodScreen] Showing modal');
+      setShowSearchModal(true);
+    }
+    
     const u1 = listenActiveRestaurants(
-      (d) => { setRestaurants(d); setLoading(false); },
-      () => setLoading(false)
+      (d) => { 
+        setRestaurants(d);
+        if (shouldShowModal) {
+          console.log('[FoodScreen] Data loaded, hiding modal after 800ms');
+          setTimeout(() => {
+            setShowSearchModal(false);
+            hasShownModalInFoodSession = true;
+          }, 800);
+        }
+      },
+      () => {
+        if (shouldShowModal) {
+          console.log('[FoodScreen] Data load error, hiding modal after 800ms');
+          setTimeout(() => {
+            setShowSearchModal(false);
+            hasShownModalInFoodSession = true;
+          }, 800);
+        }
+      }
     );
     const u2 = listenFoodCategoriesWithItems(setCategories);
-    return () => { u1(); u2(); };
+    
+    return () => { 
+      console.log('[FoodScreen] Component unmounting');
+      u1(); 
+      u2(); 
+    };
   }, []);
 
   const openDishModal = (
@@ -66,20 +124,33 @@ export default function FoodScreen() {
     filterCategoryId?: string | null
   ) => setDishModal({ visible: true, restaurantId, restaurantName, filterCategoryId });
 
-  if (loading) {
-    return (
-      <View style={s.loader}>
-        <ActivityIndicator size="large" color={ORANGE} />
-        <Text style={s.loaderText}>Finding restaurants near you...</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={s.container}>
-      {!isVegMode && <View style={s.fullScreenRedOverlay} />}
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <Modal
+        visible={showSearchModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={s.searchModalOverlay}>
+          <View style={s.searchModalContent}>
+            <View style={s.searchModalIconContainer}>
+              <View style={s.searchModalIconCircle}>
+                <Ionicons name="restaurant-outline" size={42} color={ORANGE} />
+              </View>
+            </View>
+            <Text style={s.searchModalTitle}>Finding Restaurants</Text>
+            <Text style={s.searchModalSubtitle}>Discovering the best options near you</Text>
+            <ActivityIndicator size="large" color={ORANGE} style={{ marginTop: 24 }} />
+          </View>
+        </View>
+      </Modal>
+
+      {!showSearchModal && (
+        <>
+          {!isVegMode && <View style={s.fullScreenRedOverlay} />}
+          <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <ImageBackground
           key={isVegMode ? "veg" : "nonveg"}
           source={
@@ -92,20 +163,23 @@ export default function FoodScreen() {
         >
           {!isVegMode && <View style={s.redOverlay} />}
           <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
-            <View style={s.locationRow}>
-              <Ionicons name="location-sharp" size={18} color={ORANGE} />
-              <TouchableOpacity style={s.locationBtn} activeOpacity={0.7}>
+            <TouchableOpacity 
+              style={s.locationRow}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
+            >
+              <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
+              <View style={{ flex: 1 }}>
                 <Text style={s.locationLabel} numberOfLines={1}>
-                  {location?.address ? location.address.split(",")[0] : "Select Location"}
+                  {location?.address || "Set delivery location"}
                 </Text>
-                <Ionicons name="chevron-down" size={13} color={DARK} style={{ marginLeft: 2 }} />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }} />
+              </View>
+              <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
+              <View style={{ width: 8 }} />
               <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
                 <Ionicons name="person-circle" size={34} color={DARK} />
               </TouchableOpacity>
-            </View>
-            <Text style={s.locationSub}>Delivering to your location</Text>
+            </TouchableOpacity>
 
             <View style={s.searchRow}>
               <TouchableOpacity
@@ -276,6 +350,8 @@ export default function FoodScreen() {
         restaurantName={dishModal.restaurantName}
         filterCategoryId={dishModal.filterCategoryId}
       />
+        </>
+      )}
     </View>
   );
 }
@@ -308,10 +384,9 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(220, 38, 38, 0.15)",
   },
 
-  locationRow:   { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 },
+  locationRow:   { flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 4 },
   locationBtn:   { flexDirection: "row", alignItems: "center" },
-  locationLabel: { fontSize: 16, fontWeight: "800", color: DARK, maxWidth: 200 },
-  locationSub:   { fontSize: 12, color: "#555", marginBottom: 12, marginLeft: 22 },
+  locationLabel: { fontSize: 15, fontWeight: "600", color: DARK, flex: 1 },
 
   searchRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
   searchBar: {
@@ -471,4 +546,60 @@ const s = StyleSheet.create({
   empty:      { alignItems: "center", paddingVertical: 48 },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: GRAY, marginTop: 12 },
   emptySub:   { fontSize: 13, color: "#cbd5e1", marginTop: 4 },
+
+  searchModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  searchModalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    padding: 36,
+    alignItems: "center",
+    width: "85%",
+    maxWidth: 340,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  searchModalIconContainer: {
+    marginBottom: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchModalIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(252, 128, 25, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(252, 128, 25, 0.15)",
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  searchModalTitle: {
+    fontSize: 21,
+    fontWeight: "700",
+    color: DARK,
+    textAlign: "center",
+    marginBottom: 10,
+    letterSpacing: -0.3,
+  },
+  searchModalSubtitle: {
+    fontSize: 15,
+    color: GRAY,
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 8,
+  },
 });
