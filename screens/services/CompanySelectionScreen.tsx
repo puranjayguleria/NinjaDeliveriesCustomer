@@ -182,8 +182,10 @@ export default function CompanySelectionScreen() {
   }, [companies]);
 
   const getCompanyLogoUrl = (c: any) => {
-    // Check logoUrl first as it's the primary field in service_company collection
-    const raw = c?.logoUrl ?? c?.imageUrl ?? c?.photoUrl ?? c?.companyLogoUrl;
+    // STRICT: Only check company-specific logo fields, never service image fields
+    // Check in order: logoUrl (primary), companyLogoUrl, companyLogo
+    // Explicitly EXCLUDE: photoUrl, imageUrl, image (these are often service images)
+    const raw = c?.logoUrl ?? c?.companyLogoUrl ?? c?.companyLogo;
     let u = typeof raw === 'string' ? raw.trim() : '';
     if (!u) return null;
 
@@ -624,6 +626,9 @@ export default function CompanySelectionScreen() {
     try {
       setLoading(true);
       
+      // 🧹 Clear cache to ensure fresh data with correct logo fields
+      FirestoreService.clearCompanyCache();
+      
       let fetchedCompanies: ServiceCompany[];
       
       // Check if this is from service_services collection (both packages and direct-price)
@@ -693,7 +698,17 @@ export default function CompanySelectionScreen() {
       
       const companiesWithActiveWorkers = await filterCompaniesWithAvailability(fetchedCompanies, true); // Enable time slot checking
       
-      setCompanies(companiesWithActiveWorkers);
+      // Deduplicate companies by companyId or id
+      const uniqueCompanies = Array.from(
+        new Map(
+          companiesWithActiveWorkers.map(company => [
+            String(company.companyId || company.id || '').trim(),
+            company
+          ])
+        ).values()
+      );
+      
+      setCompanies(uniqueCompanies);
     } catch {
       setCompanies([]);
     } finally {
@@ -1049,20 +1064,33 @@ export default function CompanySelectionScreen() {
                   >
                     <View style={styles.providerHeader}>
                       <View style={styles.providerTitleRow}>
-                        {getCompanyLogoUrl(company) && !logoErrorIds[company.id] ? (
-                          <Image
-                            source={{ uri: getCompanyLogoUrl(company) as string }}
-                            style={styles.companyLogo}
-                            resizeMode="contain"
-                            onError={() => setLogoErrorIds((p) => ({ ...p, [company.id]: true }))}
-                          />
-                        ) : (
-                          <View style={styles.companyLogoPlaceholder}>
-                            <Text style={styles.companyLogoText}>
-                              {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                        )}
+                        {(() => {
+                          const logoUrl = getCompanyLogoUrl(company);
+                          // Debug: Log what we're trying to display
+                          if (__DEV__ && logoUrl) {
+                            console.log(`🖼️ Rendering logo for ${company.companyName || company.serviceName}:`, {
+                              logoUrl: company.logoUrl,
+                              companyLogoUrl: (company as any).companyLogoUrl,
+                              companyLogo: (company as any).companyLogo,
+                              imageUrl: (company as any).imageUrl,
+                              selectedUrl: logoUrl,
+                            });
+                          }
+                          return logoUrl && !logoErrorIds[company.id] ? (
+                            <Image
+                              source={{ uri: logoUrl }}
+                              style={styles.companyLogo}
+                              resizeMode="contain"
+                              onError={() => setLogoErrorIds((p) => ({ ...p, [company.id]: true }))}
+                            />
+                          ) : (
+                            <View style={styles.companyLogoPlaceholder}>
+                              <Text style={styles.companyLogoText}>
+                                {(company.companyName || company.serviceName).charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                         <View style={{ flex: 1 }}>
                           <Text style={styles.providerName}>{company.companyName || company.serviceName}</Text>
                           {(typeof (company as any)?.description === 'string' && String((company as any).description).trim().length > 0) ? (
@@ -1190,20 +1218,33 @@ export default function CompanySelectionScreen() {
                 <View style={styles.providerHeader}>
                   <View style={styles.providerTitleRow}>
                     {/* Company Logo */}
-                    {getCompanyLogoUrl(item) && !logoErrorIds[item.id] ? (
-                      <Image 
-                        source={{ uri: getCompanyLogoUrl(item) as string }} 
-                        style={styles.companyLogo}
-                        resizeMode="contain"
-                        onError={() => setLogoErrorIds((p) => ({ ...p, [item.id]: true }))}
-                      />
-                    ) : (
-                      <View style={styles.companyLogoPlaceholder}>
-                        <Text style={styles.companyLogoText}>
-                          {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    {(() => {
+                      const logoUrl = getCompanyLogoUrl(item);
+                      // Debug: Log what we're trying to display
+                      if (__DEV__ && logoUrl) {
+                        console.log(`🖼️ Rendering logo for ${item.companyName || item.serviceName}:`, {
+                          logoUrl: item.logoUrl,
+                          companyLogoUrl: (item as any).companyLogoUrl,
+                          companyLogo: (item as any).companyLogo,
+                          imageUrl: (item as any).imageUrl,
+                          selectedUrl: logoUrl,
+                        });
+                      }
+                      return logoUrl && !logoErrorIds[item.id] ? (
+                        <Image 
+                          source={{ uri: logoUrl }} 
+                          style={styles.companyLogo}
+                          resizeMode="contain"
+                          onError={() => setLogoErrorIds((p) => ({ ...p, [item.id]: true }))}
+                        />
+                      ) : (
+                        <View style={styles.companyLogoPlaceholder}>
+                          <Text style={styles.companyLogoText}>
+                            {(item.companyName || item.serviceName).charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                     <Text style={styles.providerName}>{item.companyName || item.serviceName}</Text>
                   </View>
                     {(typeof (item as any)?.description === 'string' && String((item as any).description).trim().length > 0) ? (
@@ -1657,23 +1698,24 @@ const styles = StyleSheet.create({
 
   providerCard: {
     backgroundColor: "white",
-    marginBottom: 16,
-    borderRadius: 16,
-    padding: 20,
+    marginBottom: 12,
+    borderRadius: 14,
+    padding: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
-    borderWidth: 2,
-    borderColor: "transparent",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
   },
 
   providerCardSelected: {
-    borderColor: "#3b82f6",
-    backgroundColor: "#f0f9ff",
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.2,
+    borderColor: "#4CAF50",
+    backgroundColor: "#f0fdf4",
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.15,
+    elevation: 3,
   },
 
   providerCardBusy: {
@@ -1682,69 +1724,79 @@ const styles = StyleSheet.create({
   },
 
   providerHeader: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   providerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
 
   companyDescription: {
     fontSize: 12,
-    color: "#666",
-    marginTop: 4,
-    marginLeft: 12,
-    lineHeight: 16,
+    color: "#64748b",
+    marginTop: 6,
+    lineHeight: 17,
   },
 
   companyDescriptionBlock: {
-    marginTop: 2,
+    marginTop: 4,
   },
 
   seeMoreText: {
     fontSize: 12,
     color: "#2563eb",
-    fontWeight: "600",
-    marginLeft: 12,
-    marginTop: 2,
+    fontWeight: "700",
+    marginTop: 4,
+    textDecorationLine: "underline",
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    padding: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    padding: 20,
     justifyContent: "center",
   },
 
   modalCard: {
     backgroundColor: "white",
-    borderRadius: 14,
-    padding: 16,
-    maxHeight: "75%",
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: "80%",
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    elevation: 10,
   },
 
   modalHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
 
   modalTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     color: "#0f172a",
     paddingRight: 12,
+    lineHeight: 24,
+    letterSpacing: -0.3,
   },
 
   modalCloseText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     color: "#2563eb",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
 
   modalBodyScroll: {
@@ -1752,39 +1804,43 @@ const styles = StyleSheet.create({
   },
 
   modalDescription: {
-    fontSize: 14,
-    color: "#334155",
-    lineHeight: 20,
+    fontSize: 15,
+    color: "#475569",
+    lineHeight: 24,
+    letterSpacing: -0.2,
   },
 
   modalReviewHeader: {
-    fontSize: 13,
-    color: "#475569",
+    fontSize: 14,
+    color: "#64748b",
     fontWeight: "700",
-    marginBottom: 10,
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
 
   companyLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: "#f1f5f9",
     overflow: 'hidden',
   },
 
   companyLogoPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#3b82f6",
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#dbeafe",
     alignItems: "center",
     justifyContent: "center",
   },
 
   companyLogoText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#ffffff",
+    color: "#2563eb",
   },
 
   providerInfo: {
@@ -1794,36 +1850,37 @@ const styles = StyleSheet.create({
   },
 
   providerName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#1e293b",
-    letterSpacing: 0.3,
+    color: "#0f172a",
+    letterSpacing: -0.2,
+    flex: 1,
   },
 
   selectButton: {
-    backgroundColor: "#3b82f6",
-    paddingVertical: 12,
+    backgroundColor: "#4CAF50",
+    paddingVertical: 11,
     paddingHorizontal: 20,
     borderRadius: 10,
-    marginTop: 16,
+    marginTop: 12,
     alignItems: "center",
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 3,
   },
 
   selectButtonSelected: {
-    backgroundColor: "#10b981",
-    shadowColor: '#10b981',
+    backgroundColor: "#16a34a",
+    shadowColor: '#16a34a',
   },
 
   selectButtonText: {
     fontSize: 15,
     fontWeight: "700",
     color: "#ffffff",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 
   selectButtonTextSelected: {
@@ -1856,10 +1913,10 @@ const styles = StyleSheet.create({
   // Status Badge
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 6,
     alignSelf: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   statusAvailable: {
@@ -1871,8 +1928,9 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   statusTextAvailable: {
@@ -1889,10 +1947,11 @@ const styles = StyleSheet.create({
   },
 
   packageLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#6366f1",
-    fontWeight: "600",
-    marginBottom: 12,
+    fontWeight: "700",
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
 
   packageGrid: {
@@ -1901,15 +1960,16 @@ const styles = StyleSheet.create({
 
   packageOption: {
     backgroundColor: "#f8fafc",
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: "#e2e8f0",
   },
 
   packageOptionSelected: {
     backgroundColor: "#eef2ff",
     borderColor: "#6366f1",
+    borderWidth: 2,
   },
 
   packageOptionHeader: {
@@ -2017,15 +2077,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f0fdf4",
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 8,
     marginTop: 4,
+    marginBottom: 4,
   },
 
   priceLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#15803d",
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
   priceValue: {
@@ -2038,8 +2099,8 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 12,
-    gap: 12,
+    marginTop: 10,
+    gap: 10,
   },
 
   ratingBadge: {
@@ -2052,33 +2113,35 @@ const styles = StyleSheet.create({
   ratingBadgeText: {
     fontSize: 12,
     color: "#92400e",
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   workerInfo: {
     fontSize: 12,
     color: "#64748b",
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
   reviewSnippet: {
     marginTop: 10,
     padding: 10,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: "#f8fafc",
+    borderLeftWidth: 3,
+    borderLeftColor: "#3b82f6",
   },
 
   reviewSnippetHeader: {
-    fontSize: 12,
-    color: "#334155",
+    fontSize: 11,
+    color: "#475569",
     fontWeight: "700",
     marginBottom: 4,
   },
 
   reviewSnippetText: {
     fontSize: 12,
-    color: "#475569",
-    lineHeight: 16,
+    color: "#64748b",
+    lineHeight: 17,
   },
 
   reviewSnippetHeaderWrap: {
@@ -2098,9 +2161,10 @@ const styles = StyleSheet.create({
   },
 
   reviewSnippetMoreText: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#2563eb",
-    fontWeight: "600",
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
 
   // Loading & Empty States
@@ -2225,20 +2289,21 @@ const styles = StyleSheet.create({
 
   addToCartButton: {
     backgroundColor: "#4CAF50",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
     borderRadius: 10,
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
     elevation: 4,
   },
 
   addToCartButtonText: {
     color: "white",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   addToCartButtonDisabled: {

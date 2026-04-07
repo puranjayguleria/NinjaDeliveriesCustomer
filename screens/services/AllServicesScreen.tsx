@@ -170,7 +170,7 @@ export default function AllServicesScreen() {
               }}
             />
           ) : (
-            <Ionicons name={getCategoryIcon(item.name) as any} size={36} color="#00b4a0" />
+            <Ionicons name={getCategoryIcon(item.name) as any} size={32} color="#00b4a0" />
           )}
         </View>
       </View>
@@ -347,14 +347,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     justifyContent: 'flex-start',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   categoryCard: {
-    width: '31%',
+    width: '31.33%',
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 10,
+    borderRadius: 12,
+    padding: 8,
     alignItems: 'center',
     elevation: 2,
     shadowColor: '#000',
@@ -371,13 +371,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 0,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
 
   categoryIconContainer: {
     width: '100%',
-    height: 104,
-    borderRadius: 16,
+    height: 80,
+    borderRadius: 12,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
@@ -387,22 +387,22 @@ const styles = StyleSheet.create({
   categoryImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: 12,
   },
 
   categoryInfo: {
     width: '100%',
-    paddingHorizontal: 4,
-    paddingBottom: 6,
+    paddingHorizontal: 2,
+    paddingBottom: 4,
   },
 
   categoryName: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#0f172a',
     textAlign: 'center',
-    lineHeight: 14,
-    minHeight: 42,
+    lineHeight: 13,
+    minHeight: 36,
   },
   
   emptyContainer: {

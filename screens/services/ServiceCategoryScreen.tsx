@@ -17,10 +17,12 @@ import { Image } from "expo-image";
 import { ServiceIssue, ServiceCategory } from "../../services/firestoreService";
 import { dedupeServicesByCategoryAndName } from "../../utils/serviceDedupe";
 import { firestore } from "../../firebase.native";
+import { useLocationContext } from "../../context/LocationContext";
 
 export default function ServiceCategoryScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { location } = useLocationContext();
 
   const { serviceTitle, categoryId } = route.params;
 
@@ -32,6 +34,12 @@ export default function ServiceCategoryScreen() {
   const [issues, setIssues] = useState<ServiceIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [zoneCompanyIdsKey, setZoneCompanyIdsKey] = useState('');
+  const [zoneCompanyNamesKey, setZoneCompanyNamesKey] = useState('');
+  const [zoneCompaniesLoading, setZoneCompaniesLoading] = useState(true);
+  
+  // Ref for FlatList to enable scrolling
+  const flatListRef = React.useRef<FlatList>(null);
 
   // Description modal
   const [descriptionModal, setDescriptionModal] = useState<{
@@ -45,7 +53,89 @@ export default function ServiceCategoryScreen() {
   const [selectedCategoryId] = useState<string>(categoryId || "");
   const [categoryMasterId, setCategoryMasterId] = useState<string>(categoryId || "");
 
+  // Load zone-specific companies
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const zid = String(location?.storeId || '').trim();
+      
+      if (!zid) {
+        setZoneCompanyIdsKey('');
+        setZoneCompanyNamesKey('');
+        setZoneCompaniesLoading(false);
+        return;
+      }
+
+      try {
+        setZoneCompaniesLoading(true);
+
+        // 1) Try matching by deliveryZoneId
+        let snap = await firestore()
+          .collection('service_company')
+          .where('deliveryZoneId', '==', zid)
+          .get();
+
+        // 2) Fallback: match by deliveryZoneName
+        if (snap.empty) {
+          try {
+            const zoneDoc = await firestore().collection('delivery_zones').doc(zid).get();
+            const zoneName = String(zoneDoc.data()?.name || '').trim();
+            if (zoneName) {
+              snap = await firestore()
+                .collection('service_company')
+                .where('deliveryZoneName', '==', zoneName)
+                .get();
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (cancelled) return;
+
+        const ids = new Set<string>();
+        const names = new Set<string>();
+
+        snap.forEach((doc) => {
+          const data = doc.data() as any;
+          if (data?.isActive === false) return;
+
+          const docId = String(doc.id || '').trim();
+          if (docId) ids.add(docId);
+          const dataCompanyId = String(data?.companyId || '').trim();
+          if (dataCompanyId) ids.add(dataCompanyId);
+
+          const nm = String(data?.companyName || data?.name || '').trim();
+          if (nm) names.add(nm);
+        });
+
+        const zoneIdsKey = Array.from(ids).filter(Boolean).sort().join('|');
+        const zoneNamesKey = Array.from(names).filter(Boolean).sort().join('|');
+        
+        setZoneCompanyIdsKey(zoneIdsKey);
+        setZoneCompanyNamesKey(zoneNamesKey);
+
+        console.log(`✅ Zone companies loaded: ids=${ids.size}, names=${names.size}`);
+      } catch (e) {
+        console.error('❌ Failed to load zone companies:', e);
+      } finally {
+        if (!cancelled) setZoneCompaniesLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.storeId]);
+
   const fetchServiceIssues = useCallback(async () => {
+    // Wait for zone companies to load first
+    if (zoneCompaniesLoading) {
+      console.log('⏳ Waiting for zone companies to load...');
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -54,8 +144,36 @@ export default function ServiceCategoryScreen() {
       if (!selectedCategoryId) {
         console.error('No categoryId provided');
         setIssues([]);
+        setLoading(false);
         return;
       }
+
+      const zid = String(location?.storeId || '').trim();
+      if (!zid) {
+        console.log('❌ No zone selected');
+        setIssues([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get zone companies
+      const zoneCompanyIds = zoneCompanyIdsKey
+        ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+        : [];
+      
+      const zoneCompanyNames = zoneCompanyNamesKey
+        ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+        : [];
+
+      if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+        console.log('❌ No companies available in this zone');
+        setIssues([]);
+        setLoading(false);
+        return;
+      }
+
+      const zoneCompanyIdSet = new Set(zoneCompanyIds);
+      const zoneCompanyNameSet = new Set(zoneCompanyNames);
 
       // Get the category to check if it has a masterCategoryId
       const categoryDoc = await firestore()
@@ -76,12 +194,11 @@ export default function ServiceCategoryScreen() {
       setCategoryMasterId(searchCategoryId);
 
       // Fetch DIRECTLY from service_services collection
-      console.log(`� Querying service_services where categoryMasterId == "${searchCategoryId}"`);
+      console.log(`🔍 Querying service_services where categoryMasterId == "${searchCategoryId}"`);
       
       const servicesSnapshot = await firestore()
         .collection('service_services')
         .where('categoryMasterId', '==', searchCategoryId)
-
         .get();
 
       console.log(`� Found ${servicesSnapshot.size} total services in service_services`);
@@ -91,10 +208,25 @@ export default function ServiceCategoryScreen() {
 
       servicesSnapshot.forEach(doc => {
         const data = doc.data();
+        
+        // Check if company is active in this zone
+        const companyId = String(data?.companyId || '').trim();
+        const companyName = String(data?.companyName || '').trim();
+        
+        const isCompanyInZone = 
+          (companyId && zoneCompanyIdSet.has(companyId)) ||
+          (companyName && zoneCompanyNameSet.has(companyName));
+        
+        if (!isCompanyInZone) {
+          console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+          return;
+        }
+
         const hasPackages = data.packages && Array.isArray(data.packages) && data.packages.length > 0;
         
         console.log(`📋 Service: "${data.name}"`);
         console.log(`   - Has packages: ${hasPackages}`);
+        console.log(`   - Company in zone: ✅`);
         
         const serviceIssue: ServiceIssue = {
           id: doc.id,
@@ -130,7 +262,7 @@ export default function ServiceCategoryScreen() {
       console.log(`📊 Summary:`);
       console.log(`   - Direct-price services: ${directPriceServices.length}`);
       console.log(`   - Package-based services: ${packageBasedServices.length}`);
-      console.log(`   - Total services: ${allServices.length}`);
+      console.log(`   - Total services (zone-filtered): ${allServices.length}`);
       
       setIssues(allServices);
       
@@ -142,7 +274,7 @@ export default function ServiceCategoryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
   // Fetch issues when category changes
   useEffect(() => {
@@ -456,30 +588,35 @@ export default function ServiceCategoryScreen() {
 
       {/* Main Content: Services Only */}
       <View style={styles.servicesContainer}>
-        {loading ? (
+        {(loading || zoneCompaniesLoading) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#2563eb" />
             <Text style={styles.loadingText}>Loading services...</Text>
           </View>
-        ) : issues.length === 0 ? (
+        ) : displayedIssues.length === 0 && !loading && !zoneCompaniesLoading ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>No Direct-Price Services</Text>
+            <Text style={styles.emptyTitle}>
+              {searchQuery.trim() ? 'No Matching Services' : 'No Services Available'}
+            </Text>
             <Text style={styles.emptyText}>
-              No direct-price services available for this category. Check package plans instead.
+              {searchQuery.trim() 
+                ? 'Try adjusting your search terms.' 
+                : 'No services available for this category in your area.'}
             </Text>
           </View>
-        ) : (
+        ) : displayedIssues.length > 0 ? (
           <FlatList
+            ref={flatListRef}
             data={displayedIssues}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ListFooterComponent={ListFooter}
             contentContainerStyle={{ paddingBottom: 100 }}
             showsVerticalScrollIndicator={false}
-            refreshing={loading}
+            refreshing={loading && !zoneCompaniesLoading}
             onRefresh={fetchServiceIssues}
           />
-        )}
+        ) : null}
       </View>
 
       {/* Bottom Continue Button */}
@@ -576,18 +713,18 @@ const styles = StyleSheet.create({
   serviceCard: {
     backgroundColor: "white",
     borderRadius: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     marginBottom: 8,
-    marginHorizontal: 8,
-    marginTop: 8,
+    marginHorizontal: 10,
+    marginTop: 2,
     flexDirection: "row",
     alignItems: "center",
     elevation: 1,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    shadowRadius: 4,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
@@ -596,6 +733,8 @@ const styles = StyleSheet.create({
     borderColor: "#4CAF50",
     backgroundColor: "#f0fdf4",
     elevation: 2,
+    shadowOpacity: 0.08,
+    shadowColor: '#4CAF50',
   },
 
   // Quantity Controls (Zomato-style)
@@ -603,15 +742,20 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderWidth: 1.5,
     borderColor: "#4CAF50",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginLeft: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 7,
+    marginLeft: 8,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
   },
 
   addButtonText: {
     color: "#4CAF50",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.5,
   },
@@ -620,34 +764,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#4CAF50",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    marginLeft: 12,
+    borderRadius: 7,
+    paddingHorizontal: 3,
+    paddingVertical: 3,
+    marginLeft: 8,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
   },
 
   quantityButton: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "white",
-    borderRadius: 6,
+    borderRadius: 5,
   },
 
   quantityButtonText: {
     color: "#4CAF50",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    lineHeight: 20,
+    lineHeight: 18,
   },
 
   quantityText: {
     color: "white",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
-    marginHorizontal: 12,
-    minWidth: 20,
+    marginHorizontal: 8,
+    minWidth: 16,
     textAlign: "center",
   },
 
@@ -667,28 +816,29 @@ const styles = StyleSheet.create({
   },
 
   serviceImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    marginRight: 10,
     flexShrink: 0,
+    backgroundColor: "#f8fafc",
   },
 
   serviceImagePlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    marginRight: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#e0e7ff",
+    backgroundColor: "#dbeafe",
     flexShrink: 0,
   },
 
   placeholderText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#4f46e5",
+    color: "#2563eb",
   },
 
   serviceIconPlaceholder: {
@@ -713,69 +863,85 @@ const styles = StyleSheet.create({
   },
 
   descriptionContainer: {
-    marginTop: 6,
+    marginTop: 1,
   },
 
   serviceDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#475569",
+    fontSize: 11,
+    lineHeight: 15,
+    color: "#64748b",
   },
 
   seeMoreText: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "700",
     color: "#2563eb",
+    textDecorationLine: "underline",
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
-    padding: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    padding: 20,
     justifyContent: "center",
   },
 
   modalCard: {
     backgroundColor: "white",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    maxHeight: "80%",
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    elevation: 10,
   },
 
   modalHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
 
   modalTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: "700",
     color: "#0f172a",
-    paddingRight: 10,
+    paddingRight: 12,
+    lineHeight: 26,
+    letterSpacing: -0.4,
   },
 
   modalCloseText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
     color: "#2563eb",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
 
   modalDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#334155",
+    fontSize: 15,
+    lineHeight: 24,
+    color: "#475569",
+    letterSpacing: -0.2,
   },
 
   serviceTitle: { 
-    fontSize: 15, 
-    fontWeight: "600", 
+    fontSize: 14, 
+    fontWeight: "700", 
     color: "#0f172a",
-    marginBottom: 4,
+    marginBottom: 3,
     flexWrap: "wrap",
+    letterSpacing: -0.1,
   },
 
   serviceSubTitle: {

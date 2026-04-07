@@ -60,6 +60,12 @@ export function useOtaUpdate() {
   const runtimeVersion = (Updates as any)?.runtimeVersion;
       const isRuntime103 = String(runtimeVersion || "").trim() === "1.0.3";
 
+      // Skip OTA checks in development builds
+      if (__DEV__) {
+        console.log('[OTA] Skipping update check in development build');
+        return;
+      }
+
       const { isAvailable } = await withTimeout(Updates.checkForUpdateAsync(), 4000);
 
       // If we have an OTA available, fetch it and reload immediately.

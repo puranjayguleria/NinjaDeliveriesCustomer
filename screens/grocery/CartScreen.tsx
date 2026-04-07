@@ -237,7 +237,7 @@ const CartScreen: React.FC = () => {
     if (navigationRef.isReady?.() && lastTab) {
       try {
         if (lastTab === "ServicesTab") {
-          navigation.navigate("AppTabs", { screen: "HomeTab" });
+          navigationRef.navigate("CategoriesTab" as never);
           return;
         }
         navigationRef.navigate(lastTab as never);
@@ -268,6 +268,10 @@ const CartScreen: React.FC = () => {
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
         navigationRef.navigate("NinjaEatsHomeTab" as never);
+        return;
+      }
+      if (availableRoutes.has("CategoriesTab")) {
+        navigationRef.navigate("CategoriesTab" as never);
         return;
       }
     }
