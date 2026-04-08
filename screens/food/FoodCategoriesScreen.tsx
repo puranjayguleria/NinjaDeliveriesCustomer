@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import firestore from '@react-native-firebase/firestore';
 import {
   listenFoodCategoriesWithItems,
   listenActiveRestaurants,
@@ -27,20 +28,46 @@ export default function FoodCategoriesScreen() {
     filterCategoryId?: string | null;
   }>({ visible: false, restaurantId: '', restaurantName: '' });
 
+  // Category restaurants list modal
+  const [catRestModal, setCatRestModal] = useState<{
+    visible: boolean; categoryId: string; restaurantIds: string[];
+  }>({ visible: false, categoryId: '', restaurantIds: [] });
+
   useEffect(() => {
     const u1 = listenActiveRestaurants(d => { setRestaurants(d); setLoading(false); }, () => setLoading(false));
     const u2 = listenFoodCategoriesWithItems(setCategories);
     return () => { u1(); u2(); };
   }, []);
 
-  const openCategory = (cat: FoodCategory) => {
-    const restId = cat.companyIds?.[0] ?? '';
-    const rest = restaurants.find(r => r.id === restId);
-    if (!rest) return;
-    setDishModal({ visible: true, restaurantId: rest.id, restaurantName: rest.restaurantName, filterCategoryId: cat.id });
+  const openCategory = async (cat: FoodCategory) => {
+    try {
+      const snap = await firestore()
+        .collection('restaurant_menu')
+        .where('categoryId', '==', cat.id)
+        .where('available', '==', true)
+        .get();
+      const ids = [...new Set(snap.docs.map(d => d.data().restaurantId).filter(Boolean))] as string[];
+      const matchedRests = restaurants.filter(r => ids.includes(r.id));
+
+      if (matchedRests.length === 1) {
+        // Only one restaurant — open DishModal directly
+        setDishModal({
+          visible: true,
+          restaurantId: matchedRests[0].id,
+          restaurantName: matchedRests[0].restaurantName,
+          filterCategoryId: cat.id,
+        });
+      } else if (matchedRests.length > 1) {
+        // Multiple restaurants — show picker
+        setCatRestModal({ visible: true, categoryId: cat.id, restaurantIds: ids });
+      }
+    } catch (e) {
+      console.error('[FoodCategoriesScreen] openCategory error:', e);
+    }
   };
 
   const filtered = categories.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()));
+  const catRestaurants = restaurants.filter(r => catRestModal.restaurantIds.includes(r.id));
 
   if (loading) return <View style={s.loader}><ActivityIndicator size="large" color="#FF6B35" /></View>;
 
@@ -76,7 +103,7 @@ export default function FoodCategoriesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={i => i.id}
-        numColumns={4}
+        numColumns={3}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 20, paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
@@ -92,6 +119,45 @@ export default function FoodCategoriesScreen() {
           </TouchableOpacity>
         )}
       />
+
+      {/* Restaurant picker when multiple restaurants serve this category */}
+      {catRestModal.visible && (
+        <View style={s.pickerOverlay}>
+          <View style={s.pickerSheet}>
+            <View style={s.pickerHandle} />
+            <Text style={s.pickerTitle}>Choose a Restaurant</Text>
+            {catRestaurants.map(r => (
+              <TouchableOpacity
+                key={r.id}
+                style={s.pickerRow}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setCatRestModal({ visible: false, categoryId: '', restaurantIds: [] });
+                  setDishModal({
+                    visible: true,
+                    restaurantId: r.id,
+                    restaurantName: r.restaurantName,
+                    filterCategoryId: catRestModal.categoryId,
+                  });
+                }}
+              >
+                {r.profileImage || r.image ? (
+                  <Image source={{ uri: r.profileImage || r.image }} style={s.pickerImg} contentFit="cover" />
+                ) : (
+                  <View style={[s.pickerImg, s.pickerImgPlaceholder]}>
+                    <Ionicons name="restaurant" size={20} color="#fc8019" />
+                  </View>
+                )}
+                <Text style={s.pickerName}>{r.restaurantName}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#93959f" />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={s.pickerCancel} onPress={() => setCatRestModal({ visible: false, categoryId: '', restaurantIds: [] })}>
+              <Text style={s.pickerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <DishModal
         visible={dishModal.visible}
@@ -158,7 +224,7 @@ const s = StyleSheet.create({
     fontWeight: '400',
   },
   catCard: { 
-    width: '25%',
+    width: '33.33%',
     alignItems: 'center', 
     paddingVertical: 16,
     paddingHorizontal: 4,
@@ -184,4 +250,39 @@ const s = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: -0.2,
   },
+
+  // Restaurant picker
+  pickerOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 12,
+  },
+  pickerHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#e0e0e0', alignSelf: 'center', marginBottom: 16,
+  },
+  pickerTitle: {
+    fontSize: 16, fontWeight: '700', color: '#3d4152',
+    marginBottom: 16, textAlign: 'center',
+  },
+  pickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f5',
+  },
+  pickerImg: { width: 44, height: 44, borderRadius: 22 },
+  pickerImgPlaceholder: { backgroundColor: '#fff7ed', justifyContent: 'center', alignItems: 'center' },
+  pickerName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#3d4152' },
+  pickerCancel: {
+    marginTop: 16, paddingVertical: 14,
+    backgroundColor: '#f0f0f5', borderRadius: 12, alignItems: 'center',
+  },
+  pickerCancelText: { fontSize: 15, fontWeight: '600', color: '#686b78' },
 });

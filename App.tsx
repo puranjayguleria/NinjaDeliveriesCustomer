@@ -64,6 +64,7 @@ import FoodCheckoutScreen from "@/screens/food/FoodCheckoutScreen";
 import FoodOrderSuccessScreen from "@/screens/food/FoodOrderSuccessScreen";
 import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
 import FoodOrdersScreen from "@/screens/food/FoodOrdersScreen";
+import FoodOrderBillScreen from "@/screens/food/FoodOrderBillScreen";
 import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
 import FoodSearchScreen from "@/screens/food/FoodSearchScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
@@ -749,6 +750,7 @@ function FoodHistoryStack() {
         {() => <FoodOrdersScreen mode="history" />}
       </FoodStack.Screen>
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="FoodOrderBill" component={FoodOrderBillScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
     </FoodStack.Navigator>
   );
@@ -797,6 +799,7 @@ function FoodHistoryTabStack() {
         {() => <FoodOrdersScreen mode="history" />}
       </FoodStack.Screen>
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="FoodOrderBill" component={FoodOrderBillScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
     </FoodStack.Navigator>
   );

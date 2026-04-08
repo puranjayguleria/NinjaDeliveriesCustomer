@@ -79,6 +79,14 @@ export default function FoodCheckoutScreen() {
     }
   }, []);
 
+  const maxCookingMins = cartItems.reduce((max: number, item: any) => {
+    const h = Number(item.cookingTimeHours ?? 0);
+    const m = Number(item.cookingTimeMinutes ?? 0);
+    const total = h * 60 + m;
+    return total > max ? total : max;
+  }, 0);
+  const estimatedDeliveryMins = maxCookingMins > 0 ? maxCookingMins + 10 : null;
+
   const restaurantName  = cartItems[0]?.restaurantName ?? '';
 
   const arrowX = useRef(new Animated.Value(0)).current;
@@ -120,6 +128,9 @@ export default function FoodCheckoutScreen() {
         items: cartItems.map((item: any) => ({
           id: item.id, name: item.name, price: item.price, qty: item.qty,
           variant: item.variant ?? null, addons: item.addons ?? [], image: item.image ?? null,
+          description: item.description ?? null,
+          cookingTimeHours: item.cookingTimeHours ?? null,
+          cookingTimeMinutes: item.cookingTimeMinutes ?? null,
         })),
         subtotal, deliveryFee, taxes, grandTotal,
         paymentMethod,
@@ -295,6 +306,9 @@ export default function FoodCheckoutScreen() {
                         <Text style={s.variantText}>{item.variant}</Text>
                       </View>
                     )}
+                    {!!item.description && (
+                      <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
+                    )}
                     
                     {/* Add-ons */}
                     {!!item.addons && item.addons.length > 0 && (
@@ -358,7 +372,9 @@ export default function FoodCheckoutScreen() {
               </View>
               <View style={s.scheduleInfo}>
                 <Text style={[s.scheduleLabel, !isScheduled && s.scheduleLabelActive]}>Deliver Now</Text>
-                <Text style={s.scheduleSub}>Get it in 30-40 mins</Text>
+                <Text style={s.scheduleSub}>
+                  {estimatedDeliveryMins ? `Get it in ~${estimatedDeliveryMins} mins` : 'Get it in 30-40 mins'}
+                </Text>
               </View>
             </View>
             <View style={[s.radio, !isScheduled && s.radioSelected]}>
@@ -710,6 +726,9 @@ const s = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 20,
   },
+  itemDesc: { fontSize: 11, color: GRAY, marginTop: 3, lineHeight: 16 },
+  itemTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  itemTimeText: { fontSize: 11, color: '#94a3b8' },
   variantBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#f8f9fa',

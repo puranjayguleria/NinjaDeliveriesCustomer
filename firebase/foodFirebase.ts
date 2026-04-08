@@ -26,6 +26,17 @@ export type Restaurant = {
   createdAt?: any;
   updatedAt?: any;
   profileImage?: string;
+  // Extended fields
+  rating?: number;
+  deliveryTime?: number;       // in minutes
+  avgPrice?: number;           // per person in Rs
+  freeDelivery?: boolean;
+  isVeg?: boolean;
+  cuisine?: string[];          // e.g. ["North Indian", "Chinese"]
+  isTrending?: boolean;
+  hasOffer?: boolean;
+  offerPercent?: number;
+  mealTimes?: string[];        // e.g. ["breakfast", "lunch", "dinner"]
 };
 
 export type FoodCategory = {
@@ -51,6 +62,10 @@ export type MenuItem = {
   available: boolean;
   restaurantId: string;
   variants: { size: string; price: string }[];
+  prepTime?: number; // in minutes
+  cookingTimeHours?: string;
+  cookingTimeMinutes?: string;
+  foodType?: string;
   createdAt?: any;
 };
 

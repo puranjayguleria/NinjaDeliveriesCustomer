@@ -102,6 +102,9 @@ export default function DishModal({
         image: item.image,
         restaurantId,
         restaurantName,
+        description: item.description,
+        cookingTimeHours: item.cookingTimeHours,
+        cookingTimeMinutes: item.cookingTimeMinutes,
       });
       return;
     }
@@ -130,12 +133,15 @@ export default function DishModal({
     addItem({
       id: selectedItem.id + (selectedVariant?.size ?? ''),
       name: selectedItem.name + (selectedVariant ? ` (${selectedVariant.size})` : ''),
-      price: basePrice, // Base price only, addons separate
+      price: basePrice,
       image: selectedItem.image,
       restaurantId,
       restaurantName,
       variant: selectedVariant?.size,
       addons: selectedAddonObjects,
+      description: selectedItem.description,
+      cookingTimeHours: selectedItem.cookingTimeHours,
+      cookingTimeMinutes: selectedItem.cookingTimeMinutes,
     });
     // Go back to dish list (don't close modal — user may want to add more)
     setSelectedItem(null);
@@ -161,6 +167,19 @@ export default function DishModal({
             <Text style={s.dishVariantHint}>{item.variants.map(v => v.size).join(' · ')}</Text>
           )}
           {item.description ? <Text style={s.dishDesc} numberOfLines={2}>{item.description}</Text> : null}
+          {(() => {
+                const h = Number(item.cookingTimeHours ?? 0);
+                const m = Number(item.cookingTimeMinutes ?? 0);
+                if (h === 0 && m === 0) return null;
+                return (
+                  <View style={s.dishTimingRow}>
+                    <Ionicons name="time-outline" size={11} color="#94a3b8" />
+                    <Text style={s.dishTiming}>
+                      {h > 0 && m > 0 ? `${h}h ${m}m` : h > 0 ? `${h} hr` : `${m} mins`}
+                    </Text>
+                  </View>
+                );
+              })()}
         </View>
         <View style={s.dishRight}>
           {item.image ? (
@@ -372,6 +391,8 @@ const s = StyleSheet.create({
   dishPrice: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginTop: 3 },
   dishVariantHint: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
   dishDesc: { fontSize: 12, color: '#94a3b8', marginTop: 4, lineHeight: 17 },
+  dishTimingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 5 },
+  dishTiming: { fontSize: 11, color: '#94a3b8' },
   dishRight: { alignItems: 'center', width: 96 },
   dishImg: { width: 86, height: 76, borderRadius: 10 },
   dishImgPlaceholder: { backgroundColor: '#fff5f0', justifyContent: 'center', alignItems: 'center' },

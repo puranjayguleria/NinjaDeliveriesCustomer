@@ -116,6 +116,21 @@ export default function FoodCartScreen() {
                           <Text style={s.variantText}>{item.variant}</Text>
                         </View>
                       )}
+                      {!!item.description && (
+                        <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
+                      )}
+                      {(() => {
+                        const h = Number(item.cookingTimeHours ?? 0);
+                        const m = Number(item.cookingTimeMinutes ?? 0);
+                        if (h === 0 && m === 0) return null;
+                        const timeStr = h > 0 && m > 0 ? `${h}h ${m}m` : h > 0 ? `${h} hr` : `${m} mins`;
+                        return (
+                          <View style={s.itemTimeRow}>
+                            <Ionicons name="time-outline" size={11} color="#94a3b8" />
+                            <Text style={s.itemTimeText}>{timeStr}</Text>
+                          </View>
+                        );
+                      })()}
                       <Text style={s.itemPrice}>₹{item.price * item.qty}</Text>
                     </View>
                   </View>
@@ -338,6 +353,9 @@ const s = StyleSheet.create({
   vegDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN },
   itemDetails: { flex: 1 },
   itemName: { fontSize: 14, fontWeight: '600', color: DARK, lineHeight: 20 },
+  itemDesc: { fontSize: 11, color: GRAY, marginTop: 3, lineHeight: 16 },
+  itemTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  itemTimeText: { fontSize: 11, color: '#94a3b8' },
   variantBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#f8f9fa', paddingHorizontal: 8, paddingVertical: 3,

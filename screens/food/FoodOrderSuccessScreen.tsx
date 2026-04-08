@@ -1,12 +1,52 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+
+const AUTO_NAVIGATE_SECONDS = 10;
 
 export default function FoodOrderSuccessScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { grandTotal = 0, restaurantName = '', orderId = '', isScheduled = false, scheduledFor } = route.params ?? {};
+  const { grandTotal = 0, restaurantName = '', orderId = '', isScheduled = false } = route.params ?? {};
+
+  const [countdown, setCountdown] = useState(AUTO_NAVIGATE_SECONDS);
+  const progressAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isScheduled) return;
+
+    // Animate progress bar
+    Animated.timing(progressAnim, {
+      toValue: 0,
+      duration: AUTO_NAVIGATE_SECONDS * 1000,
+      useNativeDriver: false,
+    }).start();
+
+    // Countdown timer
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Navigate after delay
+    const timer = setTimeout(() => {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'FoodRestaurants' }],
+      });
+    }, AUTO_NAVIGATE_SECONDS * 1000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
+  }, [isScheduled]);
 
   return (
     <View style={s.container}>
@@ -28,6 +68,22 @@ export default function FoodOrderSuccessScreen() {
         </View>
       ) : (
         <Text style={s.note}>We'll notify you when your order is confirmed.</Text>
+      )}
+
+      {isScheduled && (
+        <View style={s.countdownWrap}>
+          <View style={s.progressBarBg}>
+            <Animated.View
+              style={[s.progressBarFill, {
+                width: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0%', '100%'],
+                }),
+              }]}
+            />
+          </View>
+          <Text style={s.countdownText}>Redirecting in {countdown}s...</Text>
+        </View>
       )}
 
       {!!orderId && !isScheduled && (
@@ -79,6 +135,29 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     lineHeight: 19,
+  },
+  countdownWrap: {
+    marginTop: 16,
+    alignItems: 'center',
+    width: '100%',
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 4,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#FF6B35',
+    borderRadius: 2,
+  },
+  countdownText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '500',
   },
   trackBtn: {
     marginTop: 28, backgroundColor: '#FF6B35',

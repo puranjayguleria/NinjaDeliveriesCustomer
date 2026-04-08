@@ -98,7 +98,21 @@ export default function FoodTrackingScreen() {
       // Get status from Firebase and normalize to lowercase
       const firebaseStatus = (d.status || "preparing").toLowerCase().trim();
       setStatus(firebaseStatus as OrderStatus);
-      
+
+      // If restaurant rejected the order, go back to food screen
+      if (firebaseStatus === "rejected") {
+        const restName = d.restaurantName ?? "the restaurant";
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: "AppTabs",
+              params: { rejectedBy: restName },
+            },
+          ],
+        });
+        return;
+      }      
       if (firebaseStatus === "completed" && !reviewShown.current && !d.reviewed) {
         reviewShown.current = true;
         setTimeout(openReview, 900);

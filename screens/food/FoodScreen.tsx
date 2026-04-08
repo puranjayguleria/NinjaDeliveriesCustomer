@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from "react";
+﻿import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, ActivityIndicator, StatusBar, ImageBackground, Modal, Dimensions,
+  FlatList, StatusBar, ImageBackground, Modal, Dimensions, Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -13,44 +13,114 @@ import {
   getActiveRestaurants,
   getFoodCategories,
   getFoodBanners,
+  listenActiveRestaurants,
+  listenFoodCategoriesWithItems,
   type Restaurant,
   type FoodCategory as Category,
   type FoodBanner,
 } from "@/firebase/foodFirebase";
 import DishModal from "@/components/food/DishModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 
 const ORANGE = "#FC8019";
 const DARK   = "#282C3F";
 const GRAY   = "#93959F";
 const GREEN  = "#3d9b6d";
 
-const FILTER_CHIPS = [
-  { id: "sort",     label: "Sort",          icon: true  },
-  { id: "delivery", label: "Delivery Time", icon: false },
-  { id: "rating",   label: "Rating 4.0+",   icon: false },
-  { id: "veg",      label: "Pure Veg",       icon: false },
-  { id: "offers",   label: "Offers",         icon: false },
-  { id: "price",    label: "Rs.300-Rs.600",  icon: false },
-];
+// ─── Filter Groups ────────────────────────────────────────────────────────────
+// ─── Filter Chips ───────────────────────────────────────────────────────────
+type FilterChip = { id: string; label: string; emoji: string };
 
-// Global flag to track if modal has been shown in current food session
-let hasShownModalInFoodSession = false;
-// Track the last mode to detect actual mode switches
-let lastKnownMode: string | null = null;
+const FILTER_CHIPS: FilterChip[] = [
+  { id: "rating4",  label: "Rating 4.0+",  emoji: "⭐" },
+  { id: "under30",  label: "Under 30 min", emoji: "⏱" },
+  { id: "trending", label: "Trending",     emoji: "🔥" },
+  { id: "budget",   label: "Under ₹150",   emoji: "💸" },
+  { id: "new",      label: "Newly Added",  emoji: "🆕" },
+];
+// Animated line loader
+function LineLoader() {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 1800, useNativeDriver: false }),
+        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: false }),
+      ])
+    ).start();
+  }, []);
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -200] });
+  return (
+    <View style={{ marginTop: 24, width: 200, height: 4, backgroundColor: "#f0e8e0", borderRadius: 2, overflow: "hidden" }}>
+      <Animated.View style={{ height: 4, width: 200, backgroundColor: ORANGE, borderRadius: 2, transform: [{ translateX }] }} />
+    </View>
+  );
+}
+
+
+
+const FOOD_IMAGES = [
+  require("../../assets/food/burger.png"),
+  require("../../assets/food/food.png"),
+  require("../../assets/food/french-fries.png"),
+  require("../../assets/food/juice-drink.png"),
+  require("../../assets/food/pizza.png"),
+];
 
 export default function FoodScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { location } = useLocationContext();
-  const { activeMode, setActiveMode } = useToggleContext();
+  const { activeMode, setActiveMode, previousMode, switchedToFood, clearSwitchedToFood } = useToggleContext();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [banners, setBanners] = useState<FoodBanner[]>([]);
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [categoryRestaurantIds, setCategoryRestaurantIds] = useState<string[]>([]);
+  const scrollRef = useRef<any>(null);
+
+  // Bounce animation for modal images
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const playBounceIn = () => {
+    bounceAnim.setValue(0);
+    fadeAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.spring(bounceAnim, {
+        toValue: 1,
+        friction: 4,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Cycle food images in loading modal with bounce
+  useEffect(() => {
+    if (!showSearchModal) return;
+    playBounceIn();
+    const interval = setInterval(() => {
+      setModalImageIndex((prev) => (prev + 1) % FOOD_IMAGES.length);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [showSearchModal]);
+
+  useEffect(() => {
+    if (showSearchModal) playBounceIn();
+  }, [modalImageIndex]);
   const [isVegMode, setIsVegMode] = useState(true);
   const [showVegToggleModal, setShowVegToggleModal] = useState(false);
   const [pendingVegMode, setPendingVegMode] = useState<boolean | null>(null);
@@ -61,84 +131,86 @@ export default function FoodScreen() {
     filterCategoryId?: string | null;
   }>({ visible: false, restaurantId: "", restaurantName: "" });
 
-  // Detect actual mode switches (not just component remounts)
-  useEffect(() => {
-    console.log('[FoodScreen] Component mounted/updated');
-    console.log('[FoodScreen] activeMode:', activeMode);
-    console.log('[FoodScreen] lastKnownMode:', lastKnownMode);
-    console.log('[FoodScreen] hasShownModalInFoodSession:', hasShownModalInFoodSession);
-    
-    // Check if we actually switched TO food mode from a different mode
-    const justSwitchedToFood = lastKnownMode !== null && lastKnownMode !== 'food' && activeMode === 'food';
-    
-    if (justSwitchedToFood) {
-      console.log('[FoodScreen] Just switched to food mode from', lastKnownMode);
-      // Reset the flag when actually switching to food mode
-      hasShownModalInFoodSession = false;
-    }
-    
-    // Update last known mode
-    lastKnownMode = activeMode;
-  }, [activeMode]);
+  // Order rejection modal
+  const [rejectionModal, setRejectionModal] = useState<{
+    visible: boolean;
+    restaurantName: string;
+  }>({ visible: false, restaurantName: "" });
+  const rejectionScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const rejectionOpacAnim  = useRef(new Animated.Value(0)).current;
 
-  // Initial data load
+  // Listen for rejected food orders in real-time (only live status changes, not old ones)
   useEffect(() => {
-    console.log('[FoodScreen] Data load effect running');
-    console.log('[FoodScreen] hasShownModalInFoodSession:', hasShownModalInFoodSession);
-    
-    // Show modal only if we haven't shown it in this food session
-    const shouldShowModal = !hasShownModalInFoodSession;
-    
-    if (shouldShowModal) {
-      console.log('[FoodScreen] Showing modal');
+    const user = auth().currentUser;
+    if (!user) return;
+
+    // Listen to ALL non-delivered/non-cancelled recent orders for this user
+    // No createdAt filter — avoids Firestore timestamp comparison issues
+    const unsub = firestore()
+      .collection("restaurant_Orders")
+      .where("userId", "==", user.uid)
+      .onSnapshot((snap) => {
+        if (!snap) return;
+        snap.docChanges().forEach((change) => {
+          const data = change.doc.data();
+          console.log('[RejectionListener] change.type:', change.type, 'status:', data?.status);
+          // Trigger on MODIFIED docs where status just became "rejected"
+          if (change.type === "modified") {
+            const status = (data?.status ?? "").toLowerCase().trim();
+            if (status === "rejected") {
+              const name = data?.restaurantName ?? "the restaurant";
+              console.log('[RejectionListener] ORDER REJECTED by:', name);
+              rejectionScaleAnim.setValue(0.8);
+              rejectionOpacAnim.setValue(0);
+              setRejectionModal({ visible: true, restaurantName: name });
+              Animated.parallel([
+                Animated.spring(rejectionScaleAnim, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }),
+                Animated.timing(rejectionOpacAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
+              ]).start();
+            }
+          }
+        });
+      }, (err) => {
+        console.error('[RejectionListener] error:', err);
+      });
+    return () => unsub();
+  }, []);
+
+  // Show modal when FoodScreen mounts after a mode switch from grocery/service
+  useEffect(() => {
+    console.log('[FoodScreen] switchedToFood:', switchedToFood);
+    if (switchedToFood) {
       setShowSearchModal(true);
+      setTimeout(() => {
+        setShowSearchModal(false);
+        clearSwitchedToFood();
+      }, 4000);
     }
-    
-    // Fetch data
-    const fetchData = async () => {
-      try {
-        const [restData, catData, bannerData] = await Promise.all([
-          getActiveRestaurants(),
-          getFoodCategories(),
-          getFoodBanners(),
-        ]);
-        setRestaurants(restData);
-        setCategories(catData);
-        setBanners(bannerData);
-        console.log('[FoodScreen] Banners loaded:', bannerData.length, bannerData);
-        
-        // Temporary test banner for debugging
-        if (bannerData.length === 0) {
-          console.log('[FoodScreen] No banners from Firebase, adding test banner');
-          setBanners([{
-            id: 'test1',
-            imageUrl: 'https://via.placeholder.com/400x120/FF6B35/FFFFFF?text=Test+Banner',
-            isActive: true,
-            type: ['test'],
-            createdAt: new Date()
-          }]);
-        }
-        
-        if (shouldShowModal) {
-          console.log('[FoodScreen] Data loaded, hiding modal after 800ms');
-          setTimeout(() => {
-            setShowSearchModal(false);
-            hasShownModalInFoodSession = true;
-          }, 800);
-        }
-      } catch (error) {
-        console.error('[FoodScreen] Data fetch error:', error);
-        if (shouldShowModal) {
-          console.log('[FoodScreen] Data load error, hiding modal after 800ms');
-          setTimeout(() => {
-            setShowSearchModal(false);
-            hasShownModalInFoodSession = true;
-          }, 800);
-        }
-      }
+  }, [switchedToFood]);
+
+  // Initial data load — real-time listeners
+  useEffect(() => {
+    // Real-time: restaurants
+    const unsubRestaurants = listenActiveRestaurants(
+      (data) => setRestaurants(data),
+      (err) => console.error('[FoodScreen] restaurants listener error:', err)
+    );
+
+    // Real-time: categories
+    const unsubCategories = listenFoodCategoriesWithItems(
+      (data) => setCategories(data),
+      (err) => console.error('[FoodScreen] categories listener error:', err)
+    );
+
+    // One-time: banners (don't change often)
+    getFoodBanners().then((bannerData) => {
+      setBanners(bannerData);
+    }).catch((err) => console.error('[FoodScreen] banners fetch error:', err));
+
+    return () => {
+      unsubRestaurants();
+      unsubCategories();
     };
-    
-    fetchData();
   }, []);
 
   // Auto slide banners
@@ -179,6 +251,40 @@ export default function FoodScreen() {
     filterCategoryId?: string | null
   ) => setDishModal({ visible: true, restaurantId, restaurantName, filterCategoryId });
 
+  const filteredRestaurants = React.useMemo(() => {
+    let list = [...restaurants];
+
+    // Filter by selected category — based on which restaurants have menu items in that category
+    if (selectedCategoryId && categoryRestaurantIds.length > 0) {
+      list = list.filter(r => categoryRestaurantIds.includes(r.id));
+    } else if (selectedCategoryId && categoryRestaurantIds.length === 0) {
+      // Still fetching or no results — show nothing to avoid showing all
+      list = [];
+    }
+
+    switch (selectedFilter) {
+      case "rating4":   list = list.filter(r => (r.rating ?? 0) >= 4.0); break;
+      case "rating45":  list = list.filter(r => (r.rating ?? 0) >= 4.5); break;
+      case "under30":   list = list.filter(r => (r.deliveryTime ?? 99) < 30); break;
+      case "free_del":  list = list.filter(r => r.freeDelivery === true); break;
+      case "trending":  list = list.filter(r => r.isTrending === true); break;
+      case "veg":       list = list.filter(r => r.isVeg === true); break;
+      case "nonveg":    list = list.filter(r => r.isVeg === false); break;
+      case "budget":    list = list.filter(r => (r.avgPrice ?? 999) < 150); break;
+      case "mid":       list = list.filter(r => { const p = r.avgPrice ?? 999; return p >= 150 && p <= 300; }); break;
+      case "premium":   list = list.filter(r => (r.avgPrice ?? 0) > 300); break;
+      case "breakfast": list = list.filter(r => r.mealTimes?.includes("breakfast")); break;
+      case "lunch":     list = list.filter(r => r.mealTimes?.includes("lunch")); break;
+      case "dinner":    list = list.filter(r => r.mealTimes?.includes("dinner")); break;
+      case "latenight": list = list.filter(r => r.mealTimes?.includes("latenight")); break;
+      case "snacks":    list = list.filter(r => r.mealTimes?.includes("snacks")); break;
+      case "offers":    list = list.filter(r => r.hasOffer === true); break;
+      case "new":       list.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)); break;
+      case "az":        list.sort((a, b) => a.restaurantName.localeCompare(b.restaurantName)); break;
+    }
+    return list;
+  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, categories]);
+
   return (
     <View style={s.container}>
       <Modal
@@ -190,13 +296,27 @@ export default function FoodScreen() {
         <View style={s.searchModalOverlay}>
           <View style={s.searchModalContent}>
             <View style={s.searchModalIconContainer}>
-              <View style={s.searchModalIconCircle}>
-                <Ionicons name="restaurant-outline" size={42} color={ORANGE} />
-              </View>
+              <Animated.View style={{
+                opacity: fadeAnim,
+                transform: [
+                  {
+                    scale: bounceAnim.interpolate({
+                      inputRange: [0, 0.6, 0.8, 1],
+                      outputRange: [0.3, 1.15, 0.95, 1],
+                    }),
+                  },
+                ],
+              }}>
+                <Image
+                  source={FOOD_IMAGES[modalImageIndex]}
+                  style={s.searchModalFoodImage}
+                  contentFit="cover"
+                />
+              </Animated.View>
             </View>
             <Text style={s.searchModalTitle}>Finding Restaurants</Text>
-            <Text style={s.searchModalSubtitle}>Discovering the best options near you</Text>
-            <ActivityIndicator size="large" color={ORANGE} style={{ marginTop: 24 }} />
+            <Text style={s.searchModalSubtitle}>Discovering the best restaurants for you</Text>
+            <LineLoader />
           </View>
         </View>
       </Modal>
@@ -252,6 +372,54 @@ export default function FoodScreen() {
         </View>
       </Modal>
 
+      {/* Order Rejected Modal */}
+      <Modal
+        visible={rejectionModal.visible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+      >
+        <View style={s.rejModalOverlay}>
+          <Animated.View style={[
+            s.rejModalCard,
+            { opacity: rejectionOpacAnim, transform: [{ scale: rejectionScaleAnim }] }
+          ]}>
+            {/* Red top strip */}
+            <View style={s.rejModalStrip} />
+
+            <View style={s.rejModalBody}>
+              {/* Icon */}
+              <View style={s.rejModalIconWrap}>
+                <Ionicons name="close-circle" size={52} color="#ef4444" />
+              </View>
+
+              <Text style={s.rejModalTitle}>Order Rejected</Text>
+              <Text style={s.rejModalSub}>
+                Your order has been rejected by
+              </Text>
+              <Text style={s.rejModalRestName}>{rejectionModal.restaurantName}</Text>
+              <Text style={s.rejModalHint}>
+                You can try ordering from another restaurant nearby.
+              </Text>
+
+              <TouchableOpacity
+                style={s.rejModalBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setRejectionModal({ visible: false, restaurantName: "" });
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: "AppTabs" }],
+                  });
+                }}
+              >
+                <Text style={s.rejModalBtnText}>Got it</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
       {!showSearchModal && (
         <>
           <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -262,7 +430,7 @@ export default function FoodScreen() {
             style={s.fixedBgPattern}
             resizeMode="cover"
           >
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={s.scrollContent}>
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={s.scrollContent} ref={scrollRef}>
               {/* Header Section */}
               <View style={s.headerBannerContainer}>
                 {/* Default VEG/NonVEG Banner */}
@@ -373,7 +541,7 @@ export default function FoodScreen() {
               <View style={s.contentArea}>
                 {categories.length > 0 && (
                   <View style={s.section}>
-                    <Text style={s.sectionTitle}>{"What's on your mind?"}</Text>
+                    <Text style={s.sectionTitle}>What's on your mind? 🍽️</Text>
                     <View style={s.categoriesBorder}>
                     <FlatList
                       data={categories}
@@ -385,20 +553,35 @@ export default function FoodScreen() {
                         <TouchableOpacity
                           style={s.catItem}
                           activeOpacity={0.75}
-                          onPress={() => {
-                            const restId = item.companyIds?.[0] ?? "";
-                            const rest = restaurants.find((r) => r.id === restId);
-                            if (rest) openDishModal(rest.id, rest.restaurantName, item.id);
+                          onPress={async () => {
+                            const newId = selectedCategoryId === item.id ? null : item.id;
+                            setSelectedCategoryId(newId);
+                            setCategoryRestaurantIds([]);
+                            if (newId) {
+                              try {
+                                const snap = await firestore()
+                                  .collection('restaurant_menu')
+                                  .where('categoryId', '==', newId)
+                                  .where('available', '==', true)
+                                  .get();
+                                const ids = [...new Set(snap.docs.map(d => d.data().restaurantId).filter(Boolean))];
+                                console.log('[Category] categoryId:', newId, 'restaurantIds found:', ids);
+                                setCategoryRestaurantIds(ids);
+                              } catch (e) {
+                                console.error('[Category] fetch error:', e);
+                              }
+                            }
+                            scrollRef.current?.scrollTo({ y: 400, animated: true });
                           }}
                         >
                           {item.image ? (
-                            <Image source={{ uri: item.image }} style={s.catImg} contentFit="cover" />
+                            <Image source={{ uri: item.image }} style={[s.catImg, selectedCategoryId === item.id && s.catImgSelected]} contentFit="cover" />
                           ) : (
-                            <View style={[s.catImg, s.catImgPlaceholder]}>
+                            <View style={[s.catImg, s.catImgPlaceholder, selectedCategoryId === item.id && s.catImgSelected]}>
                               <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
                             </View>
                           )}
-                          <Text style={s.catName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={[s.catName, selectedCategoryId === item.id && { color: ORANGE, fontWeight: "700" }]} numberOfLines={1}>{item.name}</Text>
                         </TouchableOpacity>
                       )}
                     />
@@ -423,36 +606,24 @@ export default function FoodScreen() {
                 onPress={() => setSelectedFilter(active ? null : f.id)}
                 activeOpacity={0.8}
               >
-                {f.icon && (
-                  <Ionicons
-                    name="options-outline"
-                    size={13}
-                    color={active ? ORANGE : DARK}
-                    style={{ marginRight: 4 }}
-                  />
-                )}
+                <Text style={s.chipEmoji}>{f.emoji}</Text>
                 <Text style={[s.chipText, active && s.chipTextActive]}>{f.label}</Text>
-                <Ionicons
-                  name="chevron-down"
-                  size={12}
-                  color={active ? ORANGE : GRAY}
-                  style={{ marginLeft: 3 }}
-                />
+                {active && <View style={s.chipActiveDot} />}
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         <View style={s.restSection}>
-          <Text style={s.restSectionTitle}>{restaurants.length} restaurants</Text>
-          {restaurants.length === 0 ? (
+          <Text style={s.restSectionTitle}>{filteredRestaurants.length} restaurants</Text>
+          {filteredRestaurants.length === 0 ? (
             <View style={s.empty}>
               <Ionicons name="restaurant-outline" size={52} color="#e2e8f0" />
               <Text style={s.emptyTitle}>No restaurants found</Text>
               <Text style={s.emptySub}>Try a different filter</Text>
             </View>
           ) : (
-            restaurants.map((item) => (
+            filteredRestaurants.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={s.restCard}
@@ -643,16 +814,24 @@ const s = StyleSheet.create({
   modeLabel:       { fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.8)", letterSpacing: 0.2 },
   modeLabelActive: { color: DARK, fontWeight: "700" },
 
-  section:           { marginTop: 16 },
+  section:           { marginTop: 20 },
   categoriesBorder: {
     marginHorizontal: 12,
     borderRadius: 16,
     paddingVertical: 10,
     backgroundColor: '#fff',
   },
-  sectionTitle:      { fontSize: 18, fontWeight: "800", color: DARK, marginBottom: 14, paddingHorizontal: 16 },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: DARK,
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    letterSpacing: -0.5,
+  },
   catItem:           { alignItems: "center", marginRight: 4, width: 80 },
   catImg:            { width: 72, height: 72, borderRadius: 36 },
+  catImgSelected:    { borderWidth: 2.5, borderColor: ORANGE },
   catImgPlaceholder: { backgroundColor: "#fff5f0", justifyContent: "center", alignItems: "center" },
   catName:           { fontSize: 11, color: DARK, marginTop: 6, textAlign: "center", fontWeight: "500", width: 72 },
 
@@ -712,12 +891,24 @@ const s = StyleSheet.create({
 
   divider: { height: 1, backgroundColor: "#f0f0f0", marginTop: 16 },
 
-  filtersWrap:    { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0", backgroundColor: "#fff" },
-  filtersRow:     { paddingHorizontal: 12, gap: 8 },
-  chip:           { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "#d4d5d9", backgroundColor: "#fff" },
-  chipActive:     { borderColor: ORANGE, backgroundColor: "#fff8f3" },
-  chipText:       { fontSize: 13, color: DARK, fontWeight: "500" },
-  chipTextActive: { color: ORANGE, fontWeight: "600" },
+  filtersWrap:    { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#f0f0f0", backgroundColor: "#fff" },
+  filtersRow:     { paddingHorizontal: 14, gap: 10 },
+  chip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderRadius: 24, borderWidth: 1.5, borderColor: "#e8e8e8",
+    backgroundColor: "#fafafa",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 1,
+  },
+  chipActive: {
+    borderColor: ORANGE, backgroundColor: "#fff4eb",
+    shadowColor: ORANGE, shadowOpacity: 0.2, elevation: 3,
+  },
+  chipEmoji:      { fontSize: 14 },
+  chipText:       { fontSize: 13, color: "#555", fontWeight: "500" },
+  chipTextActive: { color: ORANGE, fontWeight: "700" },
+  chipActiveDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: ORANGE, marginLeft: 2 },
 
   restSection:      { paddingTop: 12 },
   restSectionTitle: { fontSize: 13, color: GRAY, fontWeight: "500", paddingHorizontal: 16, marginBottom: 8 },
@@ -770,6 +961,11 @@ const s = StyleSheet.create({
     marginBottom: 24,
     alignItems: "center",
     justifyContent: "center",
+  },
+  searchModalFoodImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 20,
   },
   searchModalIconCircle: {
     width: 100,
@@ -881,5 +1077,82 @@ const s = StyleSheet.create({
     color: DARK,
     fontSize: 16,
     fontWeight: "500",
+  },
+
+  // Order Rejection Modal
+  rejModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  rejModalCard: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 14,
+  },
+  rejModalStrip: {
+    height: 6,
+    backgroundColor: "#ef4444",
+  },
+  rejModalBody: {
+    padding: 28,
+    alignItems: "center",
+  },
+  rejModalIconWrap: {
+    marginBottom: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#fef2f2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rejModalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: DARK,
+    marginBottom: 8,
+    letterSpacing: -0.4,
+  },
+  rejModalSub: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: "center",
+  },
+  rejModalRestName: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#ef4444",
+    marginTop: 4,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  rejModalHint: {
+    fontSize: 13,
+    color: GRAY,
+    textAlign: "center",
+    lineHeight: 19,
+    marginBottom: 24,
+  },
+  rejModalBtn: {
+    width: "100%",
+    backgroundColor: "#ef4444",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  rejModalBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

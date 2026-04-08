@@ -9,13 +9,16 @@ export type AddonItem = {
 export type FoodCartItem = {
   id: string;
   name: string;
-  price: number; // Base item price (without addons)
+  price: number;
   image?: string;
   restaurantId: string;
   restaurantName: string;
   variant?: string;
   addons?: AddonItem[];
   qty: number;
+  description?: string;
+  cookingTimeHours?: string;
+  cookingTimeMinutes?: string;
 };
 
 type FoodCartContextType = {
