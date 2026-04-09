@@ -123,6 +123,7 @@ import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
+import PromotionalFoodBannerModal from "@/components/PromotionalFoodBannerModal";
 
 import OrdersScreen from "./screens/shared/OrdersScreen";
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
@@ -1197,6 +1198,12 @@ function AppTabs() {
           if (navigationRef.isReady()) {
             (navigationRef.navigate as any)("CategoriesTab");
           }
+        }}
+      />
+
+      <PromotionalFoodBannerModal
+        onBannerPress={() => {
+          setActiveMode("food");
         }}
       />
 

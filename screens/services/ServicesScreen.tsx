@@ -18,6 +18,7 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  Image as RNImage,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -257,6 +258,12 @@ const SERVICES_SEARCH_PLACEHOLDERS = [
 
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
 const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
+
+const profileLogoMap = {
+  grocery: require('../../assets/profile_logo/grocery_logo.png'),
+  food: require('../../assets/profile_logo/food_logo.png'),
+  service: require('../../assets/profile_logo/services_logo.png'),
+};
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
@@ -1986,7 +1993,11 @@ export default function ServicesScreen() {
               style={styles.profileIconButton}
               accessibilityLabel="Profile"
             >
-              <Ionicons name="person" size={20} color="#0f172a" />
+              <RNImage
+                source={profileLogoMap[activeMode]}
+                style={{ width: 44, height: 44, borderRadius: 22 }}
+                resizeMode="cover"
+              />
             </TouchableOpacity>
           </View>
 

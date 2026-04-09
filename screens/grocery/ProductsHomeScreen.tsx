@@ -246,9 +246,16 @@ const LocationPromptCard: React.FC<LocationPromptProps> = ({
 
 /* ------------------------------------------------------------------ header + search */
 
+const profileLogoMap = {
+  grocery: require('../../assets/profile_logo/grocery_logo.png'),
+  food: require('../../assets/profile_logo/food_logo.png'),
+  service: require('../../assets/profile_logo/services_logo.png'),
+};
+
 const Header = memo(() => {
   const { location } = useLocationContext();
   const { isBadWeather } = useWeather();
+  const { activeMode } = useToggleContext();
   const nav = useNavigation<any>();
 
   return (
@@ -286,7 +293,11 @@ const Header = memo(() => {
           nav.navigate("Profile");
         }}
       >
-        <MaterialIcons name="person" size={24} color={Colors.white} />
+        <RNImage
+          source={profileLogoMap[activeMode]}
+          style={{ width: 44, height: 44, borderRadius: 22 }}
+          resizeMode="cover"
+        />
       </Pressable>
     </View>
   );

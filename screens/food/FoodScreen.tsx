@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, StatusBar, ImageBackground, Modal, Dimensions, Animated,
+  FlatList, StatusBar, ImageBackground, Modal, Dimensions, Animated, Image as RNImage,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -28,6 +28,12 @@ const ORANGE = "#FC8019";
 const DARK   = "#282C3F";
 const GRAY   = "#93959F";
 const GREEN  = "#3d9b6d";
+
+const profileLogoMap = {
+  grocery: require('../../assets/profile_logo/grocery_logo.png'),
+  food: require('../../assets/profile_logo/food_logo.png'),
+  service: require('../../assets/profile_logo/services_logo.png'),
+};
 
 // ─── Filter Groups ────────────────────────────────────────────────────────────
 // ─── Filter Chips ───────────────────────────────────────────────────────────
@@ -460,7 +466,11 @@ export default function FoodScreen() {
                       <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
                       <View style={{ width: 8 }} />
                       <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-                        <Ionicons name="person-circle" size={34} color={DARK} />
+                        <RNImage
+                          source={profileLogoMap[activeMode]}
+                          style={{ width: 44, height: 44, borderRadius: 22 }}
+                          resizeMode="cover"
+                        />
                       </TouchableOpacity>
                     </TouchableOpacity>
 
