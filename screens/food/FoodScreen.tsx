@@ -91,6 +91,24 @@ export default function FoodScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [categoryRestaurantIds, setCategoryRestaurantIds] = useState<string[]>([]);
   const scrollRef = useRef<any>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const CROP_MAX = 170;
+  const HERO_INITIAL = 320;
+  const heroHeight = scrollY.interpolate({
+    inputRange: [0, CROP_MAX],
+    outputRange: [HERO_INITIAL, HERO_INITIAL - CROP_MAX],
+    extrapolate: 'clamp',
+  });
+  const toggleTranslateY = scrollY.interpolate({
+    inputRange: [0, 140],
+    outputRange: [0, -140],
+    extrapolate: 'clamp',
+  });
+  const toggleOpacity = scrollY.interpolate({
+    inputRange: [0, 90],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   // Bounce animation for modal images
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -436,72 +454,119 @@ export default function FoodScreen() {
             style={s.fixedBgPattern}
             resizeMode="cover"
           >
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={s.scrollContent} ref={scrollRef}>
               {/* Header Section */}
               <View style={s.headerBannerContainer}>
                 {/* Default VEG/NonVEG Banner */}
-                <ImageBackground
-                  key={isVegMode ? "veg" : "nonveg"}
-                  source={
-                    isVegMode
-                      ? require("../../assets/ninjafoodVeg.png")
-                      : require("../../assets/ninjafoodNonVeg.png")
-                  }
-                  style={s.hero}
-                  resizeMode="stretch"
-                >
-                  {!isVegMode && <View style={s.redTint} />}
-                  <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
-                    <TouchableOpacity 
-                      style={s.locationRow}
-                      activeOpacity={0.7}
-                      onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
-                    >
-                      <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.locationLabel} numberOfLines={1}>
-                          {location?.address || "Set delivery location"}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
-                      <View style={{ width: 8 }} />
-                      <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-                        <RNImage
-                          source={profileLogoMap[activeMode]}
-                          style={{ width: 44, height: 44, borderRadius: 22 }}
-                          resizeMode="cover"
-                        />
-                      </TouchableOpacity>
-                    </TouchableOpacity>
-
-                    <View style={s.searchRow}>
-                      <TouchableOpacity
-                        style={s.searchBar}
-                        activeOpacity={0.85}
-                        onPress={() => navigation.navigate("FoodSearch")}
+                <Animated.View style={[s.heroContainer, { height: heroHeight }]}>
+                  <ImageBackground
+                    key={isVegMode ? "veg" : "nonveg"}
+                    source={
+                      isVegMode
+                        ? require("../../assets/ninjafoodVeg.png")
+                        : require("../../assets/ninjafoodNonVeg.png")
+                    }
+                    style={s.heroBg}
+                    resizeMode="cover"
+                  >
+                    {!isVegMode && <View style={s.redTint} />}
+                    <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
+                      <TouchableOpacity 
+                        style={s.locationRow}
+                        activeOpacity={0.7}
+                        onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
                       >
-                        <Ionicons name="search" size={18} color={GRAY} style={{ marginRight: 8 }} />
-                        <Text style={s.searchPlaceholder}>Search restaurants, cuisines...</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={s.toggleSwitch}
-                        onPress={handleVegToggle}
-                        activeOpacity={0.8}
-                      >
-                        <View style={[s.toggleTrack, isVegMode && s.toggleTrackActive]}>
-                          <View style={[s.toggleThumb, isVegMode && s.toggleThumbActive]}>
-                            <View style={[s.toggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
-                          </View>
+                        <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.locationLabel} numberOfLines={1}>
+                            {location?.address || "Set delivery location"}
+                          </Text>
                         </View>
+                        <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
+                        <View style={{ width: 8 }} />
+                        <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+                          <RNImage
+                            source={profileLogoMap[activeMode]}
+                            style={{ width: 44, height: 44, borderRadius: 22 }}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
                       </TouchableOpacity>
+
+                      <View style={s.searchRow}>
+                        <TouchableOpacity
+                          style={s.searchBar}
+                          activeOpacity={0.85}
+                          onPress={() => navigation.navigate("FoodSearch")}
+                        >
+                          <Ionicons name="search" size={18} color={GRAY} style={{ marginRight: 8 }} />
+                          <Text style={s.searchPlaceholder}>Search restaurants, cuisines...</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.toggleSwitch}
+                          onPress={handleVegToggle}
+                          activeOpacity={0.8}
+                        >
+                          <View style={[s.toggleTrack, isVegMode && s.toggleTrackActive]}>
+                            <View style={[s.toggleThumb, isVegMode && s.toggleThumbActive]}>
+                              <View style={[s.toggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Animated.View style={{ transform: [{ translateY: toggleTranslateY }], opacity: toggleOpacity }}>
+                        <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
+                      </Animated.View>
                     </View>
 
-                    <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
-                  </View>
-                </ImageBackground>
+                    {banners.length > 0 && (
+                      <View style={s.bannersOverlay}>
+                        <FlatList
+                          data={banners}
+                          horizontal
+                          pagingEnabled
+                          showsHorizontalScrollIndicator={false}
+                          keyExtractor={(item) => item.id}
+                          renderItem={({ item }) => (
+                            <TouchableOpacity
+                              style={s.bannerSlide}
+                              activeOpacity={0.9}
+                            >
+                              <Image 
+                                source={{ uri: item.imageUrl }} 
+                                style={s.bannerSlideImg} 
+                                contentFit="cover" 
+                              />
+                            </TouchableOpacity>
+                          )}
+                          ref={(ref) => {
+                            if (ref && banners.length > 0) {
+                              ref.scrollToIndex({ 
+                                index: currentBannerIndex, 
+                                animated: true 
+                              });
+                            }
+                          }}
+                        />
+                        
+                        <View style={s.bannerIndicators}>
+                          {banners.map((_, index) => (
+                            <View
+                              key={index}
+                              style={[
+                                s.bannerDot,
+                                index === currentBannerIndex && s.bannerDotActive
+                              ]}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                  </ImageBackground>
+                </Animated.View>
 
-                {/* Firebase Banners Overlay */}
-                {banners.length > 0 && (
+                {/* Firebase Banners Overlay (disabled, moved inside hero) */}
+                {banners.length > 0 && false && (
                   <View style={s.bannersOverlay}>
                     <FlatList
                       data={banners}
@@ -547,57 +612,72 @@ export default function FoodScreen() {
                 )}
               </View>
 
-              {/* Content Area */}
-              <View style={s.contentArea}>
-                {categories.length > 0 && (
-                  <View style={s.section}>
+              <Animated.ScrollView
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                style={s.scrollContent}
+                ref={scrollRef}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                  { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+              >
+              {/* Sticky Categories */}
+              <View style={s.stickyCatContainer}>
+                {categories.length > 0 ? (
+                  <View>
                     <Text style={s.sectionTitle}>What's on your mind? 🍽️</Text>
                     <View style={s.categoriesBorder}>
-                    <FlatList
-                      data={categories}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyExtractor={(i) => i.id}
-                      contentContainerStyle={{ paddingLeft: 16, paddingRight: 8, paddingBottom: 4 }}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={s.catItem}
-                          activeOpacity={0.75}
-                          onPress={async () => {
-                            const newId = selectedCategoryId === item.id ? null : item.id;
-                            setSelectedCategoryId(newId);
-                            setCategoryRestaurantIds([]);
-                            if (newId) {
-                              try {
-                                const snap = await firestore()
-                                  .collection('restaurant_menu')
-                                  .where('categoryId', '==', newId)
-                                  .where('available', '==', true)
-                                  .get();
-                                const ids = [...new Set(snap.docs.map(d => d.data().restaurantId).filter(Boolean))];
-                                console.log('[Category] categoryId:', newId, 'restaurantIds found:', ids);
-                                setCategoryRestaurantIds(ids);
-                              } catch (e) {
-                                console.error('[Category] fetch error:', e);
+                      <FlatList
+                        data={categories}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        keyExtractor={(i) => i.id}
+                        contentContainerStyle={{ paddingLeft: 16, paddingRight: 8, paddingBottom: 4 }}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={s.catItem}
+                            activeOpacity={0.75}
+                            onPress={async () => {
+                              const newId = selectedCategoryId === item.id ? null : item.id;
+                              setSelectedCategoryId(newId);
+                              setCategoryRestaurantIds([]);
+                              if (newId) {
+                                try {
+                                  const snap = await firestore()
+                                    .collection('restaurant_menu')
+                                    .where('categoryId', '==', newId)
+                                    .where('available', '==', true)
+                                    .get();
+                                  const ids = [...new Set(snap.docs.map(d => d.data().restaurantId).filter(Boolean))];
+                                  console.log('[Category] categoryId:', newId, 'restaurantIds found:', ids);
+                                  setCategoryRestaurantIds(ids);
+                                } catch (e) {
+                                  console.error('[Category] fetch error:', e);
+                                }
                               }
-                            }
-                            scrollRef.current?.scrollTo({ y: 400, animated: true });
-                          }}
-                        >
-                          {item.image ? (
-                            <Image source={{ uri: item.image }} style={[s.catImg, selectedCategoryId === item.id && s.catImgSelected]} contentFit="cover" />
-                          ) : (
-                            <View style={[s.catImg, s.catImgPlaceholder, selectedCategoryId === item.id && s.catImgSelected]}>
-                              <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
-                            </View>
-                          )}
-                          <Text style={[s.catName, selectedCategoryId === item.id && { color: ORANGE, fontWeight: "700" }]} numberOfLines={1}>{item.name}</Text>
-                        </TouchableOpacity>
-                      )}
-                    />
+                              scrollRef.current?.scrollTo({ y: 0, animated: true });
+                            }}
+                          >
+                            {item.image ? (
+                              <Image source={{ uri: item.image }} style={[s.catImg, selectedCategoryId === item.id && s.catImgSelected]} contentFit="cover" />
+                            ) : (
+                              <View style={[s.catImg, s.catImgPlaceholder, selectedCategoryId === item.id && s.catImgSelected]}>
+                                <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
+                              </View>
+                            )}
+                            <Text style={[s.catName, selectedCategoryId === item.id && { color: ORANGE, fontWeight: "700" }]} numberOfLines={1}>{item.name}</Text>
+                          </TouchableOpacity>
+                        )}
+                      />
                     </View>
                   </View>
-                )}
+                ) : null}
+              </View>
+
+              {/* Rest Content */}
+              <View style={s.contentArea}>
 
         <View style={s.divider} />
 
@@ -681,7 +761,7 @@ export default function FoodScreen() {
 
         <View style={{ height: 90 }} />
               </View>
-            </ScrollView>
+            </Animated.ScrollView>
           </ImageBackground>
 
       <DishModal
@@ -702,13 +782,15 @@ const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: "#fff" },
   fixedBgPattern: { flex: 1 },
   bgPattern: { flex: 1 },
-  scrollContent: { flex: 1 },
-  contentArea: { flex: 1 },
+  scrollContent: { flex: 1, zIndex: 100, elevation: 10 },
+  contentArea: { flex: 1, backgroundColor: "#fff" },
   loader:     { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
   loaderText: { marginTop: 12, color: GRAY, fontSize: 14 },
 
-  hero:        { width: "100%", height: 320 },
-  heroContent: { paddingHorizontal: 16, paddingBottom: 20 },
+  heroContainer: { width: "100%", height: 320, overflow: "hidden" },
+  heroBg:      { width: "100%", height: "100%" },
+  heroContent: { paddingHorizontal: 16, paddingBottom: 6 },
+  heroMask: {},
 
   locationRow:   { flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 4 },
   locationBtn:   { flexDirection: "row", alignItems: "center" },
@@ -838,6 +920,15 @@ const s = StyleSheet.create({
     marginBottom: 14,
     paddingHorizontal: 16,
     letterSpacing: -0.5,
+  },
+  stickyCatContainer: {
+    backgroundColor: "#fff",
+    paddingTop: 0,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    zIndex: 100,
+    elevation: 6,
   },
   catItem:           { alignItems: "center", marginRight: 4, width: 80 },
   catImg:            { width: 72, height: 72, borderRadius: 36 },

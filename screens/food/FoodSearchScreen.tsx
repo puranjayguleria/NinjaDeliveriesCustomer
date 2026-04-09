@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TextInput, FlatList,
   TouchableOpacity, ActivityIndicator, StatusBar,
@@ -72,7 +72,7 @@ function ResultRow({ item, index, onPress }: {
           <Text style={s.resultSub}>
             {isDish 
               ? `${dish.price ? `₹${dish.price}` : dish.variants?.[0]?.price ? `₹${dish.variants[0].price}` : 'Price not available'} · ${dish.category || "Dish"}` 
-              : "Restaurant · 30-40 min"}
+              : `Restaurant · ${rest.deliveryTime ? `${rest.deliveryTime} min` : "30-40 min"}${rest.rating ? ` · ⭐${rest.rating.toFixed(1)}` : ""}`}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color={GRAY} />
