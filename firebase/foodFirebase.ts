@@ -33,6 +33,7 @@ export type Restaurant = {
   freeDelivery?: boolean;
   isVeg?: boolean;
   cuisine?: string[];          // e.g. ["North Indian", "Chinese"]
+  cuisineType?: "veg" | "nonveg" | "both"; // Restaurant cuisine type
   isTrending?: boolean;
   hasOffer?: boolean;
   offerPercent?: number;

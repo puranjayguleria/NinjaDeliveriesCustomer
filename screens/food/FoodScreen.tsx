@@ -91,6 +91,47 @@ export default function FoodScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [categoryRestaurantIds, setCategoryRestaurantIds] = useState<string[]>([]);
   const scrollRef = useRef<any>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  
+  // Scroll-based animations for sticky header replacement
+  const CROP_MAX = 170;
+  const HERO_INITIAL = 320;
+  const heroHeight = scrollY.interpolate({
+    inputRange: [0, CROP_MAX],
+    outputRange: [HERO_INITIAL, HERO_INITIAL - CROP_MAX],
+    extrapolate: 'clamp',
+  });
+  
+  // Original search bar and toggle animations (fade out on scroll)
+  const originalSearchOpacity = scrollY.interpolate({
+    inputRange: [0, 60, 100],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+  const originalSearchTranslateY = scrollY.interpolate({
+    inputRange: [0, 60, 100],
+    outputRange: [0, -15, -30],
+    extrapolate: 'clamp',
+  });
+
+  // Location and profile animations (fade out and move up on scroll)
+  const locationProfileOpacity = scrollY.interpolate({
+    inputRange: [0, 40, 80],
+    outputRange: [1, 0.7, 0],
+    extrapolate: 'clamp',
+  });
+  const locationProfileTranslateY = scrollY.interpolate({
+    inputRange: [0, 40, 80],
+    outputRange: [0, -10, -20],
+    extrapolate: 'clamp',
+  });
+
+  // Sticky search bar and toggle animations (slide in to replace location/profile)
+  const stickySearchOpacity = scrollY.interpolate({
+    inputRange: [0, 50, 100],
+    outputRange: [0, 0.8, 1],
+    extrapolate: 'clamp',
+  });
 
   // Bounce animation for modal images
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -260,6 +301,15 @@ export default function FoodScreen() {
   const filteredRestaurants = React.useMemo(() => {
     let list = [...restaurants];
 
+    // Filter by Veg/NonVeg toggle based on cuisineType
+    if (isVegMode) {
+      // Veg mode: Show only veg and both restaurants
+      list = list.filter(r => (r as any).cuisineType === "veg" || (r as any).cuisineType === "both");
+    } else {
+      // NonVeg mode: Show only nonveg and both restaurants  
+      list = list.filter(r => (r as any).cuisineType === "nonveg" || (r as any).cuisineType === "both");
+    }
+
     // Filter by selected category — based on which restaurants have menu items in that category
     if (selectedCategoryId && categoryRestaurantIds.length > 0) {
       list = list.filter(r => categoryRestaurantIds.includes(r.id));
@@ -289,7 +339,7 @@ export default function FoodScreen() {
       case "az":        list.sort((a, b) => a.restaurantName.localeCompare(b.restaurantName)); break;
     }
     return list;
-  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, categories]);
+  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, categories, isVegMode]);
 
   return (
     <View style={s.container}>
@@ -343,13 +393,13 @@ export default function FoodScreen() {
             </View>
             
             <Text style={s.vegModalTitle}>
-              {pendingVegMode ? "Switch to Veg Mode?" : "Switch off Veg Mode?"}
+              {pendingVegMode ? "Switch to Veg Mode?" : "Switch to NonVeg Mode?"}
             </Text>
             
             <Text style={s.vegModalSubtitle}>
               {pendingVegMode 
-                ? "You'll see only vegetarian restaurants and dishes"
-                : "You'll see all restaurants, including those serving non-veg dishes"
+                ? "You'll see only vegetarian and mixed cuisine restaurants"
+                : "You'll see only non-vegetarian and mixed cuisine restaurants"
               }
             </Text>
 
@@ -370,7 +420,7 @@ export default function FoodScreen() {
                 activeOpacity={0.8}
               >
                 <Text style={s.vegModalButtonPrimaryText}>
-                  {pendingVegMode ? "Switch to Veg" : "Switch off"}
+                  {pendingVegMode ? "Switch to Veg" : "Switch to NonVeg"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -436,7 +486,48 @@ export default function FoodScreen() {
             style={s.fixedBgPattern}
             resizeMode="cover"
           >
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={s.scrollContent} ref={scrollRef}>
+              {/* Sticky Header - appears at top when scrolling */}
+              <Animated.View style={[
+                s.stickyHeader,
+                {
+                  opacity: stickySearchOpacity,
+                  top: 0,
+                }
+              ]}>
+                <View style={s.stickyHeaderContent}>
+                  <TouchableOpacity
+                    style={s.stickySearchBarOriginal}
+                    activeOpacity={0.85}
+                    onPress={() => navigation.navigate("FoodSearch")}
+                  >
+                    <Ionicons name="search" size={18} color={GRAY} style={{ marginRight: 8 }} />
+                    <Text style={s.stickySearchPlaceholderOriginal}>Search restaurants, cuisines...</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.stickyToggleOriginal}
+                    onPress={handleVegToggle}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[s.stickyToggleTrackOriginal, isVegMode && s.stickyToggleTrackActiveOriginal]}>
+                      <View style={[s.stickyToggleThumbOriginal, isVegMode && s.stickyToggleThumbActiveOriginal]}>
+                        <View style={[s.stickyToggleDotOriginal, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+
+            <Animated.ScrollView 
+              showsVerticalScrollIndicator={false} 
+              bounces={false} 
+              style={s.scrollContent} 
+              ref={scrollRef}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                { useNativeDriver: false }
+              )}
+              scrollEventThrottle={16}
+            >
               {/* Header Section */}
               <View style={s.headerBannerContainer}>
                 {/* Default VEG/NonVEG Banner */}
@@ -452,18 +543,27 @@ export default function FoodScreen() {
                 >
                   {!isVegMode && <View style={s.redTint} />}
                   <View style={[s.heroContent, { paddingTop: insets.top + 12 }]}>
-                    <TouchableOpacity 
-                      style={s.locationRow}
-                      activeOpacity={0.7}
-                      onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
-                    >
-                      <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.locationLabel} numberOfLines={1}>
-                          {location?.address || "Set delivery location"}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
+                    {/* Location and Profile Row - fades out on scroll */}
+                    <Animated.View style={[
+                      s.locationRow,
+                      {
+                        opacity: locationProfileOpacity,
+                        transform: [{ translateY: locationProfileTranslateY }]
+                      }
+                    ]}>
+                      <TouchableOpacity 
+                        style={s.locationBtn}
+                        activeOpacity={0.7}
+                        onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Food' })}
+                      >
+                        <Ionicons name="location-sharp" size={18} color={ORANGE} style={{ marginRight: 6 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.locationLabel} numberOfLines={1}>
+                            {location?.address || "Set delivery location"}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-down" size={16} color={DARK} style={{ marginLeft: 6 }} />
+                      </TouchableOpacity>
                       <View style={{ width: 8 }} />
                       <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
                         <RNImage
@@ -472,9 +572,44 @@ export default function FoodScreen() {
                           resizeMode="cover"
                         />
                       </TouchableOpacity>
-                    </TouchableOpacity>
+                    </Animated.View>
 
-                    <View style={s.searchRow}>
+                    {/* Sticky Search Bar and Toggle - slides in to replace location/profile */}
+                    <Animated.View style={[
+                      s.stickyReplacementRow,
+                      {
+                        opacity: stickySearchOpacity,
+                      }
+                    ]}>
+                      <TouchableOpacity
+                        style={s.stickySearchBarReplacement}
+                        activeOpacity={0.85}
+                        onPress={() => navigation.navigate("FoodSearch")}
+                      >
+                        <Ionicons name="search" size={16} color={GRAY} style={{ marginRight: 8 }} />
+                        <Text style={s.stickySearchPlaceholder}>Search restaurants...</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.stickyToggleSwitch}
+                        onPress={handleVegToggle}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[s.stickyToggleTrack, isVegMode && s.stickyToggleTrackActive]}>
+                          <View style={[s.stickyToggleThumb, isVegMode && s.stickyToggleThumbActive]}>
+                            <View style={[s.stickyToggleDot, { backgroundColor: isVegMode ? GREEN : "#dc2626" }]} />
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    </Animated.View>
+
+                    {/* Original Search Row - fades out on scroll */}
+                    <Animated.View style={[
+                      s.searchRow, 
+                      { 
+                        opacity: originalSearchOpacity,
+                        transform: [{ translateY: originalSearchTranslateY }]
+                      }
+                    ]}>
                       <TouchableOpacity
                         style={s.searchBar}
                         activeOpacity={0.85}
@@ -494,7 +629,7 @@ export default function FoodScreen() {
                           </View>
                         </View>
                       </TouchableOpacity>
-                    </View>
+                    </Animated.View>
 
                     <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
                   </View>
@@ -554,7 +689,10 @@ export default function FoodScreen() {
                     <Text style={s.sectionTitle}>What's on your mind? 🍽️</Text>
                     <View style={s.categoriesBorder}>
                     <FlatList
-                      data={categories}
+                      data={[
+                        { id: 'all', name: 'All Categories', image: null }, // All Categories button
+                        ...categories
+                      ]}
                       horizontal
                       showsHorizontalScrollIndicator={false}
                       keyExtractor={(i) => i.id}
@@ -564,6 +702,14 @@ export default function FoodScreen() {
                           style={s.catItem}
                           activeOpacity={0.75}
                           onPress={async () => {
+                            if (item.id === 'all') {
+                              // All Categories button pressed - clear filter
+                              setSelectedCategoryId(null);
+                              setCategoryRestaurantIds([]);
+                              scrollRef.current?.scrollTo({ y: 400, animated: true });
+                              return;
+                            }
+                            
                             const newId = selectedCategoryId === item.id ? null : item.id;
                             setSelectedCategoryId(newId);
                             setCategoryRestaurantIds([]);
@@ -584,14 +730,32 @@ export default function FoodScreen() {
                             scrollRef.current?.scrollTo({ y: 400, animated: true });
                           }}
                         >
-                          {item.image ? (
+                          {item.id === 'all' ? (
+                            // All Categories button design
+                            <View style={[
+                              s.catImg, 
+                              s.allCategoriesImg, 
+                              selectedCategoryId === null && s.allCategoriesImgSelected
+                            ]}>
+                              <Ionicons 
+                                name="grid-outline" 
+                                size={24} 
+                                color={selectedCategoryId === null ? "#fff" : ORANGE} 
+                              />
+                            </View>
+                          ) : item.image ? (
                             <Image source={{ uri: item.image }} style={[s.catImg, selectedCategoryId === item.id && s.catImgSelected]} contentFit="cover" />
                           ) : (
                             <View style={[s.catImg, s.catImgPlaceholder, selectedCategoryId === item.id && s.catImgSelected]}>
                               <Ionicons name="restaurant-outline" size={22} color={ORANGE} />
                             </View>
                           )}
-                          <Text style={[s.catName, selectedCategoryId === item.id && { color: ORANGE, fontWeight: "700" }]} numberOfLines={1}>{item.name}</Text>
+                          <Text style={[
+                            s.catName, 
+                            (selectedCategoryId === item.id || (item.id === 'all' && selectedCategoryId === null)) && { color: ORANGE, fontWeight: "700" }
+                          ]} numberOfLines={1}>
+                            {item.name}
+                          </Text>
                         </TouchableOpacity>
                       )}
                     />
@@ -652,6 +816,15 @@ export default function FoodScreen() {
                       <Ionicons name="restaurant" size={44} color={ORANGE} />
                     </View>
                   )}
+                  
+                  {/* Pure Veg Watermark for veg restaurants */}
+                  {(item as any).cuisineType === "veg" && (
+                    <View style={s.pureVegWatermark}>
+                      <Ionicons name="leaf" size={12} color="#fff" style={{ marginRight: 4 }} />
+                      <Text style={s.pureVegText}>PURE VEG</Text>
+                    </View>
+                  )}
+                  
                   <View style={s.offerTag}>
                     <Text style={s.offerTagText}>20% OFF upto Rs.50</Text>
                   </View>
@@ -681,7 +854,7 @@ export default function FoodScreen() {
 
         <View style={{ height: 90 }} />
               </View>
-            </ScrollView>
+            </Animated.ScrollView>
           </ImageBackground>
 
       <DishModal
@@ -709,10 +882,168 @@ const s = StyleSheet.create({
 
   hero:        { width: "100%", height: 320 },
   heroContent: { paddingHorizontal: 16, paddingBottom: 20 },
+  redTint:     { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(220, 38, 38, 0.15)" },
 
   locationRow:   { flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 4 },
-  locationBtn:   { flexDirection: "row", alignItems: "center" },
+  locationBtn:   { flexDirection: "row", alignItems: "center", flex: 1 },
   locationLabel: { fontSize: 15, fontWeight: "600", color: DARK, flex: 1 },
+
+  // Sticky Replacement Row Styles (replaces location/profile on scroll)
+  stickyReplacementRow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+    marginBottom: 12,
+  },
+  stickySearchBarReplacement: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  stickySearchPlaceholder: {
+    fontSize: 13,
+    color: GRAY,
+    fontWeight: "500",
+  },
+  stickyToggleSwitch: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  stickyToggleTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 5,
+    backgroundColor: "#e57373",
+    justifyContent: "center",
+    padding: 2,
+  },
+  stickyToggleTrackActive: {
+    backgroundColor: "#81c784",
+  },
+  stickyToggleThumb: {
+    width: 18,
+    height: 20,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+    elevation: 2,
+    alignSelf: "flex-end",
+  },
+  stickyToggleThumbActive: {
+    alignSelf: "flex-start",
+  },
+  stickyToggleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Sticky Header Styles (appears at top when scrolling) - Same as original
+  stickyHeader: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 18, // Increased to match original searchRow spacing
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  stickyHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10, // Same gap as original searchRow
+  },
+  
+  // Sticky Search Bar - Exact copy of original searchBar
+  stickySearchBarOriginal: {
+    flex: 1, 
+    flexDirection: "row", 
+    alignItems: "center",
+    backgroundColor: "#fff", 
+    borderRadius: 10,
+    paddingHorizontal: 14, 
+    paddingVertical: 12,
+    shadowColor: "#000", 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, 
+    shadowRadius: 6, 
+    elevation: 4,
+  },
+  stickySearchPlaceholderOriginal: { 
+    fontSize: 14, 
+    color: GRAY 
+  },
+  
+  // Sticky Toggle - Exact copy of original toggleSwitch
+  stickyToggleOriginal: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  stickyToggleTrackOriginal: {
+    width: 50,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "#e57373",
+    justifyContent: "center",
+    padding: 2,
+  },
+  stickyToggleTrackActiveOriginal: {
+    backgroundColor: "#81c784",
+  },
+  stickyToggleThumbOriginal: {
+    width: 22,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 4,
+    alignSelf: "flex-end",
+  },
+  stickyToggleThumbActiveOriginal: {
+    alignSelf: "flex-start",
+  },
+  stickyToggleDotOriginal: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 
   searchRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
   searchBar: {
@@ -843,6 +1174,19 @@ const s = StyleSheet.create({
   catImg:            { width: 72, height: 72, borderRadius: 36 },
   catImgSelected:    { borderWidth: 2.5, borderColor: ORANGE },
   catImgPlaceholder: { backgroundColor: "#fff5f0", justifyContent: "center", alignItems: "center" },
+  allCategoriesImg:  { 
+    backgroundColor: "#f8f9fa", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    borderWidth: 2, 
+    borderColor: "#e9ecef",
+    borderRadius: 36, // Added border radius to make it circular
+  },
+  allCategoriesImgSelected: {
+    backgroundColor: ORANGE,
+    borderColor: ORANGE,
+    borderRadius: 36, // Ensure it stays circular when selected
+  },
   catName:           { fontSize: 11, color: DARK, marginTop: 6, textAlign: "center", fontWeight: "500", width: 72 },
 
   // Banner Styles
@@ -931,6 +1275,33 @@ const s = StyleSheet.create({
   restImgWrap:        { position: "relative" },
   restImg:            { width: "100%", height: 180 },
   restImgPlaceholder: { width: "100%", height: 180, backgroundColor: "#fff5f0", justifyContent: "center", alignItems: "center" },
+  
+  // Pure Veg Watermark
+  pureVegWatermark: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4CAF50", // Solid green background
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  pureVegText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  
   offerTag:     { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 12, paddingVertical: 6 },
   offerTagText: { color: "#fff", fontSize: 12, fontWeight: "700" },
   restInfo:     { padding: 12 },
