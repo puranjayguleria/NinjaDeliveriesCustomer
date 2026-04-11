@@ -151,11 +151,23 @@ export default function DishModal({
 
   const renderDishCard = (item: MenuItem) => {
     const qty = getItemQty(item.id);
+    
+    // Check if foodType field exists and determine color
+    let indicatorColor = '#16a34a'; // default green
+    if ((item as any).foodType) {
+      const foodTypeValue = ((item as any).foodType || '').toLowerCase().trim();
+      if (foodTypeValue === 'veg') {
+        indicatorColor = '#16a34a'; // green for veg
+      } else if (foodTypeValue === 'nonveg' || foodTypeValue === 'non-veg') {
+        indicatorColor = '#dc2626'; // red for non-veg
+      }
+    }
+    
     return (
       <TouchableOpacity key={item.id} style={s.dishCard} onPress={() => openItem(item)} activeOpacity={0.85}>
         <View style={s.dishLeft}>
-          <View style={s.vegIndicator}>
-            <View style={s.vegInner} />
+          <View style={[s.vegIndicator, { borderColor: indicatorColor }]}>
+            <View style={[s.vegInner, { backgroundColor: indicatorColor }]} />
           </View>
           <Text style={s.dishName} numberOfLines={1}>{item.name}</Text>
           <Text style={s.dishPrice}>
@@ -385,8 +397,8 @@ const s = StyleSheet.create({
   catHeader: { fontSize: 13, fontWeight: '700', color: '#64748b', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: 0.5 },
   dishCard: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: '#fff' },
   dishLeft: { flex: 1, paddingRight: 12 },
-  vegIndicator: { width: 14, height: 14, borderRadius: 2, borderWidth: 1.5, borderColor: '#16a34a', justifyContent: 'center', alignItems: 'center', marginBottom: 5 },
-  vegInner: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#16a34a' },
+  vegIndicator: { width: 14, height: 14, borderRadius: 2, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center', marginBottom: 5 },
+  vegInner: { width: 7, height: 7, borderRadius: 3.5 },
   dishName: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
   dishPrice: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginTop: 3 },
   dishVariantHint: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
