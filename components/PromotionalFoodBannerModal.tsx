@@ -11,19 +11,43 @@ import { Ionicons } from "@expo/vector-icons";
 
 type Props = {
   onBannerPress: () => void;
+  hasLocation: boolean;
+  onDismiss?: () => void;
 };
 
-export default function PromotionalFoodBannerModal({ onBannerPress }: Props) {
+export default function PromotionalFoodBannerModal({ onBannerPress, hasLocation, onDismiss }: Props) {
   const [visible, setVisible] = useState(false);
+  const [canDismiss, setCanDismiss] = useState(false);
 
-  useEffect(() => { setVisible(true); }, []);
+  useEffect(() => {
+    // Show banner immediately when app opens
+    setVisible(true);
+    
+    // Allow dismissal after 10 seconds minimum display time
+    const timer = setTimeout(() => {
+      setCanDismiss(true);
+    }, 10000); // 10 seconds
 
-  const dismiss = useCallback(() => setVisible(false), []);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const dismiss = useCallback(() => {
+    if (!canDismiss) {
+      // If user tries to dismiss before 10 seconds, do nothing
+      return;
+    }
+    setVisible(false);
+    // Call onDismiss callback after banner is dismissed
+    if (onDismiss) {
+      onDismiss();
+    }
+  }, [canDismiss, onDismiss]);
 
   const handleBannerPress = useCallback(() => {
-    dismiss();
+    // Banner click is always allowed, regardless of timer
+    setVisible(false);
     onBannerPress();
-  }, [dismiss, onBannerPress]);
+  }, [onBannerPress]);
 
   return (
     <Modal

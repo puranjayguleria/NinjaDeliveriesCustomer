@@ -66,6 +66,7 @@ import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
 import FoodOrdersScreen from "@/screens/food/FoodOrdersScreen";
 import FoodOrderBillScreen from "@/screens/food/FoodOrderBillScreen";
 import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
+import FoodDishDetailsScreen from "@/screens/food/FoodDishDetailsScreen";
 import FoodSearchScreen from "@/screens/food/FoodSearchScreen";
 import { FoodCartProvider } from "./context/FoodCartContext";
 import { useFoodCart } from "./context/FoodCartContext";
@@ -789,6 +790,7 @@ function FoodMenuStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodMenuHome" component={FoodCategoriesScreen} />
+      <FoodStack.Screen name="FoodDishDetails" component={FoodDishDetailsScreen} />
     </FoodStack.Navigator>
   );
 }
@@ -816,9 +818,9 @@ function FoodTabs() {
         const activeIndex = state.index;
         const tabs = [
           { name: 'FoodRestaurants', label: 'Home',    icon: 'home-outline' as const,       iconFocused: 'home' as const },
-          { name: 'FoodMenu',        label: 'Menu',    icon: 'grid-outline' as const,        iconFocused: 'grid' as const },
-          { name: 'FoodCartTab',     label: 'Cart',    icon: 'bag-outline' as const,         iconFocused: 'bag' as const, badge: totalItems },
-          { name: 'FoodHistoryTab',  label: 'History', icon: 'receipt-outline' as const,     iconFocused: 'receipt' as const },
+          { name: 'FoodMenu',        label: 'Explore', icon: 'compass-outline' as const,    iconFocused: 'compass' as const },
+          { name: 'FoodCartTab',     label: 'Cart',    icon: 'bag-outline' as const,        iconFocused: 'bag' as const, badge: totalItems },
+          { name: 'FoodHistoryTab',  label: 'Orders',  icon: 'receipt-outline' as const,    iconFocused: 'receipt' as const },
         ];
         return (
           <SwiggyTabBar
@@ -1202,6 +1204,7 @@ function AppTabs() {
       />
 
       <PromotionalFoodBannerModal
+        hasLocation={!!(location?.storeId || location?.address)}
         onBannerPress={() => {
           setActiveMode("food");
         }}
