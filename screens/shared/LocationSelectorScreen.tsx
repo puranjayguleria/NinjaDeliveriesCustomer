@@ -632,166 +632,293 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
    * RENDER
    ****************************************/
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* LOADER OVERLAY */}
-        {isLoading && (
-          <View style={styles.loaderOverlay}>
-            <Loader />
+    <View style={styles.container}>
+      {/* LOADER OVERLAY */}
+      {isLoading && (
+        <View style={styles.loaderOverlay}>
+          <Loader />
+        </View>
+      )}
+
+      {/* ERROR MODAL */}
+      <ErrorModal
+        visible={isErrorModalVisible}
+        message={errorMessage}
+        onClose={closeErrorModal}
+      />
+
+      {/* MAP - Full Screen Background */}
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFillObject}
+        initialRegion={DEFAULT_REGION}
+        showsPointsOfInterest={false}
+        showsTraffic={false}
+        showsCompass={false}
+        showsMyLocationButton={false}
+        onRegionChangeComplete={(newRegion) => {
+          setMarkerCoord({
+            latitude: newRegion.latitude,
+            longitude: newRegion.longitude,
+          });
+        }}
+      />
+
+      {/* Center Pin Marker */}
+      <View pointerEvents="none" style={styles.centerMarker}>
+        <View style={styles.pinWrapper}>
+          <View style={styles.pinCircle}>
+            <View style={styles.pinInner} />
           </View>
-        )}
+          <View style={styles.pinShadow} />
+        </View>
+      </View>
 
-        {/* ERROR MODAL */}
-        <ErrorModal
-          visible={isErrorModalVisible}
-          message={errorMessage}
-          onClose={closeErrorModal}
-        />
+      {/* TOP SECTION */}
+      <SafeAreaView style={styles.topSection}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={22} color="#000" />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Choose Location</Text>
+          </View>
+          <View style={styles.backBtn} />
+        </View>
 
-        {/* SEARCH SECTION */}
-        <View style={styles.searchContainer}>
-          <View style={{ zIndex: 999 }}>
-            {/* Input row with icon + placeholder */}
-            <View style={styles.searchInputRow}>
-              <Ionicons
-                name="search"
-                size={18}
-                color="#666"
-                style={styles.searchIcon}
-              />
-              <TextInput
-                style={styles.searchInput}
-                value={placeQuery}
-                onChangeText={setPlaceQuery}
-                placeholder="Search location..."
-                placeholderTextColor="#aaa"
-              />
-            </View>
-
-            {/* AUTOCOMPLETE RESULTS */}
-            {autocompleteResults.length > 0 && (
-              <FlatList
-                data={autocompleteResults}
-                keyExtractor={(item) => item.place_id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    onPress={() => handlePlaceSelection(item)}
-                    style={styles.autocompleteItem}
-                  >
-                    <Text style={styles.autocompleteText}>
-                      {item.description}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                style={styles.autocompleteContainer}
-              />
+        {/* Search Bar */}
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={20} color="#8E8E93" />
+            <TextInput
+              style={styles.searchInput}
+              value={placeQuery}
+              onChangeText={setPlaceQuery}
+              placeholder="Search area, street..."
+              placeholderTextColor="#C7C7CC"
+              returnKeyType="search"
+            />
+            {placeQuery.length > 0 && (
+              <TouchableOpacity 
+                onPress={() => {
+                  setPlaceQuery("");
+                  setAutocompleteResults([]);
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={18} color="#C7C7CC" />
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* If location not granted */}
-          {!locationPermission && (
-            <TouchableOpacity
-              style={styles.enableLocationButton}
-              onPress={openAppSettings}
-            >
-              <Text style={styles.enableLocationText}>
-                Enable Location Permission
-              </Text>
-            </TouchableOpacity>
+          {/* Autocomplete Results */}
+          {autocompleteResults.length > 0 && (
+            <View style={styles.resultsContainer}>
+              <FlatList
+                data={autocompleteResults}
+                keyExtractor={(item) => item.place_id}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() => handlePlaceSelection(item)}
+                    style={styles.resultItem}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.resultIcon}>
+                      <Ionicons name="location-outline" size={18} color="#8E8E93" />
+                    </View>
+                    <View style={styles.resultText}>
+                      <Text style={styles.resultMain} numberOfLines={1}>
+                        {item.structured_formatting.main_text}
+                      </Text>
+                      <Text style={styles.resultSecondary} numberOfLines={1}>
+                        {item.structured_formatting.secondary_text}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
           )}
-
-          {/* "Use Current Location" Button */}
-          <TouchableOpacity
-            style={styles.useCurrentLocationButton}
-            onPress={handleUseCurrentLocation}
-          >
-            <Text style={styles.useCurrentLocationText}>
-              Use Current Location
-            </Text>
-          </TouchableOpacity>
         </View>
 
-        {/* MAP SECTION */}
-        <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
-            style={StyleSheet.absoluteFillObject}
-            initialRegion={DEFAULT_REGION}
-            showsPointsOfInterest={false}
-            showsTraffic={false}
-            onRegionChangeComplete={(newRegion) => {
-              setMarkerCoord({
-                latitude: newRegion.latitude,
-                longitude: newRegion.longitude,
-              });
-            }}
-          />
-          <View pointerEvents="none" style={styles.markerFixed}>
-            <Image
-              style={styles.marker}
-              source={{
-                uri: "https://img.icons8.com/color/96/000000/map-pin.png",
-              }}
-            />
+        {/* Current Location Button */}
+        <TouchableOpacity
+          style={styles.currentLocBtn}
+          onPress={handleUseCurrentLocation}
+          activeOpacity={0.8}
+        >
+          <View style={styles.currentLocContent}>
+            <Ionicons name="navigate-circle" size={22} color="#007AFF" />
+            <Text style={styles.currentLocText}>Use my current location</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        {/* FOOTER BUTTON */}
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.confirmButton}
-            onPress={confirmLocation}
+        {/* Permission Warning */}
+        {!locationPermission && (
+          <TouchableOpacity 
+            style={styles.permissionBanner}
+            onPress={openAppSettings}
+            activeOpacity={0.8}
           >
-            <Text style={styles.confirmButtonText}>Confirm Location</Text>
+            <Ionicons name="alert-circle" size={20} color="#FF9500" />
+            <Text style={styles.permissionText}>Enable location access</Text>
+            <Ionicons name="chevron-forward" size={18} color="#FF9500" />
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+
+      {/* BOTTOM SECTION */}
+      <View style={styles.bottomSection}>
+        <View style={styles.addressCard}>
+          <View style={styles.addressHeader}>
+            <View style={styles.addressIconContainer}>
+              <Ionicons name="location" size={20} color="#007AFF" />
+            </View>
+            <View style={styles.addressContent}>
+              <Text style={styles.addressLabel}>Selected Location</Text>
+              <Text style={styles.addressValue} numberOfLines={2}>
+                {address}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.confirmBtn}
+            onPress={confirmLocation}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.confirmBtnText}>Confirm Location</Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* BOTTOM SHEET (SAVE FORM) */}
-        <Modal visible={showSaveForm} animationType="slide" transparent>
+      {/* SAVE LOCATION MODAL */}
+      <Modal 
+        visible={showSaveForm} 
+        animationType="slide" 
+        transparent
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowSaveForm(false)}
+          />
+          
           <KeyboardAvoidingView
-            style={styles.modalContainer}
-            behavior="padding"
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.modalContent}
           >
-            <View style={styles.bottomSheet}>
-              <Text style={styles.saveFormTitle}>Save Your Location</Text>
-              <Text style={styles.saveFormSubtitle}>
-                Enter your house/flat number and a label (like "Home", "Office",
-                etc.)
-              </Text>
+            <View style={styles.sheetContainer}>
+              {/* Handle */}
+              <View style={styles.sheetHandle} />
+              
+              {/* Header */}
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>Add Address Details</Text>
+                <Text style={styles.sheetSubtitle}>
+                  Help us deliver to your doorstep
+                </Text>
+              </View>
 
-              <TextInput
-                style={styles.inputField}
-                placeholder="House / Flat No."
-                placeholderTextColor="#999"
-                value={houseNo}
-                onChangeText={setHouseNo}
-              />
-              <TextInput
-                style={styles.inputField}
-                placeholder="Name of Place (e.g. Home)"
-                placeholderTextColor="#999"
-                value={placeLabel}
-                onChangeText={setPlaceLabel}
-              />
+              {/* Form */}
+              <View style={styles.form}>
+                {/* House Number Input */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>House / Flat / Floor</Text>
+                  <View style={styles.inputContainer}>
+                    <View style={styles.inputIconContainer}>
+                      <Ionicons name="home-outline" size={18} color="#8E8E93" />
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., 301, Tower A"
+                      placeholderTextColor="#C7C7CC"
+                      value={houseNo}
+                      onChangeText={setHouseNo}
+                    />
+                  </View>
+                </View>
 
-              <TouchableOpacity
-                style={styles.saveLocationButton}
-                onPress={handleSaveLocationForm}
-              >
-                <Text style={styles.saveLocationButtonText}>Save Location</Text>
-              </TouchableOpacity>
+                {/* Label Selection */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Save as</Text>
+                  <View style={styles.chipContainer}>
+                    {["Home", "Work", "Other"].map((label) => (
+                      <TouchableOpacity
+                        key={label}
+                        style={[
+                          styles.chip,
+                          placeLabel === label && styles.chipActive
+                        ]}
+                        onPress={() => setPlaceLabel(label)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons 
+                          name={
+                            label === "Home" ? "home" : 
+                            label === "Work" ? "briefcase" : 
+                            "location"
+                          } 
+                          size={16} 
+                          color={placeLabel === label ? "#007AFF" : "#8E8E93"} 
+                        />
+                        <Text style={[
+                          styles.chipText,
+                          placeLabel === label && styles.chipTextActive
+                        ]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowSaveForm(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
+                  {/* Custom Label Input */}
+                  {placeLabel === "Other" && (
+                    <View style={[styles.inputContainer, { marginTop: 12 }]}>
+                      <View style={styles.inputIconContainer}>
+                        <Ionicons name="create-outline" size={18} color="#8E8E93" />
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter custom name"
+                        placeholderTextColor="#C7C7CC"
+                        value={placeLabel === "Other" ? "" : placeLabel}
+                        onChangeText={setPlaceLabel}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {/* Action Buttons */}
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={handleSaveLocationForm}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.primaryBtnText}>Save & Continue</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.secondaryBtn}
+                  onPress={() => setShowSaveForm(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.secondaryBtnText}>Skip for now</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </KeyboardAvoidingView>
-        </Modal>
-      </View>
-    </SafeAreaView>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -801,201 +928,438 @@ export default LocationSelectorScreen;
  *          STYLES
  ****************************************/
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f2f2f2",
-  },
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#F2F2F7",
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: "rgba(0,0,0,0.3)",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 999,
+    zIndex: 9999,
   },
 
   /*****************************************
-   * SEARCH + AUTOCOMPLETE
+   * CENTER PIN MARKER
    *****************************************/
-  searchContainer: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingTop: 30,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    zIndex: 10,
-  },
-  searchInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    backgroundColor: "#f9f9f9",
-    paddingHorizontal: 8,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: "#333",
-  },
-  autocompleteContainer: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    maxHeight: 160,
-    backgroundColor: "#fff",
-    zIndex: 999,
-  },
-  autocompleteItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  autocompleteText: {
-    fontSize: 16,
-    color: "#333",
-  },
-
-  enableLocationButton: {
-    marginTop: 10,
-    backgroundColor: "#FF7043",
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  enableLocationText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  useCurrentLocationButton: {
-    marginTop: 10,
-    backgroundColor: "#4CAF50",
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  useCurrentLocationText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-
-  /*****************************************
-   * MAP
-   *****************************************/
-  mapContainer: {
-    flex: 1,
-    backgroundColor: "#ddd",
-  },
-  markerFixed: {
+  centerMarker: {
     position: "absolute",
     top: "50%",
     left: "50%",
-    marginLeft: -24,
-    marginTop: -48,
+    marginLeft: -18,
+    marginTop: -36,
+    zIndex: 1,
   },
-  marker: {
-    width: 48,
-    height: 48,
-    resizeMode: "contain",
-  },
-
-  /*****************************************
-   * FOOTER
-   *****************************************/
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderColor: "#ccc",
-    backgroundColor: "#fff",
-  },
-  confirmButton: {
-    backgroundColor: "#28a745",
-    paddingVertical: 14,
-    borderRadius: 12,
+  pinWrapper: {
     alignItems: "center",
   },
-  confirmButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 17,
+  pinCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#007AFF",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  pinInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#fff",
+  },
+  pinShadow: {
+    width: 20,
+    height: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    marginTop: 2,
   },
 
   /*****************************************
-   * BOTTOM SHEET
+   * TOP SECTION
    *****************************************/
-  modalContainer: {
+  topSection: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 16,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  headerTextContainer: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#000",
+    letterSpacing: -0.4,
+  },
+
+  /*****************************************
+   * SEARCH BAR
+   *****************************************/
+  searchWrapper: {
+    marginBottom: 12,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#000",
+    padding: 0,
+  },
+
+  /*****************************************
+   * AUTOCOMPLETE RESULTS
+   *****************************************/
+  resultsContainer: {
+    marginTop: 8,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    maxHeight: 220,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+    overflow: "hidden",
+  },
+  resultItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E5EA",
+  },
+  resultIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F2F2F7",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  resultText: {
+    flex: 1,
+  },
+  resultMain: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#000",
+    marginBottom: 2,
+  },
+  resultSecondary: {
+    fontSize: 13,
+    color: "#8E8E93",
+  },
+
+  /*****************************************
+   * CURRENT LOCATION BUTTON
+   *****************************************/
+  currentLocBtn: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  currentLocContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    gap: 8,
+  },
+  currentLocText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#007AFF",
+  },
+
+  /*****************************************
+   * PERMISSION BANNER
+   *****************************************/
+  permissionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF9E6",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#FFE5B4",
+  },
+  permissionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#B87503",
+  },
+
+  /*****************************************
+   * BOTTOM SECTION
+   *****************************************/
+  bottomSection: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
+  },
+  addressCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  addressHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 16,
+    gap: 12,
+  },
+  addressIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E8F4FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addressContent: {
+    flex: 1,
+  },
+  addressLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#8E8E93",
+    marginBottom: 4,
+    letterSpacing: -0.1,
+  },
+  addressValue: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#000",
+    lineHeight: 20,
+  },
+  confirmBtn: {
+    backgroundColor: "#007AFF",
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBtnText: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#fff",
+    letterSpacing: -0.4,
+  },
+
+  /*****************************************
+   * MODAL
+   *****************************************/
+  modalOverlay: {
+    flex: 1,
     justifyContent: "flex-end",
   },
-  bottomSheet: {
-    backgroundColor: "#e7f8f6", // pastel teal
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
-  saveFormTitle: {
-    fontSize: 18,
+  modalContent: {
+    justifyContent: "flex-end",
+  },
+  sheetContainer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 5,
+    backgroundColor: "#D1D1D6",
+    borderRadius: 3,
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  sheetHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  sheetTitle: {
+    fontSize: 24,
     fontWeight: "700",
-    color: "#333",
+    color: "#000",
     marginBottom: 6,
+    letterSpacing: -0.5,
   },
-  saveFormSubtitle: {
-    fontSize: 14,
-    color: "#555",
-    marginBottom: 16,
+  sheetSubtitle: {
+    fontSize: 15,
+    color: "#8E8E93",
+    lineHeight: 20,
   },
-  inputField: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    marginBottom: 10,
+
+  /*****************************************
+   * FORM
+   *****************************************/
+  form: {
+    paddingHorizontal: 24,
+    gap: 24,
+  },
+  formGroup: {
+    gap: 12,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#000",
+    letterSpacing: -0.2,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F2F2F7",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  inputIconContainer: {
+    width: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: "#000",
+    padding: 0,
+  },
+
+  /*****************************************
+   * CHIPS
+   *****************************************/
+  chipContainer: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  chip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F2F2F7",
+    borderRadius: 12,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 6,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  chipActive: {
+    backgroundColor: "#E8F4FF",
+    borderColor: "#007AFF",
+  },
+  chipText: {
     fontSize: 14,
-    color: "#333",
+    fontWeight: "600",
+    color: "#8E8E93",
   },
-  saveLocationButton: {
-    backgroundColor: "#3498db",
-    borderRadius: 8,
-    paddingVertical: 12,
+  chipTextActive: {
+    color: "#007AFF",
+  },
+
+  /*****************************************
+   * BUTTONS
+   *****************************************/
+  primaryBtn: {
+    backgroundColor: "#007AFF",
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
-    marginBottom: 8,
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  saveLocationButtonText: {
+  primaryBtnText: {
+    fontSize: 17,
+    fontWeight: "600",
     color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
+    letterSpacing: -0.4,
   },
-  cancelButton: {
-    backgroundColor: "#fff",
-    borderColor: "#3498db",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
+  secondaryBtn: {
+    paddingVertical: 14,
     alignItems: "center",
-    marginBottom: 8,
   },
-  cancelButtonText: {
-    color: "#3498db",
-    fontSize: 15,
-    fontWeight: "600",
+  secondaryBtnText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#8E8E93",
   },
 });
 
