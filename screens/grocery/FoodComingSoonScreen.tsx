@@ -13,12 +13,14 @@ import { useNavigation, CommonActions } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useToggleContext } from "@/context/ToggleContext";
+import { useLocationContext } from "@/context/LocationContext";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const FoodComingSoonScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { activeMode, setActiveMode } = useToggleContext();
+  const { location } = useLocationContext();
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -95,14 +97,13 @@ const FoodComingSoonScreen: React.FC = () => {
 
         {/* Mode Toggle Bar */}
         <View style={styles.toggleRow}>
+          {location?.grocery !== false && (
           <TouchableOpacity
             style={[
               styles.toggleBtn,
               activeMode === "grocery" && styles.toggleBtnActive,
             ]}
-            onPress={() => {
-               setActiveMode("grocery");
-             }}
+            onPress={() => { setActiveMode("grocery"); }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 
@@ -111,23 +112,18 @@ const FoodComingSoonScreen: React.FC = () => {
               color={activeMode === "grocery" ? "#00b4a0" : "#6B7280"} 
               style={{ marginRight: 5 }}
             />
-            <Text
-              style={[
-                styles.toggleLabel,
-                activeMode === "grocery" && styles.toggleLabelActive,
-              ]}
-            >
+            <Text style={[styles.toggleLabel, activeMode === "grocery" && styles.toggleLabelActive]}>
               Grocery
             </Text>
           </TouchableOpacity>
+          )}
+          {location?.services !== false && (
           <TouchableOpacity
             style={[
               styles.toggleBtn,
               activeMode === "service" && styles.toggleBtnActive,
             ]}
-            onPress={() => {
-              setActiveMode("service");
-            }}
+            onPress={() => { setActiveMode("service"); }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 
@@ -136,27 +132,21 @@ const FoodComingSoonScreen: React.FC = () => {
               color={activeMode === "service" ? "#00b4a0" : "#6B7280"} 
               style={{ marginRight: 5 }}
             />
-            <Text
-              style={[
-                styles.toggleLabel,
-                activeMode === "service" && styles.toggleLabelActive,
-              ]}
-            >
+            <Text style={[styles.toggleLabel, activeMode === "service" && styles.toggleLabelActive]}>
               Service
             </Text>
-            {/* New Badge */}
             <View style={styles.newBadge}>
               <Text style={styles.newBadgeText}>NEW</Text>
             </View>
           </TouchableOpacity>
+          )}
+          {location?.food !== false && (
           <TouchableOpacity
             style={[
               styles.toggleBtn,
               activeMode === "food" && styles.toggleBtnActive,
             ]}
-            onPress={() => {
-              setActiveMode("food");
-            }}
+            onPress={() => { setActiveMode("food"); }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 
@@ -165,19 +155,14 @@ const FoodComingSoonScreen: React.FC = () => {
               color={activeMode === "food" ? "#00b4a0" : "#6B7280"} 
               style={{ marginRight: 5 }}
             />
-            <Text
-              style={[
-                styles.toggleLabel,
-                activeMode === "food" && styles.toggleLabelActive,
-              ]}
-            >
+            <Text style={[styles.toggleLabel, activeMode === "food" && styles.toggleLabelActive]}>
               Food
             </Text>
-            {/* Coming Soon Badge */}
             <View style={styles.soonBadge}>
               <Text style={styles.soonBadgeText}>SOON</Text>
             </View>
           </TouchableOpacity>
+          )}
         </View>
       </View>
 

@@ -978,6 +978,34 @@ export default function ProductsHomeScreen() {
     location?.food === false;
   const [showAreaUnavailable, setShowAreaUnavailable] = useState(false);
 
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeVerticalMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveVerticalMode('service');
+      } else if (isFoodAvailable) {
+        setActiveVerticalMode('food');
+      }
+    } else if (activeVerticalMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveVerticalMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveVerticalMode('food');
+      }
+    } else if (activeVerticalMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveVerticalMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveVerticalMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeVerticalMode, setActiveVerticalMode]);
+
   useEffect(() => {
     if (allServicesOff) {
       setShowAreaUnavailable(true);
@@ -2170,88 +2198,97 @@ export default function ProductsHomeScreen() {
 
             {/* Grocery/Service/Food Toggle - BELOW SEARCH */}
             <View style={styles.toggleRow}>
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "grocery" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveVerticalMode("grocery");
-                }}
-              >
-                <MaterialCommunityIcons 
-                  name="basket" 
-                  size={14} 
-                  color={activeVerticalMode === "grocery" ? "#ffffff" : "#666666"} 
-                  style={{ marginRight: 4 }}
-                />
-                <Text
+              {/* Grocery Toggle - Only show if location.grocery is not false */}
+              {location?.grocery !== false && (
+                <Pressable
                   style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "grocery" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeVerticalMode === "grocery" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setActiveVerticalMode("grocery");
+                  }}
                 >
-                  Grocery
-                </Text>
-              </Pressable>
+                  <MaterialCommunityIcons 
+                    name="basket" 
+                    size={14} 
+                    color={activeVerticalMode === "grocery" ? "#ffffff" : "#666666"} 
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeVerticalMode === "grocery" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Grocery
+                  </Text>
+                </Pressable>
+              )}
 
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "service" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveVerticalMode("service");
-                }}
-              >
-                <MaterialCommunityIcons 
-                  name="hammer-wrench" 
-                  size={14} 
-                  color={activeVerticalMode === "service" ? "#ffffff" : "#666666"} 
-                  style={{ marginRight: 4 }}
-                />
-                <Text
+              {/* Service Toggle - Only show if location.services is not false */}
+              {location?.services !== false && (
+                <Pressable
                   style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "service" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeVerticalMode === "service" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setActiveVerticalMode("service");
+                  }}
                 >
-                  Service
-                </Text>
-                {/* New Badge */}
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
-                </View>
-              </Pressable>
+                  <MaterialCommunityIcons 
+                    name="hammer-wrench" 
+                    size={14} 
+                    color={activeVerticalMode === "service" ? "#ffffff" : "#666666"} 
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeVerticalMode === "service" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Service
+                  </Text>
+                  {/* New Badge */}
+                  <View style={styles.newBadge}>
+                    <Text style={styles.newBadgeText}>NEW</Text>
+                  </View>
+                </Pressable>
+              )}
 
-              <Pressable
-                style={[
-                  styles.toggleBtn,
-                  activeVerticalMode === "food" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveVerticalMode("food");
-                }}
-              >
-                <MaterialCommunityIcons 
-                  name="food" 
-                  size={14} 
-                  color={activeVerticalMode === "food" ? "#ffffff" : "#666666"} 
-                  style={{ marginRight: 4 }}
-                />
-                <Text
+              {/* Food Toggle - Only show if location.food is not false */}
+              {location?.food !== false && (
+                <Pressable
                   style={[
-                    styles.toggleLabel,
-                    activeVerticalMode === "food" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeVerticalMode === "food" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setActiveVerticalMode("food");
+                  }}
                 >
-                  Food
-                </Text>
-                {/* Coming Soon Badge */}
-                <View style={styles.soonBadge}>
-                  <Text style={styles.soonBadgeText}>SOON</Text>
-                </View>
-              </Pressable>
+                  <MaterialCommunityIcons 
+                    name="food" 
+                    size={14} 
+                    color={activeVerticalMode === "food" ? "#ffffff" : "#666666"} 
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeVerticalMode === "food" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Food
+                  </Text>
+                  {/* Coming Soon Badge */}
+                  <View style={styles.soonBadge}>
+                    <Text style={styles.soonBadgeText}>SOON</Text>
+                  </View>
+                </Pressable>
+              )}
             </View>
 
             {/* Informational messages displayed below the search bar.

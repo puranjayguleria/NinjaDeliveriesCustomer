@@ -274,15 +274,24 @@ const RootStack = createNativeStackNavigator();
 // Wrapper component that shows the right home screen based on toggle
 const HomeScreenWrapper = () => {
   const { activeMode } = useToggleContext();
-  
-  if (activeMode === "service") {
-    return <ServicesScreen />;
-  } else if (activeMode === "food") {
-    // If food is selected, we show the coming soon screen
-    // Note: We keep the mode as 'food' so the toggle bar reflects it
-    return <FoodComingSoonScreen />;
-  }
-  return <ProductsHomeScreen />;
+  return (
+    <>
+      {/* Always mounted — avoids layout jump on toggle */}
+      <View style={{ flex: 1, display: activeMode === 'service' ? 'flex' : 'none' }}>
+        <ServicesScreen />
+      </View>
+      {activeMode === 'food' && (
+        <View style={{ flex: 1 }}>
+          <FoodComingSoonScreen />
+        </View>
+      )}
+      {activeMode === 'grocery' && (
+        <View style={{ flex: 1 }}>
+          <ProductsHomeScreen />
+        </View>
+      )}
+    </>
+  );
 };
 
 function HomeStack() {
@@ -684,19 +693,46 @@ function CategoriesStack() {
 
 
 
-const CartStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
+const CartStack = () => {
+  const { location } = useLocationContext();
+  const showGrocery = location?.grocery !== false;
+  const showServices = location?.services !== false;
+
+  // When grocery is off but services is on, start directly on ServicesHome
+  const initialRoute = (!showGrocery && showServices) ? 'ServicesHome' : 'CartHome';
+
+  return (
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
     <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
     <Stack.Screen name="GroceryCart" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
     <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
+    <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+    <Stack.Screen name="AllServices" component={AllServicesScreen} />
+    <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />
+    <Stack.Screen name="PackageSelection" component={PackageSelectionScreen} />
+    <Stack.Screen name="CompanySelection" component={CompanySelectionScreen} />
+    <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
+    <Stack.Screen name="Payment" component={PaymentScreen} />
+    <Stack.Screen name="BookingDetails" component={BookingDetailsScreen} />
+    <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} />
+    <Stack.Screen name="TrackBooking" component={TrackBookingScreen} />
+    <Stack.Screen name="ServiceCart" component={ServiceCartScreen} />
+    <Stack.Screen name="ServiceCheckout" component={ServiceCheckoutScreen} />
+    <Stack.Screen name="ServiceAddOn" component={ServiceAddOnScreen} />
+    <Stack.Screen name="ServiceCalling" component={ServiceCallingScreen} />
+    <Stack.Screen name="ServiceVisit" component={ServiceVisitScreen} />
+    <Stack.Screen name="ServiceEnd" component={ServiceEndScreen} />
+    <Stack.Screen name="FinalCheckout" component={FinalCheckoutScreen} />
+    <Stack.Screen name="BookingHistory" component={BookingHistoryScreen} />
     <Stack.Screen
       name="OrderAllocating"
       component={OrderAllocatingScreen}
       options={{ headerShown: false }}
     />
   </Stack.Navigator>
-);
+  );
+};
 
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -730,7 +766,8 @@ const ProfileStack = () => (
 function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
-  const { location, updateLocation } = useLocationContext(); // Add updateLocation
+  const { location, updateLocation } = useLocationContext();
+  const { activeMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
@@ -766,6 +803,7 @@ function AppTabs() {
             
             const flags = {
               grocery: data?.grocery ?? true,
+              food: data?.food ?? true,
               services: data?.services ?? true,
             };
             
@@ -801,27 +839,11 @@ function AppTabs() {
     const navigation = navigationRef.current;
     if (!navigation) return;
 
-    // Check if current tab is still available
-    const isHomeAvailable = showGrocery;
-    const isCategoriesAvailable = showGrocery;
-    const isServicesAvailable = showServices;
-
-    // If on Home or Categories tab and grocery becomes false
-    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab') && !showGrocery) {
-      console.log('[AppTabs] Current tab unavailable, navigating to available tab');
-      if (isServicesAvailable) {
-        navigation.navigate('CategoriesTab' as never);
-      } else {
-        navigation.navigate('HomeTab' as never);
-      }
+    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab' || currentTab === 'BuyAgainTab') && !showGrocery) {
+      console.log('[AppTabs] Grocery tab unavailable, navigating to CartFlow');
+      navigation.navigate('CartFlow' as never);
     }
-    
-    // If on Services tab and services becomes false (legacy guard, ServicesTab no longer exists as a tab)
-    if (currentTab === 'ServicesTab' && !showServices) {
-      console.log('[AppTabs] Services tab unavailable, navigating to available tab');
-      navigation.navigate('HomeTab' as never);
-    }
-  }, [showGrocery, showServices, currentTab]);
+  }, [showGrocery, currentTab]);
 
   // Navigate to HomeTab when grocery becomes true (from false)
   const prevGroceryRef = useRef(showGrocery);
@@ -926,8 +948,13 @@ function AppTabs() {
       { text: "Cancel", style: "cancel" },
       {
         text: "Continue",
-        onPress: () =>
-          navigation.navigate("HomeTab", { screen: "LoginInHomeStack" }),
+        onPress: () => {
+            try {
+              navigation.navigate("HomeTab", { screen: "LoginInHomeStack" });
+            } catch {
+              navigation.navigate("CartFlow");
+            }
+          },
       },
     ]);
 
@@ -1015,11 +1042,7 @@ function AppTabs() {
       />
 
       <Tab.Navigator
-        initialRouteName={
-          showGrocery 
-            ? "HomeTab" 
-            : "Profile"  // Fallback to Profile if nothing else is available
-        }
+        initialRouteName={showGrocery ? "HomeTab" : "CartFlow"}
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
@@ -1032,7 +1055,7 @@ function AppTabs() {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
-            tabBarStyle: {
+            tabBarStyle: (activeMode === 'service' || activeMode === 'food') ? { display: 'none' } : {
               backgroundColor: "#ffffff",
               borderTopWidth: 1,
               borderTopColor: "#f0f0f0",
@@ -1130,8 +1153,6 @@ function AppTabs() {
             })}
           />
         )}
-        
-        {/* Services Tab removed - now accessible via toggle in ProductsHomeScreen */}
 
         {/* ⿣ Featured Tab */}
 
@@ -1179,8 +1200,8 @@ function AppTabs() {
                       index: 0,
                       routes: [
                         {
-                          name: "HomeTab",
-                          state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
+                          name: "CartFlow",
+                          state: { routes: [{ name: "ServiceCart" }] },
                         },
                       ],
                     })

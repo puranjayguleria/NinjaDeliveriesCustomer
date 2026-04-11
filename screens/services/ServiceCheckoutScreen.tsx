@@ -370,10 +370,12 @@ export default function ServiceCheckoutScreen() {
         console.error('Error saving checkout state:', e);
       }
       
-      // Navigate to login screen in HomeTab
-      navigation.navigate('HomeTab', {
-        screen: 'LoginInHomeStack'
-      });
+      // Navigate to login screen — use HomeTab if available, else CartFlow
+      try {
+        navigation.navigate('HomeTab', { screen: 'LoginInHomeStack' });
+      } catch {
+        navigation.navigate('CartFlow', { screen: 'ServicesHome' });
+      }
       return;
     }
 

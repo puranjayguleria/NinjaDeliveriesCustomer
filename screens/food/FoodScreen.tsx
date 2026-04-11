@@ -9,6 +9,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { useLocationContext } from '@/context/LocationContext';
 import { useToggleContext } from '@/context/ToggleContext';
+import { navigationRef } from '@/navigation/rootNavigation';
 import {
   getActiveRestaurants,
   getFoodCategories,
@@ -52,6 +53,34 @@ export default function FoodScreen() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveMode('service');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
   const onRefresh = () => { setRefreshing(true); fetchData(); };
 
@@ -130,39 +159,57 @@ export default function FoodScreen() {
 
           {/* ── Grocery/Service/Food Toggle ── */}
           <View style={s.toggleRow}>
-            <TouchableOpacity
-              style={[s.toggleBtn, activeMode === "grocery" && s.toggleBtnActive]}
-              onPress={() => {
-                setActiveMode("grocery");
-                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.toggleLabel, activeMode === "grocery" && s.toggleLabelActive]}>
-                Grocery
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.toggleBtn, activeMode === "service" && s.toggleBtnActive]}
-              onPress={() => {
-                setActiveMode("service");
-                navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.toggleLabel, activeMode === "service" && s.toggleLabelActive]}>
-                Service
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.toggleBtn, activeMode === "food" && s.toggleBtnActive]}
-              onPress={() => setActiveMode("food")}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.toggleLabel, activeMode === "food" && s.toggleLabelActive]}>
-                Food
-              </Text>
-            </TouchableOpacity>
+            {/* Grocery Toggle - Only show if location.grocery is not false */}
+            {location?.grocery !== false && (
+              <TouchableOpacity
+                style={[s.toggleBtn, activeMode === "grocery" && s.toggleBtnActive]}
+                onPress={() => {
+                  setActiveMode("grocery");
+                  // Navigate to HomeTab only if it exists (grocery is available)
+                  if (location?.grocery !== false) {
+                    navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.toggleLabel, activeMode === "grocery" && s.toggleLabelActive]}>
+                  Grocery
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* Service Toggle - Only show if location.services is not false */}
+            {location?.services !== false && (
+              <TouchableOpacity
+                style={[s.toggleBtn, activeMode === "service" && s.toggleBtnActive]}
+                onPress={() => {
+                  setActiveMode("service");
+                  // Navigate to HomeTab only if it exists (grocery is available)
+                  if (location?.grocery !== false) {
+                    navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+                  }
+                  // If grocery is false, just set mode without navigation
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.toggleLabel, activeMode === "service" && s.toggleLabelActive]}>
+                  Service
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* Food Toggle - Only show if location.food is not false */}
+            {location?.food !== false && (
+              <TouchableOpacity
+                style={[s.toggleBtn, activeMode === "food" && s.toggleBtnActive]}
+                onPress={() => setActiveMode("food")}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.toggleLabel, activeMode === "food" && s.toggleLabelActive]}>
+                  Food
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Animated.View>

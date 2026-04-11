@@ -1,5 +1,7 @@
 import { useLocationContext } from "../../context/LocationContext";
 import { useToggleContext } from "../../context/ToggleContext";
+import { useServiceCart } from "../../context/ServiceCartContext";
+import ServicesBottomTabs from "../../components/ServicesBottomTabs";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -24,6 +26,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from "@react-navigation/native";
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
+import { setSharedCategories } from "../../services/sharedCategoriesStore";
 import { firestore } from "../../firebase.native";
 import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -267,6 +270,9 @@ export default function ServicesScreen() {
   const isFocused = useIsFocused();
   const { location } = useLocationContext();
   const { activeMode, setActiveMode } = useToggleContext();
+  const { totalItems: serviceTotalItems } = useServiceCart();
+  
+  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'cart' | 'bookings'>('home');
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
@@ -432,26 +438,44 @@ export default function ServicesScreen() {
   // That collection can be large and may take a long time to stream the first snapshot.
   const isLoading = loading || zoneCompaniesLoading;
 
-  // Check if services are enabled for this store
+  // If services become unavailable, silently switch to an available mode
   useEffect(() => {
     if (hasSelectedLocation && location?.services === false) {
-      Alert.alert(
-        "Service Unavailable",
-        "Services are not available at this location.",
-        [
-          {
-            text: "Change Location",
-            onPress: () => navigation.navigate("LocationSelector"),
-          },
-          {
-            text: "Go Back",
-            onPress: () => navigation.goBack(),
-            style: "cancel",
-          },
-        ]
-      );
+      if (location?.grocery !== false) {
+        setActiveMode('grocery');
+      } else if (location?.food !== false) {
+        setActiveMode('food');
+      }
     }
-  }, [location?.services, navigation, hasSelectedLocation]);
+  }, [location?.services, hasSelectedLocation]);
+
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveMode('service');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
   const zoneCompanyIdSet = React.useMemo(() => {
     const ids = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
@@ -981,6 +1005,13 @@ export default function ServicesScreen() {
     }, 1000);
   }, []);
 
+  // Reset active tab to home when screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      setActiveTab('home');
+    }, [])
+  );
+
   // Re-subscribe to listeners when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -1064,6 +1095,7 @@ export default function ServicesScreen() {
             // Populate images in the background to avoid blocking initial paint.
             const seq = ++categorySnapshotSeqRef.current;
             setRawServiceCategories(allCategories);
+            setSharedCategories(allCategories); // share with AllServicesScreen
             setLoading(false);
             if (__DEV__) console.log('✅ Real-time categories updated (raw):', allCategories.length);
 
@@ -1072,6 +1104,7 @@ export default function ServicesScreen() {
                 if (categorySnapshotSeqRef.current !== seq) return;
                 // Trigger re-render with the now-populated imageUrl fields.
                 setRawServiceCategories([...allCategories]);
+                setSharedCategories([...allCategories]); // update shared store with images
 
                 // Persist for next cold start.
                 AsyncStorage.setItem(
@@ -3247,15 +3280,7 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Booking History Icon */}
-              <TouchableOpacity
-                onPress={handleHistoryPress}
-                activeOpacity={0.8}
-                style={styles.historyIconButtonSearch}
-                accessibilityLabel="Booking history"
-              >
-                <Ionicons name="reader-outline" size={20} color="#0f172a" />
-              </TouchableOpacity>
+
             </View>
           </Animated.View>
 
@@ -3281,66 +3306,85 @@ export default function ServicesScreen() {
           <>
             {/* Grocery/Service/Food Toggle - Moved to top of content */}
             <View style={styles.toggleRowContent}>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  activeMode === "grocery" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveMode("grocery");
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: "HomeTab" }],
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
+              {/* Grocery Toggle - Only show if location.grocery is not false */}
+              {location?.grocery !== false && (
+                <TouchableOpacity
                   style={[
-                    styles.toggleLabel,
-                    activeMode === "grocery" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeMode === "grocery" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setActiveMode("grocery");
+                    // Navigate to HomeTab only if it exists (grocery is available)
+                    if (location?.grocery !== false) {
+                      navigation.reset({
+                        index: 0,
+                        routes: [{ name: "HomeTab" }],
+                      });
+                    }
+                  }}
+                  activeOpacity={0.7}
                 >
-                  Grocery
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  activeMode === "service" && styles.toggleBtnActive,
-                ]}
-                onPress={() => setActiveMode("service")}
-                activeOpacity={0.7}
-              >
-                <Text
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "grocery" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Grocery
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* Service Toggle - Only show if location.services is not false */}
+              {location?.services !== false && (
+                <TouchableOpacity
                   style={[
-                    styles.toggleLabel,
-                    activeMode === "service" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeMode === "service" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => setActiveMode("service")}
+                  activeOpacity={0.7}
                 >
-                  Service
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  activeMode === "food" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setActiveMode("food");
-                  navigation.navigate("ProductsHome");
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "service" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Service
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* Food Toggle - Only show if location.food is not false */}
+              {location?.food !== false && (
+                <TouchableOpacity
                   style={[
-                    styles.toggleLabel,
-                    activeMode === "food" && styles.toggleLabelActive,
+                    styles.toggleBtn,
+                    activeMode === "food" && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setActiveMode("food");
+                    // Navigate based on grocery availability
+                    if (location?.grocery !== false) {
+                      // HomeTab exists
+                      navigation.navigate("ProductsHome");
+                    }
+                    // If grocery is false, just set mode, user is already on a screen
+                  }}
+                  activeOpacity={0.7}
                 >
-                  Food
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "food" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Food
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Service Banners */}
@@ -3459,135 +3503,159 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking, activeMode, setActiveMode, navigation]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking, activeMode, setActiveMode, navigation, location]);
+
+  const renderListHeader = React.useCallback(() => ListHeaderUI, [ListHeaderUI]);
 
   return (
-    <ImageBackground
-      source={require("../../assets/serviceBG.png")}
-      style={styles.container}
-      resizeMode="cover"
-    >
-      {StickyHeaderUI}
-      {serviceConfirmedBanner && (
-        <View style={styles.serviceConfirmedBanner}>
-          <View style={styles.serviceConfirmedBannerLeft}>
-            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
-            <Text style={styles.serviceConfirmedBannerText}>
-              Service booking confirmed
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={dismissServiceConfirmedBanner}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={18} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
-      )}
-      {tapLoading.visible && (
-        <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.tapLoadingCard}
-            activeOpacity={1}
-            onPress={() => setTapLoading({ visible: false })}
-          >
-            <ActivityIndicator size="small" color="#00b4a0" />
-            <Text style={styles.tapLoadingText}>{tapLoading.message || 'Opening…'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Add safety check for initial render */}
-      {!hasSelectedLocation ? (
-        <View style={styles.locationPromptContainer}>
-          <View style={styles.locationPromptCard}>
-            <View style={styles.locationPromptIconContainer}>
-              <Ionicons name="location-outline" size={48} color="#00b4a0" />
+    <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
+      <ImageBackground
+        source={require("../../assets/serviceBG.png")}
+        style={styles.container}
+        resizeMode="cover"
+      >
+        {StickyHeaderUI}
+        {serviceConfirmedBanner && (
+          <View style={styles.serviceConfirmedBanner}>
+            <View style={styles.serviceConfirmedBannerLeft}>
+              <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+              <Text style={styles.serviceConfirmedBannerText}>
+                Service booking confirmed
+              </Text>
             </View>
-            <Text style={styles.locationPromptTitle}>Select Your Location</Text>
-            <Text style={styles.locationPromptDescription}>
-              Please select your delivery location to see services available in your area
-            </Text>
             <TouchableOpacity
-              style={styles.locationPromptButton}
-              onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Services' })}
-              activeOpacity={0.8}
+              onPress={dismissServiceConfirmedBanner}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <LinearGradient
-                colors={['#10b981', '#059669', '#047857']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.locationPromptButtonGradient}
-              >
-                <Ionicons name="location" size={20} color="#fff" />
-                <Text style={styles.locationPromptButtonText}>Select Location</Text>
-              </LinearGradient>
+              <Ionicons name="close" size={18} color="#ffffff" />
             </TouchableOpacity>
           </View>
-        </View>
-      ) : !serviceCategories && isLoading ? (
-        <View style={styles.emptyLoadingContainer}>
-          <ActivityIndicator size="large" color="#00b4a0" />
-          <Text style={styles.emptyLoadingText}>Loading services...</Text>
-        </View>
-      ) : (
-        <Animated.FlatList
-          data={isLoading ? [] : (listCategories || [])}
-          keyExtractor={(item, index) => item?.id || `item-${index}`}
-          ListHeaderComponent={ListHeaderUI}
-          ListFooterComponent={ListFooterUI}
-          renderItem={renderListItem}
-          numColumns={3}
-          columnWrapperStyle={styles.gridRow}
-          key="three-columns"
-          ListEmptyComponent={
-            isLoading ? (
-              <View style={styles.emptyLoadingContainer}>
-                <ActivityIndicator size="large" color="#00b4a0" />
-                <Text style={styles.emptyLoadingText}>Loading services...</Text>
+        )}
+        {tapLoading.visible && (
+          <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.tapLoadingCard}
+              activeOpacity={1}
+              onPress={() => setTapLoading({ visible: false })}
+            >
+              <ActivityIndicator size="small" color="#00b4a0" />
+              <Text style={styles.tapLoadingText}>{tapLoading.message || 'Opening…'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Add safety check for initial render */}
+        {!hasSelectedLocation ? (
+          <View style={styles.locationPromptContainer}>
+            <View style={styles.locationPromptCard}>
+              <View style={styles.locationPromptIconContainer}>
+                <Ionicons name="location-outline" size={48} color="#00b4a0" />
               </View>
-            ) : error ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
-                <Text style={styles.emptyText}>{error}</Text>
-              </View>
-            ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 && (searchServices || []).length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
-                <Text style={styles.emptyText}>No services found</Text>
-                <Text style={styles.emptySubText}>Try different keywords</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No services available</Text>
-              </View>
-            )
-          }
-          contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 30, backgroundColor: 'white' }}
-          showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={['#00b4a0', '#00d2c7']}
-              tintColor="#00b4a0"
-            />
-          }
-          removeClippedSubviews={false}
-          maxToRenderPerBatch={10}
-          windowSize={10}
-          initialNumToRender={searchQuery ? 20 : 6}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
+              <Text style={styles.locationPromptTitle}>Select Your Location</Text>
+              <Text style={styles.locationPromptDescription}>
+                Please select your delivery location to see services available in your area
+              </Text>
+              <TouchableOpacity
+                style={styles.locationPromptButton}
+                onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Services' })}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#10b981', '#059669', '#047857']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.locationPromptButtonGradient}
+                >
+                  <Ionicons name="location" size={20} color="#fff" />
+                  <Text style={styles.locationPromptButtonText}>Select Location</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : !serviceCategories && isLoading ? (
+          <View style={styles.emptyLoadingContainer}>
+            <ActivityIndicator size="large" color="#00b4a0" />
+            <Text style={styles.emptyLoadingText}>Loading services...</Text>
+          </View>
+        ) : (
+          <Animated.FlatList
+            data={isLoading ? [] : (listCategories || [])}
+            keyExtractor={(item, index) => item?.id || `item-${index}`}
+            ListHeaderComponent={renderListHeader}
+            ListFooterComponent={ListFooterUI}
+            renderItem={renderListItem}
+            numColumns={3}
+            columnWrapperStyle={styles.gridRow}
+            key="three-columns"
+            ListEmptyComponent={
+              isLoading ? (
+                <View style={styles.emptyLoadingContainer}>
+                  <ActivityIndicator size="large" color="#00b4a0" />
+                  <Text style={styles.emptyLoadingText}>Loading services...</Text>
+                </View>
+              ) : error ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
+                  <Text style={styles.emptyText}>{error}</Text>
+                </View>
+              ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 && (searchServices || []).length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
+                  <Text style={styles.emptyText}>No services found</Text>
+                  <Text style={styles.emptySubText}>Try different keywords</Text>
+                </View>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No services available</Text>
+                </View>
+              )
+            }
+            contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 80, backgroundColor: 'white' }}
+            showsVerticalScrollIndicator={false}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#00b4a0', '#00d2c7']}
+                tintColor="#00b4a0"
+              />
+            }
+            removeClippedSubviews={false}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={searchQuery ? 20 : 6}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            nestedScrollEnabled
+          />
+        )}
+      </ImageBackground>
+      
+      {/* Services Bottom Tabs - absolute so it never shifts during layout recalc */}
+      <View style={styles.bottomTabsWrapper}>
+        <ServicesBottomTabs
+          activeTab={activeTab}
+          onTabPress={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'home') {
+              setActiveMode('service');
+            } else if (tab === 'explore') {
+              navigation.navigate('AllServices');
+            } else if (tab === 'cart') {
+              navigation.navigate('ServiceCart');
+            } else if (tab === 'bookings') {
+              navigation.navigate('BookingHistory');
+            }
+          }}
+          cartItemCount={serviceTotalItems}
         />
-      )}
-    </ImageBackground>
+      </View>
+    </View>
   );
 }
 
@@ -3595,6 +3663,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fdfdfd",
+  },
+
+  bottomTabsWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 10,
+    backgroundColor: '#ffffff',
   },
 
   serviceConfirmedBanner: {

@@ -19,8 +19,14 @@ import ServiceCancellationModal from "../../components/ServiceCancellationModal"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import auth from "@react-native-firebase/auth";
 import axios from "axios";
+import LoadingModal from '../../components/LoadingModal';
 
 const LOG_PREFIX = "📚[SvcPay]";
+
+// Session-level cache — instant re-open, cleared after 2 minutes or on refresh
+let _bookingsCache: ServiceBooking[] | null = null;
+let _bookingsCacheTs = 0;
+const BOOKINGS_CACHE_TTL = 2 * 60 * 1000;
 const log = (...args: any[]) => {
   if (__DEV__) console.log(LOG_PREFIX, ...args);
 };
@@ -68,9 +74,9 @@ const hasPotentialStatusIssues = (all: ServiceBooking[]): boolean => {
 
 export default function BookingHistoryScreen() {
   const navigation = useNavigation<any>();
-  const [bookings, setBookings] = useState<ServiceBooking[]>([]);
-  const [allBookings, setAllBookings] = useState<ServiceBooking[]>([]); // Store all bookings for count calculation
-  const [loading, setLoading] = useState(true);
+  const [bookings, setBookings] = useState<ServiceBooking[]>(_bookingsCache ? filterBookingsByStatus(_bookingsCache, 'all') : []);
+  const [allBookings, setAllBookings] = useState<ServiceBooking[]>(_bookingsCache ?? []);
+  const [loading, setLoading] = useState(_bookingsCache === null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>('all');
@@ -185,8 +191,19 @@ export default function BookingHistoryScreen() {
         return;
       }
 
+      // Return cached data instantly if still fresh and not a refresh
+      if (!isRefresh && _bookingsCache && Date.now() - _bookingsCacheTs < BOOKINGS_CACHE_TTL) {
+        const filtered = filterBookingsByStatus(_bookingsCache, filter);
+        setAllBookings(_bookingsCache);
+        setBookings(filtered.slice(0, 50));
+        setLoading(false);
+        return;
+      }
+
         // Fetch once, then filter locally for a snappy history screen.
         const allUserBookings = await FirestoreService.getSimpleUserBookings(100);
+        _bookingsCache = allUserBookings;
+        _bookingsCacheTs = Date.now();
         setAllBookings(allUserBookings);
 
         const filtered = filterBookingsByStatus(allUserBookings, filter);
@@ -269,6 +286,7 @@ export default function BookingHistoryScreen() {
   }, [allBookings]);
 
   const onRefresh = () => {
+    _bookingsCache = null; // force fresh fetch
     fetchBookings(true, activeFilter);
   };
 
@@ -822,12 +840,14 @@ export default function BookingHistoryScreen() {
               })}
             </View>
           </View>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text style={styles.loadingText}>Loading bookings...</Text>
-            </View>
-          ) : error ? (
+          <LoadingModal
+            visible={loading}
+            title="Fetching your bookings"
+            subtitle="Showing bookings for you..."
+            emoji="📋"
+            iconColor="#3b82f6"
+          />
+          {!loading && error ? (
             <View style={styles.errorContainer}>
               <Ionicons 
                 name={error.includes('log in') ? "person-outline" : "alert-circle"} 

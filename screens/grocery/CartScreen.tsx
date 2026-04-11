@@ -47,6 +47,7 @@ import { registerRazorpayWebViewCallbacks } from "../../utils/razorpayWebViewCal
 import { useWeather } from "../../context/WeatherContext";
 import { useServiceCart } from "../../context/ServiceCartContext";
 import PaymentMethodModal from "../../components/PaymentMethodModal";
+import { useToggleContext } from "../../context/ToggleContext";
 
 
 
@@ -278,6 +279,7 @@ const CartScreen: React.FC = () => {
   };
 
   const { location, updateLocation } = useLocationContext();
+  const { setActiveMode } = useToggleContext();
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
 
   const [recommended, setRecommended] = useState<Product[]>([]);
@@ -1702,7 +1704,12 @@ const CartScreen: React.FC = () => {
             {location?.grocery !== false && (
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2e7d32', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, marginBottom: 12, width: 240, justifyContent: 'center' }}
-                onPress={() => navigation.navigate('HomeTab' as never)}
+                onPress={() => {
+                  // Set mode to grocery
+                  setActiveMode('grocery');
+                  // Navigate to HomeTab which will show ProductsHome in grocery mode
+                  navigation.navigate('HomeTab' as never, { screen: 'ProductsHome' } as never);
+                }}
               >
                 <Ionicons name="basket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Shop Grocery</Text>
@@ -1711,7 +1718,10 @@ const CartScreen: React.FC = () => {
             {location?.services !== false && (
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF6B35', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, width: 240, justifyContent: 'center' }}
-                onPress={() => navigation.navigate('ServicesTab' as never, { screen: 'ServicesHome' } as never)}
+                onPress={() => {
+                  setActiveMode('service');
+                  navigation.navigate('HomeTab' as never, { screen: 'ProductsHome' } as never);
+                }}
               >
                 <Ionicons name="construct-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Explore Services</Text>

@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   TextInput,
   ImageBackground,
 } from 'react-native';
@@ -13,6 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { FirestoreService, ServiceCategory } from "../../services/firestoreService";
+import LoadingModal from '../../components/LoadingModal';
+import { getSharedCategories, hasSharedCategories } from '../../services/sharedCategoriesStore';
 
 // Function to get icon based on service category name
 const getCategoryIcon = (categoryName: string) => {
@@ -80,36 +81,55 @@ const getCategoryIcon = (categoryName: string) => {
   return "construct-outline"; // default
 };
 
+// Module-level cache — persists across mounts, cleared after 10 minutes
+let _cachedCategories: ServiceCategory[] | null = null;
+let _cacheTs = 0;
+const CACHE_TTL = 10 * 60 * 1000;
+
 export default function AllServicesScreen() {
   const navigation = useNavigation<any>();
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [filteredCategories, setFilteredCategories] = useState<ServiceCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Use shared store (populated by ServicesScreen) as instant initial data
+  const initialCats = _cachedCategories ?? (hasSharedCategories() ? getSharedCategories() : []);
+  const [categories, setCategories] = useState<ServiceCategory[]>(initialCats);
+  const [filteredCategories, setFilteredCategories] = useState<ServiceCategory[]>(initialCats);
+  const [loading, setLoading] = useState(true); // always show modal briefly on open
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchServiceCategories();
   }, []);
 
-  const fetchServiceCategories = async () => {
+  const fetchServiceCategories = async (forceRefresh = false) => {
     try {
+      // 1. Use module cache if fresh
+      if (!forceRefresh && _cachedCategories && Date.now() - _cacheTs < CACHE_TTL) {
+        setCategories(_cachedCategories);
+        setFilteredCategories(_cachedCategories);
+        setLoading(false);
+        return;
+      }
+      // 2. Use shared store from ServicesScreen (already fetched, no extra network call)
+      if (!forceRefresh && hasSharedCategories()) {
+        const shared = getSharedCategories();
+        _cachedCategories = shared;
+        _cacheTs = Date.now();
+        setCategories(shared);
+        setFilteredCategories(shared);
+        setLoading(false);
+        return;
+      }
+      // 3. Fallback: fetch from Firestore
       setLoading(true);
-      console.log('🏷️ AllServicesScreen: Fetching categories with active workers...');
       const fetchedCategories = await FirestoreService.getCategoriesWithActiveWorkers();
-      
-      // Log image statistics
-      const categoriesWithImages = fetchedCategories.filter(cat => cat.imageUrl);
-      console.log(`🖼️ AllServicesScreen: ${categoriesWithImages.length}/${fetchedCategories.length} categories have images`);
-      console.log(`📊 Showing ${fetchedCategories.length} categories with active workers`);
-      
+      _cachedCategories = fetchedCategories;
+      _cacheTs = Date.now();
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching categories:', error);
       setLoading(false);
-      // Don't show alert since we have fallback data in the service
-      // Alert.alert('Error', 'Failed to load service categories. Please try again.');
     }
   };
 
@@ -229,8 +249,13 @@ export default function AllServicesScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00b4a0" />
-        <Text style={styles.loadingText}>Loading categories...</Text>
+        <LoadingModal
+          visible={true}
+          title="Finding categories for you"
+          subtitle="Hang tight, loading services..."
+          emoji="🔍"
+          iconColor="#00b4a0"
+        />
       </View>
     );
   }
@@ -254,7 +279,7 @@ export default function AllServicesScreen() {
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshing={loading}
-        onRefresh={fetchServiceCategories}
+        onRefresh={() => fetchServiceCategories(true)}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
