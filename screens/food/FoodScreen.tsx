@@ -474,6 +474,7 @@ export default function FoodScreen() {
         restaurantId={dishModal.restaurantId}
         restaurantName={dishModal.restaurantName}
         filterCategoryId={dishModal.filterCategoryId}
+        vegMode={isVegMode}
       />
     </View>
   );

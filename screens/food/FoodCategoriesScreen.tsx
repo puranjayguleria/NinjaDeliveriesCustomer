@@ -167,9 +167,9 @@ export default function FoodCategoriesScreen() {
             style={styles.dishImage} 
           />
           
-          {/* Veg Indicator - Top Left */}
-          <View style={styles.vegIndicator}>
-            <View style={styles.vegInner} />
+          {/* Veg/Non-veg Indicator - Top Left */}
+          <View style={[styles.vegIndicator, { borderColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]}>
+            <View style={[styles.vegInner, { backgroundColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]} />
           </View>
 
           {/* Cooking Time Badge - Top Right */}

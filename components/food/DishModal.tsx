@@ -17,11 +17,12 @@ type Props = {
   restaurantName: string;
   filterCategoryId?: string | null;
   initialItem?: MenuItem | null;
+  vegMode?: boolean; // true = show veg only, false = show non-veg only
 };
 
 export default function DishModal({
   visible, onClose, restaurantId, restaurantName,
-  filterCategoryId, initialItem,
+  filterCategoryId, initialItem, vegMode,
 }: Props) {
   const { addItem, getItemQty, removeItem, totalItems, totalPrice } = useFoodCart();
   const navigation = useNavigation<any>();
@@ -79,16 +80,24 @@ export default function DishModal({
     }
   }, [visible, initialItem]);
 
+  const vegFilteredItems = React.useMemo(() => {
+    if (vegMode === undefined) return menuItems;
+    return menuItems.filter(i => {
+      const ft = ((i as any).foodType || '').toLowerCase().trim();
+      return vegMode ? ft === 'veg' : ft === 'nonveg' || ft === 'non-veg';
+    });
+  }, [menuItems, vegMode]);
+
   const displayItems = filterCategoryId
-    ? menuItems.filter(i => i.categoryId === filterCategoryId)
-    : menuItems;
+    ? vegFilteredItems.filter(i => i.categoryId === filterCategoryId)
+    : vegFilteredItems;
 
   const categories = React.useMemo(() => {
     if (filterCategoryId) return [];
     const map = new Map<string, string>();
-    menuItems.forEach(i => { if (i.categoryId && i.category) map.set(i.categoryId, i.category); });
+    vegFilteredItems.forEach(i => { if (i.categoryId && i.category) map.set(i.categoryId, i.category); });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [menuItems, filterCategoryId]);
+  }, [vegFilteredItems, filterCategoryId]);
 
   const addonsForItem = (itemId: string) => addons.filter(a => a.menuItemId === itemId);
 
@@ -340,12 +349,21 @@ export default function DishModal({
               >
                 {filterCategoryId
                   ? displayItems.map(renderDishCard)
-                  : categories.map(cat => (
-                    <View key={cat.id}>
-                      <Text style={s.catHeader}>{cat.name}</Text>
-                      {menuItems.filter(i => i.categoryId === cat.id).map(renderDishCard)}
-                    </View>
-                  ))
+                  : categories.length === 0
+                    ? (
+                      <View style={s.emptyVeg}>
+                        <Text style={s.emptyVegEmoji}>{vegMode ? '🥦' : '🍗'}</Text>
+                        <Text style={s.emptyVegText}>
+                          No {vegMode ? 'veg' : 'non-veg'} items available
+                        </Text>
+                      </View>
+                    )
+                    : categories.map(cat => (
+                      <View key={cat.id}>
+                        <Text style={s.catHeader}>{cat.name}</Text>
+                        {vegFilteredItems.filter(i => i.categoryId === cat.id).map(renderDishCard)}
+                      </View>
+                    ))
                 }
                 <View style={{ height: 32 }} />
               </ScrollView>
@@ -451,4 +469,7 @@ const s = StyleSheet.create({
   cartCountText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   cartBarText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   cartBarPrice: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  emptyVeg: { alignItems: 'center', paddingVertical: 60 },
+  emptyVegEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyVegText: { fontSize: 15, color: '#94a3b8', fontWeight: '500' },
 });
