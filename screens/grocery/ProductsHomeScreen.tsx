@@ -34,7 +34,6 @@ import auth from "@react-native-firebase/auth";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Image } from "expo-image";
-import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 
 import { useLocationContext } from "@/context/LocationContext";
 import { fetchLocationFlags } from "@/utils/fetchLocationFlags";
@@ -64,14 +63,18 @@ if (typeof globalThis !== "undefined") {
 /* ------------------------------------------------------------------ CONSTANTS */
 const INITIAL_VIDEO_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
 const COLLAPSED_VIDEO_HEIGHT = 100;
+const INITIAL_HEADER_HEIGHT = 270;
+const PAUSED_MESSAGE_EXTRA_TOP_PADDING = 60;
 const INITIAL_PADDING_TOP = Platform.OS === "ios" ? 52 : 40;
 const COLLAPSED_PADDING_TOP = Platform.OS === "ios" ? 44 : 32;
 const PLACEHOLDER_BLURHASH = "LKO2?U%2Tw=w]~RBVZRi};ofM{ay"; // tiny generic blur
 
+import { navigateToSpecializedCategory } from "../../utils/categoryNavigation";
+
 const { width } = Dimensions.get("window");
-const H = 16;
-const G = 20;
-const MOSAIC_W = width * 0.35;
+const H = 14;
+const G = 12; // ⬅ Slightly tighter
+const MOSAIC_W = width * 0.30; // ⬅ Slightly smaller
 const MOSAIC_W_GAME = width * 0.5;
 const SEARCH_PH = ["atta", "dal", "eggs", "biscuits", "coffee"];
 
@@ -257,6 +260,7 @@ const Header = memo(() => {
   const { isBadWeather } = useWeather();
   const { activeMode } = useToggleContext();
   const nav = useNavigation<any>();
+  const user = auth().currentUser;
 
   return (
     <View style={styles.headerContainer}>
@@ -265,10 +269,10 @@ const Header = memo(() => {
         onPress={() => nav.navigate("LocationSelector", { fromScreen: "Products" })}
       >
         <View style={{ flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-          <MaterialIcons name="flash-on" size={16} color="#FFD700" style={{ marginRight: 2 }} />
-          <Text style={{ color: Colors.white, fontWeight: "bold", fontSize: 13 }}>15-20 mins</Text>
+          <MaterialIcons name="flash-on" size={16} color="#007D34" style={{ marginRight: 2 }} />
+          <Text style={{ color: "#007D34", fontWeight: "900", fontSize: 13 }}>15-20 mins</Text>
         </View>
-        <Text style={{ color: Colors.white, opacity: 0.8, marginRight: 6 }}>•</Text>
+        <Text style={{ color: "#111111", opacity: 0.8, marginRight: 6 }}>•</Text>
         <View style={[styles.textRow, { flex: 1, maxWidth: "100%" }]}>
 
           <Text style={styles.locationTxt} numberOfLines={1}>
@@ -283,7 +287,7 @@ const Header = memo(() => {
             </View>
           )}
         </View>
-        <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.white} />
+        <MaterialIcons name="keyboard-arrow-down" size={18} color="#111111" />
       </Pressable>
 
       {/* Profile Icon */}
@@ -486,14 +490,11 @@ const MosaicCard: React.FC<{
         </View>
       )}
 
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)'] as any}
-        style={styles.cardLabel}
-      >
+      <View style={styles.cardLabel}>
         <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
           {cat.name}
         </Text>
-      </LinearGradient>
+      </View>
     </Pressable>
   );
 };
@@ -915,7 +916,6 @@ export default function ProductsHomeScreen() {
   const { location, updateLocation } = useLocationContext();
 
   const [lastOrder, setLastOrder] = useState<any | null>(null);
-  const [buyAgainItems, setBuyAgainItems] = useState<any[]>([]);
   const [confirmText, setConfirmText] = useState<string>("OK");
   const [homeMsg, setHomeMsg] = useState<any | null>(null);
   const [homeMsgLoading, setHomeMsgLoading] = useState(false);
@@ -926,7 +926,7 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
-    ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+    ["#FFFDE7", "#FFFDE7", "#FFFDE7"]
   ); // fallback defaults
 
   const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
@@ -979,6 +979,34 @@ export default function ProductsHomeScreen() {
     location?.services === false &&
     location?.food === false;
   const [showAreaUnavailable, setShowAreaUnavailable] = useState(false);
+
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeVerticalMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveVerticalMode('service');
+      } else if (isFoodAvailable) {
+        setActiveVerticalMode('food');
+      }
+    } else if (activeVerticalMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveVerticalMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveVerticalMode('food');
+      }
+    } else if (activeVerticalMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveVerticalMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveVerticalMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeVerticalMode, setActiveVerticalMode]);
 
   useEffect(() => {
     if (allServicesOff) {
@@ -1101,7 +1129,7 @@ export default function ProductsHomeScreen() {
   // pull gradient colors for the collapsing header from Firestore
   useEffect(() => {
     if (!location.storeId) {
-      setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"]);
+      setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"]);
       return;
     }
 
@@ -1122,10 +1150,10 @@ export default function ProductsHomeScreen() {
             : null;
 
           setHeaderGradientColors(
-            arr && arr.length ? arr : ["#FF5FA2", "#FFD1E6", "#FFFFFF"]
+            arr && arr.length ? arr : ["#FFFFFF", "#FFFFFF", "#FFFFFF"]
           );
         },
-        () => setHeaderGradientColors(["#FF5FA2", "#FFD1E6", "#FFFFFF"])
+        () => setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"])
       );
 
     return unsub;
@@ -1172,7 +1200,6 @@ export default function ProductsHomeScreen() {
     // If no user or no store selected yet, clear Buy Again
     if (!currentUser || !location.storeId) {
       setLastOrder(null);
-      setBuyAgainItems([]);
       return;
     }
 
@@ -1188,7 +1215,6 @@ export default function ProductsHomeScreen() {
 
       if (snap.empty) {
         setLastOrder(null);
-        setBuyAgainItems([]);
         return;
       }
 
@@ -1200,7 +1226,6 @@ export default function ProductsHomeScreen() {
 
       if (!latestCompleted) {
         setLastOrder(null);
-        setBuyAgainItems([]);
         return;
       }
 
@@ -1213,17 +1238,6 @@ export default function ProductsHomeScreen() {
         createdAt: data.createdAt,
         status: data.status,
       });
-
-      // Build Buy Again list from THIS order only (distinct products)
-      const byId: Record<string, any> = {};
-      items.forEach((it: any) => {
-        const rawProd = it.product || it;
-        const id = it.productId || rawProd.id || rawProd.productId;
-        if (!id) return;
-        byId[id] = { ...rawProd, id };
-      });
-
-      setBuyAgainItems(Object.values(byId));
     };
 
     fetchOrders();
@@ -1622,7 +1636,7 @@ export default function ProductsHomeScreen() {
     return map;
   }, [prodMap, bestProducts, freshProducts, extraProductsById]);
 
-  // Hydrate products referenced by lastOrder & buyAgainItems so images/stock work
+  // Hydrate products referenced by lastOrder so images/stock work
   useEffect(() => {
     if (!location.storeId) return;
 
@@ -1632,14 +1646,6 @@ export default function ProductsHomeScreen() {
       rawIds.push(
         ...(lastOrder.items || [])
           .map((it: any) => it.productId || it.product?.id || it.id)
-          .filter(Boolean)
-      );
-    }
-
-    if (buyAgainItems?.length) {
-      rawIds.push(
-        ...buyAgainItems
-          .map((raw: any) => raw?.id || raw?.productId || raw?.product?.id)
           .filter(Boolean)
       );
     }
@@ -1685,7 +1691,6 @@ export default function ProductsHomeScreen() {
   }, [
     location.storeId,
     lastOrder,
-    buyAgainItems,
     productLookupById,
     extraProductsById,
   ]);
@@ -1723,21 +1728,9 @@ export default function ProductsHomeScreen() {
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const videoHeight = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [INITIAL_VIDEO_HEIGHT, COLLAPSED_VIDEO_HEIGHT],
-    extrapolate: "clamp",
-  });
-
-  const videoOpacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
-
   const gradientOpacity = scrollY.interpolate({
-    inputRange: [50, 100],
-    outputRange: [0, 1],
+    inputRange: [0, 50],
+    outputRange: [1, 1], // Always visible now
     extrapolate: "clamp",
   });
 
@@ -1749,15 +1742,48 @@ export default function ProductsHomeScreen() {
 
   const listExtraData = useMemo(() => prodMap, [prodMap]);
 
-  const buyAgainResolved = useMemo(() => {
-    if (!buyAgainItems?.length) return [];
-    return buyAgainItems
-      .map((raw) => {
-        const id = raw?.id || raw?.productId || raw?.product?.id;
-        return id ? productLookupById[id] : null;
-      })
-      .filter((p: any) => p && (p.quantity ?? 0) > 0);
-  }, [buyAgainItems, productLookupById]);
+  // Keep message resolution in one place so both the header and list spacing
+  // react consistently when temporary paused-order messaging appears.
+  const displayHomeMessage = useMemo(() => {
+    let effectiveHomeMsg = homeMsg;
+    if (effectiveHomeMsg) {
+      const text = String(effectiveHomeMsg.text || "").toLowerCase();
+      if (
+        text.includes("riders occupied") ||
+        text.includes("high demand") ||
+        (text.includes("riders") && text.includes("occupied")) ||
+        text.includes("demand")
+      ) {
+        effectiveHomeMsg = null;
+      }
+    }
+
+    if (messageDismissed) return null;
+
+    const isOrdersPausedMsg = (msg: any) => {
+      const msgType = String(msg?.type || "").toLowerCase();
+      const iconKey = String(msg?.icon || "").toLowerCase();
+      const text = String(msg?.text || "").toLowerCase();
+      return (
+        msgType === "warning" ||
+        iconKey === "bolt" ||
+        text.includes("order") ||
+        text.includes("rider") ||
+        text.includes("busy")
+      );
+    };
+
+    let activeHomeMsg: any | null = null;
+    if (effectiveHomeMsg) {
+      if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
+        activeHomeMsg = effectiveHomeMsg;
+      }
+    }
+
+    return activeHomeMsg || pausedMessage;
+  }, [homeMsg, isOrderAcceptancePaused, messageDismissed, pausedMessage]);
+
+  const isPausedMessageVisible = displayHomeMessage === pausedMessage && !!displayHomeMessage;
 
   const loadHighlights = useCallback(async () => {
     if (!location.storeId) {
@@ -1812,37 +1838,9 @@ export default function ProductsHomeScreen() {
       return;
     }
 
-    if (name === "Chocolates") {
-      const storeId = location.storeId || null;
-      if (storeId) {
-        try {
-          const snap = await firestore()
-            .collection("subcategories")
-            .where("storeId", "==", storeId)
-            .where("name", "==", "Chocolate Gift Box")
-            .limit(1)
-            .get();
-
-          if (!snap.empty) {
-            const doc = snap.docs[0];
-            const data: any = doc.data() || {};
-            const categoryId = String(data.categoryId || "Gift Shop").replace(/`/g, "").trim();
-            nav.navigate("ProductListingFromHome", {
-              categoryId,
-              categoryName: categoryId,
-              subcategoryId: doc.id,
-            });
-            return;
-          }
-        } catch {}
-      }
-
-      nav.navigate("ProductListingFromHome", {
-        categoryName: name,
-        searchQuery: "chocolate",
-      });
-      return;
-    }
+    const storeId = location.storeId || "0oS7Zig2gxj2MJesvlC2";
+    const handled = await navigateToSpecializedCategory(name, storeId, nav, maybeNavigateCat);
+    if (handled) return;
 
     if (name === "Blossoms") {
       const storeId = location.storeId || null;
@@ -1875,8 +1873,6 @@ export default function ProductsHomeScreen() {
       return;
     }
 
-
-    
     // Define keyword mappings for shortcuts that may not match category names exactly
     const keywordMappings: Record<string, string[]> = {
       "Chocolates": ["chocolate", "chocolates", "choco"],
@@ -1920,33 +1916,153 @@ export default function ProductsHomeScreen() {
     <>
       {/* Promotional banners */}
       <BannerSwitcher storeId={location.storeId || ""} />
-      {/* Last order → Repeat order card */}
-      {/* Buy again section using existing QuickTile cards */}
-      {buyAgainResolved.length > 0 && (
-        <View>
-          <Text style={styles.buyAgainTitle}>Buy Again</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingLeft: H,
-              paddingBottom: 16,
-              paddingRight: H,
-            }}
-          >
-            {buyAgainResolved.map((p: any) => {
-              const id = p?.id || p?.productId;
-              if (!id) return null;
-              const isPan = isPanProd(p);
+
+      {/* Feature Tiles - 3 Professional Carts */}
+      <View style={{ marginTop: isPausedMessageVisible ? -35 : -80, marginBottom: 12 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: H }}
+        >
+          {[
+            {
+              title: "Best Sellers",
+              sub: "Top Products",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Fbest%20seller.png?alt=media&token=8808ea27-2af7-4efd-8a47-c177d901fffa" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "best" }),
+            },
+            {
+              title: "Fresh Arrivals",
+              sub: "New Stock",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Ffresh%20arrivals.png?alt=media&token=a3435465-6d5e-4e03-add6-b74be1aa9637" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "fresh" }),
+            },
+            {
+              title: "Offers",
+              sub: "Hot Deals",
+              img: { uri: "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/normal%20ui%2Foffers.png?alt=media&token=5f466286-0cb2-4da7-b4c3-dc5ee9b0c3a6" },
+              onPress: () => nav.navigate("AllDiscountedProducts", { type: "sale" }),
+            },
+          ].map((t, i) => (
+            <TouchableOpacity
+              key={i}
+              activeOpacity={0.9}
+              onPress={t.onPress}
+              style={{
+                width: 100,
+                height: 120,
+                marginRight: 10,
+                borderRadius: 12,
+                backgroundColor: '#fff',
+                overflow: 'hidden',
+                elevation: 2,
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                shadowOffset: { width: 0, height: 2 },
+              }}
+            >
+              <Image source={t.img} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.8)"]}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: 6,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{t.title}</Text>
+                <Text style={{ color: '#eee', fontSize: 8, fontWeight: '600' }}>{t.sub}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Category Shortcuts - Circle Icons */}
+      <View style={{ marginTop: 0, marginBottom: 8 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: H }}
+        >
+          {(() => {
+            const mandatory = [
+              { name: "Pooja Essentials" },
+              { name: "Fruits" },
+              { name: "Vegetables" },
+              { name: "Dairy" },
+            ];
+            
+            // Merge dynamic shortcuts, avoiding duplicates
+            const allShortcuts = [...mandatory];
+            categoryShortcuts.forEach(ds => {
+              if (
+                ds.name.toLowerCase() !== "snacks" &&
+                !allShortcuts.find(s => s.name.toLowerCase() === ds.name.toLowerCase())
+              ) {
+                allShortcuts.push(ds);
+              }
+            });
+
+            const profImgMap: Record<string, string> = {
+              "Pooja Essentials": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1770882631182_Pooja%20Essentials.png?alt=media&token=607e9e12-60b9-4131-ba7f-7c73282cde15",
+              "Fruits": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1760369103039_ImageForArticle_14459_1718253799749257.webp?alt=media&token=4c164d31-ad65-4c8d-972f-cfc8d0a28bb8",
+              "Vegetables": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/subcategories%2F1760369943892_Vegetables-3.jpg?alt=media&token=3371bb11-4e21-474a-b0e2-258bfb38a7d0",
+              "Dairy": "https://firebasestorage.googleapis.com/v0/b/ninjadeliveries-91007.firebasestorage.app/o/categories%2F1760728984417_dairyMilkEggs.jpeg?alt=media&token=aaea217b-d941-443a-a588-c3a63a2845af",
+              "Beverages": "https://img.freepik.com/free-photo/fresh-juice-glass_144627-17336.jpg",
+              "Chocolates": "https://ninjadeliveries-91007.web.app/SubCategories/1CH2580.webp",
+            };
+
+            return allShortcuts.map((item, i) => {
+              const displayImg = profImgMap[item.name] || (item as any).imageUrl || "https://via.placeholder.com/150";
+
               return (
-                <View key={id} style={{ marginRight: 8 }}>
-                  <QuickTile p={p} isPan={isPan} guard={maybeGate} />
-                </View>
+                <TouchableOpacity
+                  key={i}
+                  activeOpacity={0.8}
+                  onPress={() => handleCategoryShortcut(item.name)}
+                  style={{ alignItems: 'center', marginRight: 10, width: 68 }}
+                >
+                  <View style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: '#fff',
+                    overflow: 'hidden',
+                    borderWidth: 1,
+                    borderColor: '#f8f8f8',
+                    elevation: 2,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                    shadowOffset: { width: 0, height: 2 },
+                  }}>
+                    <Image
+                      source={{ uri: displayImg }}
+                      style={{ width: '100%', height: '100%' }}
+                      contentFit="cover"
+                    />
+                  </View>
+                  <Text style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: '#111',
+                    marginTop: 4,
+                    textAlign: 'center',
+                  }} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
               );
-            })}
-          </ScrollView>
-        </View>
-      )}
+            });
+          })()}
+        </ScrollView>
+      </View>
+
+      {/* Last order → Repeat order card */}
     </>
   );
 
@@ -2061,40 +2177,6 @@ export default function ProductsHomeScreen() {
         <Animated.View
           pointerEvents="box-none"
           style={[styles.headerWrapper, { paddingTop: topPadding }]}>
-          {/* Background video */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                top: -35,
-                width: "100%",
-                left: "0%",
-              },
-              { height: videoHeight, opacity: videoOpacity },
-            ]}
-          >
-            <Video
-              source={require("../../assets/deliveryBackground.mp4")}
-              style={StyleSheet.absoluteFill}
-              muted
-              repeat
-              resizeMode="cover"
-              rate={1.0}
-              ignoreSilentSwitch="obey"
-              paused={!isFocused}
-              playInBackground={false}
-              playWhenInactive={false}
-              bufferConfig={{
-                minBufferMs: 1500,
-                maxBufferMs: 6000,
-                bufferForPlaybackMs: 750,
-                bufferForPlaybackAfterRebufferMs: 1500,
-              }}
-              maxBitRate={1500000}
-            />
-          </Animated.View>
-
           {/* Gradient overlay */}
           <Animated.View
             pointerEvents="none"
@@ -2129,69 +2211,18 @@ export default function ProductsHomeScreen() {
                Show the highest priority message first (homeMsg from Firestore
                takes precedence over the local pausedMessage). Only one message
                is rendered at a time. */}
-            {(() => {
-              let effectiveHomeMsg = homeMsg;
-              // User request: Remove "High demand. Riders Occupied" banner
-              if (effectiveHomeMsg) {
-                const text = String(effectiveHomeMsg.text || "").toLowerCase();
-                if (
-                  text.includes("riders occupied") ||
-                  text.includes("high demand") ||
-                  (text.includes("riders") && text.includes("occupied")) ||
-                  text.includes("demand")
-                ) {
-                  effectiveHomeMsg = null;
-                }
-              }
-
-              // Determine which message should be displayed. Only one message
-              // (either from Firestore or the pausedMessage) is shown at a time.
-              // If the user has dismissed a message, no other messages will be
-              // displayed until a new one arrives.
-              if (messageDismissed) return null;
-
-              // Helper to determine if a home message is specifically about
-              // order acceptance being paused. We treat a message as an
-              // "orders paused" notification if its type is "warning", its icon
-              // is "bolt", or its text mentions orders, riders, or being busy.
-              const isOrdersPausedMsg = (msg: any) => {
-                const msgType = String(msg?.type || '').toLowerCase();
-                const iconKey = String(msg?.icon || '').toLowerCase();
-                const text = String(msg?.text || '').toLowerCase();
-                return (
-                  msgType === 'warning' ||
-                  iconKey === 'bolt' ||
-                  text.includes('order') ||
-                  text.includes('rider') ||
-                  text.includes('busy')
-                );
-              };
-
-              // Only show Firestore messages when they are not an orders-paused
-              // notification, or when orders are actually paused. This prevents
-              // a lingering "orders paused" message from showing after the
-              // store becomes active again.
-              let activeHomeMsg: any | null = null;
-              if (effectiveHomeMsg) {
-                if (!isOrdersPausedMsg(effectiveHomeMsg) || isOrderAcceptancePaused) {
-                  activeHomeMsg = effectiveHomeMsg;
-                }
-              }
-              const displayMsg = activeHomeMsg || pausedMessage;
-              if (!displayMsg) return null;
-              return (
-                <HomeMessageBar
-                  msg={displayMsg}
-                  onClose={() => {
-                    // Dismiss the current message. Once dismissed, no other
-                    // messages (including fallback paused messages) will appear
-                    // until a new homeMsg is fetched from Firestore.
-                    setHomeMsg(null);
-                    setMessageDismissed(true);
-                  }}
-                />
-              );
-            })()}
+            {displayHomeMessage ? (
+              <HomeMessageBar
+                msg={displayHomeMessage}
+                onClose={() => {
+                  // Dismiss the current message. Once dismissed, no other
+                  // messages (including fallback paused messages) will appear
+                  // until a new homeMsg is fetched from Firestore.
+                  setHomeMsg(null);
+                  setMessageDismissed(true);
+                }}
+              />
+            ) : null}
 
             {/* Vertical switcher BELOW search */}
             {/* <View style={styles.verticalSwitcherRow}>
@@ -2210,7 +2241,7 @@ export default function ProductsHomeScreen() {
           <FoodScreen />
         ) : (
           <>
-        {location.storeId ? (
+            {location.storeId ? (
           <AnimatedSectionList
             showsVerticalScrollIndicator={false}
             stickySectionHeadersEnabled={false}
@@ -2219,7 +2250,11 @@ export default function ProductsHomeScreen() {
               { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingTop: INITIAL_VIDEO_HEIGHT }}
+            contentContainerStyle={{
+              paddingTop:
+                INITIAL_HEADER_HEIGHT +
+                (isPausedMessageVisible ? PAUSED_MESSAGE_EXTRA_TOP_PADDING : 0),
+            }}
             sections={sections}
             ListHeaderComponent={listHeader}
             renderSectionHeader={renderSectionHeader}
@@ -2230,7 +2265,7 @@ export default function ProductsHomeScreen() {
 
               const data = prodMap[item.id]?.rows || [];
               return (
-                <View style={{ marginTop: 36}}>
+                <View style={{ marginTop: 20 }}>
                   <View style={styles.rowHeader}>
                     <Text style={styles.rowTitle}>{item.name}</Text>
                     <SeeAllButton onPress={() => maybeNavigateCat(item)} />
@@ -2288,14 +2323,14 @@ export default function ProductsHomeScreen() {
         ) : (
           <View style={{ flex: 1 }} />
         )}
-          </>
-        )}
 
         {hasPerm === false && selectManually === false && (
           <LocationPromptCard
             setHasPerm={setHasPerm}
             setSelectManually={setSelectManually}
           />
+        )}
+          </>
         )}
       </View>
 
@@ -2367,27 +2402,6 @@ const GAP_BG = "#f8f8f8";
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  videoContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 0,
-    overflow: "hidden",
-  },
-  pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-pillActive: {
-  backgroundColor: '#00b4a0', // Ninja green accent for active
-},
-label: { fontSize: 12, fontWeight: '600', color: '#333' },
-labelActive: { color: '#fff' },
-  backgroundVideo: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-  },
   topBg: {
     paddingHorizontal: H,
     paddingBottom: 4,
@@ -2395,28 +2409,16 @@ labelActive: { color: '#fff' },
     zIndex: 1,
     backgroundColor: "transparent",
   },
-  gradientHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
   badge01: {
     backgroundColor: "#FF3D00",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 20,
   },
-  videoOverlay: {
-    position: "relative",
-    backgroundColor: "transparent",
-    flex: 1,
-  },
   locationRow: {
   flexDirection: "row",
   alignItems: "center",
-  marginBottom: 10,
+  marginBottom: 8,
   flex: 1,
   // no paddingHorizontal here – topBg already has it
 },
@@ -2424,35 +2426,55 @@ labelActive: { color: '#fff' },
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   profileIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 8,
+    marginLeft: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    overflow: "hidden",
+  },
+  profileImg: {
+    width: "100%",
+    height: "100%",
+  },
+  profilePlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#f8f9fa",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   locationTxt: {
   flex: 1,
   fontSize: 15,          // ⬅ slightly larger
-  fontWeight: "700",
-  color: "#fff",
+  fontWeight: "800",     // ⬅ bolder
+  color: "#111111",
 },
   searchWrapper: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#ffffff",
+  backgroundColor: "#ffffffff",    // white for yellow background
   borderRadius: 26,              // ⬅ rounder pill
   paddingVertical: 10,
   paddingHorizontal: 16,
   shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
+  shadowOpacity: 0.05,
+  shadowRadius: 5,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
 },
 searchTxt: { color: "#555", fontSize: 14 },
   quizCard: {
@@ -2491,13 +2513,13 @@ searchTxt: { color: "#555", fontSize: 14 },
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: H,
-    marginTop: 10,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 6,
   },
   rowTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#333" },
   seeAllTxt: { fontSize: 13, color: "#E91E63", fontWeight: "700" },
   chip: {
-  backgroundColor: "#FFE6F0",   // soft pink
+  backgroundColor: "#F0F0F0",   // ⬅ professional light gray
   borderRadius: 18,
   paddingHorizontal: 12,
   paddingVertical: 6,
@@ -2505,7 +2527,7 @@ searchTxt: { color: "#555", fontSize: 14 },
 },
 chipTxt: {
   fontSize: 12,
-  color: "#C2185B",
+  color: "#333333",             // ⬅ professional dark text
   fontWeight: "700",
 },
   tile: {
@@ -2606,24 +2628,25 @@ chipTxt: {
   },
   mosaicDealTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
   cardLabel: {
-  position: "absolute",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  backgroundColor: "rgba(255, 92, 156, 0.85)", // 🎀 festive pink
-  flexDirection: "row",
-  alignItems: "center",
-  padding: 6,
-},
-
-  badge: {
-    marginRight: 4,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    backgroundColor: "rgba(255,255,255,0.85)", // ⬅ Very subtle professional overlay for readability
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  badgeTxt: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  cardTitle: { color: "#fff", fontSize: 13, fontWeight: "800", flex: 1 },
+  cardTitle: { 
+    color: "#111111", 
+    fontSize: 11, 
+    fontWeight: "900", 
+    flex: 1, 
+    textAlign: "center",
+    letterSpacing: 0.2,
+    textTransform: "uppercase", // ⬅ Professional boutique look
+  },
   headerWrapper: {
     position: "absolute",
     top: 0,
@@ -2731,8 +2754,8 @@ chipTxt: {
   },
   btnSecondaryTxt: { color: "#333", fontWeight: "600" },
   laneTitle: {
-  marginTop: 28,
-  marginBottom: 12,
+  marginTop: 12,
+  marginBottom: 6,
   fontSize: 18,
   fontWeight: "800",
   color: "#222",
@@ -2762,8 +2785,8 @@ chipTxt: {
     borderRadius: 14,
     padding: 14,
     marginHorizontal: H,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 12,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: "#e8e8e8",
     shadowColor: "#000",
@@ -2809,8 +2832,8 @@ chipTxt: {
   },
   repeatBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
   buyAgainTitle: {
-    marginTop: 24,
-    marginBottom: 8,
+    marginTop: 16,
+    marginBottom: 6,
     marginHorizontal: H,
     fontSize: 16,
     fontWeight: "700",
@@ -2884,7 +2907,7 @@ searchFlex: {
 },
   homeMsgBar: {
     marginHorizontal: H,
-    marginTop: 12,
+    marginTop: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -2895,7 +2918,7 @@ searchFlex: {
   },
   homeMsgMediaContainer: {
     marginHorizontal: H,
-    marginTop: 12,
+    marginTop: 8,
     marginBottom: 0,
     borderRadius: 10,
     overflow: "hidden",
@@ -2944,34 +2967,69 @@ searchFlex: {
     justifyContent: "flex-start",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 8,
     gap: 8,
   },
   toggleBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.15)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#F5F5F5",
+    borderWidth: 0,
   },
   toggleBtnActive: {
     backgroundColor: "#00b4a0",
-    borderColor: "#00b4a0",
   },
   toggleLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
-    color: "#333333",
+    color: "#666666",
   },
   toggleLabelActive: {
     color: "#ffffff",
   },
-   profileImg: {
-   width: 38,
-   height: 38,
-   borderRadius: 19,
+  newBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#FF3B30",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  newBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  soonBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#FF9500",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  soonBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.3,
   },
 });
 

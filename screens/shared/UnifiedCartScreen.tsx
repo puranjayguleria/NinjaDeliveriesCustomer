@@ -10,12 +10,15 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "../../context/CartContext";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
 import firestore from "@react-native-firebase/firestore";
 import { getLastNonCartTab, navigationRef } from "../../navigation/rootNavigation";
+import { useLocationContext } from "../../context/LocationContext";
+import { useToggleContext } from "../../context/ToggleContext";
+
 
 type UnifiedCartItem = {
   id: string;
@@ -31,6 +34,10 @@ export default function UnifiedCartScreen() {
   const navigation = useNavigation<any>();
   const { cart, removeFromCart, increaseQuantity, decreaseQuantity, clearCart: clearGroceryCart } = useCart();
   const { state: serviceState, removeService, clearCart: clearServiceCart, totalAmount: serviceTotalAmount } = useServiceCart();
+  const { location } = useLocationContext();
+  const { setActiveMode } = useToggleContext();
+  const groceryEnabled = location?.grocery !== false;
+  const servicesEnabled = location?.services !== false;
   
   const [groceryProducts, setGroceryProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +76,8 @@ export default function UnifiedCartScreen() {
 
   // Create unified cart items
   const unifiedItems: UnifiedCartItem[] = [
-    // Grocery items
-    ...groceryProducts.map(product => ({
+    // Grocery items - only show when grocery is enabled
+    ...(groceryEnabled ? groceryProducts.map(product => ({
       id: product.id,
       type: 'grocery' as const,
       name: product.name || product.title || 'Unknown Product',
@@ -78,23 +85,23 @@ export default function UnifiedCartScreen() {
       quantity: cart[product.id] || 0,
       image: product.imageUrl || product.image,
       details: product,
-    })),
-    // Service items
-    ...Object.values(serviceState.items).map(service => ({
+    })) : []),
+    // Service items - only show when services is enabled
+    ...(servicesEnabled ? Object.values(serviceState.items).map(service => ({
       id: service.id,
       type: 'service' as const,
       name: service.serviceTitle,
-      price: service.company.price,
+      price: service.company.price ?? 0,
       quantity: service.quantity,
       details: service,
-    }))
+    })) : [])
   ];
 
-  const groceryTotal = groceryProducts.reduce((total, product) => {
+  const groceryTotal = groceryEnabled ? groceryProducts.reduce((total, product) => {
     return total + (product.price * (cart[product.id] || 0));
-  }, 0);
+  }, 0) : 0;
 
-  const grandTotal = groceryTotal + serviceTotalAmount;
+  const grandTotal = groceryTotal + (servicesEnabled ? serviceTotalAmount : 0);
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleBackPress = () => {
@@ -131,12 +138,12 @@ export default function UnifiedCartScreen() {
       // If we cannot introspect route names, still attempt a sensible exit.
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("HomeTab" as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
@@ -209,46 +216,26 @@ export default function UnifiedCartScreen() {
   };
 
   const handleCheckout = () => {
-    if (groceryProducts.length > 0 && Object.keys(serviceState.items).length > 0) {
-      // Both types - show selection
+    const hasGrocery = groceryEnabled && groceryProducts.length > 0;
+    const hasServices = servicesEnabled && Object.keys(serviceState.items).length > 0;
+
+    if (hasGrocery && hasServices) {
       Alert.alert(
         "Checkout Options",
         "You have both grocery items and services. How would you like to proceed?",
         [
-          {
-            text: "Grocery Only",
-            onPress: () => navigation.navigate("CartPayment")
-          },
-          {
-            text: "Services Only", 
-            onPress: () => navigation.navigate("ServiceCheckout", {
+          { text: "Grocery Only", onPress: () => navigation.navigate("CartPayment") },
+          { text: "Services Only", onPress: () => navigation.navigate("ServiceCheckout", {
               services: Object.values(serviceState.items),
               totalAmount: serviceTotalAmount,
             })
           },
-          {
-            text: "Separate Checkouts",
-            onPress: () => {
-              Alert.alert(
-                "Checkout Separately",
-                "Please checkout grocery items and services separately. Which would you like to checkout first?",
-                [
-                  { text: "Grocery First", onPress: () => navigation.navigate("CartPayment") },
-                  { text: "Services First", onPress: () => navigation.navigate("ServiceCheckout", {
-                    services: Object.values(serviceState.items),
-                    totalAmount: serviceTotalAmount,
-                  })},
-                  { text: "Cancel", style: "cancel" }
-                ]
-              );
-            }
-          },
           { text: "Cancel", style: "cancel" }
         ]
       );
-    } else if (groceryProducts.length > 0) {
+    } else if (hasGrocery) {
       navigation.navigate("CartPayment");
-    } else if (Object.keys(serviceState.items).length > 0) {
+    } else if (hasServices) {
       navigation.navigate("ServiceCheckout", {
         services: Object.values(serviceState.items),
         totalAmount: serviceTotalAmount,
@@ -358,8 +345,51 @@ export default function UnifiedCartScreen() {
         
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>Your cart is empty</Text>
-          <Text style={styles.emptySubText}>Add some items to get started</Text>
+          <Text style={styles.emptyText}>Cart is empty</Text>
+          {groceryEnabled && (
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => {
+                setActiveMode('grocery');
+                try { navigation.navigate('HomeTab', { screen: 'ProductsHome' }); } catch {}
+              }}
+            >
+              <Ionicons name="basket-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyBtnText}>Shop Grocery</Text>
+            </TouchableOpacity>
+          )}
+          {servicesEnabled && (
+            <TouchableOpacity
+              style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
+              onPress={() => {
+                setActiveMode('service');
+                if (navigationRef.isReady?.()) {
+                  const state = navigationRef.getRootState?.();
+                  const allRoutes: string[] = [];
+                  const collect = (s: any) => {
+                    if (!s) return;
+                    (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
+                    (s.routes ?? []).forEach((r: any) => collect(r.state));
+                  };
+                  collect(state);
+                  if (allRoutes.includes('HomeTab')) {
+                    (navigationRef.navigate as any)('HomeTab', { screen: 'ProductsHome' });
+                  } else {
+                    // Grocery off — reset CartFlow to ServicesHome directly
+                    (navigationRef as any).dispatch(
+                      CommonActions.reset({
+                        index: 0,
+                        routes: [{ name: 'CartFlow', state: { routes: [{ name: 'ServicesHome' }] } }],
+                      })
+                    );
+                  }
+                }
+              }}
+            >
+              <Ionicons name="construct-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyBtnText}>Explore Services</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -386,14 +416,18 @@ export default function UnifiedCartScreen() {
 
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Grocery Items:</Text>
-            <Text style={styles.totalValue}>₹{groceryTotal.toFixed(2)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Services:</Text>
-            <Text style={styles.totalValue}>₹{serviceTotalAmount.toFixed(2)}</Text>
-          </View>
+          {groceryEnabled && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Grocery Items:</Text>
+              <Text style={styles.totalValue}>₹{groceryTotal.toFixed(2)}</Text>
+            </View>
+          )}
+          {servicesEnabled && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Services:</Text>
+              <Text style={styles.totalValue}>₹{serviceTotalAmount.toFixed(2)}</Text>
+            </View>
+          )}
           <View style={[styles.totalRow, styles.grandTotalRow]}>
             <Text style={styles.grandTotalLabel}>Total:</Text>
             <Text style={styles.grandTotalValue}>₹{grandTotal.toFixed(2)}</Text>
@@ -659,5 +693,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+  },
+
+  emptyBtn: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 16,
+    width: 220,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

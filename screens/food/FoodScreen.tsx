@@ -2,6 +2,7 @@
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   FlatList, StatusBar, Modal, Dimensions, Animated, Image as RNImage,
+  TextInput, ActivityIndicator, Platform, RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -9,6 +10,7 @@ import { Image } from "expo-image";
 import { useLocationContext } from "@/context/LocationContext";
 import { useToggleContext } from "@/context/ToggleContext";
 import ModeToggle from "@/components/ModeToggle";
+import { navigationRef } from "@/navigation/rootNavigation";
 import {
   getFoodBanners,
   listenActiveRestaurants,
@@ -169,6 +171,34 @@ export default function FoodScreen() {
     const t = setInterval(() => setCurrentBannerIndex(p => (p === banners.length - 1 ? 0 : p + 1)), 3000);
     return () => clearInterval(t);
   }, [banners.length]);
+
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveMode('service');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
   const handleVegToggle = () => { setPendingVeg(!isVegMode); setShowVegModal(true); };
   const confirmVeg = () => { if (pendingVeg !== null) setIsVegMode(pendingVeg); setShowVegModal(false); setPendingVeg(null); };

@@ -1,6 +1,8 @@
 import { useLocationContext } from "../../context/LocationContext";
 import { useToggleContext } from "../../context/ToggleContext";
 import ModeToggle from "../../components/ModeToggle";
+import { useServiceCart } from "../../context/ServiceCartContext";
+import ServicesBottomTabs from "../../components/ServicesBottomTabs";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -12,22 +14,23 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
-  ImageBackground,
   ScrollView,
   Animated,
   RefreshControl,
   Platform,
   Alert,
   Image as RNImage,
+  ImageBackground,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { Image as ExpoImage, Image } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from "@react-navigation/native";
-import { Ionicons } from '@expo/vector-icons';
-import Video from "react-native-video";
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
+import { setSharedCategories } from "../../services/sharedCategoriesStore";
 import { firestore } from "../../firebase.native";
+import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get('window');
@@ -234,10 +237,11 @@ interface LiveBooking {
   timestamp: any;
 }
 
-// GIF sources array
-const HEADER_GIFS = [
-  require("../../assets/ninjaVideo1.gif"),
-  require("../../assets/ninjaVideo.gif"),
+// Header images array
+const HEADER_IMAGES = [
+  require("../../assets/ninjaServicebanner1.png"),
+  require("../../assets/ninjaServicebanner2.png"),
+  require("../../assets/ninjaServicebanner3.png"),
 ];
 
 const SERVICES_HEADER_MEDIA_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
@@ -248,12 +252,12 @@ const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
 const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? Math.round(Dimensions.get('window').height * 0.45) + 100 : Math.round(Dimensions.get('window').height * 0.45) + 85;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
-  'electrician',
   'plumber',
   'car wash',
+  'automobile washing',
   'home cleaning',
   'astrology',
-  'painter',
+  'physiotherapy',
 ] as const;
 
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
@@ -270,33 +274,16 @@ export default function ServicesScreen() {
   const isFocused = useIsFocused();
   const { location } = useLocationContext();
   const { activeMode, setActiveMode } = useToggleContext();
+  const { totalItems: serviceTotalItems } = useServiceCart();
+  
+  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'cart' | 'bookings'>('home');
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
-
-  const headerMediaHeight = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [SERVICES_HEADER_MEDIA_HEIGHT, SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-
-  const headerMediaOpacity = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, 120],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
 
   const headerGradientOpacity = React.useMemo(
     () =>
       scrollY.interpolate({
-        inputRange: [60, 120],
+        inputRange: [20, 80],
         outputRange: [0, 1],
         extrapolate: 'clamp',
       }),
@@ -313,11 +300,79 @@ export default function ServicesScreen() {
     [scrollY]
   );
 
+  const locationRowOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 60],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const toggleRowOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 40],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const toggleRowHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 40],
+        outputRange: [50, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const searchBarTranslateY = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [0, -50],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const stickyHeaderHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [SERVICES_STICKY_HEADER_HEIGHT, 130],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const headerMediaHeight = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 120],
+        outputRange: [SERVICES_HEADER_MEDIA_HEIGHT, SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
+  const headerMediaOpacity = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, 60],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY]
+  );
+
 
   const hasSelectedLocation =
-    (typeof location?.address === 'string' && location.address.trim().length > 0) ||
-    (typeof location?.storeId === 'string' && location.storeId.trim().length > 0) ||
-    (location?.lat != null && location?.lng != null);
+    (typeof location?.storeId === 'string' && location.storeId.trim().length > 0);
 
   const locationDisplayText = React.useMemo(() => {
     const placeLabel = String((location as any)?.placeLabel || '').trim();
@@ -328,33 +383,6 @@ export default function ServicesScreen() {
     const best = placeLabel || combined || address;
     return best || 'your location';
   }, [location]);
-
-  const locationPromptShownRef = React.useRef(false);
-
-  useEffect(() => {
-    if (hasSelectedLocation) locationPromptShownRef.current = false;
-  }, [hasSelectedLocation]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (hasSelectedLocation) return;
-      if (locationPromptShownRef.current) return;
-      locationPromptShownRef.current = true;
-
-      Alert.alert(
-        'Select location',
-        'Please select your location to see services available in your area.',
-        [
-          {
-            text: 'Select Location',
-            onPress: () => navigation.navigate('LocationSelector', { fromScreen: 'Services' }),
-          },
-          { text: 'Not now', style: 'cancel' },
-        ],
-        { cancelable: true }
-      );
-    }, [hasSelectedLocation, navigation])
-  );
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [rawServiceCategories, setRawServiceCategories] = useState<ServiceCategory[]>([]);
   const [serviceBanners, setServiceBanners] = useState<ServiceBanner[]>([]);
@@ -381,16 +409,24 @@ export default function ServicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [activeGifIndex] = useState(0); // kept for useMemo dep compatibility
+  const [activeHeaderImageIndex, setActiveHeaderImageIndex] = useState(0);
   const searchInputRef = React.useRef<TextInput>(null);
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
   const bannerAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const headerImageAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   // const currentBookingIndex = React.useRef(0);
   const scrollX = React.useRef(0);
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
+  const liveDotBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
+  const [randomServices, setRandomServices] = useState<any[]>([]);
+  const [plumberServices, setPlumberServices] = useState<any[]>([]);
+  const [automobileWashingServices, setAutomobileWashingServices] = useState<any[]>([]);
+  const [homeCleaningServices, setHomeCleaningServices] = useState<any[]>([]);
+  const [electricianServices, setElectricianServices] = useState<any[]>([]);
 
   const categorySnapshotSeqRef = React.useRef(0);
 
@@ -406,26 +442,44 @@ export default function ServicesScreen() {
   // That collection can be large and may take a long time to stream the first snapshot.
   const isLoading = loading || zoneCompaniesLoading;
 
-  // Check if services are enabled for this store
+  // If services become unavailable, silently switch to an available mode
   useEffect(() => {
-    if (location?.services === false) {
-      Alert.alert(
-        "Service Unavailable",
-        "Services are not available at this location.",
-        [
-          {
-            text: "Change Location",
-            onPress: () => navigation.navigate("LocationSelector"),
-          },
-          {
-            text: "Go Back",
-            onPress: () => navigation.goBack(),
-            style: "cancel",
-          },
-        ]
-      );
+    if (hasSelectedLocation && location?.services === false) {
+      if (location?.grocery !== false) {
+        setActiveMode('grocery');
+      } else if (location?.food !== false) {
+        setActiveMode('food');
+      }
     }
-  }, [location?.services, navigation]);
+  }, [location?.services, hasSelectedLocation]);
+
+  // Auto-switch to available mode if current mode becomes unavailable
+  useEffect(() => {
+    const isGroceryAvailable = location?.grocery !== false;
+    const isServicesAvailable = location?.services !== false;
+    const isFoodAvailable = location?.food !== false;
+
+    // If current mode is not available, switch to an available one
+    if (activeMode === 'grocery' && !isGroceryAvailable) {
+      if (isServicesAvailable) {
+        setActiveMode('service');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'service' && !isServicesAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isFoodAvailable) {
+        setActiveMode('food');
+      }
+    } else if (activeMode === 'food' && !isFoodAvailable) {
+      if (isGroceryAvailable) {
+        setActiveMode('grocery');
+      } else if (isServicesAvailable) {
+        setActiveMode('service');
+      }
+    }
+  }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
   const zoneCompanyIdSet = React.useMemo(() => {
     const ids = zoneCompanyIdsKey ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean) : [];
@@ -955,6 +1009,13 @@ export default function ServicesScreen() {
     }, 1000);
   }, []);
 
+  // Reset active tab to home when screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      setActiveTab('home');
+    }, [])
+  );
+
   // Re-subscribe to listeners when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -966,6 +1027,12 @@ export default function ServicesScreen() {
         if (bannerAutoScrollIntervalRef.current) {
           clearInterval(bannerAutoScrollIntervalRef.current);
           bannerAutoScrollIntervalRef.current = null;
+        }
+        
+        // Stop header image auto-scroll when leaving the screen.
+        if (headerImageAutoScrollIntervalRef.current) {
+          clearInterval(headerImageAutoScrollIntervalRef.current);
+          headerImageAutoScrollIntervalRef.current = null;
         }
       };
     }, [])
@@ -1032,6 +1099,7 @@ export default function ServicesScreen() {
             // Populate images in the background to avoid blocking initial paint.
             const seq = ++categorySnapshotSeqRef.current;
             setRawServiceCategories(allCategories);
+            setSharedCategories(allCategories); // share with AllServicesScreen
             setLoading(false);
             if (__DEV__) console.log('✅ Real-time categories updated (raw):', allCategories.length);
 
@@ -1040,6 +1108,7 @@ export default function ServicesScreen() {
                 if (categorySnapshotSeqRef.current !== seq) return;
                 // Trigger re-render with the now-populated imageUrl fields.
                 setRawServiceCategories([...allCategories]);
+                setSharedCategories([...allCategories]); // update shared store with images
 
                 // Persist for next cold start.
                 AsyncStorage.setItem(
@@ -1296,15 +1365,26 @@ export default function ServicesScreen() {
           }
           
           const bookings: LiveBooking[] = [];
+          const seenBookings = new Set<string>();
           
           snapshot.forEach(doc => {
             const data = doc.data();
-            bookings.push({
-              id: doc.id,
-              serviceName: data.serviceName || data.serviceTitle || 'Service',
-              location: data.address?.city || data.address?.area || 'Your area',
-              timestamp: data.createdAt,
-            });
+            const serviceName = data.serviceName || data.serviceTitle || 'Service';
+            const location = data.address?.city || data.address?.area || 'Your area';
+            
+            // Create unique key based on service name and location
+            const uniqueKey = `${serviceName}-${location}`;
+            
+            // Only add if not already seen
+            if (!seenBookings.has(uniqueKey)) {
+              seenBookings.add(uniqueKey);
+              bookings.push({
+                id: doc.id,
+                serviceName: serviceName,
+                location: location,
+                timestamp: data.createdAt,
+              });
+            }
           });
 
           setLiveBookings(bookings);
@@ -1322,6 +1402,30 @@ export default function ServicesScreen() {
       unsubscribe();
     };
   }, []);
+
+  // Auto-scroll header images every 10 seconds
+  useEffect(() => {
+    if (!isFocused) return;
+
+    // Clear any previous interval
+    if (headerImageAutoScrollIntervalRef.current) {
+      clearInterval(headerImageAutoScrollIntervalRef.current);
+      headerImageAutoScrollIntervalRef.current = null;
+    }
+
+    const interval = setInterval(() => {
+      setActiveHeaderImageIndex((prev) => (prev + 1) % HEADER_IMAGES.length);
+    }, 10000); // 10 seconds
+
+    headerImageAutoScrollIntervalRef.current = interval;
+
+    return () => {
+      clearInterval(interval);
+      if (headerImageAutoScrollIntervalRef.current === interval) {
+        headerImageAutoScrollIntervalRef.current = null;
+      }
+    };
+  }, [isFocused]);
 
   // Auto-scroll banners with pause
   useEffect(() => {
@@ -1363,55 +1467,608 @@ export default function ServicesScreen() {
     };
   }, [serviceBanners.length]);
 
-  // Auto-scroll live bookings with smooth continuous marquee effect
+  // Auto-cycle through live bookings vertically (one by one)
+  const [currentBookingIndex, setCurrentBookingIndex] = useState(0);
+  const [shouldBlinkBooking, setShouldBlinkBooking] = useState(false);
+  const bookingTransitionAnim = React.useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    if (liveBookings.length === 0) return;
+    if (liveBookings.length <= 1) return;
 
-    // iOS: this continuous scroll can keep a responder active and make the
-    // rest of the screen feel "not clickable". Disable it on iOS.
-    if (Platform.OS === 'ios') {
-      return;
+    const interval = setInterval(() => {
+      // Slide up animation
+      Animated.timing(bookingTransitionAnim, {
+        toValue: -24,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        // Change booking
+        setCurrentBookingIndex((prevIndex) => 
+          (prevIndex + 1) % liveBookings.length
+        );
+        // Reset position to bottom and slide up
+        bookingTransitionAnim.setValue(24);
+        Animated.timing(bookingTransitionAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 3000); // Change booking every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [liveBookings.length, bookingTransitionAnim]);
+
+  // Trigger blink only when new bookings are added
+  useEffect(() => {
+    if (liveBookings.length > 0) {
+      setShouldBlinkBooking(true);
     }
-
-    let animationFrameId: number;
-    const scrollSpeed = 1; // Pixels per frame - increased from 0.5 to 1
-
-    const smoothScroll = () => {
-      if (liveBookingsScrollRef.current) {
-        scrollX.current += scrollSpeed;
-        
-        liveBookingsScrollRef.current.scrollTo({
-          x: scrollX.current,
-          animated: false, // Use false for smooth continuous scroll
-        });
-      }
-      
-      animationFrameId = requestAnimationFrame(smoothScroll);
-    };
-
-    animationFrameId = requestAnimationFrame(smoothScroll);
-
-    return () => {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
   }, [liveBookings.length]);
 
   const latestLiveBooking = React.useMemo(() => {
     if (!liveBookings?.length) return null;
-    // Query is already orderBy createdAt desc, but keep it defensive.
-    const sorted = [...liveBookings].sort((a, b) => {
-      const aSec = (a as any)?.timestamp?.seconds ?? 0;
-      const bSec = (b as any)?.timestamp?.seconds ?? 0;
-      return bSec - aSec;
-    });
-    return sorted[0] || null;
-  }, [liveBookings]);
+    return liveBookings[currentBookingIndex] || liveBookings[0];
+  }, [liveBookings, currentBookingIndex]);
 
-  // Blinking animation for View All button (light)
+  // Fetch random packages for modal cards
   useEffect(() => {
-    const blinkAnimation = Animated.loop(
+    const fetchRandomPackages = async () => {
+      try {
+        const snap = await firestore()
+          .collection('service_services')
+          .where('isActive', '==', true)
+          .limit(150)
+          .get();
+
+        const packagesWithService: any[] = [];
+        snap.forEach((doc) => {
+          const data = doc.data() as any;
+          if (Array.isArray(data?.packages) && data.packages.length > 0) {
+            // For each package, store it with service details
+            data.packages.forEach((pkg: any, index: number) => {
+              packagesWithService.push({
+                id: `${doc.id}_${index}`,
+                serviceId: doc.id,
+                serviceName: data.name || 'Service',
+                categoryName: data.categoryName,
+                companyName: data.companyName,
+                companyId: data.companyId,
+                categoryId: data.categoryId || data.categoryMasterId,
+                package: pkg,
+                allPackages: data.packages,
+                // Booking count for trending packages (most booked)
+                bookingCount: data.bookingCount || pkg.bookingCount || 0,
+                // Rating for highest rated packages
+                rating: data.rating || pkg.rating || 0,
+              });
+            });
+          }
+        });
+
+        // Sort by booking count (descending) to show most booked packages first
+        const sorted = packagesWithService.sort((a, b) => (b.bookingCount || 0) - (a.bookingCount || 0));
+        
+        // Show only 3-4 most booked packages in Trending Packages section
+        setRandomServices(sorted.slice(0, 4));
+      } catch (e) {
+        if (__DEV__) console.log('Failed to fetch random packages:', e);
+      }
+    };
+
+    fetchRandomPackages();
+  }, []);
+
+  // Fetch Plumber services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchPlumberServices = async () => {
+      try {
+        console.log('🔧 Fetching Plumber services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Plumber category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let plumberCategoryId = '';
+        let plumberMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          if (name.includes('plumb')) {
+            plumberCategoryId = doc.id;
+            plumberMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Plumber category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${plumberMasterCategoryId}`);
+          }
+        });
+
+        if (!plumberCategoryId) {
+          if (__DEV__) console.log('❌ Plumber category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${plumberMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', plumberMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} plumber services`);
+
+        const plumberServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          plumberServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: plumberCategoryId,
+            categoryMasterId: plumberMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = plumberServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Plumber services loaded (zone-filtered): ${sorted.length}`);
+        setPlumberServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch plumber services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchPlumberServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+  // Fetch Automobile Washing services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchAutomobileWashingServices = async () => {
+      try {
+        console.log('🚗 Fetching Automobile Washing services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Automobile Washing category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let automobileCategoryId = '';
+        let automobileMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // More specific matching for car wash/automobile washing only
+          if ((name.includes('car') && name.includes('wash')) || 
+              (name.includes('automobile') && name.includes('wash')) ||
+              name.includes('car wash') ||
+              name.includes('vehicle wash')) {
+            automobileCategoryId = doc.id;
+            automobileMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Automobile Washing category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${automobileMasterCategoryId}`);
+          }
+        });
+
+        if (!automobileCategoryId) {
+          if (__DEV__) console.log('❌ Automobile Washing category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${automobileMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', automobileMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} automobile washing services`);
+
+        const automobileServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          automobileServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: automobileCategoryId,
+            categoryMasterId: automobileMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = automobileServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Automobile Washing services loaded (zone-filtered): ${sorted.length}`);
+        setAutomobileWashingServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch automobile washing services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchAutomobileWashingServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+  // Fetch Home Cleaning services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchHomeCleaningServices = async () => {
+      try {
+        console.log('🏠 Fetching Home Cleaning services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Home Cleaning category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let cleaningCategoryId = '';
+        let cleaningMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // Specific matching for home cleaning
+          if ((name.includes('home') && name.includes('clean')) || 
+              name.includes('housekeep') || 
+              name.includes('maid') || 
+              name.includes('domestic')) {
+            cleaningCategoryId = doc.id;
+            cleaningMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Home Cleaning category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${cleaningMasterCategoryId}`);
+          }
+        });
+
+        if (!cleaningCategoryId) {
+          if (__DEV__) console.log('❌ Home Cleaning category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${cleaningMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', cleaningMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} home cleaning services`);
+
+        const cleaningServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          cleaningServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: cleaningCategoryId,
+            categoryMasterId: cleaningMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = cleaningServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Home Cleaning services loaded (zone-filtered): ${sorted.length}`);
+        setHomeCleaningServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch home cleaning services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchHomeCleaningServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+  // Fetch Electrician services (same logic as ServiceCategoryScreen)
+  useEffect(() => {
+    const fetchElectricianServices = async () => {
+      try {
+        console.log('⚡ Fetching Electrician services...');
+
+        const zid = String(location?.storeId || '').trim();
+        if (!zid) {
+          console.log('❌ No zone selected');
+          return;
+        }
+
+        // Get zone companies first
+        const zoneCompanyIds = zoneCompanyIdsKey
+          ? zoneCompanyIdsKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+        
+        const zoneCompanyNames = zoneCompanyNamesKey
+          ? zoneCompanyNamesKey.split('|').map((s) => String(s).trim()).filter(Boolean)
+          : [];
+
+        if (zoneCompanyIds.length === 0 && zoneCompanyNames.length === 0) {
+          console.log('❌ No companies available in this zone');
+          return;
+        }
+
+        const zoneCompanyIdSet = new Set(zoneCompanyIds);
+        const zoneCompanyNameSet = new Set(zoneCompanyNames);
+
+        // First, find the Electrician category
+        const categorySnap = await firestore()
+          .collection('app_categories')
+          .where('isActive', '==', true)
+          .get();
+
+        let electricianCategoryId = '';
+        let electricianMasterCategoryId = '';
+        
+        categorySnap.forEach((doc) => {
+          const data = doc.data();
+          const name = String(data?.name || '').toLowerCase();
+          // Specific matching for electrician
+          if (name.includes('electric') || name.includes('wiring') || name.includes('voltage')) {
+            electricianCategoryId = doc.id;
+            electricianMasterCategoryId = data?.masterCategoryId || doc.id;
+            console.log(`✅ Found Electrician category:`);
+            console.log(`   - categoryId: ${doc.id}`);
+            console.log(`   - categoryName: ${data?.name}`);
+            console.log(`   - masterCategoryId: ${electricianMasterCategoryId}`);
+          }
+        });
+
+        if (!electricianCategoryId) {
+          if (__DEV__) console.log('❌ Electrician category not found');
+          return;
+        }
+
+        // Fetch services using categoryMasterId (same as ServiceCategoryScreen)
+        console.log(`🔍 Querying service_services where categoryMasterId == "${electricianMasterCategoryId}"`);
+        
+        const servicesSnapshot = await firestore()
+          .collection('service_services')
+          .where('categoryMasterId', '==', electricianMasterCategoryId)
+          .get();
+
+        console.log(`📊 Found ${servicesSnapshot.size} electrician services`);
+
+        const electricianServicesData: any[] = [];
+        
+        servicesSnapshot.forEach(doc => {
+          const data = doc.data();
+          
+          // Check if company is active in this zone
+          const companyId = String(data?.companyId || '').trim();
+          const companyName = String(data?.companyName || '').trim();
+          
+          const isCompanyInZone = 
+            (companyId && zoneCompanyIdSet.has(companyId)) ||
+            (companyName && zoneCompanyNameSet.has(companyName));
+          
+          if (!isCompanyInZone) {
+            console.log(`⏭️ Skipping service "${data.name}" - company not in zone`);
+            return;
+          }
+
+          electricianServicesData.push({
+            id: doc.id,
+            name: data.name || '',
+            imageUrl: data.imageUrl || null,
+            price: data.price,
+            packages: data.packages || [],
+            categoryId: electricianCategoryId,
+            categoryMasterId: electricianMasterCategoryId,
+            companyId: data.companyId,
+            companyName: data.companyName,
+            description: data.description || '',
+            isActive: data.isActive !== false,
+          });
+        });
+
+        // Sort alphabetically by name
+        const sorted = electricianServicesData.sort((a, b) => {
+          const nameA = String(a?.name || '').toLowerCase();
+          const nameB = String(b?.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        console.log(`✅ Electrician services loaded (zone-filtered): ${sorted.length}`);
+        setElectricianServices(sorted.slice(0, 6));
+      } catch (e) {
+        if (__DEV__) console.log('❌ Failed to fetch electrician services:', e);
+      }
+    };
+
+    if (location?.storeId && !zoneCompaniesLoading) {
+      fetchElectricianServices();
+    }
+  }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
+
+
+
+  // Continuous blinking animation for live dot
+  useEffect(() => {
+    const liveDotBlink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveDotBlinkAnim, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(liveDotBlinkAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    liveDotBlink.start();
+
+    return () => {
+      liveDotBlink.stop();
+    };
+  }, [liveDotBlinkAnim]);
+
+  // Smooth blinking animation for Book Now buttons
+  useEffect(() => {
+    const buttonBlink = Animated.loop(
       Animated.sequence([
         Animated.timing(blinkAnim, {
           toValue: 0.7,
@@ -1426,38 +2083,55 @@ export default function ServicesScreen() {
       ])
     );
 
-    blinkAnimation.start();
+    buttonBlink.start();
 
     return () => {
-      blinkAnimation.stop();
+      buttonBlink.stop();
     };
   }, [blinkAnim]);
 
-  // Blinking animation for live bookings
+  // Blinking animation for live bookings - trigger only on new bookings
   useEffect(() => {
-    const blinkAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bookingBlinkAnim, {
-          toValue: 0.6,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(bookingBlinkAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    if (!shouldBlinkBooking || !latestLiveBooking) return;
 
-    blinkAnimation.start();
+    // Reset to 1 first
+    bookingBlinkAnim.setValue(1);
+
+    // Then animate blink
+    const blinkAnimation = Animated.sequence([
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 0.2,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 0.2,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bookingBlinkAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    blinkAnimation.start(() => {
+      // Reset the flag after animation completes
+      setShouldBlinkBooking(false);
+    });
 
     return () => {
       blinkAnimation.stop();
     };
-  }, [bookingBlinkAnim]);
+  }, [shouldBlinkBooking, bookingBlinkAnim]);
 
-  // Arrow movement animation for View All button
+  // Arrow movement animation for View All button and package cards
   useEffect(() => {
     const arrowAnimation = Animated.loop(
       Animated.sequence([
@@ -1497,40 +2171,52 @@ export default function ServicesScreen() {
   const filteredCategories = getFilteredCategories();
 
   const onServicePress = useCallback((svc: any) => {
-    if (!svc?.id) return;
-    const categoryId = String(svc.categoryId || svc.categoryMasterId || '');
-    if (!categoryId) {
-      console.log('❌ Service missing categoryId/categoryMasterId; cannot open flow', svc);
-      return;
-    }
-
-    const hasPackages = Array.isArray(svc?.packages) && svc.packages.length > 0;
-
-    setTapLoading({ visible: true, message: 'Opening…' });
-    try {
-      if (hasPackages) {
-        // PackageSelectionScreen supports (serviceId + serviceName) to fetch only that
-        // service’s packages.
-        navigation.navigate('PackageSelection', {
-          serviceTitle: svc.categoryName || svc.name || 'Service',
-          categoryId,
-          allCategories: serviceCategories,
-          serviceId: svc.id,
-          serviceName: svc.name || 'Service',
-        } as any);
-      } else {
-        // Direct-price services should open the category service selection screen
-        // so the user can pick the service and continue to CompanySelection -> SelectDateTime.
-        navigation.navigate('ServiceCategory', {
-          serviceTitle: svc.categoryName || 'Services',
-          categoryId,
-        } as any);
+      if (!svc?.id) return;
+      const categoryId = String(svc.categoryId || svc.categoryMasterId || '');
+      if (!categoryId) {
+        console.log('❌ Service missing categoryId/categoryMasterId; cannot open flow', svc);
+        return;
       }
-    } catch (e) {
-      console.log('❌ Failed to navigate from service search', e);
-      setTapLoading({ visible: false });
-    }
-  }, [navigation, serviceCategories]);
+
+      setTapLoading({ visible: true, message: 'Opening…' });
+      try {
+        // Prepare complete service object with all details
+        const serviceObject = {
+          id: svc.id,
+          name: svc.name || 'Service',
+          description: svc.description || '',
+          price: svc.price || (Array.isArray(svc.packages) && svc.packages.length > 0 ? svc.packages[0]?.price : null),
+          imageUrl: svc.imageUrl || null,
+          categoryId: svc.categoryId || svc.categoryMasterId,
+          companyId: svc.companyId,
+          companyName: svc.companyName,
+          packages: svc.packages || [],
+        };
+
+        console.log('🚀 Navigating to CompanySelection with:', {
+          serviceTitle: svc.name,
+          categoryId,
+          serviceId: svc.id,
+          hasDescription: !!svc.description,
+          hasPrice: !!svc.price,
+        });
+
+        // Navigate directly to CompanySelection screen with complete service details
+        navigation.navigate('CompanySelection', {
+          serviceTitle: svc.name || 'Service',
+          categoryId,
+          issues: [serviceObject], // Pass complete service object instead of just name
+          selectedIssues: [serviceObject], // Also pass in selectedIssues for compatibility
+          serviceIds: [svc.id],
+          selectedIssueIds: [svc.id],
+          fromServiceServices: true, // CRITICAL: Tell CompanySelection this is from service_services collection
+          allCategories: serviceCategories,
+        } as any);
+      } catch (e) {
+        console.log('❌ Failed to navigate to CompanySelection', e);
+        setTapLoading({ visible: false });
+      }
+    }, [navigation, serviceCategories]);
 
   // Ensure we never leave the "Opening..." overlay stuck if navigation succeeds.
   useFocusEffect(
@@ -1547,19 +2233,23 @@ export default function ServicesScreen() {
     // Instant feedback so the user knows the tap registered.
     setTapLoading({ visible: true, message: 'Opening…' });
     
-    // Check if category has packages
-    let hasPackages = false;
-    try {
-      hasPackages = await FirestoreService.categoryHasPackages(category.id);
-    } catch (e) {
-      if (__DEV__) console.log('⚠️ categoryHasPackages failed:', e);
-    }
-    
+    // Check if category has packages - run in parallel with navigation
     const navigationParams = {
       serviceTitle: category.name,
       categoryId: category.id,
       allCategories: serviceCategories,
     };
+    
+    // Start navigation immediately without waiting for package check
+    let hasPackages = false;
+    try {
+      hasPackages = await Promise.race([
+        FirestoreService.categoryHasPackages(category.id),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 300)) // 300ms timeout
+      ]);
+    } catch (e) {
+      if (__DEV__) console.log('⚠️ categoryHasPackages failed:', e);
+    }
     
     if (hasPackages) {
       if (__DEV__) console.log('✅ Category has packages, navigating to PackageSelection');
@@ -1568,6 +2258,9 @@ export default function ServicesScreen() {
       if (__DEV__) console.log('✅ Category has no packages, navigating directly to ServiceCategory');
       navigation.navigate("ServiceCategory", navigationParams);
     }
+    
+    // Hide loading immediately after navigation
+    setTimeout(() => setTapLoading({ visible: false }), 100);
   }, [navigation, serviceCategories]);
 
   const handleViewAllCategories = useCallback(() => {
@@ -1657,13 +2350,398 @@ export default function ServicesScreen() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Data slices with null checks - Show only 6 categories in main view
+  // Data slices with null checks - Show 6 categories in main view
   const listCategories = searchQuery 
     ? (filteredCategories || []).slice(0, 20) 
     : (serviceCategories || []).slice(0, 6);
   
   // Check if there are more categories to show
   const hasMoreCategories = !searchQuery && (serviceCategories || []).length > 6;
+
+  const ListFooterUI = React.useMemo(() => {
+    if (searchQuery.length > 0) return null;
+
+    return (
+      <View>
+        {/* Electrician Services Section */}
+        {electricianServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Electrician</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find electrician category and navigate
+                  const electricianCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return name.includes('electric') || name.includes('wiring') || name.includes('voltage');
+                  });
+                  if (electricianCategory) {
+                    console.log('⚡ Navigating to Electrician category:', electricianCategory.name);
+                    handleCategoryPress(electricianCategory);
+                  } else {
+                    console.log('❌ Electrician category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {electricianServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#FFFBEB' }]}>
+                          <Ionicons 
+                            name="flash-outline" 
+                            size={28} 
+                            color="#F59E0B" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Quick Services Section - Before Trending Packages */}
+        {plumberServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Plumber</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find plumber category and navigate
+                  const plumberCategory = serviceCategories.find(cat => 
+                    cat.name.toLowerCase().includes('plumb')
+                  );
+                  if (plumberCategory) {
+                    console.log('� Navigating to Plumber category:', plumberCategory.name);
+                    handleCategoryPress(plumberCategory);
+                  } else {
+                    console.log('❌ Plumber category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {plumberServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#EFF6FF' }]}>
+                          <Ionicons 
+                            name="water-outline" 
+                            size={28} 
+                            color="#3B82F6" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Automobile Washing Services Section */}
+        {automobileWashingServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Automobile Washing</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find automobile washing category and navigate
+                  const automobileCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return (name.includes('car') && name.includes('wash')) || 
+                           (name.includes('automobile') && name.includes('wash')) ||
+                           name.includes('car wash') ||
+                           name.includes('vehicle wash');
+                  });
+                  if (automobileCategory) {
+                    console.log('🚗 Navigating to Automobile Washing category:', automobileCategory.name);
+                    handleCategoryPress(automobileCategory);
+                  } else {
+                    console.log('❌ Automobile Washing category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {automobileWashingServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#F0F9FF' }]}>
+                          <Ionicons 
+                            name="car-outline" 
+                            size={28} 
+                            color="#0EA5E9" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Home Cleaning Services Section */}
+        {homeCleaningServices.length > 0 && (
+          <View style={styles.quickServicesContainer}>
+            <View style={styles.quickServicesHeader}>
+              <Text style={styles.quickServicesTitle}>Home Cleaning</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Find home cleaning category and navigate
+                  const cleaningCategory = serviceCategories.find(cat => {
+                    const name = cat.name.toLowerCase();
+                    return (name.includes('home') && name.includes('clean')) || 
+                           name.includes('housekeep') || 
+                           name.includes('maid') || 
+                           name.includes('domestic');
+                  });
+                  if (cleaningCategory) {
+                    console.log('🏠 Navigating to Home Cleaning category:', cleaningCategory.name);
+                    handleCategoryPress(cleaningCategory);
+                  } else {
+                    console.log('❌ Home Cleaning category not found in serviceCategories');
+                  }
+                }}
+                activeOpacity={0.7}
+                style={styles.seeAllButton}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickServicesScroll}
+              scrollEventThrottle={16}
+            >
+              {homeCleaningServices.map((service, index) => {
+                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
+                const displayPrice = hasPackages 
+                  ? `₹${service.packages[0]?.price || 'N/A'}`
+                  : service.price 
+                    ? `₹${service.price}`
+                    : 'Contact for price';
+
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={styles.quickServiceCard}
+                    activeOpacity={0.7}
+                    onPress={() => onServicePress(service)}
+                  >
+                    <View style={styles.quickServiceImageContainer}>
+                      {service.imageUrl ? (
+                        <ExpoImage
+                          source={{ uri: service.imageUrl }}
+                          style={styles.quickServiceImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
+                      ) : (
+                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#ECFDF5' }]}>
+                          <Ionicons 
+                            name="home-outline" 
+                            size={28} 
+                            color="#10B981" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.quickServiceInfo}>
+                      <View style={styles.quickServiceTextContainer}>
+                        <Text style={styles.quickServiceName} numberOfLines={2}>
+                          {service.name || 'Service'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.addToCartButton}
+                        activeOpacity={0.7}
+                        onPress={() => onServicePress(service)}
+                      >
+                        <LinearGradient
+                          colors={['#10b981', '#059669', '#047857']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.addToCartIconContainer}
+                        >
+                          <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  }, [searchQuery, plumberServices, automobileWashingServices, homeCleaningServices, electricianServices, navigation, serviceCategories, handleCategoryPress, onServicePress]);
 
   // Render functions
   const renderBanner = React.useCallback(({ item: banner, index }: { item: ServiceBanner; index: number }) => {
@@ -1843,44 +2921,62 @@ export default function ServicesScreen() {
     if (!item || !item.name) return null; // Safety check
     
     const categoryStyle = getCategoryStyle(item.name, index);
+    
+    // Gradient colors for borders
+    const gradientColorSets = [
+      ['#FFD89B', '#19547B'] as const, // Yellow to Blue
+      ['#FF6B9D', '#C44569'] as const, // Pink to Red
+      ['#4FACFE', '#00F2FE'] as const, // Blue to Cyan
+    ];
+    const borderGradient = gradientColorSets[index % 3];
+    
     return (
-      <TouchableOpacity
-        style={styles.gridCard}
-        activeOpacity={0.7}
-        onPress={() => handleCategoryPress(item)}
-      >
-        <View style={styles.gridMedia}>
-          <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
-            {item.imageUrl ? (
-              <ExpoImage
-                source={{ uri: item.imageUrl }}
-                style={styles.gridCategoryImage}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                transition={150}
-                onError={(e) => {
-                  if (__DEV__) {
-                    console.log(`⚠️ Failed to load image for ${item.name}`, {
-                      url: item.imageUrl,
-                      error: (e as any)?.nativeEvent,
-                    });
-                  }
-                }}
-              />
-            ) : (
-              <Ionicons 
-                name={categoryStyle.icon as any} 
-                size={36} 
-                color={categoryStyle.color} 
-              />
-            )}
-          </View>
-        </View>
+      <View style={styles.gradientBorderWrapper}>
+        <LinearGradient
+          colors={[...borderGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.gradientBorder}
+        >
+          <TouchableOpacity
+            style={styles.gridCard}
+            activeOpacity={0.7}
+            onPress={() => handleCategoryPress(item)}
+          >
+            <View style={styles.gridMedia}>
+              <View style={[styles.gridIconContainer, { backgroundColor: categoryStyle.bgColor }]}>
+                {item.imageUrl ? (
+                  <ExpoImage
+                    source={{ uri: item.imageUrl }}
+                    style={styles.gridCategoryImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    onError={(e) => {
+                      if (__DEV__) {
+                        console.log(`⚠️ Failed to load image for ${item.name}`, {
+                          url: item.imageUrl,
+                          error: (e as any)?.nativeEvent,
+                        });
+                      }
+                    }}
+                  />
+                ) : (
+                  <Ionicons 
+                    name={categoryStyle.icon as any} 
+                    size={36} 
+                    color={categoryStyle.color} 
+                  />
+                )}
+              </View>
+            </View>
 
-        <View style={styles.gridInfo}>
-          <Text style={styles.gridTitle} numberOfLines={2}>{item.name}</Text>
-        </View>
-      </TouchableOpacity>
+            <View style={styles.gridInfo}>
+              <Text style={styles.gridTitle} numberOfLines={2}>{item.name}</Text>
+            </View>
+          </TouchableOpacity>
+        </LinearGradient>
+      </View>
     );
   }, [handleCategoryPress]);
 
@@ -1912,6 +3008,149 @@ export default function ServicesScreen() {
     );
   }, [onServicePress]);
 
+  const renderRandomServiceModal = useCallback(({ item, index }: { item: any; index: number }) => {
+    if (!item || !item.package) return null;
+
+    const pkg = item.package;
+    const displayPrice = `₹${pkg.price || 'N/A'}`;
+    
+    // Format duration properly with unit
+    const formatDuration = () => {
+      let duration = pkg?.duration || pkg?.durationDays;
+      let unit = String(pkg?.durationUnit || pkg?.unit || '').toLowerCase().trim();
+      
+      if (!duration) return 'N/A';
+      
+      const count = Number(duration);
+      
+      // Remove "(s)" from unit if present
+      unit = unit.replace(/\(s\)/g, '');
+      
+      // Format based on unit
+      if (unit === 'day' || unit === 'days') {
+        return `${count} ${count === 1 ? 'day' : 'days'}`;
+      } else if (unit === 'week' || unit === 'weeks') {
+        return `${count} ${count === 1 ? 'week' : 'weeks'}`;
+      } else if (unit === 'month' || unit === 'months') {
+        return `${count} ${count === 1 ? 'month' : 'months'}`;
+      } else if (unit === 'hour' || unit === 'hours') {
+        return `${count} ${count === 1 ? 'hour' : 'hours'}`;
+      } else if (unit === 'minute' || unit === 'minutes' || unit === 'mins' || unit === 'min') {
+        return `${count} ${count === 1 ? 'min' : 'mins'}`;
+      } else if (unit === 'year' || unit === 'years') {
+        return `${count} ${count === 1 ? 'year' : 'years'}`;
+      } else {
+        // Default to minutes if no unit specified
+        return `${count} mins`;
+      }
+    };
+    
+    const displayDuration = formatDuration();
+
+    const onModalPress = () => {
+      if (!item.categoryId) {
+        console.log('❌ Package missing categoryId; cannot open flow');
+        return;
+      }
+
+      setTapLoading({ visible: true, message: 'Opening…' });
+      try {
+        navigation.navigate('PackageSelection', {
+          serviceTitle: item.serviceName || 'Service',
+          categoryId: item.categoryId,
+          allCategories: serviceCategories,
+          serviceId: item.serviceId,
+          serviceName: item.serviceName,
+        } as any);
+      } catch (e) {
+        console.log('❌ Failed to navigate from package modal', e);
+        setTapLoading({ visible: false });
+      }
+    };
+
+    return (
+      <TouchableOpacity
+        style={styles.randomPackageModal}
+        activeOpacity={0.7}
+        onPress={onModalPress}
+      >
+        {/* Header with Badge and Arrow */}
+        <View style={styles.packageModalHeader}>
+          <View style={styles.packageBadge}>
+            <Ionicons name="gift-outline" size={12} color="#10b981" />
+            <Text style={styles.packageBadgeText}>Package</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={16} color="#00b4a0" />
+        </View>
+
+        {/* Service Name */}
+        <Text style={styles.packageServiceName} numberOfLines={2}>
+          {String(item.serviceName || 'Service')}
+        </Text>
+
+        {/* Package Name */}
+        <Text style={styles.packageName} numberOfLines={1}>
+          {String(pkg.name || 'Package')}
+        </Text>
+
+        {/* Description */}
+        {pkg.description && (
+          <Text style={styles.packageDescription} numberOfLines={2}>
+            {String(pkg.description)}
+          </Text>
+        )}
+
+        {/* Details Row */}
+        <View style={styles.packageDetailsRow}>
+          <View style={styles.packageDetail}>
+            <Ionicons name="time-outline" size={14} color="#64748b" />
+            <Text style={styles.packageDetailText}>{displayDuration}</Text>
+          </View>
+          <View style={styles.packageDetail}>
+            <Ionicons name="checkmark-circle-outline" size={14} color="#64748b" />
+            <Text style={styles.packageDetailText}>
+              {pkg.features?.length || 0} features
+            </Text>
+          </View>
+        </View>
+
+        {/* Features List */}
+        {Array.isArray(pkg.features) && pkg.features.length > 0 && (
+          <View style={styles.packageFeatures}>
+            {pkg.features.slice(0, 2).map((feature: any, idx: number) => (
+              <View key={idx} style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <Text style={styles.featureText} numberOfLines={1}>
+                  {String(feature)}
+                </Text>
+              </View>
+            ))}
+            {pkg.features.length > 2 && (
+              <Text style={styles.moreFeatures}>
+                +{pkg.features.length - 2} more
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Footer with Price and Company */}
+        <View style={styles.packageModalFooter}>
+          <View>
+            <Text style={styles.packagePrice}>{displayPrice}</Text>
+            {item.companyName && (
+              <Text style={styles.packageCompany} numberOfLines={1}>
+                {String(item.companyName)}
+              </Text>
+            )}
+          </View>
+          <View style={styles.packageCTA}>
+            <Text style={styles.packageCTAText}>Book Now</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [navigation, serviceCategories]);
+
   const StickyHeaderUI = React.useMemo(() => {
     return (
       <Animated.View
@@ -1919,17 +3158,19 @@ export default function ServicesScreen() {
           styles.stickyHeaderWrapper,
           {
             paddingTop: headerTopPadding,
-            height: SERVICES_STICKY_HEADER_HEIGHT,
+            height: stickyHeaderHeight,
+            overflow: 'hidden',
+            backgroundColor: '#ffffff',
           },
         ]}
         pointerEvents="box-none"
       >
-        <StatusBar barStyle="light-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-        {/* Scroll background (BEHIND the GIF, not on top of it) */}
+        {/* Scroll background (BEHIND the GIF, not on top of it) - Hidden on scroll */}
         <Animated.View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { opacity: headerGradientOpacity }]}
+          style={[StyleSheet.absoluteFillObject, { opacity: 0 }]}
         >
           <LinearGradient
             colors={[...SERVICES_HEADER_GRADIENT_COLORS]}
@@ -1937,38 +3178,27 @@ export default function ServicesScreen() {
           />
         </Animated.View>
 
-        {/* Background media (Video) */}
+        {/* Background media (Scrolling Images) */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.stickyHeaderMediaLayer,
-            { height: headerMediaHeight, opacity: headerMediaOpacity },
+            { height: headerMediaHeight, opacity: headerMediaOpacity, backgroundColor: '#f8fafc' },
           ]}
         >
-          <Video
-            source={require("../../assets/deliveryBackground.mp4")}
-            style={StyleSheet.absoluteFillObject}
-            muted
-            repeat
-            resizeMode="cover"
-            rate={1.0}
-            ignoreSilentSwitch="obey"
-            paused={!isFocused}
-            playInBackground={false}
-            playWhenInactive={false}
-            bufferConfig={{
-              minBufferMs: 1500,
-              maxBufferMs: 6000,
-              bufferForPlaybackMs: 750,
-              bufferForPlaybackAfterRebufferMs: 1500,
-            }}
-            maxBitRate={1500000}
+          <ExpoImage
+            source={HEADER_IMAGES[activeHeaderImageIndex]}
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: '#f8fafc' }]}
+            contentFit="cover"
+            contentPosition="center"
+            cachePolicy="memory-disk"
+            transition={800}
           />
         </Animated.View>
 
-        <View style={styles.stickyHeaderContent} pointerEvents="box-none">
+        <View style={[styles.stickyHeaderContent, { overflow: 'hidden' }]} pointerEvents="box-none">
 
-          <View style={styles.headerRow}>
+          <Animated.View style={[styles.headerRow, { opacity: locationRowOpacity }]}>
             {/* Location row (always visible) */}
             <TouchableOpacity
               style={[styles.locationRow, styles.locationRowHeader]}
@@ -1977,7 +3207,11 @@ export default function ServicesScreen() {
             >
               <View style={styles.locationRowLeft}>
                 <Ionicons name="location-outline" size={18} color="#00b4a0" />
-                <Text style={[styles.locationRowText, styles.locationRowTextHeader]} numberOfLines={1}>
+                <Text style={[
+                  styles.locationRowText, 
+                  styles.locationRowTextHeader,
+                  !hasSelectedLocation && styles.locationRowTextRed
+                ]} numberOfLines={1}>
                   {hasSelectedLocation
                     ? `Delivering to ${locationDisplayText}`
                     : 'Set delivery location'}
@@ -1999,10 +3233,10 @@ export default function ServicesScreen() {
                 resizeMode="cover"
               />
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
-          {/* Search Bar */}
-          <View style={[styles.searchContainer, styles.searchContainerHeader]}>
+          {/* Search Bar - Always visible */}
+          <Animated.View style={[styles.searchContainer, styles.searchContainerHeader, { transform: [{ translateY: searchBarTranslateY }] }]}>
             <View style={styles.searchHeaderRow}>
               <View style={[styles.searchBar, styles.searchBarHeader, isSearchFocused && styles.searchBarFocused]}>
                 <Ionicons name="search" size={20} color="#00b4a0" style={styles.searchIcon} />
@@ -2044,18 +3278,6 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Booking History Icon */}
-              <TouchableOpacity
-                onPress={handleHistoryPress}
-                activeOpacity={0.8}
-                style={styles.historyIconButtonSearch}
-                accessibilityLabel="Booking history"
-              >
-                <Ionicons name="reader-outline" size={20} color="#0f172a" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
           {/* Grocery/Service/Food Toggle */}
           <ModeToggle
             activeMode={activeMode}
@@ -2064,10 +3286,14 @@ export default function ServicesScreen() {
               if (mode === 'food') navigation.navigate('ProductsHome');
             }}
           />
+
+            </View>
+          </Animated.View>
+
         </View>
       </Animated.View>
     );
-  }, [activeGifIndex, activeMode, clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, headerMediaHeight, headerMediaOpacity, headerTopPadding, isSearchFocused, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, setActiveMode, showAnimatedSearchPlaceholder]);
+  }, [clearSearch, handleHistoryPress, handleSearch, hasSelectedLocation, headerGradientOpacity, locationDisplayText, navigation, placeholderOpacity, placeholderTranslateY, searchPlaceholderText, searchQuery, showAnimatedSearchPlaceholder]);
 
   const ListHeaderUI = React.useMemo(() => {
     return (
@@ -2084,6 +3310,89 @@ export default function ServicesScreen() {
         {/* Only show banner when not searching */}
         {searchQuery.length === 0 && (
           <>
+            {/* Grocery/Service/Food Toggle - Moved to top of content */}
+            <View style={styles.toggleRowContent}>
+              {/* Grocery Toggle - Only show if location.grocery is not false */}
+              {location?.grocery !== false && (
+                <TouchableOpacity
+                  style={[
+                    styles.toggleBtn,
+                    activeMode === "grocery" && styles.toggleBtnActive,
+                  ]}
+                  onPress={() => {
+                    setActiveMode("grocery");
+                    // Navigate to HomeTab only if it exists (grocery is available)
+                    if (location?.grocery !== false) {
+                      navigation.reset({
+                        index: 0,
+                        routes: [{ name: "HomeTab" }],
+                      });
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "grocery" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Grocery
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* Service Toggle - Only show if location.services is not false */}
+              {location?.services !== false && (
+                <TouchableOpacity
+                  style={[
+                    styles.toggleBtn,
+                    activeMode === "service" && styles.toggleBtnActive,
+                  ]}
+                  onPress={() => setActiveMode("service")}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "service" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Service
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* Food Toggle - Only show if location.food is not false */}
+              {location?.food !== false && (
+                <TouchableOpacity
+                  style={[
+                    styles.toggleBtn,
+                    activeMode === "food" && styles.toggleBtnActive,
+                  ]}
+                  onPress={() => {
+                    setActiveMode("food");
+                    // Navigate based on grocery availability
+                    if (location?.grocery !== false) {
+                      // HomeTab exists
+                      navigation.navigate("ProductsHome");
+                    }
+                    // If grocery is false, just set mode, user is already on a screen
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.toggleLabel,
+                      activeMode === "food" && styles.toggleLabelActive,
+                    ]}
+                  >
+                    Food
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* Service Banners */}
             {!bannersLoading && serviceBanners.length > 0 && (
               <View style={styles.bannerContainer}>
@@ -2121,63 +3430,67 @@ export default function ServicesScreen() {
               </View>
             )}
 
-            {/* All Services List Header with View All Button */}
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>All Services</Text>
-              {hasMoreCategories && (
-                <TouchableOpacity
-                  style={styles.viewAllButtonInline}
-                  onPress={handleViewAllCategories}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.viewAllTextInline}>View All</Text>
-                  <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
-                    <Ionicons name="arrow-forward" size={14} color="#00b4a0" />
-                  </Animated.View>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Live Updates Section */}
-            <View style={styles.liveUpdatesContainer}>
-              <View style={styles.liveUpdatesHeader}>
-                <Animated.View style={[styles.liveIndicator, { opacity: bookingBlinkAnim }]}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>Live Bookings</Text>
-                </Animated.View>
-              </View>
-              <View style={styles.liveUpdatesWrapper}>
-                {latestLiveBooking ? (
-                  <Animated.View style={[styles.liveUpdateCard, { opacity: bookingBlinkAnim }]}>
-                    <View style={styles.liveUpdateCardLeft}>
-                      <View style={styles.liveUpdateDot} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                          {latestLiveBooking.serviceName}
-                        </Text>
-                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                          Booked in {latestLiveBooking.location}
-                        </Text>
-                      </View>
-                    </View>
-                  </Animated.View>
-                ) : (
-                  <View style={styles.liveUpdateCard}>
-                    <View style={styles.liveUpdateCardLeft}>
-                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.liveUpdateCardTitle} numberOfLines={1}>
-                          No live bookings
-                        </Text>
-                        <Text style={styles.liveUpdateCardSubtitle} numberOfLines={1}>
-                          No active bookings right now
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+            {/* All Services Section with White Background */}
+            <View style={styles.allServicesSection}>
+              {/* All Services List Header with View All Button */}
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>All Services</Text>
+                {hasMoreCategories && (
+                  <TouchableOpacity
+                    style={styles.viewAllButtonInline}
+                    onPress={handleViewAllCategories}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.viewAllTextInline}>View All</Text>
+                    <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
+                      <Ionicons name="arrow-forward" size={14} color="#00b4a0" />
+                    </Animated.View>
+                  </TouchableOpacity>
                 )}
               </View>
+
+              {/* Live Updates Section */}
+              <View style={styles.liveUpdatesContainer}>
+                <View style={styles.liveUpdatesHeader}>
+                  <View style={styles.liveIndicator}>
+                    <Animated.View style={[styles.liveDot, { opacity: liveDotBlinkAnim }]} />
+                    <Text style={styles.liveText}>Live Bookings</Text>
+                  </View>
+                </View>
+                <View style={styles.liveUpdatesWrapper}>
+                  {latestLiveBooking ? (
+                    <Animated.View style={[
+                      styles.liveUpdateItem, 
+                      { 
+                        transform: [{ translateY: bookingTransitionAnim }]
+                      }
+                    ]}>
+                      <View style={styles.liveUpdateDot} />
+                      <Text style={styles.liveUpdateText} numberOfLines={1}>
+                        <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
+                        {' '}booked in{' '}
+                        <Text style={[
+                          styles.liveUpdateLocation,
+                          latestLiveBooking.location === 'Your area' && styles.liveUpdateLocationRed
+                        ]}>
+                          {latestLiveBooking.location}
+                        </Text>
+                      </Text>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.liveUpdateItem}>
+                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
+                      <Text style={styles.liveUpdateText}>
+                        <Text style={styles.liveUpdateBold}>No live bookings</Text>
+                        {' '}at the moment
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
             </View>
+
+
           </>
         )}
 
@@ -2196,109 +3509,159 @@ export default function ServicesScreen() {
         )}
       </View>
     );
-  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingBlinkAnim, handleViewAllCategories, latestLiveBooking, renderServiceListItem]);
+  }, [searchQuery, filteredCategories, searchServices, bannersLoading, serviceBanners, renderBanner, activeBannerIndex, hasMoreCategories, arrowAnim, bookingTransitionAnim, handleViewAllCategories, renderServiceListItem, latestLiveBooking, activeMode, setActiveMode, navigation, location]);
+
+  const renderListHeader = React.useCallback(() => ListHeaderUI, [ListHeaderUI]);
 
   return (
-    <ImageBackground
-      source={require("../../assets/serviceBG.png")}
-      style={styles.container}
-      resizeMode="cover"
-      blurRadius={3}
-    >
-      {StickyHeaderUI}
-      {serviceConfirmedBanner && (
-        <View style={styles.serviceConfirmedBanner}>
-          <View style={styles.serviceConfirmedBannerLeft}>
-            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
-            <Text style={styles.serviceConfirmedBannerText}>
-              Service booking confirmed
-            </Text>
+    <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
+      <ImageBackground
+        source={require("../../assets/serviceBG.png")}
+        style={styles.container}
+        resizeMode="cover"
+      >
+        {StickyHeaderUI}
+        {serviceConfirmedBanner && (
+          <View style={styles.serviceConfirmedBanner}>
+            <View style={styles.serviceConfirmedBannerLeft}>
+              <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+              <Text style={styles.serviceConfirmedBannerText}>
+                Service booking confirmed
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={dismissServiceConfirmedBanner}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={18} color="#ffffff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={dismissServiceConfirmedBanner}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={18} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
-      )}
-      {tapLoading.visible && (
-        <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.tapLoadingCard}
-            activeOpacity={1}
-            onPress={() => setTapLoading({ visible: false })}
-          >
-            <ActivityIndicator size="small" color="#00b4a0" />
-            <Text style={styles.tapLoadingText}>{tapLoading.message || 'Opening…'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        )}
+        {tapLoading.visible && (
+          <View style={styles.tapLoadingOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.tapLoadingCard}
+              activeOpacity={1}
+              onPress={() => setTapLoading({ visible: false })}
+            >
+              <ActivityIndicator size="small" color="#00b4a0" />
+              <Text style={styles.tapLoadingText}>{tapLoading.message || 'Opening…'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {/* Add safety check for initial render */}
-      {!serviceCategories && isLoading ? (
-        <View style={styles.emptyLoadingContainer}>
-          <ActivityIndicator size="large" color="#00b4a0" />
-          <Text style={styles.emptyLoadingText}>Loading services...</Text>
-        </View>
-      ) : (
-        <Animated.FlatList
-          data={isLoading ? [] : (listCategories || [])}
-          keyExtractor={(item, index) => item?.id || `item-${index}`}
-          ListHeaderComponent={ListHeaderUI}
-          renderItem={renderListItem}
-          numColumns={2}
-          columnWrapperStyle={styles.gridRow}
-          key="two-columns"
-          ListFooterComponent={null}
-          ListEmptyComponent={
-            isLoading ? (
-              <View style={styles.emptyLoadingContainer}>
-                <ActivityIndicator size="large" color="#00b4a0" />
-                <Text style={styles.emptyLoadingText}>Loading services...</Text>
+        {/* Add safety check for initial render */}
+        {!hasSelectedLocation ? (
+          <View style={styles.locationPromptContainer}>
+            <View style={styles.locationPromptCard}>
+              <View style={styles.locationPromptIconContainer}>
+                <Ionicons name="location-outline" size={48} color="#00b4a0" />
               </View>
-            ) : error ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
-                <Text style={styles.emptyText}>{error}</Text>
-              </View>
-            ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 && (searchServices || []).length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
-                <Text style={styles.emptyText}>No services found</Text>
-                <Text style={styles.emptySubText}>Try different keywords</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No services available</Text>
-              </View>
-            )
-          }
-          contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 30 }}
-          showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={['#00b4a0', '#00d2c7']}
-              tintColor="#00b4a0"
-            />
-          }
-          removeClippedSubviews={false}
-          maxToRenderPerBatch={10}
-          windowSize={10}
-          initialNumToRender={searchQuery ? 20 : 6}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
+              <Text style={styles.locationPromptTitle}>Select Your Location</Text>
+              <Text style={styles.locationPromptDescription}>
+                Please select your delivery location to see services available in your area
+              </Text>
+              <TouchableOpacity
+                style={styles.locationPromptButton}
+                onPress={() => navigation.navigate('LocationSelector', { fromScreen: 'Services' })}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#10b981', '#059669', '#047857']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.locationPromptButtonGradient}
+                >
+                  <Ionicons name="location" size={20} color="#fff" />
+                  <Text style={styles.locationPromptButtonText}>Select Location</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : !serviceCategories && isLoading ? (
+          <View style={styles.emptyLoadingContainer}>
+            <ActivityIndicator size="large" color="#00b4a0" />
+            <Text style={styles.emptyLoadingText}>Loading services...</Text>
+          </View>
+        ) : (
+          <Animated.FlatList
+            data={isLoading ? [] : (listCategories || [])}
+            keyExtractor={(item, index) => item?.id || `item-${index}`}
+            ListHeaderComponent={renderListHeader}
+            ListFooterComponent={ListFooterUI}
+            renderItem={renderListItem}
+            numColumns={3}
+            columnWrapperStyle={styles.gridRow}
+            key="three-columns"
+            ListEmptyComponent={
+              isLoading ? (
+                <View style={styles.emptyLoadingContainer}>
+                  <ActivityIndicator size="large" color="#00b4a0" />
+                  <Text style={styles.emptyLoadingText}>Loading services...</Text>
+                </View>
+              ) : error ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" style={styles.emptyIcon} />
+                  <Text style={styles.emptyText}>{error}</Text>
+                </View>
+              ) : searchQuery.length > 0 && (filteredCategories || []).length === 0 && (searchServices || []).length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="search" size={48} color="#cbd5e1" style={styles.emptyIcon} />
+                  <Text style={styles.emptyText}>No services found</Text>
+                  <Text style={styles.emptySubText}>Try different keywords</Text>
+                </View>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No services available</Text>
+                </View>
+              )
+            }
+            contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 80, backgroundColor: 'white' }}
+            showsVerticalScrollIndicator={false}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#00b4a0', '#00d2c7']}
+                tintColor="#00b4a0"
+              />
+            }
+            removeClippedSubviews={false}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={searchQuery ? 20 : 6}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            nestedScrollEnabled
+          />
+        )}
+      </ImageBackground>
+      
+      {/* Services Bottom Tabs - absolute so it never shifts during layout recalc */}
+      <View style={styles.bottomTabsWrapper}>
+        <ServicesBottomTabs
+          activeTab={activeTab}
+          onTabPress={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'home') {
+              setActiveMode('service');
+            } else if (tab === 'explore') {
+              navigation.navigate('AllServices');
+            } else if (tab === 'cart') {
+              navigation.navigate('ServiceCart');
+            } else if (tab === 'bookings') {
+              navigation.navigate('BookingHistory');
+            }
+          }}
+          cartItemCount={serviceTotalItems}
         />
-      )}
-    </ImageBackground>
+      </View>
+    </View>
   );
 }
 
@@ -2306,6 +3669,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fdfdfd",
+  },
+
+  bottomTabsWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 10,
+    backgroundColor: '#ffffff',
   },
 
   serviceConfirmedBanner: {
@@ -2380,6 +3753,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
+    backgroundColor: '#ffffff',
   },
 
   stickyHeaderMediaLayer: {
@@ -2387,7 +3761,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#f8fafc',
+    zIndex: -1,
   },
 
   stickyHeaderContent: {
@@ -2439,6 +3813,10 @@ const styles = StyleSheet.create({
 
   locationRowTextHeader: {
     color: '#0f172a',
+  },
+
+  locationRowTextRed: {
+    color: '#ef4444',
   },
 
   headerOverlay: {
@@ -2592,12 +3970,34 @@ const styles = StyleSheet.create({
   },
 
   profileIconButton: {
-    marginLeft: 10,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginLeft: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    overflow: "hidden",
+  },
+
+  profileImg: {
+    width: "100%",
+    height: "100%",
+  },
+
+  profilePlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#f8f9fa",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   historyIconButtonSearch: {
@@ -2617,16 +4017,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-start",
     alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 0,
     gap: 8,
+  },
+  toggleRowContent: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 0,
+    marginBottom: 0,
+    gap: 8,
+    backgroundColor: "#ffffff",
   },
   toggleBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "rgba(0, 0, 0, 0.15)",
   },
@@ -2641,6 +4052,46 @@ const styles = StyleSheet.create({
   },
   toggleLabelActive: {
     color: "#ffffff",
+  },
+  newBadge: {
+    position: "absolute",
+    top: -6,
+    right: 0,
+    backgroundColor: "#FF3B30",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  newBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  soonBadge: {
+    position: "absolute",
+    top: -6,
+    right: 4,
+    backgroundColor: "#FF9500",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  soonBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 0.2,
   },
 
   searchResultsCard: {
@@ -2848,13 +4299,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
+  allServicesSection: {
+    backgroundColor: "white",
+    paddingBottom: 12,
+  },
+
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 12,
-    marginTop: 40, // Increased from 8 to 40 for more GIF space
+    marginTop: 8,
+    backgroundColor: "white",
   },
 
   sectionTitle: {
@@ -2866,32 +4323,29 @@ const styles = StyleSheet.create({
   viewAllButtonInline: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#00b4a0",
-    gap: 4,
+    backgroundColor: "#f0fdfa",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
 
   viewAllTextInline: {
     color: "#00b4a0",
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   // Live Updates Styles
   liveUpdatesContainer: {
     paddingVertical: 12,
-    // backgroundColor: "#f8fafc",
     backgroundColor: "white",
-    marginBottom: 16,
+    marginBottom: 4,
   },
 
   liveUpdatesHeader: {
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
   },
 
   liveIndicator: {
@@ -2912,115 +4366,75 @@ const styles = StyleSheet.create({
   },
 
   liveText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: "#0f172a",
   },
 
   liveUpdatesWrapper: {
-    overflow: "hidden",
-  },
-
-  liveUpdatesScroll: {
     paddingHorizontal: 16,
-    flexDirection: "row",
+    height: 24,
+    overflow: "hidden",
   },
 
   liveUpdateItem: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 40,
     gap: 8,
   },
 
   liveUpdateDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "#00b4a0",
-  },
-
-  liveUpdateSimpleText: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "400",
-  },
-
-  liveUpdateLocation: {
-    color: "#00b4a0",
-    fontWeight: "500",
-  },
-
-  liveUpdateCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    marginRight: 10,
-    minWidth: 270,
-  },
-
-  liveUpdateCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-
-  liveUpdateCardTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  liveUpdateCardSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
   },
 
   liveUpdateText: {
     fontSize: 13,
     color: "#64748b",
     fontWeight: "400",
+    flex: 1,
   },
 
   liveUpdateBold: {
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#0f172a",
   },
 
-  // Grid Styles (2 columns)
+  liveUpdateLocation: {
+    color: "#00b4a0",
+    fontWeight: "600",
+  },
+
+  liveUpdateLocationRed: {
+    color: "#ef4444",
+  },
+
+  // Grid Styles (3 columns)
   gridRow: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+
+  gradientBorderWrapper: {
+    width: (width - 48) / 3,
+    borderRadius: 16,
+    padding: 2,
+  },
+
+  gradientBorder: {
+    borderRadius: 16,
+    padding: 0,
   },
 
   gridCard: {
-    width: (width - 48) / 2,
+    width: '100%',
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 14,
+    padding: 0,
     alignItems: "center",
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
     overflow: 'hidden',
   },
 
@@ -3028,14 +4442,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 6,
-    paddingBottom: 10,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
 
   gridIconContainer: {
     width: '100%',
-    height: 108,
-    borderRadius: 16,
+    height: 100,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -3044,17 +4458,18 @@ const styles = StyleSheet.create({
   gridCategoryImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: 14,
   },
 
   gridInfo: {
     width: '100%',
-    paddingHorizontal: 6,
-    paddingBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
 
   gridTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#0f172a",
     textAlign: "center",
@@ -3100,6 +4515,615 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignSelf: "center",
     color: "#cbd5e1",
+  },
+
+  // Random Service Modals Styles
+  randomServicesContainer: {
+    paddingVertical: 12,
+    backgroundColor: "#f8fafc",
+    marginBottom: 16,
+  },
+
+  randomServicesScroll: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+
+  randomServiceModal: {
+    width: (width - 64) / 2,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  modalBadge: {
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+
+  modalBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#10b981",
+    textTransform: "uppercase",
+  },
+
+  modalServiceName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+
+  modalCategoryName: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748b",
+    marginBottom: 10,
+  },
+
+  modalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+
+  modalPrice: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#00b4a0",
+  },
+
+  modalPackageCount: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
+
+  // Random Package Modal Styles
+  randomPackageModal: {
+    width: (width - 64) / 2,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+  },
+
+  packageModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  // New Package Card Styles (Image-based design)
+  packageCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    width: 180,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+
+  packageIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  packageCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+
+  packageCardDescription: {
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#64748b",
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+
+  packageCardDuration: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 16,
+  },
+
+  packageCardDurationText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+
+  packageCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
+  },
+
+  packagePriceBadge: {
+    flex: 1,
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d1fae5",
+  },
+
+  packagePriceContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  packageCardPriceLabel: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#059669",
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  packageCardPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#10b981",
+  },
+
+  packageBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+
+  packageBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#10b981",
+    textTransform: "uppercase",
+  },
+
+  packageServiceName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 4,
+    lineHeight: 16,
+  },
+
+  packageName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#00b4a0",
+    marginBottom: 6,
+  },
+
+  packageDescription: {
+    fontSize: 11,
+    fontWeight: "400",
+    color: "#64748b",
+    marginBottom: 8,
+    lineHeight: 14,
+  },
+
+  packageDetailsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+
+  packageDetail: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+
+  packageDetailText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+
+  packageFeatures: {
+    marginBottom: 8,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+
+  featureDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#00b4a0",
+  },
+
+  featureText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#475569",
+    flex: 1,
+  },
+
+  moreFeatures: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#00b4a0",
+    marginTop: 4,
+  },
+
+  packageModalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+  },
+
+  packagePrice: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#00b4a0",
+  },
+
+  packagePriceSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  packageCompany: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+
+  packageCTA: {
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+
+  packageCTAText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  // Location Prompt Styles
+  locationPromptContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingTop: SERVICES_STICKY_HEADER_HEIGHT + 40,
+    paddingBottom: 80,
+  },
+
+  locationPromptCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    padding: 32,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    maxWidth: 400,
+    width: "100%",
+  },
+
+  locationPromptIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#ecfdf5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+
+  locationPromptTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+
+  locationPromptDescription: {
+    fontSize: 15,
+    fontWeight: "400",
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+
+  locationPromptButton: {
+    width: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+
+  locationPromptButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+
+  locationPromptButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  randomServicesHeader: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 20,
+  },
+
+  randomServicesTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  // Trending Packages Styles
+  trendingPackagesContainer: {
+    paddingVertical: 12,
+    backgroundColor: "#fdfdfd",
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  // Quick Services Styles (Popular Services)
+  quickServicesContainer: {
+    paddingVertical: 16,
+    backgroundColor: "#ffffff",
+    marginBottom: 8,
+  },
+
+  quickServicesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  quickServicesTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  seeAllButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#f0fdfa",
+  },
+
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#10b981",
+  },
+
+  quickServicesScroll: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+
+  quickServiceCard: {
+    width: 110,
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  quickServiceImageContainer: {
+    width: "100%",
+    height: 90,
+    backgroundColor: "#f8fafc",
+    overflow: "hidden",
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+  },
+
+  quickServiceImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  quickServiceIconFallback: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  quickServiceInfo: {
+    padding: 6,
+    width: "100%",
+    position: "relative",
+    minHeight: 55,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+
+  quickServiceTextContainer: {
+    flex: 1,
+    paddingRight: 4,
+  },
+
+  quickServiceName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0f172a",
+    lineHeight: 14,
+  },
+
+  quickServicePrice: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#10b981",
+    textAlign: "center",
+  },
+
+  bookNowButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+
+  bookNowText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  addToCartButton: {
+    flexShrink: 0,
+  },
+
+  addToCartIconContainer: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  packageBookNowButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  packageBookNowText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  trendingPackagesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  trendingHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  trendingPackagesTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+
+  trendingSubtitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#10b981",
+  },
+
+  trendingPackagesScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
   },
 
 });

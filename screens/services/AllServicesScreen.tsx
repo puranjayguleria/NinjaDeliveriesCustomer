@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   TextInput,
   ImageBackground,
 } from 'react-native';
@@ -13,6 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { FirestoreService, ServiceCategory } from "../../services/firestoreService";
+import LoadingModal from '../../components/LoadingModal';
+import { getSharedCategories, hasSharedCategories } from '../../services/sharedCategoriesStore';
 
 // Function to get icon based on service category name
 const getCategoryIcon = (categoryName: string) => {
@@ -80,36 +81,55 @@ const getCategoryIcon = (categoryName: string) => {
   return "construct-outline"; // default
 };
 
+// Module-level cache — persists across mounts, cleared after 10 minutes
+let _cachedCategories: ServiceCategory[] | null = null;
+let _cacheTs = 0;
+const CACHE_TTL = 10 * 60 * 1000;
+
 export default function AllServicesScreen() {
   const navigation = useNavigation<any>();
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [filteredCategories, setFilteredCategories] = useState<ServiceCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Use shared store (populated by ServicesScreen) as instant initial data
+  const initialCats = _cachedCategories ?? (hasSharedCategories() ? getSharedCategories() : []);
+  const [categories, setCategories] = useState<ServiceCategory[]>(initialCats);
+  const [filteredCategories, setFilteredCategories] = useState<ServiceCategory[]>(initialCats);
+  const [loading, setLoading] = useState(true); // always show modal briefly on open
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchServiceCategories();
   }, []);
 
-  const fetchServiceCategories = async () => {
+  const fetchServiceCategories = async (forceRefresh = false) => {
     try {
+      // 1. Use module cache if fresh
+      if (!forceRefresh && _cachedCategories && Date.now() - _cacheTs < CACHE_TTL) {
+        setCategories(_cachedCategories);
+        setFilteredCategories(_cachedCategories);
+        setLoading(false);
+        return;
+      }
+      // 2. Use shared store from ServicesScreen (already fetched, no extra network call)
+      if (!forceRefresh && hasSharedCategories()) {
+        const shared = getSharedCategories();
+        _cachedCategories = shared;
+        _cacheTs = Date.now();
+        setCategories(shared);
+        setFilteredCategories(shared);
+        setLoading(false);
+        return;
+      }
+      // 3. Fallback: fetch from Firestore
       setLoading(true);
-      console.log('🏷️ AllServicesScreen: Fetching categories with active workers...');
       const fetchedCategories = await FirestoreService.getCategoriesWithActiveWorkers();
-      
-      // Log image statistics
-      const categoriesWithImages = fetchedCategories.filter(cat => cat.imageUrl);
-      console.log(`🖼️ AllServicesScreen: ${categoriesWithImages.length}/${fetchedCategories.length} categories have images`);
-      console.log(`📊 Showing ${fetchedCategories.length} categories with active workers`);
-      
+      _cachedCategories = fetchedCategories;
+      _cacheTs = Date.now();
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching categories:', error);
       setLoading(false);
-      // Don't show alert since we have fallback data in the service
-      // Alert.alert('Error', 'Failed to load service categories. Please try again.');
     }
   };
 
@@ -170,7 +190,7 @@ export default function AllServicesScreen() {
               }}
             />
           ) : (
-            <Ionicons name={getCategoryIcon(item.name) as any} size={36} color="#00b4a0" />
+            <Ionicons name={getCategoryIcon(item.name) as any} size={32} color="#00b4a0" />
           )}
         </View>
       </View>
@@ -229,8 +249,13 @@ export default function AllServicesScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00b4a0" />
-        <Text style={styles.loadingText}>Loading categories...</Text>
+        <LoadingModal
+          visible={true}
+          title="Finding categories for you"
+          subtitle="Hang tight, loading services..."
+          emoji="🔍"
+          iconColor="#00b4a0"
+        />
       </View>
     );
   }
@@ -254,7 +279,7 @@ export default function AllServicesScreen() {
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshing={loading}
-        onRefresh={fetchServiceCategories}
+        onRefresh={() => fetchServiceCategories(true)}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
@@ -347,14 +372,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     justifyContent: 'flex-start',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   categoryCard: {
-    width: '31%',
+    width: '31.33%',
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 10,
+    borderRadius: 12,
+    padding: 8,
     alignItems: 'center',
     elevation: 2,
     shadowColor: '#000',
@@ -371,13 +396,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 0,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
 
   categoryIconContainer: {
     width: '100%',
-    height: 104,
-    borderRadius: 16,
+    height: 80,
+    borderRadius: 12,
     backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
@@ -387,22 +412,22 @@ const styles = StyleSheet.create({
   categoryImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: 12,
   },
 
   categoryInfo: {
     width: '100%',
-    paddingHorizontal: 4,
-    paddingBottom: 6,
+    paddingHorizontal: 2,
+    paddingBottom: 4,
   },
 
   categoryName: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#0f172a',
     textAlign: 'center',
-    lineHeight: 14,
-    minHeight: 42,
+    lineHeight: 13,
+    minHeight: 36,
   },
   
   emptyContainer: {

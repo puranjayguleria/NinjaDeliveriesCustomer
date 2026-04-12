@@ -29,6 +29,7 @@ import ServiceCallingScreen from "../screens/services/ServiceCallingScreen";
 import ServiceVisitScreen from "../screens/services/ServiceVisitScreen";
 import ServiceEndScreen from "../screens/services/ServiceEndScreen";
 import FinalCheckoutScreen from "../screens/services/FinalCheckoutScreen";
+import FoodScreen from "../screens/food/FoodScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -78,6 +79,7 @@ export default function ServicesStack() {
       <Stack.Screen name="ServiceVisit" component={ServiceVisitScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ServiceEnd" component={ServiceEndScreen} options={{ headerShown: false }} />
       <Stack.Screen name="FinalCheckout" component={FinalCheckoutScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="FoodScreen" component={FoodScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

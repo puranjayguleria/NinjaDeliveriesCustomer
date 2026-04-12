@@ -10,15 +10,17 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native";
-import { Feather, FontAwesome, MaterialIcons } from "@expo/vector-icons";
+import { Feather, FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RFValue } from "react-native-responsive-fontsize";
 import Loader from "@/components/VideoLoader";
+import { useNavigation } from "@react-navigation/native";
 
 export default function HiddenCouponCard() {
+  const navigation = useNavigation();
   const [userId, setUserId] = useState(null);
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -107,11 +109,17 @@ export default function HiddenCouponCard() {
   };
 
   return (
-    <SafeAreaView>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#ffffff" }}>
       <View style={styles.headerContainer}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={RFValue(24)} color="#1A1A1A" />
+        </Pressable>
         <Text style={styles.header}>Rewards</Text>
       </View>
-      <View style={{ height: "85%" }}>
+      <View style={{ flex: 1 }}>
         {loading ? (
           <View style={styles.loaderContainer}>
             <Loader />
@@ -465,10 +473,13 @@ export default function HiddenCouponCard() {
 
 const styles = StyleSheet.create({
   header: {
-    fontSize: RFValue(23),
-    alignSelf: "center",
-    marginTop: "5%",
-    marginBottom: "3%",
+    fontSize: RFValue(20),
+    fontWeight: "800",
+    color: "#1A1A1A",
+  },
+  backButton: {
+    padding: RFValue(4),
+    marginRight: RFValue(12),
   },
   card: {
     backgroundColor: "rgba(192, 217, 228, 0.28)",
@@ -599,7 +610,11 @@ const styles = StyleSheet.create({
   headerContainer: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: RFValue(16),
+    paddingVertical: RFValue(12),
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
 });
 

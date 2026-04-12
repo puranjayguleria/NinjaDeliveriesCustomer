@@ -9,19 +9,30 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  StatusBar,
 } from "react-native";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import Markdown from "react-native-markdown-display";
-import { CommonActions, useNavigation } from "@react-navigation/native";
+import { CommonActions, useNavigation, useRoute } from "@react-navigation/native";
 import Loader from "@/components/VideoLoader";
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const TermsAndConditionsScreen: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigation = useNavigation();
+  const route = useRoute();
+  const { viewOnly } = (route.params as any) || {};
 
   useEffect(() => {
+    // If we are in viewOnly mode, don't redirect
+    if (viewOnly) {
+      setIsLoading(false);
+      return;
+    }
+
     // Check if the user has already accepted the terms
     const checkAcceptance = async () => {
       try {
@@ -316,7 +327,18 @@ ________________________________________
 `;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      {/* Back button if viewOnly */}
+      {viewOnly && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+      )}
+
       {/* Loader during initial check */}
       {isLoading ? (
         <View style={styles.loaderContainer}>
@@ -335,23 +357,28 @@ ________________________________________
               <ScrollView style={styles.content}>
                 <Markdown>{markdownContent}</Markdown>
               </ScrollView>
-              <TouchableOpacity
-                onPress={handleAccept}
-                style={styles.acceptButton}
-              >
-                <Text style={styles.buttonText}>I Accept</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleDecline}
-                style={styles.declineButton}
-              >
-                <Text style={styles.buttonText}>I Do Not Accept</Text>
-              </TouchableOpacity>
+
+              {!viewOnly && (
+                <View style={styles.buttonContainer}>
+                  <TouchableOpacity
+                    onPress={handleAccept}
+                    style={styles.acceptButton}
+                  >
+                    <Text style={styles.buttonText}>I Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleDecline}
+                    style={styles.declineButton}
+                  >
+                    <Text style={styles.buttonText}>I Do Not Accept</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
         </>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -363,12 +390,18 @@ export default TermsAndConditionsScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: "#fff",
+  },
+  backButton: {
+    padding: 16,
   },
   content: {
     flex: 1,
-    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  buttonContainer: {
+    padding: 16,
+    paddingTop: 0,
   },
   acceptButton: {
     backgroundColor: "#4A90E2",

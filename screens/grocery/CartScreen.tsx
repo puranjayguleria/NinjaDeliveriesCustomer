@@ -47,6 +47,7 @@ import { registerRazorpayWebViewCallbacks } from "../../utils/razorpayWebViewCal
 import { useWeather } from "../../context/WeatherContext";
 import { useServiceCart } from "../../context/ServiceCartContext";
 import PaymentMethodModal from "../../components/PaymentMethodModal";
+import { useToggleContext } from "../../context/ToggleContext";
 
 
 
@@ -258,12 +259,12 @@ const CartScreen: React.FC = () => {
     if (navigationRef.isReady?.()) {
       if (availableRoutes.size === 0) {
         try {
-          navigationRef.navigate("HomeTab" as never);
+          navigation.navigate("AppTabs", { screen: "HomeTab" });
           return;
         } catch {}
       }
       if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
+        navigation.navigate("AppTabs", { screen: "HomeTab" });
         return;
       }
       if (availableRoutes.has("NinjaEatsHomeTab")) {
@@ -278,6 +279,7 @@ const CartScreen: React.FC = () => {
   };
 
   const { location, updateLocation } = useLocationContext();
+  const { setActiveMode } = useToggleContext();
   const prevStoreIdRef = useRef<string | null>(location.storeId ?? null);
 
   const [recommended, setRecommended] = useState<Product[]>([]);
@@ -1690,11 +1692,43 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {loading || navigating || validatingLocation ? (
+        {location?.grocery === false || Object.keys(cart).length === 0 ? (
           <View style={styles.loaderContainer}>
-            <Loader />
+            <Ionicons name="cart-outline" size={90} color="#ddd" />
+            <Text style={{ color: '#333', fontSize: 20, fontWeight: '700', marginTop: 16, marginBottom: 6 }}>
+              Your cart is empty
+            </Text>
+            <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 36, textAlign: 'center', paddingHorizontal: 32 }}>
+              Looks like you haven't added anything yet
+            </Text>
+            {location?.grocery !== false && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2e7d32', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, marginBottom: 12, width: 240, justifyContent: 'center' }}
+                onPress={() => {
+                  // Set mode to grocery
+                  setActiveMode('grocery');
+                  // Navigate to HomeTab which will show ProductsHome in grocery mode
+                  navigation.navigate('HomeTab' as never, { screen: 'ProductsHome' } as never);
+                }}
+              >
+                <Ionicons name="basket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Shop Grocery</Text>
+              </TouchableOpacity>
+            )}
+            {location?.services !== false && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF6B35', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, width: 240, justifyContent: 'center' }}
+                onPress={() => {
+                  setActiveMode('service');
+                  navigation.navigate('HomeTab' as never, { screen: 'ProductsHome' } as never);
+                }}
+              >
+                <Ionicons name="construct-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Explore Services</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : Object.keys(cart).length === 0 ? (
+        ) : loading || navigating || validatingLocation ? (
           <View style={styles.loaderContainer}>
             <Loader />
           </View>

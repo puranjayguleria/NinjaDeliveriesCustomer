@@ -143,7 +143,7 @@ export default function ServiceCartScreen() {
   };
 
   const handleBackPress = () => {
-    if (navigation.canGoBack?.()) {
+    if (navigation.canGoBack()) {
       navigation.goBack();
       return;
     }
@@ -203,7 +203,21 @@ export default function ServiceCartScreen() {
           <Text style={styles.serviceTitle}>{item.serviceTitle}</Text>
           <Text style={styles.companyName}>{item.company.name}</Text>
           <View style={styles.ratingContainer}>
-            <Text style={styles.rating}>{item.company.rating}</Text>
+            {Array.from({ length: 5 }).map((_, index) => {
+              const rating = Number(item.company.rating) || 0;
+              const isFilled = index < Math.floor(rating);
+              const isHalf = !isFilled && index < Math.ceil(rating) && rating % 1 >= 0.5;
+              
+              return (
+                <Ionicons
+                  key={index}
+                  name={isFilled ? "star" : isHalf ? "star-half" : "star-outline"}
+                  size={14}
+                  color="#FFA500"
+                  style={{ marginRight: 2 }}
+                />
+              );
+            })}
             <Text style={styles.experience}>{item.company.experience}</Text>
           </View>
         </View>
@@ -575,48 +589,54 @@ const styles = StyleSheet.create({
   },
   serviceCard: {
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
   },
   serviceHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   serviceInfo: {
     flex: 1,
   },
   serviceTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#0f172a",
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   companyName: {
-    fontSize: 16,
-    color: "#666",
+    fontSize: 15,
+    color: "#64748b",
     marginBottom: 6,
+    fontWeight: "500",
   },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
   },
   rating: {
-    fontSize: 14,
-    color: "#333",
-    marginLeft: 4,
+    fontSize: 13,
+    color: "#0f172a",
+    marginLeft: 2,
+    fontWeight: "600",
   },
   experience: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#64748b",
     marginLeft: 4,
+    fontWeight: "500",
   },
   verifiedBadge: {
     flexDirection: "row",
@@ -733,7 +753,7 @@ const styles = StyleSheet.create({
   },
   bookingDetails: {
     flexDirection: "column",
-    gap: 6,
+    gap: 8,
     marginBottom: 12,
   },
   detailRow: {
@@ -742,10 +762,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   detailText: {
-    fontSize: 14,
-    color: "#666",
-    marginLeft: 4,
+    fontSize: 13,
+    color: "#64748b",
+    marginLeft: 6,
     lineHeight: 18,
+    fontWeight: "500",
   },
   priceText: {
     fontSize: 16,
@@ -790,9 +811,14 @@ const styles = StyleSheet.create({
   },
   footer: {
     backgroundColor: "#fff",
-    padding: 16,
+    padding: 18,
     borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+    borderTopColor: "#e2e8f0",
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 8,
   },
   totalContainer: {
     flexDirection: "row",
@@ -801,37 +827,45 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   totalLabel: {
-    fontSize: 16,
-    color: "#666",
+    fontSize: 15,
+    color: "#64748b",
+    fontWeight: "600",
   },
   totalAmount: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0f172a",
+    letterSpacing: -0.5,
   },
   checkoutButton: {
     backgroundColor: "#4CAF50",
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: "center",
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
   checkoutButtonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   // Package Section Styles
   packageSection: {
     backgroundColor: "#f0f9ff",
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#bfdbfe",
+    borderColor: "#bae6fd",
   },
 
   packageInfo: {
@@ -840,80 +874,81 @@ const styles = StyleSheet.create({
   },
 
   serviceTitleText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: "#0f172a",
     marginBottom: 4,
     lineHeight: 20,
+    letterSpacing: -0.2,
   },
 
   packageNameText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#334155",
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
     lineHeight: 18,
   },
 
   packagePrice: {
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 19,
+    fontWeight: "800",
     color: "#0f172a",
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
 
   originalPrice: {
     fontSize: 12,
     color: "#64748b",
     textDecorationLine: "line-through",
-    marginBottom: 4,
-    fontWeight: "800",
+    marginBottom: 3,
+    fontWeight: "600",
   },
   
   savingsPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#d1fae5',
     borderColor: '#10b981',
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
-    marginTop: 6,
+    marginTop: 5,
   },
   
   savingsText: {
     color: '#065f46',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '700',
   },
   
   offerBadge: {
     backgroundColor: '#fff7ed',
     borderColor: '#fb923c',
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
     marginTop: 10,
     shadowColor: '#f97316',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 2,
   },
   
   offerBadgeText: {
     color: '#9a3412',
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
   },
   
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 14,
+    marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
@@ -922,23 +957,23 @@ const styles = StyleSheet.create({
   qtyLabel: {
     fontSize: 13,
     color: '#475569',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   
   qtyStepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 14,
-    padding: 4,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 3,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
   
   qtyBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
@@ -947,14 +982,14 @@ const styles = StyleSheet.create({
   },
   
   qtyBtnText: {
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#0f172a',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   
   qtyValueBox: {
-    minWidth: 44,
+    minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
@@ -962,7 +997,7 @@ const styles = StyleSheet.create({
   
   qtyValueText: {
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
     color: '#0f172a',
   },
 

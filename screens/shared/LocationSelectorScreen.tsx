@@ -82,6 +82,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const fromScreenKey = fromScreen.trim().toLowerCase();
 
   const resetToServicesHome = () => {
+    // Navigate to AppTabs and set Services tab as active
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
@@ -89,16 +90,19 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           {
             name: "AppTabs" as any,
             state: {
-              index: 0,
               routes: [
-                {
-                  name: "CategoriesTab",
+                { name: "Orders" },
+                { name: "NewOrder" },
+                { 
+                  name: "Services",
                   state: {
                     index: 0,
                     routes: [{ name: "ServicesHome" }],
                   },
                 },
+                { name: "Profile" },
               ],
+              index: 2, // Services tab is at index 2
             },
           },
         ],
@@ -115,7 +119,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       const tabsState: any = prevRoute?.state;
       const tabIndex = typeof tabsState?.index === "number" ? tabsState.index : -1;
       const activeTab = tabsState?.routes?.[tabIndex]?.name;
-      return activeTab === "CategoriesTab";
+      return activeTab === "Services";
     } catch {
       return false;
     }
@@ -355,7 +359,9 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       }
     });
 
-    return winner ? { storeId: winner.zone.storeId, zone: winner.zone } : null;
+    if (winner === null) return null;
+    
+    return { storeId: (winner as any).zone.id, zone: (winner as any).zone };
   };
 
   /****************************************
@@ -482,7 +488,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         
         if (allCartsEmpty) {
           // If cart is empty, navigate to home screen instead of cart
-          navigation.navigate("AppTabs", { screen: "HomeTab" });
+          (navigation.navigate as any)("AppTabs", { screen: "HomeTab" });
         } else {
           // If cart has items, collect delivery details
           setHouseNo("");
@@ -503,7 +509,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         // After choosing a deliverable location, take them to Services.
         returnToServices();
       } else {
-        navigation.navigate("AppTabs", { screen: "HomeTab" });
+        (navigation.navigate as any)("AppTabs", { screen: "HomeTab" });
       }
     } catch (err) {
       console.error("confirmLocation:", err);
@@ -603,7 +609,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
 
       setShowSaveForm(false);
       if (fromScreenKey === "cart") {
-        navigation.navigate("AppTabs", {
+        (navigation.navigate as any)("AppTabs", {
           screen: "CartFlow",
           params: {
             screen: "CartHome",
@@ -616,7 +622,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       } else if (fromScreenKey === "services") {
         returnToServices();
       } else {
-        navigation.navigate("AppTabs", {
+        (navigation.navigate as any)("AppTabs", {
           screen: "CategoriesTab",
           params: { selectedLocation: newLoc },
         });
