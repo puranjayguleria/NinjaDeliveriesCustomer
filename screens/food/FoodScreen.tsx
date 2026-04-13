@@ -93,7 +93,6 @@ export default function FoodScreen() {
   const [selectedCategoryId,   setSelectedCategoryId]   = useState<string | null>(null);
   const [categoryRestaurantIds,setCategoryRestaurantIds]= useState<string[]>([]);
   const [isVegMode,            setIsVegMode]            = useState(true);
-  const [isScrolled,           setIsScrolled]           = useState(false);
   const [showVegModal,         setShowVegModal]         = useState(false);
   const [pendingVeg,           setPendingVeg]           = useState<boolean | null>(null);
   const [dishModal,            setDishModal]            = useState<{
@@ -102,17 +101,14 @@ export default function FoodScreen() {
   const [rejectionModal, setRejectionModal] = useState<{ visible: boolean; restaurantName: string }>({ visible: false, restaurantName: "" });
 
   const scrollRef  = useRef<any>(null);
-  const scrollY    = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim   = useRef(new Animated.Value(0)).current;
   const rejScaleAnim = useRef(new Animated.Value(0.85)).current;
   const rejOpacAnim  = useRef(new Animated.Value(0)).current;
 
-  // Header shrink on scroll — hero height based on image aspect ratio 720x567
-  const HERO_FULL = Math.round(SW * 567 / 720); // exact aspect ratio 720x567
+  // Hero height — fixed, no animation (avoids flicker with stickyHeaderIndices)
+  const HERO_FULL = Math.round(SW * 567 / 720);
   const HERO_MIN  = 80;
-  const headerH = scrollY.interpolate({ inputRange: [0, HERO_FULL - HERO_MIN], outputRange: [HERO_FULL, HERO_MIN], extrapolate: "clamp" });
-
   const playBounce = () => {
     bounceAnim.setValue(0); fadeAnim.setValue(0);
     Animated.parallel([
@@ -292,23 +288,16 @@ export default function FoodScreen() {
       </Modal>
 
       {/* ── Main Content ── */}
-      <Animated.ScrollView
+      <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         bounces={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-          listener: (e: any) => {
-            const y = e.nativeEvent.contentOffset.y;
-            setIsScrolled(y > 50);
-          }
-        })}
         scrollEventThrottle={16}
         stickyHeaderIndices={[1]}
       >
-        {/* ── Hero Image + Header UI (scrolls away) ── */}
-        <View style={{ marginBottom: 0 }}>
-          <Animated.View style={[s.hero, { height: headerH }]}>
+        {/* index 0 — Hero (scrolls away) */}
+        <View>
+          <View style={[s.hero, { height: HERO_FULL }]}>
             <Image
               key={isVegMode ? "veg" : "nonveg"}
               source={isVegMode
@@ -318,11 +307,10 @@ export default function FoodScreen() {
               contentFit="fill"
             />
             <View style={s.heroDim} />
-          </Animated.View>
+          </View>
 
-          {/* Header UI overlaid on hero — scrolls with content */}
+          {/* Header UI overlaid on hero */}
           <View style={[s.headerUI, { top: insets.top + 12 }]}>
-            {/* Row 1: Location + Avatar */}
             <View style={s.heroTopRow}>
               <TouchableOpacity style={s.locationPill} activeOpacity={0.8}
                 onPress={() => navigation.navigate("LocationSelector", { fromScreen: "Food" })}>
@@ -336,8 +324,6 @@ export default function FoodScreen() {
                 <RNImage source={profileLogoMap[activeMode]} style={s.avatar} resizeMode="cover" />
               </TouchableOpacity>
             </View>
-
-            {/* Row 2: Search + Veg toggle */}
             <View style={s.searchWrap}>
               <TouchableOpacity style={s.searchBar} activeOpacity={0.85}
                 onPress={() => navigation.navigate("FoodSearch")}>
@@ -346,23 +332,19 @@ export default function FoodScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.vegToggleBtn, { backgroundColor: isVegMode ? "#00666A" : "#B70000" }]}
-                onPress={handleVegToggle}
-                activeOpacity={0.85}
-              >
+                onPress={handleVegToggle} activeOpacity={0.85}>
                 <View style={s.vegDot} />
                 <Text style={s.vegToggleTxt}>{isVegMode ? "VEG" : "NON"}</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Row 3: Mode Toggle */}
             <View style={s.modeToggleWrap}>
-              <ModeToggle activeMode={activeMode} onPress={setActiveMode} />
+              <ModeToggle compact activeMode={activeMode} onPress={setActiveMode} />
             </View>
           </View>
         </View>
 
-        {/* ── Sticky: Categories only ── */}
-        <View style={[s.catSection, { paddingTop: insets.top, marginTop: -2, backgroundColor: isScrolled ? "#fff" : "rgba(255,255,255,0.75)" }]}>
+        {/* index 1 — Sticky Categories */}
+        <View style={[s.catSection, { paddingTop: insets.top - 4 }]}>
           {categories.length > 0 && (
             <FlatList
               data={[{ id: "all", name: "All", image: null }, ...categories]}
@@ -401,7 +383,7 @@ export default function FoodScreen() {
           )}
         </View>
 
-        {/* ── Filter Chips (scrolls normally) ── */}
+        {/* index 2+ — rest of content */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.filterList} style={s.filterWrap}>
           {FILTER_CHIPS.map(f => {
@@ -496,7 +478,7 @@ export default function FoodScreen() {
           )}
           <View style={{ height: 100 }} />
         </View>
-      </Animated.ScrollView>
+      </ScrollView>
 
       <DishModal
         visible={dishModal.visible}
@@ -567,7 +549,16 @@ const s = StyleSheet.create({
   modeToggleWrap: { paddingHorizontal: 0 },
 
   // ── Categories ──
-  catSection: { backgroundColor: "rgba(255,255,255,0.75)", paddingTop: 8, borderBottomWidth: 0, marginTop: 0 },
+  catSection: {
+    backgroundColor: "#ffffff",
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 0,
+    ...Platform.select({
+      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
+      android: { elevation: 4 },
+    }),
+  },
   catList:    { paddingHorizontal: 16, gap: 8 },
   catItem:    { alignItems: "center", width: 68 },
   catImgWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center", marginBottom: 6, borderWidth: 2, borderColor: "transparent" },

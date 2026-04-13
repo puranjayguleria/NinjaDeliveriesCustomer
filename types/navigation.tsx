@@ -22,5 +22,16 @@ export type RootStackParamList = {
     params?: { selectedLocation?: LocationData };
   } | undefined;
   HomeTab: undefined;
+  ProductListingFromHome: { 
+    categoryId: string; 
+    categoryName?: string;
+    subcategoryId?: string;
+    searchQuery?: string;
+  } | undefined;
+  ProductListingFromCats: { 
+    categoryId: string; 
+    categoryName?: string;
+    subcategoryId?: string;
+  } | undefined;
   // Add other routes as needed
 };

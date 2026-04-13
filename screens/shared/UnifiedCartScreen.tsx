@@ -390,6 +390,17 @@ export default function UnifiedCartScreen() {
               <Text style={styles.emptyBtnText}>Explore Services</Text>
             </TouchableOpacity>
           )}
+          {location?.food !== false && (
+            <TouchableOpacity
+              style={[styles.emptyBtn, { backgroundColor: '#FF5722' }]}
+              onPress={() => {
+                setActiveMode('food');
+              }}
+            >
+              <Ionicons name="restaurant-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyBtnText}>Order Food</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );

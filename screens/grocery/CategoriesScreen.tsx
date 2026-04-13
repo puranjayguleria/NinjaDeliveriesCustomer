@@ -3,7 +3,7 @@
    • Age-gate now guards *adding* Pan Corner items too
    • Remembers acceptance for the session (only ask once)
 ------------------------------------------------------------------- */
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Dimensions,
   Modal,
+  Animated,
   Linking,
   Pressable,
   Vibration,
@@ -86,6 +87,27 @@ const CategoriesScreen: React.FC = () => {
   const [gateAction, setGateAction] = useState<() => void>(() => {});
   const [panAccepted, setPanAccepted] = useState(false); // remember acceptance
 
+  const dot1 = useRef(new Animated.Value(0.3)).current;
+  const dot2 = useRef(new Animated.Value(0.3)).current;
+  const dot3 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (!loading) return;
+    const blink = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        ])
+      );
+    const a1 = blink(dot1, 0);
+    const a2 = blink(dot2, 200);
+    const a3 = blink(dot3, 400);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [loading]);
+
   const visibleCategories = search.trim()
     ? categories.filter((c) =>
         c.name.toLowerCase().includes(search.toLowerCase())
@@ -120,25 +142,28 @@ const CategoriesScreen: React.FC = () => {
       try {
         setLoading(true);
 
-        const [catSnap, prodSnap] = await Promise.all([
-          firestore()
-            .collection("categories")
-            .where("storeId", "==", location.storeId)
-            .orderBy("priority", "asc")
-            .get(),
-          firestore()
-            .collection("products")
-            .where("storeId", "==", location.storeId)
-            .where("quantity", ">", 0)
-            .get(),
-        ]);
+        const catSnap = await firestore()
+          .collection("categories")
+          .where("storeId", "==", location.storeId)
+          .get();
 
-        setCategories(
-          catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Category) }))
-        );
-        setProducts(
-          prodSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Product) }))
-        );
+        const cats = catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Category) }));
+        cats.sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+        setCategories(cats);
+        setError(null);
+        setLoading(false);
+
+        firestore()
+          .collection("products")
+          .where("storeId", "==", location.storeId)
+          .where("quantity", ">", 0)
+          .get()
+          .then((prodSnap) => {
+            setProducts(prodSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Product) })));
+          })
+          .catch((e) => console.warn("[Categories] products fetch", e));
+
+        return;
         setError(null);
       } catch (e) {
         console.error("[Categories] fetch", e);
@@ -266,11 +291,23 @@ const CategoriesScreen: React.FC = () => {
         />
       </View>
 
-      {loading ? (
-        <View style={styles.centerBox}>
-          <Loader />
+      {/* Loading Modal */}
+      <Modal visible={loading} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.loadingModalOverlay}>
+          <View style={styles.loadingModalCard}>
+            <MaterialIcons name="shopping-cart" size={48} color="#007D34" style={{ marginBottom: 16 }} />
+            <Text style={styles.loadingTitle}>Finding best grocery</Text>
+            <Text style={styles.loadingSubtitle}>categories for you...</Text>
+            <View style={styles.loadingDotsRow}>
+              {[dot1, dot2, dot3].map((dot, i) => (
+                <Animated.View key={i} style={[styles.loadingDot, { opacity: dot }]} />
+              ))}
+            </View>
+          </View>
         </View>
-      ) : error ? (
+      </Modal>
+
+      {loading ? null : error ? (
         <View style={styles.centerBox}>
           <Text style={styles.errTxt}>{error}</Text>
         </View>
@@ -409,6 +446,51 @@ const styles = StyleSheet.create({
   centerBox: { flex: 1, justifyContent: "center", alignItems: "center" },
   errTxt: { color: "#e53935", fontSize: 16, textAlign: "center" },
 
+  /* loading modal */
+  loadingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  loadingTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  loadingSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  loadingDotsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  loadingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#007D34',
+  },
+
   /* modal */
   overlay: {
     flex: 1,
@@ -462,3 +544,4 @@ const styles = StyleSheet.create({
 });
 
 export default CategoriesScreen;
+

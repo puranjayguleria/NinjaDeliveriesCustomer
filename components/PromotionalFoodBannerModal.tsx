@@ -17,34 +17,17 @@ type Props = {
 
 export default function PromotionalFoodBannerModal({ onBannerPress, hasLocation, onDismiss }: Props) {
   const [visible, setVisible] = useState(false);
-  const [canDismiss, setCanDismiss] = useState(false);
 
   useEffect(() => {
-    // Show banner immediately when app opens
     setVisible(true);
-    
-    // Allow dismissal after 10 seconds minimum display time
-    const timer = setTimeout(() => {
-      setCanDismiss(true);
-    }, 10000); // 10 seconds
-
-    return () => clearTimeout(timer);
   }, []);
 
   const dismiss = useCallback(() => {
-    if (!canDismiss) {
-      // If user tries to dismiss before 10 seconds, do nothing
-      return;
-    }
     setVisible(false);
-    // Call onDismiss callback after banner is dismissed
-    if (onDismiss) {
-      onDismiss();
-    }
-  }, [canDismiss, onDismiss]);
+    if (onDismiss) onDismiss();
+  }, [onDismiss]);
 
   const handleBannerPress = useCallback(() => {
-    // Banner click is always allowed, regardless of timer
     setVisible(false);
     onBannerPress();
   }, [onBannerPress]);

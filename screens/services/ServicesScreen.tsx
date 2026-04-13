@@ -19,7 +19,6 @@ import {
   RefreshControl,
   Platform,
   Alert,
-  Image as RNImage,
   ImageBackground,
 } from "react-native";
 import { Image as ExpoImage, Image } from "expo-image";
@@ -244,12 +243,16 @@ const HEADER_IMAGES = [
   require("../../assets/ninjaServicebanner3.png"),
 ];
 
-const SERVICES_HEADER_MEDIA_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
-const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 100;
+const SERVICES_HEADER_MEDIA_HEIGHT = 280;
+const SERVICES_HEADER_MEDIA_COLLAPSED_HEIGHT = 120;
 const SERVICES_HEADER_PADDING_TOP_INITIAL = Platform.OS === 'ios' ? 52 : 40;
 const SERVICES_HEADER_PADDING_TOP_COLLAPSED = Platform.OS === 'ios' ? 44 : 32;
-const SERVICES_HEADER_GRADIENT_COLORS = ['#d3d3d3ff', '#f0fdfa'] as const;
-const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? Math.round(Dimensions.get('window').height * 0.45) + 100 : Math.round(Dimensions.get('window').height * 0.45) + 85;
+// Solid, very light + friendly header colors (no transparency).
+// Soft off-white to a subtle mint/teal tint feels calmer during scroll.
+const SERVICES_HEADER_GRADIENT_COLORS = ['#ffffff', '#f8fafc'] as const;
+// Sticky header should only reserve space until the search bar (not the full media height).
+// Keep this compact; history is inline with the search bar.
+const SERVICES_STICKY_HEADER_HEIGHT = Platform.OS === 'ios' ? 280 : 265;
 
 const SERVICES_SEARCH_PLACEHOLDERS = [
   'plumber',
@@ -263,12 +266,6 @@ const SERVICES_SEARCH_PLACEHOLDERS = [
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
 const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
 
-const profileLogoMap = {
-  grocery: require('../../assets/profile_logo/grocery_logo.png'),
-  food: require('../../assets/profile_logo/food_logo.png'),
-  service: require('../../assets/profile_logo/services_logo.png'),
-};
-
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
@@ -277,6 +274,7 @@ export default function ServicesScreen() {
   const { totalItems: serviceTotalItems } = useServiceCart();
   
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'cart' | 'bookings'>('home');
+  const [headerHeight, setHeaderHeight] = useState(SERVICES_STICKY_HEADER_HEIGHT);
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
@@ -344,7 +342,7 @@ export default function ServicesScreen() {
     () =>
       scrollY.interpolate({
         inputRange: [0, 80],
-        outputRange: [SERVICES_STICKY_HEADER_HEIGHT, 130],
+        outputRange: [SERVICES_STICKY_HEADER_HEIGHT, 110],
         extrapolate: 'clamp',
       }),
     [scrollY]
@@ -3164,6 +3162,7 @@ export default function ServicesScreen() {
           },
         ]}
         pointerEvents="box-none"
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
       >
         <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
@@ -3227,11 +3226,17 @@ export default function ServicesScreen() {
               style={styles.profileIconButton}
               accessibilityLabel="Profile"
             >
-              <RNImage
-                source={profileLogoMap[activeMode]}
-                style={{ width: 44, height: 44, borderRadius: 22 }}
-                resizeMode="cover"
-              />
+              {auth().currentUser?.photoURL ? (
+                <Image
+                  source={{ uri: auth().currentUser?.photoURL || '' }}
+                  style={styles.profileImg}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.profilePlaceholder}>
+                  <Ionicons name="person" size={20} color="#555" />
+                </View>
+              )}
             </TouchableOpacity>
           </Animated.View>
 
@@ -3278,14 +3283,6 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-          {/* Grocery/Service/Food Toggle */}
-          <ModeToggle
-            activeMode={activeMode}
-            onPress={(mode) => {
-              setActiveMode(mode);
-              if (mode === 'food') navigation.navigate('ProductsHome');
-            }}
-          />
 
             </View>
           </Animated.View>
@@ -3310,88 +3307,16 @@ export default function ServicesScreen() {
         {/* Only show banner when not searching */}
         {searchQuery.length === 0 && (
           <>
-            {/* Grocery/Service/Food Toggle - Moved to top of content */}
-            <View style={styles.toggleRowContent}>
-              {/* Grocery Toggle - Only show if location.grocery is not false */}
-              {location?.grocery !== false && (
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    activeMode === "grocery" && styles.toggleBtnActive,
-                  ]}
-                  onPress={() => {
-                    setActiveMode("grocery");
-                    // Navigate to HomeTab only if it exists (grocery is available)
-                    if (location?.grocery !== false) {
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: "HomeTab" }],
-                      });
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.toggleLabel,
-                      activeMode === "grocery" && styles.toggleLabelActive,
-                    ]}
-                  >
-                    Grocery
-                  </Text>
-                </TouchableOpacity>
-              )}
-              
-              {/* Service Toggle - Only show if location.services is not false */}
-              {location?.services !== false && (
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    activeMode === "service" && styles.toggleBtnActive,
-                  ]}
-                  onPress={() => setActiveMode("service")}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.toggleLabel,
-                      activeMode === "service" && styles.toggleLabelActive,
-                    ]}
-                  >
-                    Service
-                  </Text>
-                </TouchableOpacity>
-              )}
-              
-              {/* Food Toggle - Only show if location.food is not false */}
-              {location?.food !== false && (
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    activeMode === "food" && styles.toggleBtnActive,
-                  ]}
-                  onPress={() => {
-                    setActiveMode("food");
-                    // Navigate based on grocery availability
-                    if (location?.grocery !== false) {
-                      // HomeTab exists
-                      navigation.navigate("ProductsHome");
-                    }
-                    // If grocery is false, just set mode, user is already on a screen
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.toggleLabel,
-                      activeMode === "food" && styles.toggleLabelActive,
-                    ]}
-                  >
-                    Food
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            {/* Grocery/Service/Food Toggle */}
+            <ModeToggle
+              compact
+              activeMode={activeMode}
+              onPress={(mode) => {
+                setActiveMode(mode);
+                if (mode === 'grocery') navigation.navigate('ProductsHome');
+                if (mode === 'food') navigation.navigate('ProductsHome');
+              }}
+            />
 
             {/* Service Banners */}
             {!bannersLoading && serviceBanners.length > 0 && (
@@ -3616,7 +3541,7 @@ export default function ServicesScreen() {
                 </View>
               )
             }
-            contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 80, backgroundColor: 'white' }}
+            contentContainerStyle={{ paddingTop: headerHeight, paddingBottom: 80, backgroundColor: 'white' }}
             showsVerticalScrollIndicator={false}
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -5127,5 +5052,3 @@ const styles = StyleSheet.create({
   },
 
 });
-
-

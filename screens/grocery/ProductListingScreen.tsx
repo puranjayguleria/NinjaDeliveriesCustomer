@@ -28,14 +28,8 @@ import { useLocationContext } from "../../context/LocationContext"; // ⬅️ NE
 import Loader from "@/components/VideoLoader";
 
 /********** NAV TYPES **********/
-type ProductListingScreenNavigationProp = StackNavigationProp<
-  RootStackParamList,
-  "ProductListing"
->;
-type ProductListingScreenRouteProp = RouteProp<
-  RootStackParamList,
-  "ProductListing"
->;
+type ProductListingScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type ProductListingScreenRouteProp = RouteProp<RootStackParamList, "ProductListingFromHome"> | RouteProp<RootStackParamList, "ProductListingFromCats">;
 
 type Props = {
   navigation: ProductListingScreenNavigationProp;
@@ -63,7 +57,7 @@ const ProductListingScreen: React.FC<Props> = () => {
   const [loading, setLoading] = useState(true);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const route = useRoute<ProductListingScreenRouteProp>();
-  const { categoryId, subcategoryId } = route.params || {};
+  const { categoryId, subcategoryId } = (route.params || {}) as { categoryId?: string; subcategoryId?: string };
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
     subcategoryId ?? null
   );
@@ -239,9 +233,7 @@ const ProductListingScreen: React.FC<Props> = () => {
    * JSX
    *******************************/
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
+    <SafeAreaView style={styles.container} edges={["top", "bottom", "left", "right"]}>
       {/* ---------- Side nav ---------- */}
       <View style={styles.sideNav}>
         <FlatList

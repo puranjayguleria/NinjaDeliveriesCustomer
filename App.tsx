@@ -1,6 +1,20 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
+
+// Suppress useInsertionEffect warning from third-party libraries (react-native-paper, etc.)
+// This is a known issue with React 19 and will be fixed in library updates
+const originalError = console.error;
+console.error = (...args) => {
+  if (
+    typeof args[0] === 'string' &&
+    args[0].includes('useInsertionEffect')
+  ) {
+    return;
+  }
+  originalError.call(console, ...args);
+};
+
 import { ensureFirebaseReady } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
@@ -358,6 +372,19 @@ function HomeStack() {
         options={({ route }) => ({
           title: (route.params as any)?.categoryName || "Products",
           headerShown: true,
+          headerStyle: { 
+            backgroundColor: "#fff",
+            elevation: 4,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 3,
+            height: 70,
+          },
+          headerTintColor: "#000",
+          headerTitleStyle: { fontWeight: "700", fontSize: 18, color: "#000" },
+          headerBackVisible: true,
+          headerBackButtonMenuEnabled: false,
         })}
       />
       <Stack.Screen
@@ -617,6 +644,19 @@ function CategoriesStack() {
             options={({ route }) => ({
               title: (route.params as any)?.categoryName || "Products",
               headerShown: true,
+              headerStyle: { 
+                backgroundColor: "#fff",
+                elevation: 4,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 3,
+                height: 70,
+              },
+              headerTintColor: "#000",
+              headerTitleStyle: { fontWeight: "700", fontSize: 18, color: "#000" },
+              headerBackVisible: true,
+              headerBackButtonMenuEnabled: false,
             })}
           />
           <Stack.Screen
@@ -1278,51 +1318,51 @@ function AppTabs() {
             };
             return {
               headerShown: false,
-            tabBarActiveTintColor: "blue",
-            tabBarInactiveTintColor: "grey",
-            tabBarStyle: (activeMode === 'service' || activeMode === 'food') ? { display: 'none' } : {
-              backgroundColor: "#ffffff",
-              borderTopWidth: 1,
-              borderTopColor: "#f0f0f0",
-              height: Platform.OS === "android" ? 60 : 85,
-              paddingBottom: Platform.OS === "android" ? 10 : 30,
-              elevation: 8,
-            },
-            tabBarIcon: ({ color, size }) => {
-              const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-                HomeTab: "home-outline",
-                CategoriesTab: "apps-outline",
-                CartFlow: "cart-outline",
-                Profile: "person-outline",
-              };
-              if (route.name === "Profile") return null;
-              const iconName = iconMap[route.name];
-              return (
-                <Animated.View
-                  style={{
-                    width: size + 12,
-                    height: size + 12,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {/* Render the actual icon */}
-                  {iconName && (
-                    <Ionicons name={iconName} size={size} color={color} />
-                  )}
+              tabBarActiveTintColor: "blue",
+              tabBarInactiveTintColor: "grey",
+              tabBarStyle: (activeMode === 'service' || activeMode === 'food') ? { display: 'none' } : {
+                backgroundColor: "#ffffff",
+                borderTopWidth: 1,
+                borderTopColor: "#f0f0f0",
+                height: Platform.OS === "android" ? 60 : 85,
+                paddingBottom: Platform.OS === "android" ? 10 : 30,
+                elevation: 8,
+              },
+              tabBarIcon: ({ color, size }) => {
+                const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
+                  HomeTab: "home-outline",
+                  CategoriesTab: "apps-outline",
+                  BuyAgainTab: "repeat-outline",
+                  CartFlow: "cart-outline",
+                  Profile: "person-outline",
+                };
+                const iconName = iconMap[route.name];
+                return (
+                  <Animated.View
+                    style={{
+                      width: size + 12,
+                      height: size + 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {iconName && (
+                      <Ionicons name={iconName} size={size} color={color} />
+                    )}
 
-                  {route.name === "CartFlow" && (() => {
-                    const activeTotalItems = (showGrocery ? groceryTotalItems : 0) + (showServices ? serviceTotalItems : 0);
-                    return activeTotalItems > 0 ? (
-                      <View style={styles.badgeContainer}>
-                        <Text style={styles.badgeText}>{activeTotalItems}</Text>
-                      </View>
-                    ) : null;
-                  })()}
-                </Animated.View>
-              );
-            },
-          })}
+                    {route.name === "CartFlow" && (() => {
+                      const activeTotalItems = (showGrocery ? groceryTotalItems : 0) + (showServices ? serviceTotalItems : 0);
+                      return activeTotalItems > 0 ? (
+                        <View style={styles.badgeContainer}>
+                          <Text style={styles.badgeText}>{activeTotalItems}</Text>
+                        </View>
+                      ) : null;
+                    })()}
+                  </Animated.View>
+                );
+              },
+            };
+          }}
         >
           {showGrocery && (
             <Tab.Screen
