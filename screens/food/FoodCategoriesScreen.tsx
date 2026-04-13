@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, StatusBar, TextInput, Dimensions, Image, Animated,
+  ActivityIndicator, StatusBar, TextInput, Dimensions, Animated,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -28,7 +29,7 @@ export default function FoodCategoriesScreen() {
   const [loading, setLoading] = useState(true);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>('all');
 
   // Animated values for dots
   const dot1Opacity = useRef(new Animated.Value(0.3)).current;
@@ -59,9 +60,6 @@ export default function FoodCategoriesScreen() {
   useEffect(() => {
     const u1 = listenFoodCategoriesWithItems(d => {
       setCategories(d);
-      if (d.length > 0 && !selectedCategoryId) {
-        setSelectedCategoryId(d[0].id);
-      }
       setLoading(false);
     }, () => setLoading(false));
     const u2 = listenAllMenuItems(items => {
@@ -95,16 +93,24 @@ export default function FoodCategoriesScreen() {
     }
   };
 
-  const displayedDishes = selectedCategoryId
-    ? menuItems.filter(item => {
+  const displayedDishes = selectedCategoryId === 'all'
+    ? menuItems
+        .filter(item => {
+          const matchesSearch = searchQuery.trim()
+            ? item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+            : true;
+          return matchesSearch;
+        })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    : menuItems.filter(item => {
         const matchesCategory = item.categoryId === selectedCategoryId;
         const matchesSearch = searchQuery.trim()
           ? item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.description?.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
         return matchesCategory && matchesSearch;
-      })
-    : [];
+      });
 
   const handleAddToCart = (item: MenuItem) => {
     const restaurantName = restaurants.get(item.restaurantId) || 'Unknown Restaurant';
@@ -285,7 +291,10 @@ export default function FoodCategoriesScreen() {
       {/* Side Navigation - Categories */}
       <View style={styles.sideNav}>
         <FlatList
-          data={categories}
+          data={[
+            { id: 'all', name: 'All', image: 'https://cdn-icons-png.flaticon.com/512/3050/3050158.png' },
+            ...categories
+          ]}
           keyExtractor={(i) => i.id}
           renderItem={renderCategoryItem}
           showsVerticalScrollIndicator={false}

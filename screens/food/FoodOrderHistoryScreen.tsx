@@ -9,6 +9,7 @@ import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import { Alert } from 'react-native';
 import { useFoodCart } from '@/context/FoodCartContext';
 
 type OrderItem = {
@@ -38,9 +39,15 @@ const STATUS: Record<string, { label: string; color: string; bg: string; border:
   rejected:         { label: 'Rejected',     color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5', icon: 'ban-outline'             },
 };
 
-const getStatus = (s: string) => STATUS[s] ?? { label: s, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', icon: 'ellipse-outline' };
+const getStatus = (s: string, isScheduled?: boolean) => {
+  // If order is scheduled and still in initial state, show scheduled status
+  if (isScheduled && (s === 'pending' || s === 'scheduled')) {
+    return STATUS['scheduled'];
+  }
+  return STATUS[s] ?? { label: s, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', icon: 'ellipse-outline' };
+};
 
-export default function FoodOrdersScreen({ mode = 'history' }: Props) {
+export default function FoodOrderHistoryScreen({ mode = 'history' }: Props) {
   const navigation = useNavigation<any>();
   const insets     = useSafeAreaInsets();
   const { addItem, clearCart } = useFoodCart();
@@ -68,6 +75,22 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
     );
     return () => unsub();
   }, [user?.uid, mode]);
+
+  const handleDeleteOrder = (order: FoodOrder) => {
+    Alert.alert('Delete Order', 'Delete this order? (Testing only)', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await firestore().collection('restaurant_Orders').doc(order.orderId ?? order.id).delete();
+          } catch (e) {
+            Alert.alert('Error', 'Failed to delete order');
+          }
+        },
+      },
+    ]);
+  };
 
   const handleReorder = (order: FoodOrder) => {
     clearCart();
@@ -138,8 +161,9 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
           contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
-            const st = getStatus(item.status);
+            const st = getStatus(item.status, item.isScheduled);
             const isActive = !['delivered', 'cancelled', 'rejected', 'completed'].includes(item.status);
+            const isScheduledPending = item.isScheduled && (item.status === 'pending' || item.status === 'scheduled');
             const isCancelled = item.status === 'cancelled' || item.status === 'rejected';
             const isDelivered = item.status === 'delivered';
             return (
@@ -175,7 +199,7 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.restName} numberOfLines={1}>{item.restaurantName}</Text>
-                      {item.isScheduled && item.scheduledFor
+                      {item.isScheduled && item.scheduledFor && (item.status === 'pending' || item.status === 'scheduled')
                         ? <Text style={[s.dateText, { color: '#7c3aed' }]}>🗓 {formatScheduled(item)}</Text>
                         : <Text style={s.dateText}>{formatDate(item.createdAt)}</Text>
                       }
@@ -224,12 +248,21 @@ export default function FoodOrdersScreen({ mode = 'history' }: Props) {
                       </TouchableOpacity>
                     )}
 
-                    {isActive && (
+                    {isActive && !isScheduledPending && (
                       <View style={s.trackBtn}>
                         <Ionicons name="navigate-outline" size={13} color="#2563eb" />
                         <Text style={s.trackBtnText}>Track order</Text>
                       </View>
                     )}
+
+                    {/* 🧪 Testing only */}
+                    <TouchableOpacity
+                      style={s.deleteBtn}
+                      onPress={(e) => { e.stopPropagation(); handleDeleteOrder(item); }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#fff" />
+                    </TouchableOpacity>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -303,4 +336,5 @@ const s = StyleSheet.create({
   emptySub:    { fontSize: 13, color: '#cbd5e1' },
   loginBtn:    { marginTop: 8, backgroundColor: '#FC8019', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
   loginBtnText:{ color: '#fff', fontWeight: '700', fontSize: 14 },
+  deleteBtn:   { width: 32, height: 32, borderRadius: 8, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center' },
 });

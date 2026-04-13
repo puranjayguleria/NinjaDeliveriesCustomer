@@ -72,7 +72,7 @@ import FoodCartScreen from "@/screens/food/FoodCartScreen";
 import FoodCheckoutScreen from "@/screens/food/FoodCheckoutScreen";
 import FoodOrderSuccessScreen from "@/screens/food/FoodOrderSuccessScreen";
 import FoodTrackingScreen from "@/screens/food/FoodTrackingScreen";
-import FoodOrdersScreen from "@/screens/food/FoodOrdersScreen";
+import FoodOrderHistoryScreen from "@/screens/food/FoodOrderHistoryScreen";
 import FoodOrderBillScreen from "@/screens/food/FoodOrderBillScreen";
 import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
 import FoodDishDetailsScreen from "@/screens/food/FoodDishDetailsScreen";
@@ -862,7 +862,7 @@ function FoodCartStack() {
 function FoodOrdersStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
-      <FoodStack.Screen name="FoodOrdersHome" component={FoodOrdersScreen} />
+      <FoodStack.Screen name="FoodOrdersHome" component={FoodOrderHistoryScreen} />
       <FoodStack.Screen name="FoodCart" component={FoodCartScreen} />
       <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
@@ -874,7 +874,7 @@ function FoodHistoryStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodHistoryHome">
-        {() => <FoodOrdersScreen mode="history" />}
+        {() => <FoodOrderHistoryScreen mode="history" />}
       </FoodStack.Screen>
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
       <FoodStack.Screen name="FoodOrderBill" component={FoodOrderBillScreen} />
@@ -887,7 +887,7 @@ function FoodReorderStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodReorderHome">
-        {() => <FoodOrdersScreen mode="reorder" />}
+        {() => <FoodOrderHistoryScreen mode="reorder" />}
       </FoodStack.Screen>
       <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
       <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
@@ -924,7 +924,7 @@ function FoodHistoryTabStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodHistoryTabHome">
-        {() => <FoodOrdersScreen mode="history" />}
+        {() => <FoodOrderHistoryScreen mode="history" />}
       </FoodStack.Screen>
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
       <FoodStack.Screen name="FoodOrderBill" component={FoodOrderBillScreen} />

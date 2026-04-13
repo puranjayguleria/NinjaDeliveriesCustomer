@@ -204,7 +204,14 @@ export default function DishModal({
         </View>
         <View style={s.dishRight}>
           {item.image ? (
-            <Image source={{ uri: item.image }} style={s.dishImg} contentFit="cover" />
+            <Image
+              source={{ uri: item.image }}
+              style={s.dishImg}
+              contentFit="cover"
+              placeholder={{ thumbhash: 'qgeGBwCHeYd/d3iId3h4eHh4' }}
+              transition={200}
+              cachePolicy="memory-disk"
+            />
           ) : (
             <View style={[s.dishImg, s.dishImgPlaceholder]}>
               <Ionicons name="fast-food-outline" size={24} color="#FF6B35" />
@@ -247,7 +254,14 @@ export default function DishModal({
             contentContainerStyle={{ paddingBottom: 40 }}
           >
             {selectedItem.image ? (
-              <Image source={{ uri: selectedItem.image }} style={s.itemHeroImg} contentFit="cover" />
+              <Image
+                source={{ uri: selectedItem.image }}
+                style={s.itemHeroImg}
+                contentFit="cover"
+                placeholder={{ thumbhash: 'qgeGBwCHeYd/d3iId3h4eHh4' }}
+                transition={250}
+                cachePolicy="memory-disk"
+              />
             ) : (
               <View style={s.itemHeroPlaceholder}>
                 <Ionicons name="fast-food-outline" size={48} color="#FF6B35" />
@@ -308,7 +322,13 @@ export default function DishModal({
                         {addon.description ? <Text style={s.optionDesc}>{addon.description}</Text> : null}
                       </View>
                       {addon.image ? (
-                        <Image source={{ uri: addon.image }} style={s.addonImg} contentFit="cover" />
+                        <Image
+                          source={{ uri: addon.image }}
+                          style={s.addonImg}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                        />
                       ) : null}
                       <Text style={s.optionPrice}>+₹{addon.price}</Text>
                     </TouchableOpacity>

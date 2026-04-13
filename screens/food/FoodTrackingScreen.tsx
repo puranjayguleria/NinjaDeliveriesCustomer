@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
-  View, Text, StyleSheet, Image, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
   Linking, Alert, Animated, ScrollView, Modal,
   TextInput, Platform, StatusBar, Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import firestore from "@react-native-firebase/firestore";
@@ -392,7 +393,7 @@ export default function FoodTrackingScreen() {
               <View style={s.riderRow}>
                 <View style={s.riderLeft}>
                   <View style={s.riderImgWrap}>
-                    <Image source={riderIcon} style={{ width: 32, height: 32 }} resizeMode="contain" />
+                    <Image source={riderIcon} style={{ width: 32, height: 32 }} contentFit="contain" />
                   </View>
                   <View>
                     <Text style={s.riderName}>{riderInfo.name}</Text>

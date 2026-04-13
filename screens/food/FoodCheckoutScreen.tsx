@@ -122,6 +122,10 @@ export default function FoodCheckoutScreen() {
       const restaurantId = cartItems[0]?.restaurantId ?? '';
       const orderRef = firestore().collection('restaurant_Orders').doc();
       
+      console.log('[FoodCheckout] Creating order with ID:', orderRef.id);
+      console.log('[FoodCheckout] Restaurant ID:', restaurantId);
+      console.log('[FoodCheckout] User ID:', user.uid);
+      
       const orderData: any = {
         userId: user.uid, userPhone: user.phoneNumber ?? '',
         restaurantId, restaurantName,
@@ -146,7 +150,12 @@ export default function FoodCheckoutScreen() {
         orderData.isScheduled = true;
       }
       
+      console.log('[FoodCheckout] Order data prepared:', JSON.stringify(orderData, null, 2));
+      
       await orderRef.set(orderData);
+      
+      console.log('[FoodCheckout] Order successfully created in restaurant_Orders collection');
+      
       clearCart();
       navigation.reset({
         index: 0,
@@ -154,7 +163,8 @@ export default function FoodCheckoutScreen() {
       });
     } catch (err) {
       console.error('[FoodCheckout] order error:', err);
-      Alert.alert('Error', 'Failed to place order. Please try again.');
+      console.error('[FoodCheckout] error details:', JSON.stringify(err, null, 2));
+      Alert.alert('Error', `Failed to place order: ${err.message || 'Please try again.'}`);
     } finally {
       setPlacing(false);
     }
