@@ -344,18 +344,20 @@ export default function FoodScreen() {
         </View>
 
         {/* index 1 — Sticky Categories */}
-        <View style={[s.catSection, { paddingTop: insets.top - 4 }]}>
+        <View style={[s.catSection, { paddingTop: insets.top - 4 }]} pointerEvents="box-none">
           {categories.length > 0 && (
-            <FlatList
-              data={[{ id: "all", name: "All", image: null }, ...categories]}
+            <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              keyExtractor={i => i.id}
               contentContainerStyle={s.catList}
-              renderItem={({ item }) => {
+              nestedScrollEnabled={true}
+              scrollEnabled={true}
+              bounces={false}
+            >
+              {[{ id: "all", name: "All", image: null }, ...categories].map((item) => {
                 const active = item.id === "all" ? selectedCategoryId === null : selectedCategoryId === item.id;
                 return (
-                  <TouchableOpacity style={s.catItem} activeOpacity={0.75} onPress={async () => {
+                  <TouchableOpacity key={item.id} style={s.catItem} activeOpacity={0.75} onPress={async () => {
                     if (item.id === "all") { setSelectedCategoryId(null); setCategoryRestaurantIds([]); return; }
                     const newId = selectedCategoryId === item.id ? null : item.id;
                     setSelectedCategoryId(newId); setCategoryRestaurantIds([]);
@@ -378,8 +380,8 @@ export default function FoodScreen() {
                     <Text style={[s.catName, active && s.catNameActive]} numberOfLines={1}>{item.name}</Text>
                   </TouchableOpacity>
                 );
-              }}
-            />
+              })}
+            </ScrollView>
           )}
         </View>
 

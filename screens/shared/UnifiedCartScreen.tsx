@@ -392,7 +392,7 @@ export default function UnifiedCartScreen() {
           )}
           {location?.food !== false && (
             <TouchableOpacity
-              style={[styles.emptyBtn, { backgroundColor: '#FF5722' }]}
+              style={[styles.emptyBtn, { backgroundColor: '#FF9800' }]}
               onPress={() => {
                 setActiveMode('food');
               }}
