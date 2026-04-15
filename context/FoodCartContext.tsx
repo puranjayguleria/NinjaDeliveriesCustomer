@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CART_STORAGE_KEY = '@food_cart_items';
 
 export type AddonItem = {
   name: string;
@@ -36,6 +39,18 @@ const FoodCartContext = createContext<FoodCartContextType | undefined>(undefined
 
 export const FoodCartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cartItems, setCartItems] = useState<FoodCartItem[]>([]);
+
+  // Load cart from storage on mount
+  useEffect(() => {
+    AsyncStorage.getItem(CART_STORAGE_KEY)
+      .then(data => { if (data) setCartItems(JSON.parse(data)); })
+      .catch(() => {});
+  }, []);
+
+  // Save cart to storage whenever it changes
+  useEffect(() => {
+    AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems)).catch(() => {});
+  }, [cartItems]);
 
   const restaurantId = cartItems.length > 0 ? cartItems[0].restaurantId : null;
 

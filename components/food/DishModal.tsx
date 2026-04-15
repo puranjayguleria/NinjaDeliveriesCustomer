@@ -122,6 +122,20 @@ export default function DishModal({
     setSelectedAddons([]);
   };
 
+  const addDirectly = (item: MenuItem) => {
+    addItem({
+      id: item.id,
+      name: item.name,
+      price: Number(item.price),
+      image: item.image,
+      restaurantId,
+      restaurantName,
+      description: item.description,
+      cookingTimeHours: item.cookingTimeHours,
+      cookingTimeMinutes: item.cookingTimeMinutes,
+    });
+  };
+
   const confirmAdd = () => {
     if (!selectedItem) return;
     const basePrice = selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price);
@@ -218,7 +232,7 @@ export default function DishModal({
             </View>
           )}
           {qty === 0 ? (
-            <TouchableOpacity style={s.addBtn} onPress={() => openItem(item)} activeOpacity={0.7}>
+            <TouchableOpacity style={s.addBtn} onPress={(e) => { e.stopPropagation(); addDirectly(item); }} activeOpacity={0.7}>
               <Text style={s.addBtnText}>ADD</Text>
             </TouchableOpacity>
           ) : (

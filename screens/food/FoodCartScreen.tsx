@@ -199,22 +199,6 @@ export default function FoodCartScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── DELIVERY INFO CARD ── */}
-        <View style={s.card}>
-          <View style={s.deliveryInfo}>
-            <Ionicons 
-              name={deliveryFee === 0 ? 'bicycle' : 'bicycle-outline'} 
-              size={20} 
-              color={deliveryFee === 0 ? GREEN : ORANGE} 
-            />
-            <Text style={[s.deliveryText, { color: deliveryFee === 0 ? GREEN : ORANGE }]}>
-              {deliveryFee === 0
-                ? '🎉 Yay! Free delivery on this order'
-                : `Add ₹${199 - totalPrice} more for free delivery`}
-            </Text>
-          </View>
-        </View>
-
         {/* ── BILL DETAILS CARD ── */}
         <View style={s.card}>
           <View style={s.billHeader}>
@@ -250,6 +234,19 @@ export default function FoodCartScreen() {
             <Text style={s.billTotalLabel}>To Pay</Text>
             <Text style={s.billTotalValue}>₹{grandTotal}</Text>
           </View>
+
+          {deliveryFee === 0 && (
+            <View style={s.freeDeliveryBanner}>
+              <Ionicons name="bicycle" size={14} color={GREEN} />
+              <Text style={s.freeDeliveryText}>🎉 Yay! Free delivery on this order</Text>
+            </View>
+          )}
+          {deliveryFee > 0 && (
+            <View style={s.freeDeliveryBanner}>
+              <Ionicons name="bicycle-outline" size={14} color={ORANGE} />
+              <Text style={[s.freeDeliveryText, { color: ORANGE }]}>Add ₹{199 - totalPrice} more for free delivery</Text>
+            </View>
+          )}
         </View>
 
       </ScrollView>
@@ -319,129 +316,129 @@ const s = StyleSheet.create({
   /* card */
   card: {
     backgroundColor: '#fff',
-    marginHorizontal: 14,
-    marginTop: 12,
-    borderRadius: 16,
-    padding: 16,
+    marginHorizontal: 12,
+    marginTop: 10,
+    borderRadius: 14,
+    padding: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
 
   /* card header */
   cardHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingBottom: 12, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingBottom: 10, marginBottom: 10,
     borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
   },
-  cardTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: DARK },
+  cardTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: DARK },
   itemCountBadge: {
-    backgroundColor: '#fff5f0', paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#fff5f0', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 10,
   },
-  itemCountText: { fontSize: 11, fontWeight: '700', color: ORANGE },
+  itemCountText: { fontSize: 10, fontWeight: '700', color: ORANGE },
 
   /* item card */
-  itemCard: { paddingVertical: 8 },
+  itemCard: { paddingVertical: 6 },
   itemMain: { flexDirection: 'row', justifyContent: 'space-between' },
-  itemLeft: { flex: 1, flexDirection: 'row', gap: 10, paddingRight: 12 },
+  itemLeft: { flex: 1, flexDirection: 'row', gap: 8, paddingRight: 10 },
   vegBox: {
-    width: 16, height: 16, borderRadius: 3,
+    width: 14, height: 14, borderRadius: 2,
     borderWidth: 1.5, borderColor: GREEN,
     justifyContent: 'center', alignItems: 'center',
     marginTop: 2, flexShrink: 0,
   },
-  vegDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN },
+  vegDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: GREEN },
   itemDetails: { flex: 1 },
-  itemName: { fontSize: 14, fontWeight: '600', color: DARK, lineHeight: 20 },
-  itemDesc: { fontSize: 11, color: GRAY, marginTop: 3, lineHeight: 16 },
-  itemTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
-  itemTimeText: { fontSize: 11, color: '#94a3b8' },
+  itemName: { fontSize: 13, fontWeight: '600', color: DARK, lineHeight: 18 },
+  itemDesc: { fontSize: 10, color: GRAY, marginTop: 2, lineHeight: 14 },
+  itemTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  itemTimeText: { fontSize: 10, color: '#94a3b8' },
   variantBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f8f9fa', paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 6, marginTop: 4,
+    backgroundColor: '#f8f9fa', paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 5, marginTop: 3,
   },
   variantText: { fontSize: 10, fontWeight: '600', color: GRAY },
-  itemPrice: { fontSize: 14, fontWeight: '700', color: DARK, marginTop: 6 },
+  itemPrice: { fontSize: 13, fontWeight: '700', color: DARK, marginTop: 4 },
 
-  itemRight: { alignItems: 'center', width: 80 },
-  itemImg: { width: 80, height: 72, borderRadius: 10 },
+  itemRight: { alignItems: 'center', width: 72 },
+  itemImg: { width: 68, height: 62, borderRadius: 8 },
   imgFallback: { backgroundColor: '#f8f9fa', justifyContent: 'center', alignItems: 'center' },
 
   stepper: {
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1.5, borderColor: ORANGE, borderRadius: 8,
-    marginTop: 8, overflow: 'hidden', backgroundColor: '#fff',
+    borderWidth: 1.5, borderColor: ORANGE, borderRadius: 7,
+    marginTop: 6, overflow: 'hidden', backgroundColor: '#fff',
   },
-  stepBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  stepQty: { fontSize: 14, fontWeight: '800', color: DARK, minWidth: 20, textAlign: 'center' },
+  stepBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  stepQty: { fontSize: 13, fontWeight: '800', color: DARK, minWidth: 18, textAlign: 'center' },
 
-  itemDivider: { height: 1, backgroundColor: '#f5f5f5', marginVertical: 12 },
+  itemDivider: { height: 1, backgroundColor: '#f5f5f5', marginVertical: 8 },
 
   /* addons */
-  addonsSection: { marginTop: 12 },
-  addonsDivider: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 10 },
+  addonsSection: { marginTop: 8 },
+  addonsDivider: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 8 },
   addonsTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   addonsTitle: {
-    fontSize: 11, fontWeight: '700', color: ORANGE,
+    fontSize: 10, fontWeight: '700', color: ORANGE,
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  addonsTotalPrice: {
-    fontSize: 12, fontWeight: '700', color: ORANGE,
-  },
+  addonsTotalPrice: { fontSize: 11, fontWeight: '700', color: ORANGE },
   addonRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#fafafa', padding: 8, borderRadius: 8, marginTop: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fafafa', padding: 6, borderRadius: 7, marginTop: 4,
   },
-  addonImg: { width: 32, height: 32, borderRadius: 6 },
+  addonImg: { width: 28, height: 28, borderRadius: 5 },
   addonImgPlaceholder: {
-    width: 32, height: 32, borderRadius: 6,
+    width: 28, height: 28, borderRadius: 5,
     backgroundColor: '#fff5f0', justifyContent: 'center', alignItems: 'center',
   },
-  addonName: { flex: 1, fontSize: 12, fontWeight: '500', color: DARK },
-  addonPrice: { fontSize: 11, fontWeight: '600', color: GRAY },
+  addonName: { flex: 1, fontSize: 11, fontWeight: '500', color: DARK },
+  addonPrice: { fontSize: 10, fontWeight: '600', color: GRAY },
 
   /* add more */
   addMoreBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 12, marginTop: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, marginTop: 6,
     borderTopWidth: 1, borderTopColor: '#f5f5f5',
   },
-  addMoreText: { fontSize: 14, fontWeight: '600', color: ORANGE },
+  addMoreText: { fontSize: 13, fontWeight: '600', color: ORANGE },
 
   /* delivery info */
-  deliveryInfo: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
+  freeDeliveryBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#f0fdf4', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 7, marginTop: 10,
   },
-  deliveryText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
+  freeDeliveryText: { fontSize: 12, fontWeight: '600', color: GREEN, flex: 1 },
 
   /* bill */
   billHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingBottom: 12, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingBottom: 10, marginBottom: 10,
     borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
   },
-  billTitle: { fontSize: 15, fontWeight: '700', color: DARK },
+  billTitle: { fontSize: 13, fontWeight: '700', color: DARK },
   billRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 7,
   },
   billLabelRow: { flex: 1 },
-  billLabel: { fontSize: 13, color: GRAY, fontWeight: '500' },
-  billHint: { fontSize: 10, color: GREEN, marginTop: 2 },
-  billValue: { fontSize: 13, color: DARK, fontWeight: '600' },
-  billDivider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 8 },
+  billLabel: { fontSize: 12, color: GRAY, fontWeight: '500' },
+  billHint: { fontSize: 10, color: GREEN, marginTop: 1 },
+  billValue: { fontSize: 12, color: DARK, fontWeight: '600' },
+  billDivider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 6 },
   billTotalRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 6,
   },
-  billTotalLabel: { fontSize: 15, fontWeight: '700', color: DARK },
-  billTotalValue: { fontSize: 16, fontWeight: '800', color: ORANGE },
+  billTotalLabel: { fontSize: 14, fontWeight: '700', color: DARK },
+  billTotalValue: { fontSize: 15, fontWeight: '800', color: ORANGE },
 
   /* footer */
   footer: {

@@ -29,6 +29,7 @@ import {
   AppState,
   Modal as RNModal,
   Image,
+  Platform,
 } from "react-native";
 import {
   NavigationContainer,
@@ -42,13 +43,42 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
+
+// ─── Required for background & killed-state notifications ───────────────────
+// Must be called at module level (outside any component) so it runs before
+// the app fully mounts — this is what allows notifications to appear when
+// the app is in background or completely closed.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+// Android — notification channel required for foreground notifications on Android 8+
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('default', {
+    name: 'Default',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF231F7C',
+    sound: 'default',
+    enableVibrate: true,
+    showBadge: true,
+  });
+}
+// iOS — foreground presentation options are handled by setNotificationHandler above.
+// 'shouldShowAlert: true' ensures banners show even when app is open on iOS.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { auth, firestore } from './firebase.native'; 
 // import auth from "@react-native-firebase/auth";
 // import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
