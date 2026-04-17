@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFoodCart } from '@/context/FoodCartContext';
-import { type MenuItem, type MenuAddon } from '@/firebase/foodFirebase';
+import { type MenuItem, type MenuAddon, type RestaurantOffer } from '@/firebase/foodFirebase';
 import firestore from '@react-native-firebase/firestore';
 
 type Props = {
@@ -29,6 +29,7 @@ export default function DishModal({
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [addons, setAddons] = useState<MenuAddon[]>([]);
+  const [offers, setOffers] = useState<RestaurantOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<{ size: string; price: string } | null>(null);
@@ -64,7 +65,17 @@ export default function DishModal({
         setAddons(items);
       }, () => {});
 
-    return () => { unsubMenu(); unsubAddons(); };
+    // Fetch offers for this restaurant
+    const unsubOffers = firestore()
+      .collection('restaurant_offers')
+      .where('restaurantId', '==', restaurantId)
+      .onSnapshot({ includeMetadataChanges: false }, snap => {
+        const items = snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as any) })) as RestaurantOffer[];
+        setOffers(items.filter(o => o.active === true));
+      }, () => {});
+
+    return () => { unsubMenu(); unsubAddons(); unsubOffers(); };
   }, [visible, restaurantId]);
 
   useEffect(() => {
@@ -101,13 +112,24 @@ export default function DishModal({
 
   const addonsForItem = (itemId: string) => addons.filter(a => a.menuItemId === itemId);
 
+  const getOfferForItem = (item: MenuItem) => {
+    const itemName = item.name?.toLowerCase().trim();
+    return offers.find(o => {
+      if (o.menuItemId === item.id) return true;
+      // Strip any extra quotes from menuItemName before comparing
+      const offerName = (o.menuItemName || '').replace(/^"|"$/g, '').toLowerCase().trim();
+      return offerName === itemName;
+    });
+  };
+
   const openItem = (item: MenuItem) => {
     const itemAddons = addons.filter(a => a.menuItemId === item.id);
     if ((!item.variants || item.variants.length === 0) && itemAddons.length === 0) {
+      const itemOffer = getOfferForItem(item);
       addItem({
         id: item.id,
         name: item.name,
-        price: Number(item.price),
+        price: itemOffer ? itemOffer.discountedPrice : Number(item.price),
         image: item.image,
         restaurantId,
         restaurantName,
@@ -123,10 +145,11 @@ export default function DishModal({
   };
 
   const addDirectly = (item: MenuItem) => {
+    const itemOffer = getOfferForItem(item);
     addItem({
       id: item.id,
       name: item.name,
-      price: Number(item.price),
+      price: itemOffer ? itemOffer.discountedPrice : Number(item.price),
       image: item.image,
       restaurantId,
       restaurantName,
@@ -138,7 +161,10 @@ export default function DishModal({
 
   const confirmAdd = () => {
     if (!selectedItem) return;
-    const basePrice = selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price);
+    const itemOffer = getOfferForItem(selectedItem);
+    const basePrice = itemOffer
+      ? itemOffer.discountedPrice
+      : (selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price));
     
     // Map selected addon IDs to full addon objects with name, price, image
     const selectedAddonObjects = selectedAddons
@@ -174,6 +200,7 @@ export default function DishModal({
 
   const renderDishCard = (item: MenuItem) => {
     const qty = getItemQty(item.id);
+    const offer = getOfferForItem(item);
     
     // Check if foodType field exists and determine color
     let indicatorColor = '#16a34a'; // default green
@@ -193,11 +220,21 @@ export default function DishModal({
             <View style={[s.vegInner, { backgroundColor: indicatorColor }]} />
           </View>
           <Text style={s.dishName} numberOfLines={1}>{item.name}</Text>
-          <Text style={s.dishPrice}>
-            {item.variants?.length > 0
-              ? `₹${item.variants.map(v => v.price).sort((a, b) => Number(a) - Number(b))[0]}`
-              : `₹${item.price}`}
-          </Text>
+          {offer ? (
+            <View style={s.priceRow}>
+              <Text style={s.dishPriceDiscounted}>₹{offer.discountedPrice}</Text>
+              <Text style={s.dishPriceOriginal}>₹{offer.originalPrice}</Text>
+              <View style={s.offerBadge}>
+                <Text style={s.offerBadgeText}>{offer.discountPercentage}% OFF</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={s.dishPrice}>
+              {item.variants?.length > 0
+                ? `₹${item.variants.map(v => v.price).sort((a, b) => Number(a) - Number(b))[0]}`
+                : `₹${item.price}`}
+            </Text>
+          )}
           {item.variants?.length > 0 && (
             <Text style={s.dishVariantHint}>{item.variants.map(v => v.size).join(' · ')}</Text>
           )}
@@ -287,9 +324,25 @@ export default function DishModal({
                 <Text style={s.backText}>Back</Text>
               </TouchableOpacity>
               <Text style={s.itemDetailName}>{selectedItem.name}</Text>
-              <Text style={s.itemDetailPrice}>
-                ₹{selectedVariant ? selectedVariant.price : selectedItem.price}
-              </Text>
+              {(() => {
+                const itemOffer = getOfferForItem(selectedItem);
+                if (itemOffer) {
+                  return (
+                    <View style={s.detailPriceRow}>
+                      <Text style={s.itemDetailPriceDiscounted}>₹{itemOffer.discountedPrice}</Text>
+                      <Text style={s.itemDetailPriceOriginal}>₹{itemOffer.originalPrice}</Text>
+                      <View style={s.offerBadgeLg}>
+                        <Text style={s.offerBadgeLgText}>{itemOffer.discountPercentage}% OFF</Text>
+                      </View>
+                    </View>
+                  );
+                }
+                return (
+                  <Text style={s.itemDetailPrice}>
+                    ₹{selectedVariant ? selectedVariant.price : selectedItem.price}
+                  </Text>
+                );
+              })()}
               {selectedItem.description ? (
                 <Text style={s.itemDetailDesc}>{selectedItem.description}</Text>
               ) : null}
@@ -357,11 +410,16 @@ export default function DishModal({
               >
                 <Text style={s.confirmBtnText}>
                   Add to Cart · ₹{
-                    (selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price)) +
-                    selectedAddons.reduce((sum, aid) => {
-                      const a = addons.find(x => x.id === aid);
-                      return sum + (a ? Number(a.price) : 0);
-                    }, 0)
+                    (() => {
+                      const itemOffer = getOfferForItem(selectedItem);
+                      const base = itemOffer
+                        ? itemOffer.discountedPrice
+                        : (selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price));
+                      return base + selectedAddons.reduce((sum, aid) => {
+                        const a = addons.find(x => x.id === aid);
+                        return sum + (a ? Number(a.price) : 0);
+                      }, 0);
+                    })()
                   }
                 </Text>
               </TouchableOpacity>
@@ -453,9 +511,18 @@ const s = StyleSheet.create({
   vegInner: { width: 7, height: 7, borderRadius: 3.5 },
   dishName: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
   dishPrice: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginTop: 3 },
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' },
+  dishPriceDiscounted: { fontSize: 14, fontWeight: '700', color: '#16a34a' },
+  dishPriceOriginal: { fontSize: 12, color: '#94a3b8', textDecorationLine: 'line-through' },
+  offerBadge: { backgroundColor: '#fff5f0', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  offerBadgeText: { fontSize: 10, fontWeight: '700', color: '#FF6B35' },
+  detailPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' },
+  itemDetailPriceDiscounted: { fontSize: 18, fontWeight: '700', color: '#16a34a' },
+  itemDetailPriceOriginal: { fontSize: 14, color: '#94a3b8', textDecorationLine: 'line-through' },
+  offerBadgeLg: { backgroundColor: '#fff5f0', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  offerBadgeLgText: { fontSize: 12, fontWeight: '700', color: '#FF6B35' },
   dishVariantHint: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  dishDesc: { fontSize: 12, color: '#94a3b8', marginTop: 4, lineHeight: 17 },
-  dishTimingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 5 },
+  dishDesc: { fontSize: 12, color: '#94a3b8', marginTop: 4, lineHeight: 17 },  dishTimingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 5 },
   dishTiming: { fontSize: 11, color: '#94a3b8' },
   dishRight: { alignItems: 'center', width: 96 },
   dishImg: { width: 86, height: 76, borderRadius: 10 },

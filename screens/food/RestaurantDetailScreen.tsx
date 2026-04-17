@@ -11,9 +11,11 @@ import { useFoodCart } from '@/context/FoodCartContext';
 import {
   getMenuByRestaurant,
   getAddonsByRestaurant,
+  getOffersByRestaurant,
   type MenuItem,
   type MenuAddon,
   type FoodCategory as Category,
+  type RestaurantOffer,
 } from '@/firebase/foodFirebase';
 import DishModal from '@/components/food/DishModal';
 
@@ -28,6 +30,7 @@ export default function RestaurantDetailScreen() {
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [addons, setAddons] = useState<MenuAddon[]>([]);
+  const [offers, setOffers] = useState<RestaurantOffer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('');
@@ -38,16 +41,19 @@ export default function RestaurantDetailScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [items, addonItems] = await Promise.all([
+      const [items, addonItems, offerItems] = await Promise.all([
         getMenuByRestaurant(restaurantId),
         getAddonsByRestaurant(restaurantId),
+        getOffersByRestaurant(restaurantId),
       ]);
 
       console.log('[RestaurantDetail] menu items fetched:', items.length, items.map(i => ({ name: i.name, image: i.image })));
       console.log('[RestaurantDetail] addons fetched:', addonItems.length, addonItems.map(a => ({ name: a.name, image: a.image })));
+      console.log('[RestaurantDetail] offers fetched:', offerItems.length, offerItems.map(o => ({ menuItemId: o.menuItemId, discountedPrice: o.discountedPrice, discountPercentage: o.discountPercentage })));
 
       setMenuItems(items);
       setAddons(addonItems);
+      setOffers(offerItems);
 
       // Build unique categories from menu items
       const catMap = new Map<string, Category>();
@@ -148,6 +154,10 @@ export default function RestaurantDetailScreen() {
 
             {itemsByCategory(cat.id).map(item => {
               const qty = getItemQty(item.id);
+              const offer = offers.find(o =>
+                o.menuItemId === item.id ||
+                o.menuItemName?.toLowerCase().trim() === item.name?.toLowerCase().trim()
+              );
 
               return (
                 <TouchableOpacity key={item.id} style={s.menuItem} onPress={() => openDishModal(item)} activeOpacity={0.85}>
@@ -157,7 +167,17 @@ export default function RestaurantDetailScreen() {
                       <View style={[s.vegDotInner, { backgroundColor: '#16a34a' }]} />
                     </View>
                     <Text style={s.itemName}>{item.name}</Text>
-                    <Text style={s.itemPrice}>₹{item.price}</Text>
+                    {offer ? (
+                      <View style={s.priceRow}>
+                        <Text style={s.itemPriceDiscounted}>₹{offer.discountedPrice}</Text>
+                        <Text style={s.itemPriceOriginal}>₹{offer.originalPrice}</Text>
+                        <View style={s.offerBadge}>
+                          <Text style={s.offerBadgeText}>{offer.discountPercentage}% OFF</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={s.itemPrice}>₹{item.price}</Text>
+                    )}
                     {item.variants?.length > 0 && (
                       <Text style={s.variantHint}>
                         {item.variants.map(v => v.size).join(' · ')}
@@ -295,6 +315,11 @@ const s = StyleSheet.create({
   vegDotInner: { width: 7, height: 7, borderRadius: 3.5 },
   itemName: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
   itemPrice: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginTop: 4 },
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
+  itemPriceDiscounted: { fontSize: 14, fontWeight: '700', color: '#16a34a' },
+  itemPriceOriginal: { fontSize: 12, color: '#94a3b8', textDecorationLine: 'line-through' },
+  offerBadge: { backgroundColor: '#fff5f0', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  offerBadgeText: { fontSize: 10, fontWeight: '700', color: '#FF6B35' },
   variantHint: { fontSize: 11, color: '#94a3b8', marginTop: 3 },
   itemDesc: { fontSize: 12, color: '#94a3b8', marginTop: 5, lineHeight: 17 },
   addonHint: { fontSize: 11, color: '#FF6B35', marginTop: 5, fontWeight: '500' },

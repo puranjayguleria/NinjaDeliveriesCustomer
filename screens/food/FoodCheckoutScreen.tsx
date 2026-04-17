@@ -52,7 +52,13 @@ export default function FoodCheckoutScreen() {
     const total = Number(item.cookingTimeHours ?? 0) * 60 + Number(item.cookingTimeMinutes ?? 0);
     return total > max ? total : max;
   }, 0);
-  const estimatedDeliveryMins = maxCookingMins > 0 ? maxCookingMins + 10 : null;
+
+  // For multiple items: max cooking time + 5 min per extra item (parallel prep buffer) + 10 min delivery
+  const itemCount = cartItems.reduce((sum: number, item: any) => sum + (item.qty ?? 1), 0);
+  const extraBuffer = itemCount > 1 ? (itemCount - 1) * 5 : 0;
+  const estimatedDeliveryMins = maxCookingMins > 0
+    ? maxCookingMins + extraBuffer + 10
+    : itemCount > 1 ? 35 + extraBuffer : null;
   const restaurantName = cartItems[0]?.restaurantName ?? '';
 
   const arrowX = useRef(new Animated.Value(0)).current;
@@ -225,7 +231,11 @@ export default function FoodCheckoutScreen() {
               <Ionicons name="flash" size={20} color={!isScheduled ? ORANGE : GRAY} />
               <View style={s.scheduleInfo}>
                 <Text style={[s.scheduleLabel, !isScheduled && { color: ORANGE }]}>Deliver Now</Text>
-                <Text style={s.scheduleSub}>{estimatedDeliveryMins ? `~${estimatedDeliveryMins} mins` : '30-40 mins'}</Text>
+                <Text style={s.scheduleSub}>
+                  {estimatedDeliveryMins
+                    ? `~${estimatedDeliveryMins} mins${itemCount > 1 ? ` · ${itemCount} items` : ''}`
+                    : '30-40 mins'}
+                </Text>
               </View>
             </View>
             <Ionicons name={!isScheduled ? 'radio-button-on' : 'radio-button-off'} size={20} color={!isScheduled ? ORANGE : '#ccc'} />

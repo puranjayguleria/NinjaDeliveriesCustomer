@@ -95,6 +95,9 @@ export default function FoodScreen() {
   const [isVegMode,            setIsVegMode]            = useState(true);
   const [showVegModal,         setShowVegModal]         = useState(false);
   const [pendingVeg,           setPendingVeg]           = useState<boolean | null>(null);
+  // restaurantIds that have at least one veg item / non-veg item
+  const [vegRestaurantIds,     setVegRestaurantIds]     = useState<Set<string>>(new Set());
+  const [nonVegRestaurantIds,  setNonVegRestaurantIds]  = useState<Set<string>>(new Set());
   const [dishModal,            setDishModal]            = useState<{
     visible: boolean; restaurantId: string; restaurantName: string; filterCategoryId?: string | null;
   }>({ visible: false, restaurantId: "", restaurantName: "" });
@@ -159,7 +162,32 @@ export default function FoodScreen() {
     const u1 = listenActiveRestaurants(d => setRestaurants(d), e => console.error(e));
     const u2 = listenFoodCategoriesWithItems(d => setCategories(d), e => console.error(e));
     getFoodBanners().then(setBanners).catch(console.error);
-    return () => { u1(); u2(); };
+
+    // Track which restaurants have veg / non-veg items in their menu
+    const u3 = firestore()
+      .collection('restaurant_menu')
+      .where('available', '==', true)
+      .onSnapshot(snap => {
+        const vegIds = new Set<string>();
+        const nonVegIds = new Set<string>();
+        snap.docs.forEach(d => {
+          const data = d.data();
+          const ft = (data.foodType || '').toLowerCase().trim();
+          const rid = data.restaurantId;
+          if (!rid) return;
+          if (ft === 'veg') vegIds.add(rid);
+          else if (ft === 'nonveg' || ft === 'non-veg') nonVegIds.add(rid);
+          else {
+            // foodType not set — include in both
+            vegIds.add(rid);
+            nonVegIds.add(rid);
+          }
+        });
+        setVegRestaurantIds(vegIds);
+        setNonVegRestaurantIds(nonVegIds);
+      }, e => console.error(e));
+
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   useEffect(() => {
@@ -204,19 +232,36 @@ export default function FoodScreen() {
 
   const filtered = React.useMemo(() => {
     let list = [...restaurants];
-    if (isVegMode) list = list.filter(r => (r as any).cuisineType === "veg" || (r as any).cuisineType === "both");
-    else           list = list.filter(r => (r as any).cuisineType === "nonveg" || (r as any).cuisineType === "both");
+
+    // Veg/Non-veg filter — based on actual menu items, not just restaurant cuisineType
+    if (isVegMode) list = list.filter(r => vegRestaurantIds.has(r.id));
+    else           list = list.filter(r => nonVegRestaurantIds.has(r.id));
+
+    // Category filter
     if (selectedCategoryId && categoryRestaurantIds.length > 0) list = list.filter(r => categoryRestaurantIds.includes(r.id));
     else if (selectedCategoryId && categoryRestaurantIds.length === 0) list = [];
+
+    // Filter chips — only exclude if field exists AND doesn't match
     switch (selectedFilter) {
-      case "rating4":  list = list.filter(r => (r.rating ?? 0) >= 4.0); break;
-      case "under30":  list = list.filter(r => (r.deliveryTime ?? 99) < 30); break;
-      case "trending": list = list.filter(r => r.isTrending === true); break;
-      case "budget":   list = list.filter(r => (r.avgPrice ?? 999) < 150); break;
-      case "new":      list.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)); break;
+      case "rating4":
+        list = list.filter(r => r.rating === undefined || r.rating === null || r.rating >= 4.0);
+        break;
+      case "under30":
+        list = list.filter(r => r.deliveryTime === undefined || r.deliveryTime === null || r.deliveryTime < 30);
+        break;
+      case "trending":
+        list = list.filter(r => r.isTrending === true);
+        break;
+      case "budget":
+        list = list.filter(r => r.avgPrice === undefined || r.avgPrice === null || r.avgPrice < 150);
+        break;
+      case "new":
+        list = [...list].sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        break;
     }
+
     return list;
-  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, isVegMode]);
+  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, isVegMode, vegRestaurantIds, nonVegRestaurantIds]);
 
   return (
     <View style={s.root}>
@@ -254,7 +299,7 @@ export default function FoodScreen() {
             </View>
             <Text style={s.vegTitle}>{pendingVeg ? "Switch to Veg?" : "Switch to Non-Veg?"}</Text>
             <Text style={s.vegSub}>
-              {pendingVeg ? "Only veg & mixed restaurants will be shown." : "Only non-veg & mixed restaurants will be shown."}
+              {pendingVeg ? "Only veg restaurants will be shown." : "Only non-veg restaurants will be shown."}
             </Text>
             <TouchableOpacity style={[s.vegBtn, { backgroundColor: pendingVeg ? GREEN : "#ef4444" }]} onPress={confirmVeg} activeOpacity={0.85}>
               <Text style={s.vegBtnTxt}>{pendingVeg ? "Yes, Go Veg" : "Yes, Non-Veg"}</Text>
@@ -334,7 +379,7 @@ export default function FoodScreen() {
                 style={[s.vegToggleBtn, { backgroundColor: isVegMode ? "#00666A" : "#B70000" }]}
                 onPress={handleVegToggle} activeOpacity={0.85}>
                 <View style={s.vegDot} />
-                <Text style={s.vegToggleTxt}>{isVegMode ? "VEG" : "NON"}</Text>
+                <Text style={s.vegToggleTxt}>{isVegMode ? "VEG" : "NON-VEG"}</Text>
               </TouchableOpacity>
             </View>
             <View style={s.modeToggleWrap}>
@@ -455,24 +500,35 @@ export default function FoodScreen() {
                       <Text style={s.vegBadgeTxt}>PURE VEG</Text>
                     </View>
                   )}
+                  {item.isTrending && (
+                    <View style={s.trendingBadge}>
+                      <Text style={s.trendingBadgeTxt}>🔥 Trending</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={s.cardBody}>
                   <View style={s.cardRow}>
                     <Text style={s.cardName} numberOfLines={1}>{item.restaurantName}</Text>
-                    <View style={s.ratingBadge}>
-                      <Ionicons name="star" size={11} color="#fff" />
-                      <Text style={s.ratingTxt}>4.2</Text>
-                    </View>
+                    {item.rating != null && (
+                      <View style={s.ratingBadge}>
+                        <Ionicons name="star" size={11} color="#fff" />
+                        <Text style={s.ratingTxt}>{item.rating.toFixed(1)}</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={s.cardCuisine} numberOfLines={1}>
                     {item.type === "restaurant" ? "Multi-cuisine" : (item.type ?? "Restaurant")}
                   </Text>
                   <View style={s.cardMeta}>
                     <Ionicons name="time-outline" size={13} color={GRAY} />
-                    <Text style={s.metaTxt}>30–40 min</Text>
+                    <Text style={s.metaTxt}>
+                      {item.deliveryTime != null ? `${item.deliveryTime} min` : "30–40 min"}
+                    </Text>
                     <View style={s.metaSep} />
                     <Ionicons name="bicycle-outline" size={13} color={GRAY} />
-                    <Text style={s.metaTxt}>Free delivery</Text>
+                    <Text style={s.metaTxt}>
+                      {item.freeDelivery ? "Free delivery" : item.avgPrice != null ? `₹${item.avgPrice} for one` : "Free delivery"}
+                    </Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -600,6 +656,8 @@ const s = StyleSheet.create({
   cardImgPlaceholder: { width: "100%", height: 180, backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center" },
   vegBadge:     { position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#22c55e", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
   vegBadgeTxt:  { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
+  trendingBadge: { position: "absolute", top: 12, right: 12, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  trendingBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700" },
   cardBody:     { padding: 16 },
   cardRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
   cardName:     { fontSize: 17, fontWeight: "700", color: DARK, flex: 1, marginRight: 8 },

@@ -10,8 +10,10 @@ import { useNavigation } from '@react-navigation/native';
 import {
   listenFoodCategoriesWithItems,
   listenAllMenuItems,
+  listenAllOffers,
   type FoodCategory,
   type MenuItem,
+  type RestaurantOffer,
 } from '@/firebase/foodFirebase';
 import { useFoodCart } from '@/context/FoodCartContext';
 
@@ -25,6 +27,7 @@ export default function FoodCategoriesScreen() {
 
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [offers, setOffers] = useState<RestaurantOffer[]>([]);
   const [restaurants, setRestaurants] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
@@ -64,11 +67,11 @@ export default function FoodCategoriesScreen() {
     }, () => setLoading(false));
     const u2 = listenAllMenuItems(items => {
       setMenuItems(items);
-      // Fetch restaurant names for all unique restaurant IDs
       const restaurantIds = [...new Set(items.map(i => i.restaurantId))];
       fetchRestaurantNames(restaurantIds);
     });
-    return () => { u1(); u2(); };
+    const u3 = listenAllOffers(setOffers);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const fetchRestaurantNames = async (restaurantIds: string[]) => {
@@ -112,12 +115,22 @@ export default function FoodCategoriesScreen() {
         return matchesCategory && matchesSearch;
       });
 
+  const getOfferForItem = (item: MenuItem): RestaurantOffer | undefined => {
+    const itemName = item.name?.toLowerCase().trim();
+    return offers.find(o => {
+      if (o.menuItemId === item.id) return true;
+      const offerName = (o.menuItemName || '').replace(/^"|"$/g, '').toLowerCase().trim();
+      return offerName === itemName;
+    });
+  };
+
   const handleAddToCart = (item: MenuItem) => {
     const restaurantName = restaurants.get(item.restaurantId) || 'Unknown Restaurant';
+    const offer = getOfferForItem(item);
     addItem({
       id: item.id,
       name: item.name,
-      price: Number(item.price),
+      price: offer ? offer.discountedPrice : Number(item.price),
       image: item.image,
       restaurantId: item.restaurantId,
       restaurantName: restaurantName,
@@ -153,6 +166,7 @@ export default function FoodCategoriesScreen() {
     const h = Number(item.cookingTimeHours ?? 0);
     const m = Number(item.cookingTimeMinutes ?? 0);
     const restaurantName = restaurants.get(item.restaurantId) || 'Loading...';
+    const offer = getOfferForItem(item);
 
     return (
       <TouchableOpacity 
@@ -208,13 +222,25 @@ export default function FoodCategoriesScreen() {
           {/* Price Row */}
           <View style={styles.priceRow}>
             <View style={styles.priceContainer}>
-              <Text style={styles.price}>₹{item.price}</Text>
+              {offer ? (
+                <>
+                  <Text style={styles.priceDiscounted}>₹{offer.discountedPrice}</Text>
+                  <Text style={styles.priceOriginal}>₹{offer.originalPrice}</Text>
+                </>
+              ) : (
+                <Text style={styles.price}>₹{item.price}</Text>
+              )}
               {item.variants && item.variants.length > 1 && (
                 <View style={styles.variantBadge}>
                   <Text style={styles.variantText}>+{item.variants.length - 1}</Text>
                 </View>
               )}
             </View>
+            {offer && (
+              <View style={styles.offerBadge}>
+                <Text style={styles.offerBadgeText}>{offer.discountPercentage}% OFF</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -626,6 +652,31 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FF6B35',
     letterSpacing: -0.3,
+  },
+  priceDiscounted: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#16a34a',
+    letterSpacing: -0.3,
+  },
+  priceOriginal: {
+    fontSize: 11,
+    color: '#94a3b8',
+    textDecorationLine: 'line-through',
+    marginLeft: 2,
+  },
+  offerBadge: {
+    backgroundColor: '#fff5f0',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#FFE5D9',
+  },
+  offerBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FF6B35',
   },
   variantBadge: {
     backgroundColor: '#E8F5E9',

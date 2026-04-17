@@ -94,6 +94,19 @@ export type MenuAddon = {
   lastUpdated?: any;
 };
 
+export type RestaurantOffer = {
+  id: string;
+  menuItemId: string;
+  menuItemName: string;
+  restaurantId: string;
+  originalPrice: number;
+  discountedPrice: number;
+  discountPercentage: number;
+  description?: string;
+  active: boolean;
+  createdAt?: any;
+};
+
 // ─── Banner Queries ───────────────────────────────────────────────────────────
 
 /** Fetch all active food banners */
@@ -266,16 +279,85 @@ export async function getActiveCategoryIds(): Promise<Set<string>> {
   return ids;
 }
 
-/** Real-time listener for all active food categories */
+/** Real-time listener for all active food categories that have at least one available menu item */
 export function listenFoodCategoriesWithItems(
   onData: (categories: FoodCategory[]) => void,
   onError?: (e: Error) => void
 ) {
-  return firestore()
+  // Listen to menu items to get active category IDs
+  let activeCategories: FoodCategory[] = [];
+  let activeCategoryIds: Set<string> = new Set();
+
+  const unsubMenu = firestore()
+    .collection('restaurant_menu')
+    .where('available', '==', true)
+    .onSnapshot(menuSnap => {
+      activeCategoryIds = new Set<string>();
+      menuSnap.docs.forEach(d => {
+        const catId = d.data().categoryId;
+        if (catId) activeCategoryIds.add(catId);
+      });
+      // Re-filter categories with updated active IDs
+      onData(activeCategories.filter(c => activeCategoryIds.has(c.id)));
+    }, onError);
+
+  const unsubCats = firestore()
     .collection('restaurant_categories')
     .where('isActive', '==', true)
+    .onSnapshot(catSnap => {
+      activeCategories = catSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<FoodCategory, 'id'>) }));
+      // Filter to only categories that have menu items
+      onData(activeCategories.filter(c => activeCategoryIds.has(c.id)));
+    }, onError);
+
+  return () => { unsubMenu(); unsubCats(); };
+}
+
+// ─── Offer Queries ────────────────────────────────────────────────────────────
+
+/** Fetch all active offers for a specific restaurant */
+export async function getOffersByRestaurant(restaurantId: string): Promise<RestaurantOffer[]> {
+  const snap = await firestore()
+    .collection('restaurant_offers')
+    .where('restaurantId', '==', restaurantId)
+    .get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...(d.data() as Omit<RestaurantOffer, 'id'>) }))
+    .filter(o => o.active === true);
+}
+
+/** Real-time listener for ALL active offers across all restaurants */
+export function listenAllOffers(
+  onData: (offers: RestaurantOffer[]) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_offers')
     .onSnapshot(
-      snap => onData(snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<FoodCategory, 'id'>) }))),
+      snap => onData(
+        snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as Omit<RestaurantOffer, 'id'>) }))
+          .filter(o => o.active === true)
+      ),
+      onError
+    );
+}
+
+/** Real-time listener for active offers of a restaurant */
+export function listenOffersByRestaurant(
+  restaurantId: string,
+  onData: (offers: RestaurantOffer[]) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_offers')
+    .where('restaurantId', '==', restaurantId)
+    .onSnapshot(
+      snap => onData(
+        snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as Omit<RestaurantOffer, 'id'>) }))
+          .filter(o => o.active === true)
+      ),
       onError
     );
 }
