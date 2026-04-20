@@ -33,9 +33,12 @@ export default function FoodCartScreen() {
     return () => anim.stop();
   }, []);
 
-  const deliveryFee = totalPrice >= 199 ? 0 : 30;
-  const taxes       = Math.round(totalPrice * 0.05);
-  const grandTotal  = totalPrice + deliveryFee + taxes;
+  const deliveryFee    = totalPrice >= 199 ? 0 : 40;
+  const gst            = Math.round(totalPrice * 0.05);
+  const platformFee    = 5;
+  const packagingFee   = 20;
+  const taxes          = gst; // GST 5%
+  const grandTotal     = totalPrice + deliveryFee + gst + platformFee + packagingFee;
   const footerH     = FOOTER_H + (insets.bottom > 0 ? insets.bottom : 12) + 10;
 
   /* ── EMPTY STATE ── */
@@ -210,7 +213,12 @@ export default function FoodCartScreen() {
             <Text style={s.billLabel}>Item Total</Text>
             <Text style={s.billValue}>₹{totalPrice}</Text>
           </View>
-          
+
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>GST (5%)</Text>
+            <Text style={s.billValue}>₹{gst}</Text>
+          </View>
+
           <View style={s.billRow}>
             <View style={s.billLabelRow}>
               <Text style={s.billLabel}>Delivery Fee</Text>
@@ -224,8 +232,13 @@ export default function FoodCartScreen() {
           </View>
 
           <View style={s.billRow}>
-            <Text style={s.billLabel}>Taxes & Charges</Text>
-            <Text style={s.billValue}>₹{taxes}</Text>
+            <Text style={s.billLabel}>Platform Fee</Text>
+            <Text style={s.billValue}>₹{platformFee}</Text>
+          </View>
+
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>Packaging Charges</Text>
+            <Text style={s.billValue}>₹{packagingFee}</Text>
           </View>
 
           <View style={s.billDivider} />

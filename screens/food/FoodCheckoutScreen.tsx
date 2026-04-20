@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, Platform, StatusBar, Animated,
+  ActivityIndicator, Alert, Platform, StatusBar, Animated, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -27,10 +27,11 @@ export default function FoodCheckoutScreen() {
   const { clearCart } = useFoodCart();
   const { location } = useLocationContext();
 
-  const { cartItems = [], subtotal = 0, deliveryFee = 0, taxes = 0, grandTotal = 0 } = route.params ?? {};
+  const { cartItems = [], subtotal = 0, deliveryFee = 0, gst = 0, platformFee = 5, packagingFee = 20, grandTotal = 0 } = route.params ?? {};
 
   const [placing, setPlacing]               = useState(false);
   const [showPayModal, setShowPayModal]      = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState(location?.address || '');
   const [isScheduled, setIsScheduled]        = useState(false);
   const [scheduledDate, setScheduledDate]    = useState<Date | null>(null);
@@ -41,10 +42,7 @@ export default function FoodCheckoutScreen() {
 
   useEffect(() => {
     if (!location?.address) {
-      Alert.alert('Address Required', 'Please add a delivery address to continue', [
-        { text: 'Add Address', onPress: () => navigation.navigate('LocationSelector', { fromScreen: 'foodcheckout' }) },
-        { text: 'Go Back',    onPress: () => navigation.goBack(), style: 'cancel' },
-      ], { cancelable: false });
+      setShowAddressModal(true);
     }
   }, []);
 
@@ -95,7 +93,7 @@ export default function FoodCheckoutScreen() {
           cookingTimeHours: item.cookingTimeHours ?? null,
           cookingTimeMinutes: item.cookingTimeMinutes ?? null,
         })),
-        subtotal, deliveryFee, taxes, grandTotal,
+        subtotal, deliveryFee, gst, platformFee, packagingFee, grandTotal,
         paymentMethod: method,
         deliveryAddress, deliveryLat: location?.lat ?? null, deliveryLng: location?.lng ?? null,
         status: isScheduled ? 'scheduled' : 'pending',
@@ -154,6 +152,47 @@ export default function FoodCheckoutScreen() {
   return (
     <SafeAreaView style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+
+      {/* ADDRESS REQUIRED MODAL */}
+      <Modal
+        visible={showAddressModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <View style={s.modalIconWrap}>
+              <Ionicons name="location-outline" size={36} color={ORANGE} />
+            </View>
+            <Text style={s.modalTitle}>Address Required</Text>
+            <Text style={s.modalSubtitle}>
+              Please add a delivery address to continue with your order.
+            </Text>
+            <TouchableOpacity
+              style={s.modalPrimaryBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setShowAddressModal(false);
+                navigation.navigate('LocationSelector', { fromScreen: 'foodcheckout' });
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={s.modalPrimaryText}>Add Address</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.modalSecondaryBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setShowAddressModal(false);
+                navigation.goBack();
+              }}
+            >
+              <Text style={s.modalSecondaryText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* HEADER */}
       <View style={s.header}>
@@ -217,6 +256,54 @@ export default function FoodCheckoutScreen() {
               </View>
             </View>
           ))}
+        </View>
+
+        {/* BILL DETAILS */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <Ionicons name="receipt-outline" size={20} color={ORANGE} />
+            <Text style={s.cardTitle}>Bill Details</Text>
+          </View>
+
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>Item Total</Text>
+            <Text style={s.billValue}>₹{subtotal}</Text>
+          </View>
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>GST (5%)</Text>
+            <Text style={s.billValue}>₹{gst}</Text>
+          </View>
+          <View style={s.billRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.billLabel}>Delivery Fee</Text>
+              {deliveryFee === 0 && <Text style={s.billHint}>Free above ₹199</Text>}
+            </View>
+            <Text style={[s.billValue, deliveryFee === 0 && { color: GREEN, fontWeight: '700' }]}>
+              {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
+            </Text>
+          </View>
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>Platform Fee</Text>
+            <Text style={s.billValue}>₹{platformFee}</Text>
+          </View>
+          <View style={s.billRow}>
+            <Text style={s.billLabel}>Packaging Charges</Text>
+            <Text style={s.billValue}>₹{packagingFee}</Text>
+          </View>
+
+          <View style={s.billDivider} />
+
+          <View style={s.billTotalRow}>
+            <Text style={s.billTotalLabel}>To Pay</Text>
+            <Text style={s.billTotalValue}>₹{grandTotal}</Text>
+          </View>
+
+          {deliveryFee === 0 && (
+            <View style={s.freeDeliveryBanner}>
+              <Ionicons name="bicycle" size={14} color={GREEN} />
+              <Text style={s.freeDeliveryText}>🎉 Yay! Free delivery on this order</Text>
+            </View>
+          )}
         </View>
 
         {/* DELIVERY TIME */}
@@ -390,4 +477,44 @@ const s = StyleSheet.create({
   loadingOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   loadingContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 24, alignItems: 'center' },
   loadingText:      { marginTop: 12, fontSize: 14, color: '#333' },
+
+  /* bill */
+  billRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
+  billLabel:      { fontSize: 12, color: GRAY, fontWeight: '500' },
+  billHint:       { fontSize: 10, color: GREEN, marginTop: 1 },
+  billValue:      { fontSize: 12, color: DARK, fontWeight: '600' },
+  billDivider:    { height: 1, backgroundColor: '#f0f0f0', marginVertical: 6 },
+  billTotalRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6 },
+  billTotalLabel: { fontSize: 14, fontWeight: '700', color: DARK },
+  billTotalValue: { fontSize: 15, fontWeight: '800', color: ORANGE },
+  freeDeliveryBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#f0fdf4', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 10 },
+  freeDeliveryText:   { fontSize: 12, fontWeight: '600', color: GREEN, flex: 1 },
+
+  // Address Required Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28,
+  },
+  modalCard: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 28,
+    alignItems: 'center', width: '100%',
+    elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12,
+  },
+  modalIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#fff5ec', justifyContent: 'center', alignItems: 'center', marginBottom: 16,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: DARK, marginBottom: 8, textAlign: 'center' },
+  modalSubtitle: { fontSize: 14, color: GRAY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  modalPrimaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORANGE, borderRadius: 12, paddingVertical: 14,
+    width: '100%', marginBottom: 10,
+  },
+  modalPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  modalSecondaryBtn: {
+    borderWidth: 1.5, borderColor: '#e0e0e0', borderRadius: 12,
+    paddingVertical: 13, width: '100%', alignItems: 'center',
+  },
+  modalSecondaryText: { color: GRAY, fontSize: 15, fontWeight: '600' },
 });
