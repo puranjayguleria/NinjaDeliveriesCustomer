@@ -885,6 +885,7 @@ function FoodCartStack() {
       <FoodStack.Screen name="FoodOrderSuccess" component={FoodOrderSuccessScreen} />
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
       <FoodStack.Screen name="RazorpayWebView" component={RazorpayWebView} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
     </FoodStack.Navigator>
   );
 }

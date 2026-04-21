@@ -13,6 +13,7 @@ import { useLocationContext } from '@/context/LocationContext';
 import { Image } from 'expo-image';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import PaymentMethodModal from '@/components/PaymentMethodModal';
+import { navigate } from '@/navigation/rootNavigation';
 
 const ORANGE = '#FC8019';
 const DARK   = '#282C3F';
@@ -32,6 +33,7 @@ export default function FoodCheckoutScreen() {
   const [placing, setPlacing]               = useState(false);
   const [showPayModal, setShowPayModal]      = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showLoginModal, setShowLoginModal]  = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState(location?.address || '');
   const [isScheduled, setIsScheduled]        = useState(false);
   const [scheduledDate, setScheduledDate]    = useState<Date | null>(null);
@@ -71,7 +73,11 @@ export default function FoodCheckoutScreen() {
 
   const placeOrder = async (method: PaymentMethod) => {
     const user = auth().currentUser;
-    if (!user)            { Alert.alert('Login Required', 'Please login to place an order.'); return; }
+    if (!user) { 
+      setShowPayModal(false);
+      setShowLoginModal(true); 
+      return; 
+    }
     if (!deliveryAddress) { Alert.alert('Address Missing', 'Please set a delivery address first.'); return; }
     if (isScheduled && scheduledDate) {
       if (scheduledDate < new Date(Date.now() + 30 * 60000)) {
@@ -385,6 +391,44 @@ export default function FoodCheckoutScreen() {
       {showTimePicker && (
         <DateTimePicker value={scheduledDate || new Date()} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleTimeChange} minuteInterval={15} />
       )}
+
+      {/* LOGIN REQUIRED MODAL */}
+      <Modal
+        visible={showLoginModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLoginModal(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <View style={[s.modalIconWrap, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="person-outline" size={36} color={ORANGE} />
+            </View>
+            <Text style={s.modalTitle}>Login Required</Text>
+            <Text style={s.modalSubtitle}>
+              Please login to place your order and enjoy delicious food delivered to your doorstep.
+            </Text>
+            <TouchableOpacity
+              style={s.modalPrimaryBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setShowLoginModal(false);
+                navigation.navigate('LoginInHomeStack' as never);
+              }}
+            >
+              <Ionicons name="log-in-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={s.modalPrimaryText}>Login Now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.modalSecondaryBtn}
+              activeOpacity={0.85}
+              onPress={() => setShowLoginModal(false)}
+            >
+              <Text style={s.modalSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* PAYMENT MODAL */}
       <PaymentMethodModal
