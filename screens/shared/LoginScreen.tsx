@@ -10,7 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableOpacity,
+  Pressable,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import * as Notifications from "expo-notifications";
@@ -351,61 +355,89 @@ const LoginScreen: React.FC = () => {
           <View style={styles.container}>
             <Text style={styles.title}>Login</Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Enter phone number"
-              keyboardType="phone-pad"
-              value={phoneNumber}
-              onChangeText={(text) => {
-                console.log("Phone number input changed:", text);
-                setPhoneNumber(text);
-              }}
-              placeholderTextColor="#888"
-            />
+            <View style={styles.inputContainer}>
+              <Ionicons name="call" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter phone number"
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={(text) => {
+                  console.log("Phone number input changed:", text);
+                  setPhoneNumber(text);
+                }}
+                placeholderTextColor="#999"
+              />
+            </View>
 
             {isSendingOtp ? (
-              <ActivityIndicator
-                size="large"
-                color="#00C853"
-                style={styles.loader}
-              />
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#00C853" />
+                <Text style={styles.loaderText}>Sending OTP...</Text>
+              </View>
             ) : (
-              <Button
-                title="Send OTP"
+              <Pressable
                 onPress={sendOtp}
-                color="#00C853"
                 disabled={isSendingOtp}
-              />
+                style={({ pressed }) => [
+                  styles.button,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <LinearGradient
+                  colors={["#00E676", "#00C853", "#00A843"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientButton}
+                >
+                  <Ionicons name="send" size={20} color="#fff" style={styles.buttonIcon} />
+                  <Text style={styles.buttonText}>Send OTP</Text>
+                </LinearGradient>
+              </Pressable>
             )}
 
             {confirmation && (
               <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter OTP"
-                  keyboardType="numeric"
-                  value={otp}
-                  onChangeText={(text) => {
-                    console.log("OTP input changed:", text);
-                    setOtp(text);
-                  }}
-                  placeholderTextColor="#888"
-                  ref={otpInputRef}
-                />
+                <View style={styles.inputContainer}>
+                  <Ionicons name="lock-closed" size={20} color="#666" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter OTP"
+                    keyboardType="numeric"
+                    value={otp}
+                    onChangeText={(text) => {
+                      console.log("OTP input changed:", text);
+                      setOtp(text);
+                    }}
+                    placeholderTextColor="#999"
+                    ref={otpInputRef}
+                  />
+                </View>
 
                 {isConfirmingOtp ? (
-                  <ActivityIndicator
-                    size="large"
-                    color="#4A90E2"
-                    style={styles.loader}
-                  />
+                  <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color="#4A90E2" />
+                    <Text style={styles.loaderText}>Verifying...</Text>
+                  </View>
                 ) : (
-                  <Button
-                    title="Confirm OTP"
+                  <Pressable
                     onPress={confirmOtp}
-                    color="#4A90E2"
                     disabled={isConfirmingOtp}
-                  />
+                    style={({ pressed }) => [
+                      styles.button,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <LinearGradient
+                      colors={["#5BA3F5", "#4A90E2", "#3A7BC8"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.gradientButton}
+                    >
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" style={styles.buttonIcon} />
+                      <Text style={styles.buttonText}>Confirm OTP</Text>
+                    </LinearGradient>
+                  </Pressable>
                 )}
               </>
             )}
@@ -435,36 +467,106 @@ const styles = StyleSheet.create({
   },
   container: {
     width: "90%",
-    padding: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    borderRadius: 10,
+    padding: 25,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 20,
     alignItems: "center",
     marginVertical: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.37,
+    shadowRadius: 7.49,
+    elevation: 12,
   },
   title: {
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 20,
+    color: "#1a1a1a",
+    marginBottom: 25,
+    letterSpacing: 0.5,
+  },
+  inputContainer: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    height: 58,
+    borderColor: "#E0E0E0",
+    borderWidth: 2,
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    marginBottom: 18,
+    marginTop: 10,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 3.84,
+    elevation: 3,
+    paddingHorizontal: 16,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   input: {
-    width: "100%",
-    height: 50,
-    borderColor: "#CCCCCC",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 0,
+    flex: 1,
+    height: "100%",
     fontSize: 16,
-    lineHeight: 20,
-    textAlignVertical: "center",
-    color: "#333",
-    backgroundColor: "#fff",
-    marginBottom: 20,
-    marginTop: 20,
+    color: "#1a1a1a",
+    paddingVertical: 0,
   },
-  loader: {
-    marginVertical: 10,
+  loaderContainer: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
+  },
+  loaderText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+  },
+  button: {
+    width: "100%",
+    height: 58,
+    borderRadius: 14,
+    marginTop: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.35,
+    shadowRadius: 5.65,
+    elevation: 10,
+  },
+  buttonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  gradientButton: {
+    width: "100%",
+    height: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  buttonIcon: {
+    marginRight: 10,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
 });
 
