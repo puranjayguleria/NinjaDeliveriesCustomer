@@ -100,10 +100,39 @@ export default function FoodScreen() {
   const [nonVegRestaurantIds,  setNonVegRestaurantIds]  = useState<Set<string>>(new Set());
   const [dishModal,            setDishModal]            = useState<{
     visible: boolean; restaurantId: string; restaurantName: string; filterCategoryId?: string | null;
+    isRushHour?: boolean; rushTimeText?: string;
   }>({ visible: false, restaurantId: "", restaurantName: "" });
   const [rejectionModal, setRejectionModal] = useState<{ visible: boolean; restaurantName: string }>({ visible: false, restaurantName: "" });
   // Rush hours state: Map<restaurantId, { rushHours: boolean, rushHoursUntil: Date | null }>
   const [rushHoursMap, setRushHoursMap] = useState<Map<string, { rushHours: boolean; rushHoursUntil: Date | null }>>(new Map());
+
+  // Helper: parse "HH:MM AM/PM" or "HH:MM" string to a comparable Date (today)
+  const parseTimeString = (t: string): Date | null => {
+    if (!t) return null;
+    const clean = t.trim().toUpperCase();
+    const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+    if (!match) return null;
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const meridiem = match[3];
+    if (meridiem === "PM" && hours !== 12) hours += 12;
+    if (meridiem === "AM" && hours === 12) hours = 0;
+    const d = new Date();
+    d.setHours(hours, minutes, 0, 0);
+    return d;
+  };
+
+  // Helper: is restaurant currently open based on openingTime / closingTime strings
+  const isRestaurantOpen = (opening?: string, closing?: string): boolean => {
+    if (!opening || !closing) return true; // no timing set → assume open
+    const now = new Date();
+    const open = parseTimeString(opening);
+    const close = parseTimeString(closing);
+    if (!open || !close) return true;
+    // Handle overnight (e.g. 10 PM – 2 AM)
+    if (close < open) return now >= open || now <= close;
+    return now >= open && now <= close;
+  };
 
   const scrollRef  = useRef<any>(null);
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -189,31 +218,7 @@ export default function FoodScreen() {
         setNonVegRestaurantIds(nonVegIds);
       }, e => console.error(e));
 
-    // Listen to rush hours from registerRestaurant collection
-    const u4 = firestore()
-      .collection('registerRestaurant')
-      .onSnapshot(snap => {
-        const rushMap = new Map<string, { rushHours: boolean; rushHoursUntil: Date | null }>();
-        snap.docs.forEach(doc => {
-          const data = doc.data();
-          const rushHours = data.rushHours === true;
-          let rushHoursUntil: Date | null = null;
-          
-          if (rushHours && data.rushHoursUntil) {
-            // Convert Firestore Timestamp to Date
-            if (data.rushHoursUntil.toDate) {
-              rushHoursUntil = data.rushHoursUntil.toDate();
-            } else if (typeof data.rushHoursUntil === 'string') {
-              rushHoursUntil = new Date(data.rushHoursUntil);
-            }
-          }
-          
-          rushMap.set(doc.id, { rushHours, rushHoursUntil });
-        });
-        setRushHoursMap(rushMap);
-      }, e => console.error(e));
-
-    return () => { u1(); u2(); u3(); u4(); };
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   useEffect(() => {
@@ -253,8 +258,8 @@ export default function FoodScreen() {
   const handleVegToggle = () => { setPendingVeg(!isVegMode); setShowVegModal(true); };
   const confirmVeg = () => { if (pendingVeg !== null) setIsVegMode(pendingVeg); setShowVegModal(false); setPendingVeg(null); };
   const cancelVeg  = () => { setShowVegModal(false); setPendingVeg(null); };
-  const openDish   = (id: string, name: string, catId?: string | null) =>
-    setDishModal({ visible: true, restaurantId: id, restaurantName: name, filterCategoryId: catId });
+  const openDish = (id: string, name: string, catId?: string | null, rushHour?: boolean, rushTime?: string) =>
+    setDishModal({ visible: true, restaurantId: id, restaurantName: name, filterCategoryId: catId, isRushHour: rushHour, rushTimeText: rushTime });
 
   const filtered = React.useMemo(() => {
     let list = [...restaurants];
@@ -517,23 +522,49 @@ export default function FoodScreen() {
             </View>
           ) : (
             filtered.map(item => {
-              const rushInfo = rushHoursMap.get(item.id);
-              const isRushHour = rushInfo?.rushHours === true;
-              const rushUntil = rushInfo?.rushHoursUntil;
-              
-              // Format rush hours time
+              const now = new Date();
+
+              // Resolve rushHoursUntil — prefer stored timestamp, fallback to updatedAt + duration
+              let rushUntil: Date | null = null;
+              if (item.rushHoursUntil) {
+                rushUntil = item.rushHoursUntil?.toDate
+                  ? item.rushHoursUntil.toDate()
+                  : typeof item.rushHoursUntil === 'string'
+                    ? new Date(item.rushHoursUntil)
+                    : null;
+              }
+
+              // If rushHoursUntil missing/stale but duration exists, calculate from updatedAt
+              if (item.rushHours === true && !rushUntil && (item as any).rushHoursDuration && item.updatedAt) {
+                const updatedAt: Date = item.updatedAt?.toDate
+                  ? item.updatedAt.toDate()
+                  : new Date(item.updatedAt);
+                const durationMs = (item as any).rushHoursDuration * 60 * 1000;
+                rushUntil = new Date(updatedAt.getTime() + durationMs);
+              }
+
+              // Active only if flag true AND end time is in the future
+              const isRushHour = item.rushHours === true && rushUntil !== null && rushUntil > now;
+
+              // Format end time in local timezone
               let rushTimeText = "";
               if (isRushHour && rushUntil) {
-                const hours = rushUntil.getHours();
-                const minutes = rushUntil.getMinutes();
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                const displayHours = hours % 12 || 12;
-                rushTimeText = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+                const h = rushUntil.getHours();
+                const m = rushUntil.getMinutes();
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const displayH = h % 12 || 12;
+                rushTimeText = `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
               }
+
+              // Operating hours
+              const opening = (item as any).openingTime as string | undefined;
+              const closing = (item as any).closingTime as string | undefined;
+              const hasHours = !!(opening && closing);
+              const open = isRestaurantOpen(opening, closing);
 
               return (
                 <TouchableOpacity key={item.id} style={s.card} activeOpacity={0.9}
-                  onPress={() => openDish(item.id, item.restaurantName)}>
+                  onPress={() => openDish(item.id, item.restaurantName, undefined, isRushHour, rushTimeText)}>
                   <View style={s.cardImgWrap}>
                     {item.profileImage || item.image
                       ? <Image source={{ uri: item.profileImage || item.image }} style={s.cardImg} contentFit="cover" />
@@ -579,6 +610,15 @@ export default function FoodScreen() {
                     <Text style={s.cardCuisine} numberOfLines={1}>
                       {item.type === "restaurant" ? "Multi-cuisine" : (item.type ?? "Restaurant")}
                     </Text>
+                    {/* Operating Hours */}
+                    {hasHours && (
+                      <View style={[s.hoursRow, !open && s.hoursRowClosed]}>
+                        <Ionicons name="time-outline" size={13} color={open ? GREEN : "#ef4444"} />
+                        <Text style={[s.hoursTxt, !open && s.hoursTxtClosed]}>
+                          {open ? `Open: ${opening} - ${closing}` : `Closed • Opens at ${opening}`}
+                        </Text>
+                      </View>
+                    )}
                     <View style={s.cardMeta}>
                       <Ionicons name="time-outline" size={13} color={GRAY} />
                       <Text style={s.metaTxt}>
@@ -606,6 +646,8 @@ export default function FoodScreen() {
         restaurantName={dishModal.restaurantName}
         filterCategoryId={dishModal.filterCategoryId}
         vegMode={isVegMode}
+        isRushHour={dishModal.isRushHour}
+        rushTimeText={dishModal.rushTimeText}
       />
     </View>
   );
@@ -643,7 +685,6 @@ const s = StyleSheet.create({
   hero:        { width: "100%", overflow: "hidden", marginBottom: 0 },
   heroDim:     { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
   heroOverlay: { flex: 1, paddingHorizontal: 16, paddingBottom: 16, justifyContent: "flex-start", gap: 10 },
-  heroTopRow:  { flexDirection: "row", alignItems: "center" },
 
   // Header UI floats over hero image
   headerUI: {
@@ -734,6 +775,10 @@ const s = StyleSheet.create({
   ratingBadge:  { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: GREEN, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
   ratingTxt:    { color: "#fff", fontSize: 11, fontWeight: "700" },
   cardCuisine:  { fontSize: 13, color: GRAY, marginBottom: 10 },
+  hoursRow:     { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: "#f0fdf4", borderRadius: 6, alignSelf: "flex-start" },
+  hoursRowClosed: { backgroundColor: "#fef2f2" },
+  hoursTxt:     { fontSize: 11, color: GREEN, fontWeight: "600" },
+  hoursTxtClosed: { color: "#ef4444" },
   cardMeta:     { flexDirection: "row", alignItems: "center", gap: 6 },
   metaTxt:      { fontSize: 12, color: GRAY, fontWeight: "500" },
   metaSep:      { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#CCC" },

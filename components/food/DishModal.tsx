@@ -17,12 +17,14 @@ type Props = {
   restaurantName: string;
   filterCategoryId?: string | null;
   initialItem?: MenuItem | null;
-  vegMode?: boolean; // true = show veg only, false = show non-veg only
+  vegMode?: boolean;
+  isRushHour?: boolean;       // rush hours active hai toh true
+  rushTimeText?: string;      // "1:58 PM" format
 };
 
 export default function DishModal({
   visible, onClose, restaurantId, restaurantName,
-  filterCategoryId, initialItem, vegMode,
+  filterCategoryId, initialItem, vegMode, isRushHour, rushTimeText,
 }: Props) {
   const { addItem, getItemQty, removeItem, totalItems, totalPrice } = useFoodCart();
   const navigation = useNavigation<any>();
@@ -269,17 +271,21 @@ export default function DishModal({
             </View>
           )}
           {qty === 0 ? (
-            <TouchableOpacity style={s.addBtn} onPress={(e) => { e.stopPropagation(); addDirectly(item); }} activeOpacity={0.7}>
-              <Text style={s.addBtnText}>ADD</Text>
+            <TouchableOpacity
+              style={[s.addBtn, isRushHour && s.addBtnDisabled]}
+              onPress={(e) => { if (isRushHour) return; e.stopPropagation(); addDirectly(item); }}
+              activeOpacity={isRushHour ? 1 : 0.7}
+            >
+              <Text style={[s.addBtnText, isRushHour && s.addBtnTextDisabled]}>ADD</Text>
             </TouchableOpacity>
           ) : (
             <View style={s.qtyRow}>
-              <TouchableOpacity style={s.qtyBtn} onPress={() => removeItem(item.id)} activeOpacity={0.7}>
-                <Ionicons name="remove" size={14} color="#FF6B35" />
+              <TouchableOpacity style={s.qtyBtn} onPress={() => { if (!isRushHour) removeItem(item.id); }} activeOpacity={isRushHour ? 1 : 0.7}>
+                <Ionicons name="remove" size={14} color={isRushHour ? "#ccc" : "#FF6B35"} />
               </TouchableOpacity>
               <Text style={s.qtyText}>{qty}</Text>
-              <TouchableOpacity style={s.qtyBtn} onPress={() => openItem(item)} activeOpacity={0.7}>
-                <Ionicons name="add" size={14} color="#FF6B35" />
+              <TouchableOpacity style={s.qtyBtn} onPress={() => { if (!isRushHour) openItem(item); }} activeOpacity={isRushHour ? 1 : 0.7}>
+                <Ionicons name="add" size={14} color={isRushHour ? "#ccc" : "#FF6B35"} />
               </TouchableOpacity>
             </View>
           )}
@@ -404,12 +410,12 @@ export default function DishModal({
               )}
 
               <TouchableOpacity
-                style={s.confirmBtn}
-                onPress={confirmAdd}
-                activeOpacity={0.85}
+                style={[s.confirmBtn, isRushHour && s.confirmBtnDisabled]}
+                onPress={isRushHour ? undefined : confirmAdd}
+                activeOpacity={isRushHour ? 1 : 0.85}
               >
                 <Text style={s.confirmBtnText}>
-                  Add to Cart · ₹{
+                  {isRushHour ? "Unavailable during Rush Hours" : `Add to Cart · ₹${
                     (() => {
                       const itemOffer = getOfferForItem(selectedItem);
                       const base = itemOffer
@@ -420,14 +426,26 @@ export default function DishModal({
                         return sum + (a ? Number(a.price) : 0);
                       }, 0);
                     })()
-                  }
+                  }`}
                 </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
         ) : (
           <>
-            <Text style={s.sheetTitle}>{restaurantName}</Text>
+            {/* Rush Hours Banner */}
+        {isRushHour && (
+          <View style={s.rushBanner}>
+            <Ionicons name="time" size={20} color="#fff" />
+            <View style={{ flex: 1 }}>
+              <Text style={s.rushBannerTitle}>Rush Hours Active</Text>
+              <Text style={s.rushBannerSub}>
+                Ordering unavailable{rushTimeText ? ` until ${rushTimeText}` : ""}. Please try later.
+              </Text>
+            </View>
+          </View>
+        )}
+        <Text style={s.sheetTitle}>{restaurantName}</Text>
             {loading ? (
               <View style={s.loadingContainer}>
                 <ActivityIndicator size="large" color="#FF6B35" />
@@ -554,7 +572,13 @@ const s = StyleSheet.create({
   optionPrice: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
   addonImg: { width: 44, height: 44, borderRadius: 8 },
   confirmBtn: { backgroundColor: '#FF6B35', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 24, marginBottom: 16 },
+  confirmBtnDisabled: { backgroundColor: '#f59e0b' },
   confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  rushBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#f59e0b', marginHorizontal: 16, marginBottom: 8, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  rushBannerTitle: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  rushBannerSub: { fontSize: 11, color: 'rgba(255,255,255,0.9)', marginTop: 2 },
+  addBtnDisabled: { borderColor: '#ccc', backgroundColor: '#f8f8f8' },
+  addBtnTextDisabled: { color: '#ccc' },
   loadingContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   loadingText: { marginTop: 12, color: '#94a3b8', fontSize: 14 },
   cartBar: {

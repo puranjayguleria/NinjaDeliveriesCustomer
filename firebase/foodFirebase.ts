@@ -38,6 +38,13 @@ export type Restaurant = {
   hasOffer?: boolean;
   offerPercent?: number;
   mealTimes?: string[];        // e.g. ["breakfast", "lunch", "dinner"]
+  // Operating hours
+  openingTime?: string;        // e.g. "09:00 AM"
+  closingTime?: string;        // e.g. "11:00 PM"
+  // Rush hours
+  rushHours?: boolean;
+  rushHoursUntil?: any;        // Firestore Timestamp
+  rushHoursDuration?: number;  // in minutes
 };
 
 export type FoodCategory = {

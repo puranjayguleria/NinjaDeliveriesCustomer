@@ -28,7 +28,7 @@ export default function FoodCategoriesScreen() {
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [offers, setOffers] = useState<RestaurantOffer[]>([]);
-  const [restaurants, setRestaurants] = useState<Map<string, string>>(new Map());
+  const [restaurants, setRestaurants] = useState<Map<string, { name: string; rushHours: boolean; rushHoursUntil: any }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,22 +78,37 @@ export default function FoodCategoriesScreen() {
     setRestaurantsLoading(true);
     try {
       const firestore = (await import('@react-native-firebase/firestore')).default;
-      const restaurantMap = new Map<string, string>();
-      
+      const restaurantMap = new Map<string, { name: string; rushHours: boolean; rushHoursUntil: any }>();
+
       for (const id of restaurantIds) {
         const doc = await firestore().collection('registerRestaurant').doc(id).get();
         if (doc.exists) {
           const data = doc.data();
-          restaurantMap.set(id, data?.restaurantName || 'Unknown Restaurant');
+          restaurantMap.set(id, {
+            name: data?.restaurantName || 'Unknown Restaurant',
+            rushHours: data?.rushHours === true,
+            rushHoursUntil: data?.rushHoursUntil ?? null,
+          });
         }
       }
-      
+
       setRestaurants(restaurantMap);
     } catch (error) {
       console.error('Error fetching restaurant names:', error);
     } finally {
       setRestaurantsLoading(false);
     }
+  };
+
+  // Check if a restaurant is currently in rush hours
+  const isRestaurantRushHour = (restaurantId: string): boolean => {
+    const r = restaurants.get(restaurantId);
+    if (!r?.rushHours) return false;
+    if (!r.rushHoursUntil) return false;
+    const until: Date = r.rushHoursUntil?.toDate
+      ? r.rushHoursUntil.toDate()
+      : new Date(r.rushHoursUntil);
+    return until > new Date();
   };
 
   const displayedDishes = selectedCategoryId === 'all'
@@ -125,7 +140,7 @@ export default function FoodCategoriesScreen() {
   };
 
   const handleAddToCart = (item: MenuItem) => {
-    const restaurantName = restaurants.get(item.restaurantId) || 'Unknown Restaurant';
+    const restaurantName = restaurants.get(item.restaurantId)?.name || 'Unknown Restaurant';
     const offer = getOfferForItem(item);
     addItem({
       id: item.id,
@@ -165,35 +180,43 @@ export default function FoodCategoriesScreen() {
     const qty = getItemQty(item.id);
     const h = Number(item.cookingTimeHours ?? 0);
     const m = Number(item.cookingTimeMinutes ?? 0);
-    const restaurantName = restaurants.get(item.restaurantId) || 'Loading...';
+    const restaurantName = restaurants.get(item.restaurantId)?.name || 'Loading...';
     const offer = getOfferForItem(item);
+    const rushHour = isRestaurantRushHour(item.restaurantId);
 
     return (
       <TouchableOpacity 
         style={styles.dishCard}
         activeOpacity={0.9}
-        onPress={() => {
-          // Navigate to dish details screen
-          navigation.navigate('FoodDishDetails', { 
-            dish: item, 
-            restaurantName: restaurantName 
-          });
-        }}
+        onPress={() => navigation.navigate('FoodDishDetails', { dish: item, restaurantName })}
       >
-        {/* Image Container with Overlay Elements */}
+        {/* Image Container */}
         <View style={styles.imageContainer}>
           <Image 
             source={{ uri: item.image || 'https://via.placeholder.com/150' }} 
             style={styles.dishImage} 
           />
-          
-          {/* Veg/Non-veg Indicator - Top Left */}
-          <View style={[styles.vegIndicator, { borderColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]}>
-            <View style={[styles.vegInner, { backgroundColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]} />
-          </View>
 
-          {/* Cooking Time Badge - Top Right */}
-          {(h > 0 || m > 0) && (
+          {/* Rush Hours dark overlay */}
+          {rushHour && (
+            <>
+              <View style={styles.rushOverlay} />
+              <View style={styles.rushOverlayContent}>
+                <MaterialIcons name="access-time" size={28} color="#fff" />
+                <Text style={styles.rushOverlayTitle}>RUSH HOURS</Text>
+              </View>
+            </>
+          )}
+          
+          {/* Veg/Non-veg Indicator */}
+          {!rushHour && (
+            <View style={[styles.vegIndicator, { borderColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]}>
+              <View style={[styles.vegInner, { backgroundColor: item.foodType === 'nonveg' ? '#dc2626' : '#16a34a' }]} />
+            </View>
+          )}
+
+          {/* Cooking Time Badge */}
+          {(h > 0 || m > 0) && !rushHour && (
             <View style={styles.timeBadge}>
               <MaterialIcons name="access-time" size={10} color="#fff" />
               <Text style={styles.timeBadgeText}>
@@ -205,21 +228,14 @@ export default function FoodCategoriesScreen() {
 
         {/* Content Section */}
         <View style={styles.dishContent}>
-          {/* Restaurant Badge */}
           <View style={styles.restaurantBadge}>
             <MaterialIcons name="store" size={10} color="#FF6B35" />
             <Text style={styles.restaurantName} numberOfLines={1}>{restaurantName}</Text>
           </View>
-
-          {/* Dish Name */}
           <Text style={styles.dishName} numberOfLines={2}>{item.name}</Text>
-          
-          {/* Description */}
           {item.description ? (
             <Text style={styles.dishDesc} numberOfLines={2}>{item.description}</Text>
           ) : null}
-
-          {/* Price Row */}
           <View style={styles.priceRow}>
             <View style={styles.priceContainer}>
               {offer ? (
@@ -246,40 +262,25 @@ export default function FoodCategoriesScreen() {
 
         {/* Add Button / Quantity Control */}
         <View style={styles.actionContainer}>
-          {qty === 0 ? (
+          {rushHour ? (
+            <View style={[styles.addButton, styles.addButtonDisabled]}>
+              <Text style={styles.addButtonTextDisabled}>Unavailable</Text>
+            </View>
+          ) : qty === 0 ? (
             <TouchableOpacity 
               style={styles.addButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleAddToCart(item);
-              }}
+              onPress={(e) => { e.stopPropagation(); handleAddToCart(item); }}
               activeOpacity={0.8}
             >
               <Text style={styles.addButtonText}>ADD</Text>
             </TouchableOpacity>
           ) : (
             <View style={styles.quantityControl}>
-              <TouchableOpacity 
-                style={styles.qtyBtn}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  removeItem(item.id);
-                }}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
+              <TouchableOpacity style={styles.qtyBtn} onPress={(e) => { e.stopPropagation(); removeItem(item.id); }} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialIcons name="remove" size={18} color="#FF6B35" />
               </TouchableOpacity>
               <Text style={styles.qtyText}>{qty}</Text>
-              <TouchableOpacity 
-                style={styles.qtyBtn}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleAddToCart(item);
-                }}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
+              <TouchableOpacity style={styles.qtyBtn} onPress={(e) => { e.stopPropagation(); handleAddToCart(item); }} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialIcons name="add" size={18} color="#FF6B35" />
               </TouchableOpacity>
             </View>
@@ -549,12 +550,31 @@ const styles = StyleSheet.create({
   imageContainer: {
     position: 'relative',
     width: '100%',
-    height: 130, // Fixed image height
+    height: 130,
   },
   dishImage: {
     width: '100%',
     height: '100%',
     backgroundColor: '#f5f5f5',
+  },
+  rushOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    zIndex: 1,
+  },
+  rushOverlayContent: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  rushOverlayTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 4,
+    letterSpacing: 1,
   },
   vegIndicator: {
     position: 'absolute',
@@ -700,18 +720,27 @@ const styles = StyleSheet.create({
   // Add Button
   addButton: {
     backgroundColor: '#fff',
-    height: 36, // Fixed button height
+    height: 36,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#FF6B35',
   },
+  addButtonDisabled: {
+    borderColor: '#ccc',
+    backgroundColor: '#f5f5f5',
+  },
   addButtonText: {
     color: '#FF6B35',
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  addButtonTextDisabled: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   // Quantity Control
