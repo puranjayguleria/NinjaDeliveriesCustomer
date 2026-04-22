@@ -30,6 +30,11 @@ export default function FoodCheckoutScreen() {
 
   const { cartItems = [], subtotal = 0, deliveryFee = 0, gst = 0, platformFee = 5, packagingFee = 20, grandTotal = 0 } = route.params ?? {};
 
+  // Derive addons subtotal from cartItems for display
+  const addonsSubtotal = cartItems.reduce((sum: number, item: any) =>
+    sum + (item.addons || []).reduce((a: number, addon: any) => a + addon.price, 0) * item.qty, 0);
+  const itemsSubtotal = subtotal - addonsSubtotal;
+
   const [placing, setPlacing]               = useState(false);
   const [showPayModal, setShowPayModal]      = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -257,7 +262,7 @@ export default function FoodCheckoutScreen() {
                 </View>
                 <View style={s.itemRight}>
                   <Text style={s.itemQty}>×{item.qty}</Text>
-                  <Text style={s.itemPrice}>₹{item.price * item.qty}</Text>
+                  <Text style={s.itemPrice}>₹{(item.price + (item.addons || []).reduce((a: number, addon: any) => a + addon.price, 0)) * item.qty}</Text>
                 </View>
               </View>
             </View>
@@ -273,8 +278,14 @@ export default function FoodCheckoutScreen() {
 
           <View style={s.billRow}>
             <Text style={s.billLabel}>Item Total</Text>
-            <Text style={s.billValue}>₹{subtotal}</Text>
+            <Text style={s.billValue}>₹{itemsSubtotal}</Text>
           </View>
+          {addonsSubtotal > 0 && (
+            <View style={s.billRow}>
+              <Text style={s.billLabel}>Add-ons</Text>
+              <Text style={s.billValue}>₹{addonsSubtotal}</Text>
+            </View>
+          )}
           <View style={s.billRow}>
             <Text style={s.billLabel}>GST (5%)</Text>
             <Text style={s.billValue}>₹{gst}</Text>

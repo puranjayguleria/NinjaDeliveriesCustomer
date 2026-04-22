@@ -33,11 +33,15 @@ export default function FoodCartScreen() {
     return () => anim.stop();
   }, []);
 
+  // totalPrice from context already includes addons
+  const itemsSubtotal  = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const addonsSubtotal = cartItems.reduce((sum, item) =>
+    sum + (item.addons || []).reduce((a, addon) => a + addon.price, 0) * item.qty, 0);
+
   const deliveryFee    = totalPrice >= 199 ? 0 : 40;
   const gst            = Math.round(totalPrice * 0.05);
   const platformFee    = 5;
   const packagingFee   = 20;
-  const taxes          = gst; // GST 5%
   const grandTotal     = totalPrice + deliveryFee + gst + platformFee + packagingFee;
   const footerH     = FOOTER_H + (insets.bottom > 0 ? insets.bottom : 12) + 10;
 
@@ -211,8 +215,15 @@ export default function FoodCartScreen() {
 
           <View style={s.billRow}>
             <Text style={s.billLabel}>Item Total</Text>
-            <Text style={s.billValue}>₹{totalPrice}</Text>
+            <Text style={s.billValue}>₹{itemsSubtotal}</Text>
           </View>
+
+          {addonsSubtotal > 0 && (
+            <View style={s.billRow}>
+              <Text style={s.billLabel}>Add-ons</Text>
+              <Text style={s.billValue}>₹{addonsSubtotal}</Text>
+            </View>
+          )}
 
           <View style={s.billRow}>
             <Text style={s.billLabel}>GST (5%)</Text>
@@ -275,7 +286,13 @@ export default function FoodCartScreen() {
             style={s.checkoutBtn}
             activeOpacity={0.88}
             onPress={() => navigation.navigate('FoodCheckout', { 
-              cartItems, subtotal: totalPrice, deliveryFee, taxes, grandTotal 
+              cartItems,
+              subtotal: totalPrice,
+              deliveryFee,
+              gst,
+              platformFee,
+              packagingFee,
+              grandTotal,
             })}
           >
             <Text style={s.checkoutText}>Proceed to Checkout</Text>

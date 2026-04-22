@@ -91,7 +91,7 @@ const LoginScreen: React.FC = () => {
   const registerForPushNotificationsAsync = async () => {
     console.log("Registering for push notifications...");
     if (!Device.isDevice) {
-      showErrorModal("Push notifications only work on physical devices.");
+      console.warn("Push notifications only work on physical devices.");
       return null;
     }
     try {
@@ -106,14 +106,25 @@ const LoginScreen: React.FC = () => {
       }
 
       if (finalStatus !== "granted") {
+        console.warn("Notification permission not granted");
+        return null;
+      }
+
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      console.log("EAS Project ID:", projectId);
+      
+      if (!projectId) {
+        console.error("EAS projectId missing in app.json");
         return null;
       }
 
       const { data } = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+        projectId: projectId,
       });
+      console.log("Expo Push Token:", data);
       return data;
     } catch (error) {
+      console.error("Error getting push token:", error);
       return null;
     }
   };
