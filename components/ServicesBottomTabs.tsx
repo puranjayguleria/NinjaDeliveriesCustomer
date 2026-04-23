@@ -16,8 +16,8 @@ export default function ServicesBottomTabs({
   const tabs = [
     { id: 'home', label: 'Home', icon: 'home-outline' as const },
     { id: 'explore', label: 'Explore', icon: 'search-outline' as const },
-    { id: 'cart', label: 'Cart', icon: 'cart-outline' as const },
     { id: 'bookings', label: 'Bookings', icon: 'calendar-outline' as const },
+    { id: 'cart', label: 'Cart', icon: 'cart-outline' as const },
   ];
 
   return (

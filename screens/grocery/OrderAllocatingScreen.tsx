@@ -9,16 +9,14 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
-  FlatList,
   ScrollView,
   Image,
 } from "react-native";
-import MapView, { Marker, Region } from "react-native-maps";
+import MapView, { Marker, Polyline, Region } from "react-native-maps";
 import {
   useRoute,
   RouteProp,
   useNavigation,
-  CommonActions,
 } from "@react-navigation/native";
 import firestore from "@react-native-firebase/firestore";
 
@@ -66,6 +64,56 @@ interface OrderItem {
   SGST: number;
 }
 
+const ALLOCATING_MAP_STYLE = [
+  {
+    elementType: "geometry",
+    stylers: [{ color: "#edf4fb" }],
+  },
+  {
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#475569" }],
+  },
+  {
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#ffffff" }],
+  },
+  {
+    featureType: "poi",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#ffffff" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#d8e4f0" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#dceafe" }],
+  },
+  {
+    featureType: "transit",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#cde6ff" }],
+  },
+];
+
+const ALLOCATION_STEPS = [
+  { key: "placed", label: "Order Placed", icon: "receipt-outline" as const },
+  { key: "searching", label: "Searching Rider", icon: "search-outline" as const },
+  { key: "assigned", label: "Rider Assigned", icon: "person-outline" as const },
+  { key: "tracking", label: "Tracking Starts", icon: "navigate-outline" as const },
+];
+
 const OrderAllocatingScreen: React.FC = () => {
   // --------------------------------------------------
   // HOOKS & PARAMS
@@ -83,7 +131,6 @@ const OrderAllocatingScreen: React.FC = () => {
   const [region, setRegion] = useState<Region | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [quote, setQuote] = useState(quotes[0]);
-  const [mapReady, setMapReady] = useState(false);
   const [nearbyRiders, setNearbyRiders] = useState<any[]>([]);
   const [orderAccepted, setOrderAccepted] = useState(false);
   const [orderData, setOrderData] = useState<any>(null);
@@ -91,12 +138,35 @@ const OrderAllocatingScreen: React.FC = () => {
 
   // Animation Refs
   const markerAnimation = useRef(new Animated.Value(1)).current;
-  const mapOpacity = useRef(new Animated.Value(1)).current;
+  const mapOpacity = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<MapView>(null);
 
   // --------------------------------------------------
   // ON MOUNT
   // --------------------------------------------------
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(markerAnimation, {
+          toValue: 1.08,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(markerAnimation, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+
+    return () => {
+      pulseAnimation.stop();
+    };
+  }, [markerAnimation]);
+
   useEffect(() => {
     console.log("OrderAllocatingScreen Params:", {
       orderId,
@@ -107,7 +177,14 @@ const OrderAllocatingScreen: React.FC = () => {
 
     if (!pickupCoords || !dropoffCoords) {
       Alert.alert("Error", "Order location details are missing.");
-      navigation.goBack();
+      if ((navigation as any).canGoBack?.()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate(
+          "HomeTab" as never,
+          { screen: "ProductsHome" } as never
+        );
+      }
       return;
     }
 
@@ -394,6 +471,15 @@ const OrderAllocatingScreen: React.FC = () => {
       </View>
     );
   };
+
+  const getProgressStepIndex = () => {
+    if (orderAccepted || orderData?.acceptedBy) {
+      return 3;
+    }
+
+    return 1;
+  };
+
 const CancellingOverlay = () => {
   if (!isCancelling) return null;
   return (
@@ -411,13 +497,15 @@ const CancellingOverlay = () => {
   // --------------------------------------------------
   // RENDER
   // --------------------------------------------------
+  const currentStepIndex = getProgressStepIndex();
+
   return (
     <View style={styles.container}>
       {/* Close Button (top-right) */}
       <CancellingOverlay />
 
       <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-        <Ionicons name="close" size={24} color="#e74c3c" />
+        <Ionicons name="close" size={22} color="#0f172a" />
       </TouchableOpacity>
 
       {isLoading ? (
@@ -433,52 +521,82 @@ const CancellingOverlay = () => {
                 ref={mapRef}
                 style={styles.map}
                 initialRegion={region}
+                customMapStyle={ALLOCATING_MAP_STYLE}
                 onMapReady={() => {
-                  setMapReady(true);
+                  Animated.timing(mapOpacity, {
+                    toValue: 1,
+                    duration: 450,
+                    useNativeDriver: true,
+                  }).start();
                   mapRef.current?.fitToCoordinates(
                     [pickupCoords, dropoffCoords],
                     {
                       edgePadding: {
-                        top: 100,
-                        right: 100,
-                        bottom: 100,
-                        left: 100,
+                        top: 110,
+                        right: 70,
+                        bottom: 180,
+                        left: 70,
                       },
                       animated: true,
                     }
                   );
                 }}
                 onRegionChangeComplete={(newReg) => setRegion(newReg)}
+                toolbarEnabled={false}
+                showsCompass={false}
+                showsBuildings={false}
+                showsIndoors={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
                 onError={(error) => {
                   console.error("MapView Error:", error);
                   Alert.alert("Error", "Failed to load the map.");
                 }}
               >
-                {/* Pickup Marker */}
                 <Marker coordinate={pickupCoords} title="Pickup Location">
-                  <Animated.View
-                    style={{ transform: [{ scale: markerAnimation }] }}
-                  >
+                  <View style={styles.markerShell}>
+                    <Animated.View
+                      style={[
+                        styles.markerPulse,
+                        { transform: [{ scale: markerAnimation }] },
+                      ]}
+                    />
                     <Image
                       source={pickupMarker}
-                      style={{ width: 40, height: 40 }}
+                      style={styles.primaryMarkerImage}
                     />
-                  </Animated.View>
+                  </View>
                 </Marker>
 
-                {/* Dropoff Marker */}
                 <Marker coordinate={dropoffCoords} title="Dropoff Location">
-                  <Animated.View
-                    style={{ transform: [{ scale: markerAnimation }] }}
-                  >
+                  <View style={styles.markerShell}>
+                    <Animated.View
+                      style={[
+                        styles.markerPulse,
+                        styles.dropoffPulse,
+                        { transform: [{ scale: markerAnimation }] },
+                      ]}
+                    />
                     <Image
                       source={dropoffMarker}
-                      style={{ width: 40, height: 40 }}
+                      style={styles.primaryMarkerImage}
                     />
-                  </Animated.View>
+                  </View>
                 </Marker>
 
-                {/* Nearby Riders Markers */}
+                <Polyline
+                  coordinates={[pickupCoords, dropoffCoords]}
+                  strokeWidth={10}
+                  strokeColor="rgba(15, 118, 110, 0.16)"
+                />
+                <Polyline
+                  coordinates={[pickupCoords, dropoffCoords]}
+                  strokeWidth={4}
+                  strokeColor="#0F766E"
+                  lineDashPattern={[1, 0]}
+                />
+
+                {/* Pickup Marker */}
                 {nearbyRiders.map((r: any, idx: number) => (
                   <Marker
                     key={idx}
@@ -488,14 +606,12 @@ const CancellingOverlay = () => {
                     }}
                     description="Available Rider"
                   >
-                    <Animated.View
-                      style={{ transform: [{ scale: markerAnimation }] }}
-                    >
+                    <View style={styles.nearbyRiderMarker}>
                       <Image
                         source={riderIcon}
-                        style={{ width: 30, height: 40 }}
+                        style={styles.nearbyRiderMarkerImage}
                       />
-                    </Animated.View>
+                    </View>
                   </Marker>
                 ))}
               </MapView>
@@ -504,6 +620,7 @@ const CancellingOverlay = () => {
                 <Text style={styles.quoteText}>{quote}</Text>
               </View>
             )}
+
           </Animated.View>
 
           {/* Bottom Container => Scrollable if needed */}
@@ -511,12 +628,61 @@ const CancellingOverlay = () => {
             style={styles.bottomScroll}
             contentContainerStyle={styles.bottomContainerContent}
           >
-            <Text style={[styles.header, styles.highlightText]}>
-              We are assigning a Ninja rider for you...
-            </Text>
-            <Text style={styles.quoteText}>{quote}</Text>
+            <View style={styles.sheetHandle} />
 
-            <View style={styles.linkRow}>
+            <View style={styles.heroCard}>
+              <View style={styles.heroHeaderRow}>
+                <View style={styles.heroIconBadge}>
+                  <Ionicons name="sparkles-outline" size={18} color="#0f766e" />
+                </View>
+                <View style={styles.heroTextBlock}>
+                  <Text style={styles.heroTitle}>
+                    We are assigning a Ninja rider for you
+                  </Text>
+                  <Text style={styles.heroSubtitle}>{quote}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeaderRow}>
+                <Text style={styles.progressTitle}>Allocation Progress</Text>
+                <Text style={styles.progressSummary}>
+                  {Math.min(currentStepIndex + 1, ALLOCATION_STEPS.length)}/4
+                </Text>
+              </View>
+              <View style={styles.progressStepsRow}>
+                {ALLOCATION_STEPS.map((step, index) => {
+                  const isCompleted = index <= currentStepIndex;
+                  return (
+                    <View key={step.key} style={styles.progressStep}>
+                      <View
+                        style={[
+                          styles.progressStepIcon,
+                          isCompleted && styles.progressStepIconActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name={step.icon}
+                          size={15}
+                          color={isCompleted ? "#ffffff" : "#64748b"}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.progressStepLabel,
+                          isCompleted && styles.progressStepLabelActive,
+                        ]}
+                      >
+                        {step.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.actionCard}>
               <Text style={styles.linkLabel}>Forgot something?</Text>
               <TouchableOpacity onPress={handleForgotItemsLink}>
                 <Text style={styles.linkText}>Order More</Text>
@@ -528,21 +694,28 @@ const CancellingOverlay = () => {
               orderData?.status === "accepted") &&
               !orderAccepted && (
                 <TouchableOpacity
-  style={[styles.cancelButton, isCancelling && { opacity: 0.6 }]}
-  onPress={cancelOrder}
-  disabled={isCancelling}
->
-  <Text style={styles.cancelButtonText}>
-    {isCancelling ? "Cancelling..." : "Cancel Order"}
-  </Text>
-</TouchableOpacity>
-
+                  style={[styles.cancelButton, isCancelling && { opacity: 0.6 }]}
+                  onPress={cancelOrder}
+                  disabled={isCancelling}
+                >
+                  <Ionicons name="close-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.cancelButtonText}>
+                    {isCancelling ? "Cancelling..." : "Cancel Order"}
+                  </Text>
+                </TouchableOpacity>
               )}
 
             {/* Order Details Card */}
             {orderData && orderData.items && orderData.items.length > 0 && (
               <View style={styles.orderDetailsCard}>
-                <Text style={styles.orderDetailsHeader}>Order Details</Text>
+                <View style={styles.orderDetailsHeaderRow}>
+                  <Text style={styles.orderDetailsHeader}>Order Details</Text>
+                  <View style={styles.totalPill}>
+                    <Text style={styles.totalPillText}>
+                      ₹{orderData.finalTotal?.toFixed(2) || "0.00"}
+                    </Text>
+                  </View>
+                </View>
 
                 <ScrollView style={styles.orderDetailsScroll}>
                   {/* Order Items */}
@@ -642,184 +815,359 @@ export default OrderAllocatingScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#eef2f7",
   },
   itemsScrollContainer: {
-    maxHeight: 150, // or use height: '40%' for relative sizing
+    maxHeight: 150,
     marginBottom: 10,
   },
   orderDetailsCard: {
-    backgroundColor: "#f9f9f9",
-    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: 20,
     padding: 16,
-    marginTop: 20,
-    elevation: 2,
-    shadowColor: "#000",
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#0f172a",
     shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    height: "70%", // or 300 depending on screen size
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    flex: 1,
   },
   orderDetailsScroll: {
-    maxHeight: "100%", // adjust based on screen height (can use Dimensions.get if needed)
+    maxHeight: "100%",
   },
-
   closeButton: {
     position: "absolute",
-    top: 15,
+    top: 18,
     right: 20,
     zIndex: 10,
-    backgroundColor: "rgba(255,255,255,0.8)",
-    borderRadius: 20,
-    padding: 6,
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 21,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   loaderContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#fff",
+    backgroundColor: "#eef2f7",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999,
   },
   mapContainer: {
-    flex: 1,
-    backgroundColor: "#e1e1e1",
-    height: "40%", // You can adjust this to desired map portion
+    height: "43%",
+    marginHorizontal: 14,
+    marginTop: 14,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#dbeafe",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  markerShell: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  markerPulse: {
+    position: "absolute",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(37, 99, 235, 0.16)",
+  },
+  dropoffPulse: {
+    backgroundColor: "rgba(239, 68, 68, 0.14)",
+  },
+  primaryMarkerImage: {
+    width: 38,
+    height: 46,
+    resizeMode: "contain",
+  },
+  nearbyRiderMarker: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  nearbyRiderMarkerImage: {
+    width: 18,
+    height: 24,
+    resizeMode: "contain",
   },
   bottomScroll: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: "60%", // dynamic height for bottom drawer
+    height: "58%",
     backgroundColor: "#fff",
-    borderTopRightRadius: 12,
-    borderTopLeftRadius: 12,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: -2 },
+    borderTopRightRadius: 28,
+    borderTopLeftRadius: 28,
+    elevation: 8,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
   },
   bottomContainerContent: {
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    height: "100%", // fills the bottomScroll container
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: 24,
+    minHeight: "100%",
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#cbd5e1",
+    marginBottom: 14,
   },
   cancellingOverlay: {
-  ...StyleSheet.absoluteFillObject,
-  backgroundColor: "rgba(0,0,0,0.35)",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 9999,
-},
-cancellingCard: {
-  backgroundColor: "#fff",
-  paddingVertical: 18,
-  paddingHorizontal: 22,
-  borderRadius: 12,
-  alignItems: "center",
-  width: "80%",
-},
-cancellingText: {
-  marginTop: 10,
-  fontSize: 14,
-  color: "#333",
-  textAlign: "center",
-  fontWeight: "600",
-},
-
-  header: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 8,
-    textAlign: "center",
-    color: "#333",
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(15, 23, 42, 0.28)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
   },
-  highlightText: {
-    color: "#e67e22",
-    fontSize: 20,
-    fontWeight: "bold",
+  cancellingCard: {
+    backgroundColor: "#fff",
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    alignItems: "center",
+    width: "80%",
+  },
+  cancellingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#0f172a",
+    textAlign: "center",
+    fontWeight: "600",
   },
   quoteText: {
     fontSize: 14,
     fontStyle: "italic",
     textAlign: "center",
-    color: "#666",
+    color: "#64748b",
     marginBottom: 12,
   },
-  linkRow: {
+  heroCard: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginBottom: 14,
+  },
+  heroHeaderRow: {
     flexDirection: "row",
+    alignItems: "center",
+  },
+  heroIconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#ecfdf5",
+    marginRight: 12,
+  },
+  heroTextBlock: {
+    flex: 1,
+  },
+  heroTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#0f172a",
+    lineHeight: 24,
+  },
+  heroSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#64748b",
+  },
+  progressCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    marginBottom: 14,
+  },
+  progressHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
+  },
+  progressTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  progressSummary: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f766e",
+  },
+  progressStepsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  progressStep: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 3,
+  },
+  progressStepIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  progressStepIconActive: {
+    backgroundColor: "#0f766e",
+  },
+  progressStepLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    textAlign: "center",
+    color: "#64748b",
+  },
+  progressStepLabelActive: {
+    color: "#0f172a",
+  },
+  actionCard: {
+    backgroundColor: "#eff6ff",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
   },
   linkLabel: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#444",
-    marginRight: 5,
+    fontWeight: "700",
+    color: "#1e293b",
   },
   linkText: {
     fontSize: 14,
-    color: "#3498db",
-    textDecorationLine: "underline",
+    color: "#2563eb",
+    fontWeight: "700",
   },
   cancelButton: {
-    alignSelf: "center",
-    backgroundColor: "#e74c3c",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 5,
+    alignSelf: "stretch",
+    backgroundColor: "#ef4444",
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    marginTop: 2,
+    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#991b1b",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   cancelButtonText: {
     color: "#fff",
-    fontWeight: "600",
+    fontWeight: "700",
     fontSize: 14,
+    marginLeft: 8,
   },
-
+  orderDetailsHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   orderDetailsHeader: {
     fontSize: 16,
     fontWeight: "700",
-    marginBottom: 10,
-    color: "#333",
-    textAlign: "center",
+    color: "#0f172a",
+  },
+  totalPill: {
+    backgroundColor: "#ecfdf5",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  totalPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0f766e",
   },
   orderItemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 4,
   },
   orderItemName: {
     fontSize: 14,
-    color: "#333",
+    color: "#0f172a",
     flex: 2,
   },
   orderItemQuantity: {
     fontSize: 14,
-    color: "#555",
+    color: "#64748b",
     flex: 1,
     textAlign: "center",
   },
   orderItemPrice: {
     fontSize: 14,
-    color: "#333",
+    color: "#0f172a",
     flex: 1,
     textAlign: "right",
   },
   separator: {
     height: 1,
-    backgroundColor: "#eee",
+    backgroundColor: "#e2e8f0",
     marginVertical: 8,
   },
   billSummaryContainer: {
     marginTop: 20,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderColor: "#ddd",
-    height: "auto", // or use % if it's a known section
+    borderColor: "#dbe2ea",
   },
   billRow: {
     flexDirection: "row",
@@ -828,11 +1176,10 @@ cancellingText: {
   },
   billLabel: {
     fontSize: 14,
-    color: "#333",
+    color: "#334155",
   },
   billValue: {
     fontSize: 14,
-    color: "#333",
+    color: "#0f172a",
   },
 });
-

@@ -20,6 +20,7 @@ import { useNavigation } from "@react-navigation/native";
 import { MaterialIcons, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QuickTile } from "@/components/QuickTile";
 import { ProductGridSkeleton } from "@/components/Skeleton";
+import { useCart } from "@/context/CartContext";
 import { useLocationContext } from "@/context/LocationContext";
 import { useToggleContext } from "@/context/ToggleContext";
 import { Colors } from "@/constants/colors";
@@ -60,11 +61,47 @@ type BookingGroup =
       bookings: ServiceBooking[];
     };
 
+type GroceryHistoryItem = {
+  key: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  orderedPrice: number;
+  lineTotal: number;
+  availableQuantity: number;
+  isAvailable: boolean;
+  product: any | null;
+  imageUrl?: string;
+};
+
+type GroceryHistoryGroup = {
+  id: string;
+  orderId: string;
+  createdAtMs: number;
+  dateLabel: string;
+  timeLabel: string;
+  totalItems: number;
+  totalAmount: number;
+  availableItemsCount: number;
+  items: GroceryHistoryItem[];
+};
+
+const toSafeDate = (value: any): Date | null => {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") return value.toDate();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatCurrency = (value: number) => `Rs ${Number(value || 0).toFixed(2)}`;
+
 const BuyAgainScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const { addMultipleItems } = useCart();
   const { location } = useLocationContext();
   const { activeMode } = useToggleContext();
   const [products, setProducts] = useState<any[]>([]);
+  const [groceryHistoryGroups, setGroceryHistoryGroups] = useState<GroceryHistoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -189,6 +226,7 @@ const BuyAgainScreen: React.FC = () => {
         const filtered = filterBookingsByStatus(allUserBookings, activeFilter);
         setBookings(filtered.slice(0, 50));
         setProducts([]);
+        setGroceryHistoryGroups([]);
       } else {
         // Grocery or Food Products logic
         const [snap1, snap2] = await Promise.all([
@@ -202,10 +240,15 @@ const BuyAgainScreen: React.FC = () => {
             .get()
         ]);
 
-        const allDocs = [...snap1.docs, ...snap2.docs];
+        const uniqueDocsMap = new Map<string, any>();
+        [...snap1.docs, ...snap2.docs].forEach((doc) => {
+          uniqueDocsMap.set(doc.id, doc);
+        });
+        const allDocs = Array.from(uniqueDocsMap.values());
         
         if (allDocs.length === 0) {
           setProducts([]);
+          setGroceryHistoryGroups([]);
           setLoading(false);
           setRefreshing(false);
           return;
@@ -230,6 +273,7 @@ const BuyAgainScreen: React.FC = () => {
 
         if (productIds.length === 0 && productNames.length === 0) {
           setProducts([]);
+          setGroceryHistoryGroups([]);
           setLoading(false);
           setRefreshing(false);
           return;
@@ -293,7 +337,100 @@ const BuyAgainScreen: React.FC = () => {
           finalProductsMap.set(p.id, p);
         });
 
-        setProducts(Array.from(finalProductsMap.values()));
+        if (activeMode === 'food') {
+          setProducts(Array.from(finalProductsMap.values()));
+          setGroceryHistoryGroups([]);
+        } else {
+          const productsById = new Map<string, any>();
+          const productsByName = new Map<string, any>();
+
+          Array.from(finalProductsMap.values()).forEach((product: any) => {
+            productsById.set(String(product.id), product);
+            productsByName.set(String(product.name || "").trim().toLowerCase(), product);
+          });
+
+          const groups: GroceryHistoryGroup[] = allDocs
+            .map((doc) => {
+              const data = doc.data() || {};
+              const createdAt = toSafeDate(data.createdAt);
+              const items: any[] = Array.isArray(data.items) ? data.items : [];
+
+              const resolvedItems: GroceryHistoryItem[] = items
+                .map((it: any, index: number) => {
+                  const rawProductId = String(
+                    it.productId || it.productID || it.pId || it.product?.id || it.id || ""
+                  ).trim();
+                  const rawName = String(
+                    it.name || it.productName || it.title || it.product?.name || "Product"
+                  ).trim();
+
+                  const resolvedProduct =
+                    productsById.get(rawProductId) ||
+                    productsByName.get(rawName.toLowerCase()) ||
+                    null;
+
+                  const quantity = Math.max(1, Number(it.quantity || it.qty || 1));
+                  const orderedPrice = Number(
+                    it.price ?? it.unitPrice ?? it.salePrice ?? resolvedProduct?.price ?? 0
+                  );
+                  const availableQuantity = Number(
+                    resolvedProduct?.availableQuantity ?? resolvedProduct?.quantity ?? 0
+                  );
+
+                  return {
+                    key: `${doc.id}-${rawProductId || rawName}-${index}`,
+                    productId: String(resolvedProduct?.id || rawProductId || ""),
+                    name: String(resolvedProduct?.name || rawName || "Product"),
+                    quantity,
+                    orderedPrice,
+                    lineTotal: Number((orderedPrice * quantity).toFixed(2)),
+                    availableQuantity,
+                    isAvailable: Boolean(resolvedProduct) && availableQuantity > 0,
+                    product: resolvedProduct,
+                    imageUrl:
+                      resolvedProduct?.imageUrl ||
+                      resolvedProduct?.image ||
+                      (Array.isArray(resolvedProduct?.images) ? resolvedProduct.images[0] : undefined),
+                  };
+                })
+                .filter((item) => item.name);
+
+              const totalItems = resolvedItems.reduce((sum, item) => sum + item.quantity, 0);
+              const totalAmount = Number(
+                data.finalTotal ?? data.totalCost ?? data.subtotal ?? resolvedItems.reduce((sum, item) => sum + item.lineTotal, 0)
+              );
+              const availableItemsCount = resolvedItems.filter((item) => item.isAvailable).length;
+
+              return {
+                id: `grocery-order-${doc.id}`,
+                orderId: doc.id,
+                createdAtMs: createdAt?.getTime() ?? 0,
+                dateLabel: createdAt
+                  ? createdAt.toLocaleDateString("en-US", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "Recent order",
+                timeLabel: createdAt
+                  ? createdAt.toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "",
+                totalItems,
+                totalAmount,
+                availableItemsCount,
+                items: resolvedItems,
+              };
+            })
+            .filter((group) => group.items.length > 0)
+            .sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+          setGroceryHistoryGroups(groups);
+          setProducts([]);
+        }
         setAllBookings([]);
         setBookings([]);
       }
@@ -501,6 +638,33 @@ const BuyAgainScreen: React.FC = () => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const handleReorderGroup = useCallback((group: GroceryHistoryGroup) => {
+    const reorderableItems = group.items
+      .filter((item) => item.isAvailable && item.productId)
+      .map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        availableQuantity: item.availableQuantity,
+      }));
+
+    if (reorderableItems.length === 0) {
+      Alert.alert("Items unavailable", "These products are currently unavailable for reorder.");
+      return;
+    }
+
+    addMultipleItems(reorderableItems);
+
+    const unavailableCount = group.items.length - reorderableItems.length;
+    if (unavailableCount > 0) {
+      Alert.alert(
+        "Added available products",
+        `${reorderableItems.length} products were added to cart. ${unavailableCount} unavailable products were skipped.`
+      );
+    }
+
+    navigation.navigate("CartFlow", { screen: "GroceryCart" });
+  }, [addMultipleItems, navigation]);
+
   const renderProductItem = ({ item }: { item: any }) => (
     <View style={styles.itemContainer}>
       <QuickTile
@@ -510,6 +674,96 @@ const BuyAgainScreen: React.FC = () => {
       />
     </View>
   );
+
+  const renderGroceryHistoryGroup = ({ item }: { item: GroceryHistoryGroup }) => {
+    const isExpanded = expandedGroups[item.id] !== false;
+
+    return (
+      <View style={styles.groceryOrderCardWrap}>
+        <TouchableOpacity
+          style={styles.groceryOrderCard}
+          activeOpacity={0.9}
+          onPress={() => toggleGroupExpansion(item.id)}
+        >
+          <View style={styles.groceryOrderHeader}>
+            <View style={styles.groceryOrderBadge}>
+              <Ionicons name="bag-handle-outline" size={18} color="#0F766E" />
+            </View>
+            <View style={styles.groceryOrderHeaderText}>
+              <Text style={styles.groceryOrderTitle}>Order from {item.dateLabel}</Text>
+              <Text style={styles.groceryOrderSubtitle}>
+                {item.timeLabel ? `${item.timeLabel} • ` : ""}{item.totalItems} item{item.totalItems === 1 ? "" : "s"} • {formatCurrency(item.totalAmount)}
+              </Text>
+            </View>
+            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color="#64748B" />
+          </View>
+
+          <View style={styles.groceryMetaRow}>
+            <View style={styles.groceryMetaPill}>
+              <Text style={styles.groceryMetaPillText}>{item.items.length} products</Text>
+            </View>
+            <View style={[styles.groceryMetaPill, item.availableItemsCount === item.items.length ? styles.groceryMetaPillSuccess : styles.groceryMetaPillMuted]}>
+              <Text style={[styles.groceryMetaPillText, item.availableItemsCount === item.items.length ? styles.groceryMetaPillSuccessText : styles.groceryMetaPillMutedText]}>
+                {item.availableItemsCount} available
+              </Text>
+            </View>
+          </View>
+
+          {isExpanded && (
+            <View style={styles.groceryOrderItemsBox}>
+              {item.items.map((product) => (
+                <TouchableOpacity
+                  key={product.key}
+                  activeOpacity={product.product ? 0.8 : 1}
+                  disabled={!product.product}
+                  onPress={() => {
+                    if (product.product) {
+                      navigation.navigate("ProductDetails", { productId: product.productId });
+                    }
+                  }}
+                  style={styles.groceryOrderItemRow}
+                >
+                  <View style={styles.groceryOrderItemImageWrap}>
+                    {product.imageUrl ? (
+                      <Image source={{ uri: product.imageUrl }} style={styles.groceryOrderItemImage} contentFit="contain" />
+                    ) : (
+                      <MaterialCommunityIcons name="basket-outline" size={22} color="#94A3B8" />
+                    )}
+                  </View>
+                  <View style={styles.groceryOrderItemContent}>
+                    <Text style={styles.groceryOrderItemName} numberOfLines={2}>{product.name}</Text>
+                    <Text style={styles.groceryOrderItemMeta}>
+                      Qty {product.quantity} • {formatCurrency(product.orderedPrice)}
+                    </Text>
+                  </View>
+                  <View style={styles.groceryOrderItemRight}>
+                    <Text style={styles.groceryOrderItemTotal}>{formatCurrency(product.lineTotal)}</Text>
+                    <Text style={product.isAvailable ? styles.groceryOrderItemAvailable : styles.groceryOrderItemUnavailable}>
+                      {product.isAvailable ? "Available" : "Unavailable"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.groceryOrderFooter}>
+            <TouchableOpacity
+              style={[
+                styles.groceryReorderButton,
+                item.availableItemsCount === 0 && styles.groceryReorderButtonDisabled,
+              ]}
+              disabled={item.availableItemsCount === 0}
+              onPress={() => handleReorderGroup(item)}
+            >
+              <Ionicons name="refresh-outline" size={16} color="#fff" />
+              <Text style={styles.groceryReorderButtonText}>Order These Again</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const renderGroup = ({ item }: { item: BookingGroup }) => {
     const isExpanded = expandedGroups[item.id] === true;
@@ -738,8 +992,28 @@ const BuyAgainScreen: React.FC = () => {
         </View>
       ) : activeMode === 'service' ? (
         renderServiceMode()
+      ) : activeMode === 'grocery' ? (
+        <FlatList
+          key="buy-again-grocery-history-list"
+          data={groceryHistoryGroups}
+          renderItem={renderGroceryHistoryGroup}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.groceryHistoryList}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="history" size={64} color="#ccc" />
+              <Text style={styles.emptyTitle}>No Recent Orders Found</Text>
+              <Text style={styles.emptySubtitle}>Your previous grocery orders will appear here as grouped order history.</Text>
+              <TouchableOpacity style={styles.shopNowButton} onPress={() => navigation.navigate("HomeTab")}>
+                <Text style={styles.shopNowText}>Start Shopping</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
       ) : (
         <FlatList
+          key="buy-again-product-grid"
           data={products}
           renderItem={renderProductItem}
           numColumns={3}
@@ -1062,6 +1336,168 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginLeft: 8,
+  },
+  groceryHistoryList: {
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 28,
+  },
+  groceryOrderCardWrap: {
+    marginBottom: 14,
+  },
+  groceryOrderCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  groceryOrderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  groceryOrderBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  groceryOrderHeaderText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  groceryOrderTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  groceryOrderSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 3,
+  },
+  groceryMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+  },
+  groceryMetaPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F1F5F9",
+    marginRight: 8,
+  },
+  groceryMetaPillSuccess: {
+    backgroundColor: "#DCFCE7",
+  },
+  groceryMetaPillMuted: {
+    backgroundColor: "#F1F5F9",
+  },
+  groceryMetaPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  groceryMetaPillSuccessText: {
+    color: "#166534",
+  },
+  groceryMetaPillMutedText: {
+    color: "#475569",
+  },
+  groceryOrderItemsBox: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#F8FAFC",
+  },
+  groceryOrderItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  groceryOrderItemImageWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  groceryOrderItemImage: {
+    width: 40,
+    height: 40,
+  },
+  groceryOrderItemContent: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  groceryOrderItemName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  groceryOrderItemMeta: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "#64748B",
+  },
+  groceryOrderItemRight: {
+    alignItems: "flex-end",
+  },
+  groceryOrderItemTotal: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  groceryOrderItemAvailable: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+  groceryOrderItemUnavailable: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
+  },
+  groceryOrderFooter: {
+    marginTop: 14,
+  },
+  groceryReorderButton: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#0F766E",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  groceryReorderButtonDisabled: {
+    backgroundColor: "#94A3B8",
+  },
+  groceryReorderButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
   },
 });
 

@@ -41,19 +41,29 @@ interface OrderProviderProps {
 
 export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
-  const user = auth().currentUser;
+  const [user, setUser] = useState(() => auth().currentUser);
 
-  // Load orders from AsyncStorage on mount
+  // Sync with Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = auth().onAuthStateChanged((u) => {
+      setUser(u);
+      if (!u) {
+        // Clear everything when logged out
+        setActiveOrders([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Load orders from AsyncStorage on mount or when user changes
   useEffect(() => {
     const loadOrders = async () => {
       try {
-        if (user) { // Ensure user is defined
+        if (user) {
           const storedOrders = await AsyncStorage.getItem(`activeOrders_${user.uid}`);
           if (storedOrders) {
             const parsedOrders: Order[] = JSON.parse(storedOrders);
             setActiveOrders(parsedOrders);
-          } else {
-            console.log("No stored orders found in AsyncStorage.");
           }
         }
       } catch (error) {
@@ -63,28 +73,43 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
 
     if (user) {
       loadOrders();
+    } else {
+      setActiveOrders([]);
     }
   }, [user]);
 
   // Listen to Firestore and update state and AsyncStorage
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setActiveOrders([]);
+      return;
+    }
 
     const unsubscribe = firestore()
       .collection("orders")
       .where("orderedBy", "==", user.uid)
-      .where("status", "in", ["pending", "active"])
+      .where("status", "in", ["pending", "active", "accepted", "reachedPickup", "tripStarted"])
       .onSnapshot(
         (querySnapshot) => {
           const orders: Order[] = [];
           querySnapshot.forEach((doc) => {
             orders.push({ id: doc.id, ...(doc.data() as Order) });
           });
-          setActiveOrders(orders);
-          // Save to AsyncStorage
-          AsyncStorage.setItem(`activeOrders_${user.uid}`, JSON.stringify(orders)).catch((error) =>
-            console.error("Failed to save orders to storage:", error)
-          );
+          
+          // Double-check if we still have the same user to avoid race conditions
+          if (auth().currentUser?.uid === user.uid) {
+            setActiveOrders(orders);
+            // Save to AsyncStorage
+            if (orders.length > 0) {
+              AsyncStorage.setItem(`activeOrders_${user.uid}`, JSON.stringify(orders)).catch((error) =>
+                console.error("Failed to save orders to storage:", error)
+              );
+            } else {
+              AsyncStorage.removeItem(`activeOrders_${user.uid}`).catch((error) =>
+                console.error("Failed to remove orders from storage:", error)
+              );
+            }
+          }
         },
         (error) => {
           console.error("Error fetching active orders: ", error);

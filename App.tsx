@@ -274,19 +274,29 @@ const RootStack = createNativeStackNavigator();
 // Wrapper component that shows the right home screen based on toggle
 const HomeScreenWrapper = () => {
   const { activeMode } = useToggleContext();
+  const [mountedModes, setMountedModes] = useState<Record<string, boolean>>(() => ({
+    [activeMode]: true,
+  }));
+
+  useEffect(() => {
+    setMountedModes((prev) => (prev[activeMode] ? prev : { ...prev, [activeMode]: true }));
+  }, [activeMode]);
+
   return (
     <>
-      {/* Always mounted — avoids layout jump on toggle */}
-      <View style={{ flex: 1, display: activeMode === 'service' ? 'flex' : 'none' }}>
-        <ServicesScreen />
-      </View>
-      {activeMode === 'food' && (
-        <View style={{ flex: 1 }}>
+      {/* Lazy-mount mode screens so grocery home doesn't pay the startup cost of hidden screens. */}
+      {mountedModes.service && (
+        <View style={{ flex: 1, display: activeMode === 'service' ? 'flex' : 'none' }}>
+          <ServicesScreen />
+        </View>
+      )}
+      {mountedModes.food && (
+        <View style={{ flex: 1, display: activeMode === 'food' ? 'flex' : 'none' }}>
           <FoodComingSoonScreen />
         </View>
       )}
-      {activeMode === 'grocery' && (
-        <View style={{ flex: 1 }}>
+      {mountedModes.grocery && (
+        <View style={{ flex: 1, display: activeMode === 'grocery' ? 'flex' : 'none' }}>
           <ProductsHomeScreen />
         </View>
       )}
@@ -927,12 +937,88 @@ function AppTabs() {
 
 
 
-  const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
-  useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
+  const inProgress = React.useMemo(() => {
+    const user = auth().currentUser;
+    if (!user || !activeOrders || activeOrders.length === 0) return [];
+    
+    return activeOrders.filter((o) => {
+      if (!o || !o.id) return false;
 
-  const inProgress = activeOrders.filter(
-    (o) => o.status === "pending" || o.status === "active"
-  );
+      const status = String(o.status || "").trim().toLowerCase();
+      
+      // Only these statuses are eligible for "Live Tracking" bar
+      const liveStatuses = new Set([
+        "accepted",
+        "active",
+        "reachedpickup",
+        "tripstarted",
+        "assigned",
+        "started",
+      ]);
+      
+      if (!liveStatuses.has(status)) return false;
+
+      // Terminal/Cancelled checks
+      const cancelledBy = String(o.cancelledBy ?? o.canceledBy ?? "").trim().toLowerCase();
+      const cancelReason = String(o.cancelReason ?? o.cancellationReason ?? "").trim().toLowerCase();
+      
+      const terminalStatuses = new Set([
+        "delivered", "completed", "complete", "cancelled", "canceled", "rejected", "failed", "expired"
+      ]);
+
+      if (terminalStatuses.has(status)) return false;
+
+      const isTerminalByFlags =
+        o.isDelivered === true ||
+        o.isCancelled === true ||
+        o.isCanceled === true ||
+        o.cancelled === true ||
+        o.canceled === true ||
+        o.userCancelled === true ||
+        o.cancelledAt != null ||
+        o.canceledAt != null ||
+        o.deliveredAt != null ||
+        o.completedAt != null;
+
+      if (isTerminalByFlags) return false;
+
+      const isUserCancelled =
+        cancelledBy === "user" ||
+        cancelledBy === "customer" ||
+        cancelledBy === "client" ||
+        cancelReason.length > 0;
+
+      if (isUserCancelled) return false;
+
+      // Freshness check: if order is older than 24 hours, don't show it in "Live" bar
+      const rawCreatedAt = o.createdAt;
+      let createdAtDate: Date | null = null;
+      if (rawCreatedAt) {
+        if (typeof rawCreatedAt.toDate === "function") {
+          createdAtDate = rawCreatedAt.toDate();
+        } else {
+          createdAtDate = new Date(rawCreatedAt);
+        }
+      }
+      
+      if (createdAtDate && (Date.now() - createdAtDate.getTime()) > 24 * 60 * 60 * 1000) {
+        return false;
+      }
+
+      // Extra safety: check if the order has coordinates (must be trackable)
+      const hasCoords = 
+        o.pickupCoords?.latitude && o.pickupCoords?.longitude &&
+        o.dropoffCoords?.latitude && o.dropoffCoords?.longitude;
+      
+      if (!hasCoords) return false;
+
+      // Extra safety: ensure it belongs to current user if field is present
+      const orderedBy = (o as any).orderedBy;
+      if (orderedBy && orderedBy !== user.uid) return false;
+
+      return true;
+    });
+  }, [activeOrders]);
 
   useEffect(() => {
    const onUrl = ({ url }: { url: string }) => {
@@ -1230,6 +1316,10 @@ function AppTabs() {
           })}
         />
       </Tab.Navigator>
+
+      {activeMode === "grocery" && inProgress.length > 0 && (
+        <LiveTrackingBar orders={inProgress} />
+      )}
       
       {/* Service Loader Modal */}
       {serviceLoaderVisible && (
@@ -1288,51 +1378,125 @@ function AppTabs() {
 /* ==========================================================
    BLINKING PROGRESS BAR
    ========================================================== */
-const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
+const LiveTrackingBar: React.FC<{ orders: any[] }> = ({ orders }) => {
   const navigation = useNavigation<any>();
-  const fade = useRef(new Animated.Value(1)).current;
-  const [isVisible, setIsVisible] = useState(true);
+  const pulse = useRef(new Animated.Value(1)).current;
+  
+  // Use a local state for route tracking to avoid scheduling updates during layout phase
+  const [isTrackingScreenOpen, setIsTrackingScreenOpen] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("state", (e: any) => {
+      const state = e.data.state;
+      const path = getActiveRoutePath(state);
+      const isOpen = path.includes("OrderTracking") || path.includes("OrderAllocating");
+      if (isOpen !== isTrackingScreenOpen) {
+        setIsTrackingScreenOpen(isOpen);
+      }
+    });
+
+    // Initial check
+    const state = navigation.getState();
+    const path = getActiveRoutePath(state);
+    const isOpen = path.includes("OrderTracking") || path.includes("OrderAllocating");
+    if (isOpen !== isTrackingScreenOpen) {
+      setIsTrackingScreenOpen(isOpen);
+    }
+
+    return unsubscribe;
+  }, [navigation, isTrackingScreenOpen]);
+
+  const visibleOrder = orders.find((o) => o?.id) || null;
+  const visibleCount = orders.filter((o) => o?.id).length;
 
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(fade, {
-          toValue: 0.7,
-          duration: 1000,
+        Animated.timing(pulse, {
+          toValue: 1.06,
+          duration: 900,
           useNativeDriver: true,
         }),
-        Animated.timing(fade, {
+        Animated.timing(pulse, {
           toValue: 1,
-          duration: 1000,
+          duration: 900,
           useNativeDriver: true,
         }),
       ])
     );
     anim.start();
     return () => anim.stop();
-  }, [fade]);
+  }, [pulse]);
 
-  if (!isVisible) return null;
+  if (!visibleOrder || isTrackingScreenOpen) return null;
+
+  const toCoords = (coords: any) => ({
+    latitude: Number(coords?.latitude ?? 0),
+    longitude: Number(coords?.longitude ?? 0),
+  });
+
+  const openLiveTracking = async () => {
+    try {
+      const snapshot = await firestore().collection("orders").doc(visibleOrder.id).get();
+      const latest = snapshot.exists ? snapshot.data() : null;
+      const merged: any = { ...visibleOrder, ...(latest || {}) };
+
+      const pickupCoords = toCoords(merged?.pickupCoords);
+      const dropoffCoords = toCoords(merged?.dropoffCoords);
+      const hasCoords =
+        pickupCoords.latitude !== 0 &&
+        pickupCoords.longitude !== 0 &&
+        dropoffCoords.latitude !== 0 &&
+        dropoffCoords.longitude !== 0;
+
+      if (!hasCoords) {
+        Alert.alert("Tracking unavailable", "Order location details are not ready yet.");
+        return;
+      }
+
+      const status = String(merged?.status || "").toLowerCase();
+      const hasAcceptedRider = Boolean(merged?.acceptedBy);
+      const goToTracking =
+        hasAcceptedRider ||
+        status === "accepted" ||
+        status === "active" ||
+        status === "reachedpickup" ||
+        status === "tripstarted";
+
+      navigation.navigate("AppTabs" as never, {
+        screen: "HomeTab",
+        params: {
+          screen: goToTracking ? "OrderTracking" : "OrderAllocating",
+          params: {
+            orderId: visibleOrder.id,
+            pickupCoords,
+            dropoffCoords,
+            totalCost: Number(merged?.totalCost ?? merged?.finalTotal ?? 0),
+          },
+        },
+      } as never);
+    } catch (error) {
+      console.error("Failed to open live tracking:", error);
+      Alert.alert("Something went wrong", "Unable to open live tracking right now.");
+    }
+  };
 
   return (
-    <Animated.View style={[styles.inProgressBar, { opacity: fade }]}>
-      <View style={styles.messageContainer}>
-        <Text style={styles.messageText}>
-          You have {orders.length} order{orders.length > 1 ? "s" : ""} in
-          progress. Tap to view.
-        </Text>
-      </View>
+    <Animated.View style={[styles.liveTrackingWrap, { transform: [{ scale: pulse }] }]}>
       <TouchableOpacity
-        style={styles.profileNavButton}
-        onPress={() => navigation.navigate("Profile")}
+        style={styles.liveTrackingButton}
+        onPress={openLiveTracking}
+        activeOpacity={0.92}
       >
-        <Ionicons name="person-circle-outline" size={20} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.closeButton}
-        onPress={() => setIsVisible(false)}
-      >
-        <Ionicons name="close" size={20} color="#fff" />
+        <View style={styles.liveDot} />
+        <MaterialIcons name="delivery-dining" size={20} color="#fff" />
+        <View style={styles.liveTrackingTextWrap}>
+          <Text style={styles.liveTrackingTitle}>Live tracking details</Text>
+          <Text style={styles.liveTrackingSubtitle}>
+            {visibleCount} active order{visibleCount > 1 ? "s" : ""} - tap to view
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#fff" />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1792,22 +1956,44 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  inProgressBar: {
+  liveTrackingWrap: {
     position: "absolute",
-    bottom: 50,
-    left: 10,
-    right: 10,
-    height: 22,
-    backgroundColor: "#E55252",
-    borderRadius: 12,
+    bottom: Platform.OS === "android" ? 72 : 98,
+    left: 12,
+    right: 12,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
+    zIndex: 1000,
   },
-  messageContainer: { flex: 1, marginRight: 10 },
-  messageText: { fontSize: 12, color: "#fff", fontWeight: "600" },
-  profileNavButton: { marginRight: 8 },
-  closeButton: {},
+  liveTrackingButton: {
+    flex: 1,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: "#0f766e",
+    borderWidth: 1,
+    borderColor: "#0b5f59",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#f43f5e",
+    marginRight: 8,
+  },
+  liveTrackingTextWrap: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  liveTrackingTitle: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  liveTrackingSubtitle: { color: "#d1fae5", fontSize: 11, fontWeight: "600" },
 
   /* modal */
   modalOverlay: {

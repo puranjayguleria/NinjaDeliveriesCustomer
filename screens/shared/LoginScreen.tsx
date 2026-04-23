@@ -135,8 +135,9 @@ const LoginScreen: React.FC = () => {
   const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
   console.log("[OTP] E.164:", formattedPhoneNumber);
 
-  // Disable app verification for development builds
-  if (__DEV__) {
+  // Keep testing bypass limited to iOS dev builds.
+  // On Android this can interfere with real OTP flows.
+  if (__DEV__ && Platform.OS === "ios") {
     try {
       auth().settings.appVerificationDisabledForTesting = true;
       console.log("[OTP] appVerificationDisabledForTesting enabled (dev mode)");
@@ -148,7 +149,30 @@ const LoginScreen: React.FC = () => {
   try {
     setIsSendingOtp(true);
     console.log("[OTP] Calling RNFB auth().signInWithPhoneNumber...");
-    const confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
+    let confirmationResult: any;
+    try {
+      confirmationResult = await auth().signInWithPhoneNumber(formattedPhoneNumber);
+    } catch (firstError: any) {
+      // Android fallback: if Play Integrity token fails, force reCAPTCHA flow and retry once.
+      if (
+        Platform.OS === "android" &&
+        firstError?.code === "auth/missing-client-identifier"
+      ) {
+        try {
+          auth().settings.forceRecaptchaFlowForTesting = true;
+          console.warn(
+            "[OTP] missing-client-identifier received, retrying with forceRecaptchaFlowForTesting"
+          );
+          confirmationResult = await auth().signInWithPhoneNumber(
+            formattedPhoneNumber
+          );
+        } catch (retryError: any) {
+          throw retryError;
+        }
+      } else {
+        throw firstError;
+      }
+    }
     console.log("[OTP] signInWithPhoneNumber resolved. Keys:", Object.keys(confirmationResult || {}));
     setConfirmation(confirmationResult);
 
@@ -168,13 +192,9 @@ const LoginScreen: React.FC = () => {
     } else if (error.code === "auth/network-request-failed") {
       showErrorModal("Network error. Please check your internet connection.");
     } else if (error.code === "auth/missing-client-identifier") {
-      // Development build error - provide helpful message
-      if (__DEV__) {
-        console.warn("[OTP] Development build detected. Phone auth may not work properly.");
-        showErrorModal("Development build: Phone authentication requires a production build or Firebase emulator. Please use a test phone number or build for production.");
-      } else {
-        showErrorModal("App verification failed. Please ensure you're using the latest version of the app.");
-      }
+      showErrorModal(
+        "OTP verification failed on this build. Please enable Google Play Services, update the app, and try again."
+      );
     } else {
       showErrorModal("Something went wrong while sending OTP. Please try again.");
     }

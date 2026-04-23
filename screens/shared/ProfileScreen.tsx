@@ -37,6 +37,7 @@ const H = 16;
 const R = 18;
 const BG = "#F9FAFB"; // Changed to white
 const ACCENT = "#FF8A00";
+const ACCENT_DARK = "#E97100";
 
 /** Order interface for your reference */
 interface Order {
@@ -63,10 +64,15 @@ interface Order {
   convenienceFee?: number;
   platformFee?: number;
   surgeFee?: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  deliveryAddress?: string;
+  mobile?: string;
+  storeName?: string;
 }
 
 const ProfileScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const currentUser = auth().currentUser;
   const currentUserId = (currentUser as any)?.uid as string | undefined;
 
@@ -758,7 +764,7 @@ const ProfileScreen: React.FC = () => {
       >
         <Animated.View style={{ opacity: screenFade }}>
           <LinearGradient
-            colors={["#ffffff", "#f8f8f8"]}
+            colors={["#FFF7ED", "#FFE9D2", "#FFD6AD"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.hero}
@@ -799,6 +805,15 @@ const ProfileScreen: React.FC = () => {
                     {contactLine}
                   </Text>
                 )}
+                <View style={styles.heroMetaRow}>
+                  <View style={styles.heroTagPill}>
+                    <Ionicons name="shield-checkmark" size={12} color={ACCENT_DARK} />
+                    <Text style={styles.heroTagText}>Verified Account</Text>
+                  </View>
+                  <View style={styles.heroCountPill}>
+                    <Text style={styles.heroCountText}>{orders.length} orders</Text>
+                  </View>
+                </View>
               </View>
               <TouchableOpacity
                 disabled={isEditing}
@@ -819,7 +834,8 @@ const ProfileScreen: React.FC = () => {
             style={styles.card}
             onLayout={(e) => setDetailsY(e.nativeEvent.layout.y)}
           >
-            <Text style={styles.cardTitle}>Personal details</Text>
+            <Text style={styles.cardTitle}>Personal Details</Text>
+            <Text style={styles.cardSubtitle}>Keep your profile information up to date</Text>
 
             {!isEditing ? (
               <View style={styles.detailsBlock}>
@@ -923,13 +939,14 @@ const ProfileScreen: React.FC = () => {
           ) : null}
           </View>
 
-          <View style={[styles.card, { backgroundColor: "#1E1E1E" }]}>
-            <Text style={[styles.cardTitle, { color: "#fff" }]}>Account options</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Account Options</Text>
+            <Text style={styles.cardSubtitle}>Manage orders, rewards and support</Text>
 
             <TileButton
               icon="receipt-outline"
               iconColor="#60A5FA" // Lighter blue for dark mode
-              title="📦 Your Orders"
+              title="Your Orders"
               subtitle="Track & manage orders"
               onPress={() => {
                 vibrateTap();
@@ -940,7 +957,7 @@ const ProfileScreen: React.FC = () => {
             <TileButton
               icon="gift-outline"
               iconColor={ACCENT}
-              title="⭐ Rewards"
+              title="Rewards"
               subtitle="Unlock more savings"
               iconAnimated={{ scale: rewardsScale, opacity: rewardsOpacity }}
               onPress={() => {
@@ -952,7 +969,7 @@ const ProfileScreen: React.FC = () => {
             <TileButton
               icon="help-circle-outline"
               iconColor={ACCENT}
-              title="❓ Help"
+              title="Help"
               subtitle="Get support fast"
               onPress={() => {
                 vibrateTap();
@@ -963,7 +980,7 @@ const ProfileScreen: React.FC = () => {
             <TileButton
               icon="document-text-outline"
               iconColor={ACCENT}
-              title="📜 Terms"
+              title="Terms & Conditions"
               subtitle="Policies & conditions"
               onPress={() => {
                 vibrateTap();
@@ -972,8 +989,9 @@ const ProfileScreen: React.FC = () => {
             />
           </View>
 
-          <View style={[styles.card, { backgroundColor: "#1E1E1E" }]}>
-            <Text style={[styles.cardTitle, { color: "#fff" }]}>Security</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Security</Text>
+            <Text style={styles.cardSubtitle}>Control your session and account safety</Text>
 
             <TileButton
               icon="log-out-outline"
@@ -1293,11 +1311,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   hero: {
-    paddingBottom: 18,
+    paddingBottom: 22,
     borderBottomLeftRadius: 26,
     borderBottomRightRadius: 26,
     paddingHorizontal: H,
-    paddingTop: 8,
+    paddingTop: 10,
   },
   heroTopRow: {
     flexDirection: "row",
@@ -1307,24 +1325,30 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   backBtn: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   heroTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
     color: primaryTextColor,
+    letterSpacing: 0.2,
   },
   heroCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.95)",
     borderRadius: R,
-    padding: 14,
+    padding: 16,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    elevation: 5,
   },
   avatarWrap: {
     width: 60,
@@ -1343,26 +1367,58 @@ const styles = StyleSheet.create({
     color: "#EA580C",
   },
   heroName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     color: "#111827",
     marginBottom: 2,
   },
   heroSub: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#6B7280",
+    fontWeight: "700",
+    color: "#4B5563",
+  },
+  heroMetaRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  heroTagPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFEDD5",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginRight: 8,
+  },
+  heroTagText: {
+    marginLeft: 5,
+    fontSize: 11,
+    color: ACCENT_DARK,
+    fontWeight: "800",
+  },
+  heroCountPill: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  heroCountText: {
+    fontSize: 11,
+    color: "#374151",
+    fontWeight: "800",
   },
   editPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: ACCENT,
+    backgroundColor: "#111827",
     shadowColor: ACCENT,
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 4,
+    marginTop: 2,
   },
   editPillText: {
     fontSize: 12,
@@ -1373,13 +1429,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: R,
     marginHorizontal: H,
-    marginTop: 12,
-    padding: 14,
+    marginTop: 14,
+    padding: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
   },
   cardHeaderRow: {
     flexDirection: "row",
@@ -1387,10 +1445,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 10,
+    marginBottom: 3,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    marginBottom: 12,
   },
   seeAllLink: {
     fontSize: 13,
@@ -1425,9 +1489,10 @@ const styles = StyleSheet.create({
   },
   detailsBlock: {
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: "#E5E7EB",
     borderRadius: 14,
     overflow: "hidden",
+    backgroundColor: "#FCFCFD",
   },
   detailRow: {
     paddingHorizontal: 12,
@@ -1461,8 +1526,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
-    backgroundColor: "#fff",
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FBFDFF",
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -1473,25 +1538,25 @@ const styles = StyleSheet.create({
   optionIcon: {
     width: 36,
     height: 36,
-    borderRadius: 14,
-    backgroundColor: "rgba(0,0,0,0.06)",
+    borderRadius: 12,
+    backgroundColor: "#EEF2FF",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
   optionTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
     color: "#111827",
   },
   optionSub: {
     marginTop: 2,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#6B7280",
   },
   dangerTile: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FFF8F8",
     borderColor: "rgba(239,68,68,0.35)",
   },
   dangerIcon: {
@@ -1532,7 +1597,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(239,68,68,0.35)",
-    backgroundColor: "#fff",
+    backgroundColor: "#FFF8F8",
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -1542,7 +1607,7 @@ const styles = StyleSheet.create({
   },
   deleteRowText: {
     marginLeft: 8,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
     color: "#EF4444",
   },

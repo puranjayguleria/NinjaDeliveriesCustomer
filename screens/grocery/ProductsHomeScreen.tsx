@@ -84,6 +84,7 @@ const PAGE_SIZE = 5;
 const ROW_LIMIT = GRID_ROWS * GRID_COLUMNS;
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const HOME_BG = "#FFFFFF";
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -924,7 +925,7 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
-    ["#FFFDE7", "#FFFDE7", "#FFFDE7"]
+    [HOME_BG, HOME_BG, HOME_BG]
   ); // fallback defaults
 
   const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
@@ -1127,7 +1128,7 @@ export default function ProductsHomeScreen() {
   // pull gradient colors for the collapsing header from Firestore
   useEffect(() => {
     if (!location.storeId) {
-      setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"]);
+      setHeaderGradientColors([HOME_BG, HOME_BG, HOME_BG]);
       return;
     }
 
@@ -1139,19 +1140,10 @@ export default function ProductsHomeScreen() {
         (snap) => {
           const d = snap.docs[0]?.data() as any;
 
-          const arr = Array.isArray(d?.headerGradientColors)
-            ? d.headerGradientColors.filter(
-                (c: unknown) =>
-                  typeof c === "string" &&
-                  (/^#/.test(c) || /^rgb/.test(c) || /^hsl/.test(c))
-              )
-            : null;
-
-          setHeaderGradientColors(
-            arr && arr.length ? arr : ["#FFFFFF", "#FFFFFF", "#FFFFFF"]
-          );
+          // Keep the home surface consistently white regardless of remote config.
+          setHeaderGradientColors([HOME_BG, HOME_BG, HOME_BG]);
         },
-        () => setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"])
+        () => setHeaderGradientColors([HOME_BG, HOME_BG, HOME_BG])
       );
 
     return unsub;
@@ -2135,38 +2127,10 @@ export default function ProductsHomeScreen() {
         style={{
           flex: 1,
           position: "relative",
-          backgroundColor: pageBg ? "transparent" : "#fdfdfd",
+          backgroundColor: HOME_BG,
         }}
       >
-        {/* UNDERLAY: page background */}
-        {pageBg ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            {pageBg.imageUrl ? (
-              <Image
-                source={{ uri: pageBg.imageUrl }}
-                style={StyleSheet.absoluteFill}
-                contentFit={pageBg.resizeMode || "cover"}
-                placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
-                cachePolicy="disk"
-                transition={200}
-              />
-            ) : null}
-
-            {pageBg.overlayGradient && pageBg.overlayGradient.length > 0 ? (
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  { opacity: pageBg.overlayOpacity ?? 1 },
-                ]}
-              >
-                <LinearGradient
-                  colors={pageBg.overlayGradient as any}
-                  style={StyleSheet.absoluteFill}
-                />
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Home background is intentionally fixed to white for visual consistency. */}
 
         {/* Valentine Background - Starts below search bar */}
         
@@ -2401,11 +2365,11 @@ export default function ProductsHomeScreen() {
             }
           />
         ) : hasPerm ? (
-          <View style={[styles.center, { flex: 1 }]}>            
+          <View style={[styles.center, { flex: 1, backgroundColor: HOME_BG }]}>            
             <Loader />
           </View>
         ) : (
-          <View style={{ flex: 1 }} />
+          <View style={{ flex: 1, backgroundColor: HOME_BG }} />
         )}
 
         {hasPerm === false && selectManually === false && (
@@ -2485,13 +2449,13 @@ const BORDER_CLR = "#e0e0e0";
 const GAP_BG = "#f8f8f8";
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: HOME_BG },
   topBg: {
     paddingHorizontal: H,
     paddingBottom: 4,
     position: "relative",
     zIndex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: HOME_BG,
   },
   badge01: {
     backgroundColor: "#FF3D00",
