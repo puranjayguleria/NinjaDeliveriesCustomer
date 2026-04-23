@@ -12,8 +12,9 @@ import {
   ActivityIndicator,
   Modal,
   StatusBar,
+  BackHandler,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
@@ -44,6 +45,15 @@ export default function ServiceCheckoutScreen() {
   const navigation = useNavigation<any>();
   const { clearCart, state } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
+  const [isScreenFocused, setIsScreenFocused] = useState(false);
+
+  // Handle screen focus to prevent tab bar flicker
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsScreenFocused(true);
+      return () => setIsScreenFocused(false);
+    }, [])
+  );
   
   const routeServices = route.params?.services;
   // Backward/forward compatible: some entry points (e.g., services search/banner deep-links)
@@ -53,6 +63,35 @@ export default function ServiceCheckoutScreen() {
     : Object.values(state?.items || {});
   // Ensure displayed total comes from the actual services (preserve package/company prices)
   const computedTotalAmount = (services || []).reduce((sum: number, s: ServiceCartItem) => sum + (Number(s.totalPrice) || 0), 0);
+
+  // If cart is empty, redirect to ServiceCart immediately
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!Array.isArray(routeServices) && services.length === 0) {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate("ServiceCart");
+        }
+      }
+    }, [services.length, routeServices, navigation])
+  );
+
+  // Hardware back button → go back in stack
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBack = () => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate("ServicesHome");
+        }
+        return true;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
+      return () => sub.remove();
+    }, [navigation])
+  );
   const [notes, setNotes] = useState("");
   const paymentMethod = "online" as const;
   const [loading, setLoading] = useState(false);
@@ -1763,7 +1802,13 @@ export default function ServiceCheckoutScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate("ServicesHome");
+            }
+          }}
         >
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
@@ -2097,7 +2142,7 @@ export default function ServiceCheckoutScreen() {
           </View>
         </View>
       )}
-      <ServicesTabBar activeTab="cart" />
+      {isScreenFocused && <ServicesTabBar activeTab="cart" />}
     </SafeAreaView>
   );
 }
@@ -2695,7 +2740,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 14,
-    marginBottom: 100,
+    marginBottom: 160,
     borderWidth: 1,
     borderColor: "#e8e8e8",
   },

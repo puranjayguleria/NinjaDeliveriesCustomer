@@ -735,6 +735,11 @@ export default function ServicesScreen() {
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const liveDotBlinkAnim = React.useRef(new Animated.Value(1)).current;
+  const liveParticleAnim = React.useRef(new Animated.Value(0)).current;
+  const liveShimmerAnim = React.useRef(new Animated.Value(0)).current;
+  const liveCounterBounceAnim = React.useRef(new Animated.Value(1)).current;
+  const liveTypingAnim = React.useRef(new Animated.Value(0)).current;
+  const liveBorderAnim = React.useRef(new Animated.Value(0)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
   const [randomServices, setRandomServices] = useState<any[]>([]);
   const [plumberServices, setPlumberServices] = useState<any[]>([]);
@@ -1671,7 +1676,7 @@ export default function ServicesScreen() {
     const unsubscribe = firestore()
       .collection('service_bookings')
       .orderBy('createdAt', 'desc')
-      .limit(15)
+      .limit(10) // Reduced limit for better performance
       .onSnapshot(
         (snapshot) => {
           if (__DEV__) {
@@ -1686,11 +1691,11 @@ export default function ServicesScreen() {
             const serviceName = data.serviceName || data.serviceTitle || 'Service';
             const location = data.address?.city || data.address?.area || 'Your area';
             
-            // Create unique key based on service name and location
-            const uniqueKey = `${serviceName}-${location}`;
+            // Create unique key based on service name and location to avoid duplicates
+            const uniqueKey = `${serviceName.toLowerCase().trim()}-${location.toLowerCase().trim()}`;
             
-            // Only add if not already seen
-            if (!seenBookings.has(uniqueKey)) {
+            // Only add if not already seen and limit to unique services
+            if (!seenBookings.has(uniqueKey) && bookings.length < 8) {
               seenBookings.add(uniqueKey);
               bookings.push({
                 id: doc.id,
@@ -1781,44 +1786,94 @@ export default function ServicesScreen() {
     };
   }, [serviceBanners.length]);
 
-  // Auto-cycle through live bookings vertically (one by one)
+  // Auto-cycle through live bookings vertically (one by one) - Smooth transition
   const [currentBookingIndex, setCurrentBookingIndex] = useState(0);
   const [shouldBlinkBooking, setShouldBlinkBooking] = useState(false);
   const bookingTransitionAnim = React.useRef(new Animated.Value(0)).current;
+  const bookingOpacityAnim = React.useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (liveBookings.length <= 1) return;
+    if (liveBookings.length <= 1) {
+      // Reset animations when there's only one or no bookings
+      bookingTransitionAnim.setValue(0);
+      bookingOpacityAnim.setValue(1);
+      return;
+    }
 
     const interval = setInterval(() => {
-      // Slide up animation
-      Animated.timing(bookingTransitionAnim, {
-        toValue: -24,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
+      // Smooth fade out and slide transition
+      Animated.parallel([
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingTransitionAnim, {
+          toValue: -20,
+          duration: 300,
+          useNativeDriver: true,
+        })
+      ]).start(({ finished }) => {
+        if (!finished) return; // Don't proceed if animation was interrupted
+        
         // Change booking
         setCurrentBookingIndex((prevIndex) => 
           (prevIndex + 1) % liveBookings.length
         );
-        // Reset position to bottom and slide up
-        bookingTransitionAnim.setValue(24);
-        Animated.timing(bookingTransitionAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start();
+        
+        // Reset position immediately (no animation)
+        bookingTransitionAnim.setValue(20);
+        bookingOpacityAnim.setValue(0);
+        
+        // Small delay before fading in
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(bookingOpacityAnim, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.timing(bookingTransitionAnim, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            })
+          ]).start();
+        }, 50);
       });
-    }, 3000); // Change booking every 3 seconds
+    }, 4000); // Change booking every 4 seconds
 
-    return () => clearInterval(interval);
-  }, [liveBookings.length, bookingTransitionAnim]);
+    return () => {
+      clearInterval(interval);
+      // Stop any ongoing animations
+      bookingTransitionAnim.stopAnimation();
+      bookingOpacityAnim.stopAnimation();
+    };
+  }, [liveBookings.length, bookingTransitionAnim, bookingOpacityAnim]);
 
   // Trigger blink only when new bookings are added
   useEffect(() => {
     if (liveBookings.length > 0) {
-      setShouldBlinkBooking(true);
+      // Use requestAnimationFrame to avoid useInsertionEffect warning
+      requestAnimationFrame(() => {
+        setShouldBlinkBooking(true);
+        
+        // Bounce animation for counter when new booking arrives
+        Animated.sequence([
+          Animated.timing(liveCounterBounceAnim, {
+            toValue: 1.3,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(liveCounterBounceAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     }
-  }, [liveBookings.length]);
+  }, [liveBookings.length, liveCounterBounceAnim]);
 
   const latestLiveBooking = React.useMemo(() => {
     if (!liveBookings?.length) return null;
@@ -2356,29 +2411,122 @@ export default function ServicesScreen() {
 
 
 
-  // Continuous blinking animation for live dot
+  // Continuous pulse animation for live dot with scale effect
   useEffect(() => {
-    const liveDotBlink = Animated.loop(
+    const liveDotPulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(liveDotBlinkAnim, {
-          toValue: 0.3,
-          duration: 800,
+        Animated.parallel([
+          Animated.timing(liveDotBlinkAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(liveDotBlinkAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+
+    liveDotPulse.start();
+
+    return () => {
+      liveDotPulse.stop();
+    };
+  }, [liveDotBlinkAnim]);
+
+  // Floating particles animation
+  useEffect(() => {
+    const particleFloat = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveParticleAnim, {
+          toValue: 1,
+          duration: 3000,
           useNativeDriver: true,
         }),
-        Animated.timing(liveDotBlinkAnim, {
-          toValue: 1,
-          duration: 800,
+        Animated.timing(liveParticleAnim, {
+          toValue: 0,
+          duration: 3000,
           useNativeDriver: true,
         }),
       ])
     );
 
-    liveDotBlink.start();
+    particleFloat.start();
 
     return () => {
-      liveDotBlink.stop();
+      particleFloat.stop();
     };
-  }, [liveDotBlinkAnim]);
+  }, [liveParticleAnim]);
+
+  // Shimmer effect for live booking background
+  useEffect(() => {
+    const shimmer = Animated.loop(
+      Animated.timing(liveShimmerAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      })
+    );
+
+    shimmer.start();
+
+    return () => {
+      shimmer.stop();
+    };
+  }, [liveShimmerAnim]);
+
+  // Typing dots animation for empty state
+  useEffect(() => {
+    const typing = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveTypingAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(liveTypingAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    typing.start();
+
+    return () => {
+      typing.stop();
+    };
+  }, [liveTypingAnim]);
+
+  // Border glow animation
+  useEffect(() => {
+    const borderGlow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveBorderAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(liveBorderAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    );
+
+    borderGlow.start();
+
+    return () => {
+      borderGlow.stop();
+    };
+  }, [liveBorderAnim]);
 
   // Smooth blinking animation for Book Now buttons
   useEffect(() => {
@@ -2408,42 +2556,45 @@ export default function ServicesScreen() {
   useEffect(() => {
     if (!shouldBlinkBooking || !latestLiveBooking) return;
 
-    // Reset to 1 first
-    bookingBlinkAnim.setValue(1);
+    // Use requestAnimationFrame to avoid useInsertionEffect warning
+    requestAnimationFrame(() => {
+      // Reset to 1 first
+      bookingOpacityAnim.setValue(1);
 
-    // Then animate blink
-    const blinkAnimation = Animated.sequence([
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 0.2,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 0.2,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]);
+      // Then animate blink
+      const blinkAnimation = Animated.sequence([
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]);
 
-    blinkAnimation.start(() => {
-      // Reset the flag after animation completes
-      setShouldBlinkBooking(false);
+      blinkAnimation.start(() => {
+        // Reset the flag after animation completes
+        setShouldBlinkBooking(false);
+      });
     });
 
     return () => {
-      blinkAnimation.stop();
+      bookingOpacityAnim.stopAnimation();
     };
-  }, [shouldBlinkBooking, bookingBlinkAnim]);
+  }, [shouldBlinkBooking, latestLiveBooking, bookingOpacityAnim]);
 
   // Arrow movement animation for View All button and package cards
   useEffect(() => {
@@ -3574,44 +3725,152 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Live Updates Section */}
+              {/* Live Updates Section - Modern Design */}
               <View style={styles.liveUpdatesContainer}>
-                <View style={styles.liveUpdatesHeader}>
-                  <View style={styles.liveIndicator}>
-                    <Animated.View style={[styles.liveDot, { opacity: liveDotBlinkAnim }]} />
-                    <Text style={styles.liveText}>Live Bookings</Text>
-                  </View>
-                </View>
-                <View style={styles.liveUpdatesWrapper}>
-                  {latestLiveBooking ? (
-                    <Animated.View style={[
-                      styles.liveUpdateItem, 
-                      { 
-                        transform: [{ translateY: bookingTransitionAnim }]
-                      }
-                    ]}>
-                      <View style={styles.liveUpdateDot} />
-                      <Text style={styles.liveUpdateText} numberOfLines={1}>
-                        <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
-                        {' '}booked in{' '}
-                        <Text style={[
-                          styles.liveUpdateLocation,
-                          latestLiveBooking.location === 'Your area' && styles.liveUpdateLocationRed
-                        ]}>
-                          {latestLiveBooking.location}
-                        </Text>
-                      </Text>
-                    </Animated.View>
-                  ) : (
-                    <View style={styles.liveUpdateItem}>
-                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                      <Text style={styles.liveUpdateText}>
-                        <Text style={styles.liveUpdateBold}>No live bookings</Text>
-                        {' '}at the moment
-                      </Text>
+                <LinearGradient
+                  colors={['#ff3b30', '#ff6b35', '#ff8f00', '#ffb300']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.liveUpdatesGradient}
+                >
+                  {/* Shimmer overlay */}
+                  <Animated.View style={[
+                    styles.liveShimmerOverlay,
+                    {
+                      opacity: liveShimmerAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0, 0.3, 0]
+                      }),
+                      transform: [{
+                        translateX: liveShimmerAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-100, 400]
+                        })
+                      }]
+                    }
+                  ]} />
+
+                  <View style={styles.liveUpdatesContent}>
+                    {/* Header with pulse animation */}
+                    <View style={styles.liveUpdatesHeader}>
+                      <View style={styles.liveIndicator}>
+                        <Animated.View style={[styles.livePulseContainer, { opacity: liveDotBlinkAnim }]}>
+                          <View style={styles.livePulseOuter} />
+                          <View style={styles.livePulseInner} />
+                        </Animated.View>
+                        <Text style={styles.liveText}>🔥 Live Bookings</Text>
+                      </View>
                     </View>
-                  )}
-                </View>
+
+                    {/* Booking ticker */}
+                    <View style={styles.liveUpdatesWrapper}>
+                      {latestLiveBooking ? (
+                        <Animated.View 
+                          key={`booking-${currentBookingIndex}-${latestLiveBooking.id}`}
+                          style={[
+                            styles.liveUpdateItem, 
+                            { 
+                              transform: [{ translateY: bookingTransitionAnim }],
+                              opacity: bookingOpacityAnim
+                            }
+                          ]}
+                        >
+                          <View style={styles.liveUpdateIconContainer}>
+                            <MaterialCommunityIcons name="account-check" size={16} color="#ffffff" />
+                          </View>
+                          <View style={styles.liveUpdateTextContainer}>
+                            <Text style={styles.liveUpdateText} numberOfLines={2}>
+                              <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
+                              <Text style={styles.liveUpdateNormal}> just booked in </Text>
+                              <Text style={styles.liveUpdateLocation}>
+                                {latestLiveBooking.location}
+                              </Text>
+                            </Text>
+                            <View style={styles.liveUpdateTimeContainer}>
+                              <MaterialCommunityIcons name="clock-outline" size={12} color="#ffffff80" />
+                              <Text style={styles.liveUpdateTime}>Just now</Text>
+                            </View>
+                          </View>
+                        </Animated.View>
+                      ) : (
+                        <View style={styles.liveUpdateItem}>
+                          <View style={styles.liveUpdateIconContainer}>
+                            <MaterialCommunityIcons name="clock-outline" size={16} color="#ffffff60" />
+                          </View>
+                          <View style={styles.liveUpdateTextContainer}>
+                            <View style={styles.liveWaitingContainer}>
+                              <Text style={styles.liveUpdateText}>
+                                <Text style={styles.liveUpdateBold}>Waiting for bookings</Text>
+                              </Text>
+                              <View style={styles.liveTypingDots}>
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { opacity: liveTypingAnim }
+                                ]} />
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { 
+                                    opacity: liveTypingAnim.interpolate({
+                                      inputRange: [0, 1],
+                                      outputRange: [0.3, 1]
+                                    })
+                                  }
+                                ]} />
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { 
+                                    opacity: liveTypingAnim.interpolate({
+                                      inputRange: [0, 1],
+                                      outputRange: [0.1, 0.8]
+                                    })
+                                  }
+                                ]} />
+                              </View>
+                            </View>
+                            <Text style={styles.liveUpdateTime}>Be the first to book!</Text>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Floating particles effect */}
+                    <View style={styles.liveParticlesContainer}>
+                      <Animated.View style={[
+                        styles.liveParticle, 
+                        styles.liveParticle1, 
+                        { 
+                          opacity: liveDotBlinkAnim,
+                          transform: [{ translateY: liveParticleAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -10]
+                          })}]
+                        }
+                      ]} />
+                      <Animated.View style={[
+                        styles.liveParticle, 
+                        styles.liveParticle2, 
+                        { 
+                          opacity: liveDotBlinkAnim,
+                          transform: [{ translateY: liveParticleAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 8]
+                          })}]
+                        }
+                      ]} />
+                      <Animated.View style={[
+                        styles.liveParticle, 
+                        styles.liveParticle3, 
+                        { 
+                          opacity: liveDotBlinkAnim,
+                          transform: [{ translateY: liveParticleAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -6]
+                          })}]
+                        }
+                      ]} />
+                    </View>
+                  </View>
+                </LinearGradient>
               </View>
             </View>
 
@@ -4461,79 +4720,237 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Live Updates Styles
+  // Live Updates Styles - Modern Design
   liveUpdatesContainer: {
-    paddingVertical: 12,
-    backgroundColor: "white",
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#ff3b30',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.6,
+    shadowRadius: 25,
+    elevation: 20,
+    // Add a vibrant glow effect on Android
+    ...(Platform.OS === 'android' && {
+      backgroundColor: '#ff3b3040',
+      padding: 3,
+    }),
+  },
+
+  liveUpdatesGradient: {
+    borderRadius: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+
+  liveGlowBorder: {
+    borderRadius: 22,
+    padding: 2,
+    backgroundColor: '#ff3b3050',
+  },
+
+  liveShimmerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 100,
+    backgroundColor: '#ffffff',
+    transform: [{ skewX: '-20deg' }],
+  },
+
+  liveUpdatesContent: {
+    position: 'relative',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
 
   liveUpdatesHeader: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 4,
   },
 
   liveIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 12,
   },
 
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#ef4444",
-    shadowColor: "#ef4444",
-    shadowOpacity: 0.5,
+  livePulseContainer: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  livePulseOuter: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffffff60',
+    borderWidth: 2,
+    borderColor: '#ffffff80',
+  },
+
+  livePulseInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    shadowColor: '#ffffff',
+    shadowOpacity: 1,
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 4,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   liveText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#ffffff",
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    flex: 1,
+    letterSpacing: 0.5,
   },
 
+
   liveUpdatesWrapper: {
-    paddingHorizontal: 16,
-    height: 24,
+    minHeight: 60,
+    justifyContent: 'center',
     overflow: "hidden",
   },
 
   liveUpdateItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
+    paddingVertical: 4,
   },
 
-  liveUpdateDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#00b4a0",
+  liveUpdateIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ffffff30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff50',
+    shadowColor: '#ffffff',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  liveUpdateTextContainer: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 8,
   },
 
   liveUpdateText: {
-    fontSize: 13,
-    color: "#64748b",
+    fontSize: 14,
+    color: "#ffffff",
     fontWeight: "400",
-    flex: 1,
+    lineHeight: 20,
+    flexWrap: 'wrap',
   },
 
   liveUpdateBold: {
-    fontWeight: "700",
-    color: "#0f172a",
+    fontWeight: "800",
+    color: "#ffffff",
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  liveUpdateNormal: {
+    fontWeight: "500",
+    color: "#ffffff95",
   },
 
   liveUpdateLocation: {
-    color: "#00b4a0",
-    fontWeight: "600",
+    color: "#ffffff",
+    fontWeight: "700",
+    textDecorationLine: 'underline',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
 
-  liveUpdateLocationRed: {
-    color: "#ef4444",
+  liveUpdateTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  liveUpdateTime: {
+    fontSize: 11,
+    color: "#ffffff80",
+    fontWeight: "500",
+  },
+
+  liveWaitingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  liveTypingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+
+  liveTypingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ffffff80',
+  },
+
+
+  // Floating particles
+  liveParticlesContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
+  },
+
+  liveParticle: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ffffff80',
+    shadowColor: '#ffffff',
+    shadowOpacity: 0.8,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 4,
+  },
+
+  liveParticle1: {
+    top: 20,
+    right: 30,
+  },
+
+  liveParticle2: {
+    top: 40,
+    right: 60,
+  },
+
+  liveParticle3: {
+    bottom: 25,
+    right: 45,
   },
 
   // Grid Styles (3 columns)

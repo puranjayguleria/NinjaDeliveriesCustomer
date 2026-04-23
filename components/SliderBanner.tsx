@@ -134,15 +134,14 @@ const SliderBanner: React.FC<{ storeId: string }> = ({ storeId }) => {
         categoryName: banner.description || "Category",
       } as never);
     } else if (banner.redirectType === "saleItems") {
-      navigation.navigate(
-        "HomeTab" as never,
-        {
-          screen: "AllDiscountedProducts",
-          params: { storeId: location?.storeId },
-        } as never
-      );
+      const { safeNavigateToHome } = require('../utils/navigationHelpers'); // eslint-disable-line @typescript-eslint/no-require-imports
+      safeNavigateToHome(navigation, {
+        screen: "AllDiscountedProducts",
+        params: { storeId: location?.storeId },
+      });
     } else {
-      navigation.navigate("HomeTab" as never);
+      const { safeNavigateToHome } = require('../utils/navigationHelpers'); // eslint-disable-line @typescript-eslint/no-require-imports
+      safeNavigateToHome(navigation);
     }
   };
 

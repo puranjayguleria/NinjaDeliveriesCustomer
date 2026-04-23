@@ -78,6 +78,7 @@ import UnifiedCartScreen from "./screens/shared/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
 import AreaUnavailableModal from "./components/AreaUnavailableModal";
+import MaintenanceModal from "./components/MaintenanceModal";
 import RazorpayWebView from "./screens/shared/RazorpayWebView";
 import ProfileScreen from "./screens/shared/ProfileScreen";
 import LocationSelectorScreen from "./screens/shared/LocationSelectorScreen";
@@ -269,27 +270,20 @@ const RootStack = createNativeStackNavigator();
    ========================================================== */
 
 // Wrapper component that shows the right home screen based on toggle
-const HomeScreenWrapper = () => {
+const HomeScreenWrapper = React.memo(() => {
   const { activeMode } = useToggleContext();
-  return (
-    <>
-      {/* Always mounted — avoids layout jump on toggle */}
-      <View style={{ flex: 1, display: activeMode === 'service' ? 'flex' : 'none' }}>
-        <ServicesScreen />
-      </View>
-      {activeMode === 'food' && (
-        <View style={{ flex: 1 }}>
-          <FoodComingSoonScreen />
-        </View>
-      )}
-      {activeMode === 'grocery' && (
-        <View style={{ flex: 1 }}>
-          <ProductsHomeScreen />
-        </View>
-      )}
-    </>
-  );
-};
+  
+  // Render only the active screen for better performance
+  if (activeMode === 'service') {
+    return <ServicesScreen />;
+  }
+  
+  if (activeMode === 'food') {
+    return <FoodComingSoonScreen />;
+  }
+  
+  return <ProductsHomeScreen />;
+});
 
 function HomeStack() {
   return (
@@ -690,19 +684,9 @@ function CategoriesStack() {
 
 
 
-const CartStack = () => {
-  const { location } = useLocationContext();
-  const showGrocery = location?.grocery !== false;
-  const showServices = location?.services !== false;
-
-  // Lock initialRouteName on first render only to avoid useInsertionEffect warning
-  const initialRouteRef = useRef<string | null>(null);
-  if (initialRouteRef.current === null) {
-    initialRouteRef.current = (!showGrocery && showServices) ? 'ServicesHome' : 'CartHome';
-  }
-
+const CartStack = React.memo(() => {
   return (
-  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteRef.current}>
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CartHome">
     <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
     <Stack.Screen name="GroceryCart" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
@@ -732,7 +716,7 @@ const CartStack = () => {
     />
   </Stack.Navigator>
   );
-};
+});
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ProfileStack = () => (
@@ -779,14 +763,17 @@ function AppTabs() {
   
   // Derived: all services off for this area
   const allServicesOff = !showGrocery && !showServices && !showFood;
+  
+  // Check if any service is unavailable (at least one is false)
+  const anyServiceUnavailable = 
+    location?.grocery === false || 
+    location?.services === false || 
+    location?.food === false;
 
   // Lock initialRouteName on first render only — never change it after mount
   // (dynamic initialRouteName causes useInsertionEffect warning in React Navigation)
-  const initialTabRouteRef = useRef<string | null>(null);
-  if (initialTabRouteRef.current === null) {
-    initialTabRouteRef.current = showGrocery ? 'HomeTab' : 'CartFlow';
-  }
-  const initialTabRoute = initialTabRouteRef.current;
+  // Always use 'HomeTab' as initial route to prevent useInsertionEffect warning
+  const initialTabRoute = 'HomeTab';
   
   // Fetch location flags when storeId changes
   useEffect(() => {
@@ -831,62 +818,81 @@ function AppTabs() {
     };
   }, [location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (allServicesOff && location?.storeId) {
+    // Reset modal dismissed flag when location changes
+    modalDismissedRef.current = false;
+    
+    // Show modal if any service is unavailable and location is selected
+    // But don't show if user manually dismissed it
+    if (anyServiceUnavailable && location?.storeId && !modalDismissedRef.current) {
       setAreaUnavailableVisible(true);
     } else {
       setAreaUnavailableVisible(false);
     }
-  }, [allServicesOff, location?.storeId]);
+  }, [anyServiceUnavailable, location?.storeId]);
 
   // Auto-navigate based on location flags changes
   const prevGroceryRef = useRef(showGrocery);
   const prevServicesRef = useRef(showServices);
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
+    // Skip on initial mount to prevent unnecessary navigation
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevGroceryRef.current = showGrocery;
+      prevServicesRef.current = showServices;
+      return;
+    }
+
     if (!location?.storeId) return;
 
     const groceryChanged = prevGroceryRef.current !== showGrocery;
     const servicesChanged = prevServicesRef.current !== showServices;
 
-    let newMode: 'grocery' | 'service' | null = null;
-    let navigateTo: (() => void) | null = null;
+    // Only navigate if something actually changed
+    if (!groceryChanged && !servicesChanged) return;
 
-    // grocery turned OFF → go directly to ServicesHome
+    let newMode: 'grocery' | 'service' | null = null;
+    let navigateTo: string | null = null;
+
+    // grocery turned OFF → go directly to service mode
     if (groceryChanged && !showGrocery && showServices) {
       newMode = 'service';
-      navigateTo = () => (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+      navigateTo = 'service';
     }
-    // services turned OFF → go to HomeTab (grocery)
+    // services turned OFF → go to grocery mode
     else if (servicesChanged && !showServices && showGrocery) {
       newMode = 'grocery';
-      navigateTo = () => (navigationRef.navigate as any)('HomeTab');
+      navigateTo = 'grocery';
     }
-    // grocery turned ON → go back to HomeTab
+    // grocery turned ON → go back to grocery mode
     else if (groceryChanged && showGrocery && !prevGroceryRef.current) {
       newMode = 'grocery';
-      navigateTo = () => (navigationRef.navigate as any)('HomeTab');
+      navigateTo = 'grocery';
     }
-    // services turned ON (while grocery is off) → go to ServicesHome
+    // services turned ON (while grocery is off) → go to service mode
     else if (servicesChanged && showServices && !prevServicesRef.current && !showGrocery) {
       newMode = 'service';
-      navigateTo = () => (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+      navigateTo = 'service';
     }
 
-    if (newMode && navigateTo) {
-      const mode = newMode;
-      const nav = navigateTo;
-      // navigate first, then update mode after navigation settles
-      setTimeout(() => {
-        if (navigationRef.isReady()) nav();
-      }, 0);
-      setTimeout(() => {
-        setActiveMode(mode);
-      }, 50);
+    if (newMode && navigateTo && navigationRef.isReady()) {
+      // Update mode immediately to prevent flicker
+      setActiveMode(newMode);
+      
+      // Navigate after a single frame to ensure mode is updated
+      requestAnimationFrame(() => {
+        if (navigateTo === 'grocery' || navigateTo === 'service') {
+          // Use navigateHome helper which safely handles HomeTab availability
+          const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+          navigateHome();
+        }
+      });
     }
 
     prevGroceryRef.current = showGrocery;
     prevServicesRef.current = showServices;
-  }, [showGrocery, showServices]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showGrocery, showServices, location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Debug logging
   if (__DEV__) {
@@ -908,6 +914,7 @@ function AppTabs() {
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
   // Area unavailable modal state (all services off)
   const [areaUnavailableVisible, setAreaUnavailableVisible] = useState(false);
+  const modalDismissedRef = useRef(false);
 
 
   // One-time welcome modal -> jump user to Services (uses root navigation ref)
@@ -976,10 +983,11 @@ function AppTabs() {
       {
         text: "Continue",
         onPress: () => {
-            try {
+            const { isHomeTabAvailable } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+            if (isHomeTabAvailable()) {
               navigation.navigate("HomeTab", { screen: "LoginInHomeStack" });
-            } catch {
-              navigation.navigate("CartFlow");
+            } else {
+              navigation.navigate("CartFlow", { screen: "ServicesHome" });
             }
           },
       },
@@ -1020,6 +1028,35 @@ function AppTabs() {
     }
   };
 
+  // Stable tab bar styles to prevent useInsertionEffect warning
+  const tabBarStyleVisible = React.useMemo(() => ({
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    height: Platform.OS === "android" ? 60 : 85,
+    paddingBottom: Platform.OS === "android" ? 10 : 30,
+    elevation: 8,
+  }), []);
+
+  const tabBarStyleHidden = React.useMemo(() => ({
+    display: 'none' as const
+  }), []);
+
+  // Memoize the tab bar style based on activeMode
+  const tabBarStyle = React.useMemo(() => 
+    activeMode === 'grocery' ? tabBarStyleVisible : tabBarStyleHidden,
+    [activeMode, tabBarStyleVisible, tabBarStyleHidden]
+  );
+
+  // Stable icon map to prevent re-creation on every render
+  const iconMap = React.useMemo<Record<string, keyof typeof Ionicons.glyphMap>>(() => ({
+    HomeTab: "home-outline",
+    CategoriesTab: "apps-outline",
+    BuyAgainTab: "repeat-outline",
+    CartFlow: "cart-outline",
+    Profile: "person-outline",
+  }), []);
+
   return (
     <>
       <WelcomeServicesOnceModal
@@ -1034,26 +1071,12 @@ function AppTabs() {
       <Tab.Navigator
         initialRouteName={initialTabRoute}
         screenOptions={({ route }) => {
-          const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-            HomeTab: "home-outline",
-            CategoriesTab: "apps-outline",
-            BuyAgainTab: "repeat-outline",
-            CartFlow: "cart-outline",
-            Profile: "person-outline",
-          };
-          const isServiceMode = activeMode === 'service' || activeMode === 'food';
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
-            tabBarStyle: isServiceMode ? { display: 'none' as const } : {
-              backgroundColor: "#ffffff",
-              borderTopWidth: 1,
-              borderTopColor: "#f0f0f0",
-              height: Platform.OS === "android" ? 60 : 85,
-              paddingBottom: Platform.OS === "android" ? 10 : 30,
-              elevation: 8,
-            },
+            // Hide tab bar in service/food mode, show only in grocery mode
+            tabBarStyle: tabBarStyle,
             // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
               // Hide Profile tab icon
@@ -1105,14 +1128,24 @@ function AppTabs() {
             options={{ title: "Home" }}
             listeners={({ navigation }) => ({
               tabPress: (e) => {
-                // If we are already on HomeTab, pop to the top of its stack.
-                // This ensures that if the user is on ServiceCart (which is in HomeStack),
-                // they return to ProductsHome/ServicesScreen.
+                // Prevent default navigation
+                e.preventDefault();
+                
+                // Get current navigation state
                 const state = navigation.getState();
-                const homeRoute = state.routes[state.index];
-                if (homeRoute.name === "HomeTab" && homeRoute.state && (homeRoute.state.index ?? 0) > 0) {
-                  // Navigate to the first screen of the HomeStack
-                  navigation.navigate("HomeTab", { screen: "ProductsHome" });
+                const currentRoute = state.routes[state.index];
+                
+                // If already on HomeTab
+                if (currentRoute.name === "HomeTab") {
+                  const homeState = currentRoute.state;
+                  // If we're deep in the stack, reset to ProductsHome
+                  if (homeState && (homeState.index ?? 0) > 0) {
+                    navigation.navigate("HomeTab", { screen: "ProductsHome" });
+                  }
+                  // If already on ProductsHome, do nothing (prevents flicker)
+                } else {
+                  // Navigate to HomeTab normally
+                  navigation.navigate("HomeTab");
                 }
               },
             })}
@@ -1248,15 +1281,77 @@ function AppTabs() {
         />
       )}
 
-      {/* Area Unavailable Modal (all services off) */}
-      <AreaUnavailableModal
+      {/* Maintenance Modal (all services off for this location) */}
+      <MaintenanceModal
         visible={areaUnavailableVisible}
-        onClose={() => setAreaUnavailableVisible(false)}
+        unavailableServices={{
+          grocery: location?.grocery,
+          services: location?.services,
+          food: location?.food,
+        }}
+        onClose={() => {
+          setAreaUnavailableVisible(false);
+          modalDismissedRef.current = true;
+        }}
         onChangeLocation={() => {
           setAreaUnavailableVisible(false);
+          modalDismissedRef.current = true;
           if (navigationRef.isReady()) {
             (navigationRef.navigate as any)('LocationSelector');
           }
+        }}
+        onNavigateToService={(service) => {
+          setAreaUnavailableVisible(false);
+          modalDismissedRef.current = true;
+          
+          // Set the active mode
+          setActiveMode(service);
+          
+          // Direct navigation to appropriate screen
+          setTimeout(() => {
+            if (!navigationRef.isReady()) return;
+            
+            if (service === 'grocery') {
+              // Navigate directly to grocery home
+              const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+              navigateHome();
+            } else if (service === 'service') {
+              // Navigate directly to services screen
+              // Check if CategoriesTab exists (grocery enabled)
+              const state = navigationRef.getRootState?.();
+              const allRoutes: string[] = [];
+              const collect = (s: any) => {
+                if (!s) return;
+                (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
+                (s.routes ?? []).forEach((r: any) => collect(r.state));
+              };
+              collect(state);
+              
+              if (allRoutes.includes('CategoriesTab')) {
+                // CategoriesTab exists, navigate there (shows AllServicesScreen in service mode)
+                (navigationRef.navigate as any)('CategoriesTab');
+              } else {
+                // CategoriesTab doesn't exist, navigate to CartFlow > ServicesHome
+                (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+              }
+            } else if (service === 'food') {
+              // Navigate directly to food screen
+              const state = navigationRef.getRootState?.();
+              const allRoutes: string[] = [];
+              const collect = (s: any) => {
+                if (!s) return;
+                (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
+                (s.routes ?? []).forEach((r: any) => collect(r.state));
+              };
+              collect(state);
+              
+              if (allRoutes.includes('CategoriesTab')) {
+                (navigationRef.navigate as any)('CategoriesTab');
+              } else {
+                (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+              }
+            }
+          }, 100);
         }}
       />
 

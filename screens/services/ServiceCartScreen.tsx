@@ -8,17 +8,26 @@ import {
   FlatList,
   Alert,
   StatusBar,
+  BackHandler,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getLastNonCartTab, navigationRef } from "../../navigation/rootNavigation";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
 import { getBestActiveQuantityOffer } from "../../utils/serviceQuantityOffers";
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
   const { state, removeService, updateService, clearCart, totalItems, totalAmount, hasServices } = useServiceCart();
+  const [isScreenFocused, setIsScreenFocused] = React.useState(false);
+
+  // Handle screen focus to prevent tab bar flicker
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsScreenFocused(true);
+      return () => setIsScreenFocused(false);
+    }, [])
+  );
 
   React.useEffect(() => {
     if (!__DEV__) return;
@@ -46,6 +55,17 @@ export default function ServiceCartScreen() {
       console.log('🧪 [ServiceCartScreen] items debug failed', e);
     }
   }, [state.items]);
+
+  // Hardware back button handler
+  React.useEffect(() => {
+    const handleHardwareBack = () => {
+      handleBackPress();
+      return true; // Prevent default back behavior
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+    return () => backHandler.remove();
+  }, [hasServices, navigation]);
   
   const getDisplayPricing = (item: ServiceCartItem) => {
     const baseUnit = Number(item?.unitPrice) || Number(item?.company?.price) || 0;
@@ -105,7 +125,11 @@ export default function ServiceCartScreen() {
       "Are you sure you want to remove all services from your cart?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Clear All", style: "destructive", onPress: clearCart },
+        {
+          text: "Clear All",
+          style: "destructive",
+          onPress: () => clearCart(),
+        },
       ]
     );
   };
@@ -120,56 +144,17 @@ export default function ServiceCartScreen() {
   };
 
   const handleBackPress = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
+    // If cart is empty, always go to ServicesHome
+    if (!hasServices) {
+      navigation.navigate("ServicesHome");
       return;
     }
-
-    const lastTab = getLastNonCartTab();
-    if (navigationRef.isReady?.() && lastTab) {
-      try {
-        if (lastTab === "ServicesTab") {
-          navigationRef.navigate("CategoriesTab" as never);
-          return;
-        }
-        navigationRef.navigate(lastTab as never);
-        return;
-      } catch {
-        // fall through
-      }
-    }
-
-    const availableRoutes = new Set<string>();
-    const collect = (state: any) => {
-      if (!state) return;
-      (state.routeNames ?? []).forEach((n: string) => availableRoutes.add(n));
-      (state.routes ?? []).forEach((r: any) => collect(r.state));
-    };
-    collect(navigationRef.getRootState?.() ?? (navigationRef as any).getState?.());
-
-    if (navigationRef.isReady?.()) {
-      if (availableRoutes.size === 0) {
-        try {
-          navigationRef.navigate("CategoriesTab" as never);
-          return;
-        } catch {}
-        try {
-          navigationRef.navigate("HomeTab" as never);
-          return;
-        } catch {}
-      }
-      if (availableRoutes.has("CategoriesTab")) {
-        navigationRef.navigate("CategoriesTab" as never);
-        return;
-      }
-      if (availableRoutes.has("HomeTab")) {
-        navigationRef.navigate("HomeTab" as never);
-        return;
-      }
-      if (availableRoutes.has("NinjaEatsHomeTab")) {
-        navigationRef.navigate("NinjaEatsHomeTab" as never);
-        return;
-      }
+    
+    // If cart has items, follow normal back flow
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate("ServicesHome");
     }
   };
 
@@ -434,23 +419,21 @@ export default function ServiceCartScreen() {
 
   if (!hasServices) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-        <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleBackPress}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="arrow-back" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
-              Service Cart
-            </Text>
-            <View style={styles.backButton} />
-          </View>
-        </SafeAreaView>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackPress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+            Service Cart
+          </Text>
+          <View style={styles.backButton} />
+        </View>
         <View style={styles.emptyContainer}>
           <Ionicons name="construct-outline" size={80} color="#ccc" />
           <Text style={styles.emptyTitle}>Your service cart is empty</Text>
@@ -464,34 +447,32 @@ export default function ServiceCartScreen() {
             <Text style={styles.browseButtonText}>Browse Services</Text>
           </TouchableOpacity>
         </View>
-        <ServicesTabBar activeTab="cart" />
-      </View>
+        {isScreenFocused && <ServicesTabBar activeTab="cart" />}
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-      <SafeAreaView edges={["top", "left", "right"]} style={styles.headerSafeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBackPress}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
-            Service Cart
-          </Text>
-          <TouchableOpacity
-            style={styles.clearButton}
-            onPress={handleClearCart}
-          >
-            <Text style={styles.clearButtonText}>Clear All</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBackPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          Service Cart
+        </Text>
+        <TouchableOpacity
+          style={styles.clearButton}
+          onPress={handleClearCart}
+        >
+          <Text style={styles.clearButtonText}>Clear All</Text>
+        </TouchableOpacity>
+      </View>
       
       <FlatList
         data={Object.values(state.items)}
@@ -514,11 +495,9 @@ export default function ServiceCartScreen() {
             Proceed to Checkout ({totalItems} services)
           </Text>
         </TouchableOpacity>
-        {/* Spacer so tab bar doesn't overlap the checkout button */}
-        <View style={{ height: 64 }} />
       </View>
-      <ServicesTabBar activeTab="cart" />
-    </View>
+      {isScreenFocused && <ServicesTabBar activeTab="cart" />}
+    </SafeAreaView>
   );
 }
 
@@ -526,10 +505,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8f9fa",
-  },
-
-  headerSafeArea: {
-    backgroundColor: "#fff",
   },
   header: {
     flexDirection: "row",
@@ -567,7 +542,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 220,
+    paddingBottom: 200,
   },
   serviceCard: {
     backgroundColor: "#fff",
@@ -792,6 +767,10 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   footer: {
+    position: "absolute",
+    bottom: 60,
+    left: 0,
+    right: 0,
     backgroundColor: "#fff",
     padding: 18,
     borderTopWidth: 1,

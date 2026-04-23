@@ -137,10 +137,9 @@ export default function UnifiedCartScreen() {
     if (navigationRef.isReady?.()) {
       // If we cannot introspect route names, still attempt a sensible exit.
       if (availableRoutes.size === 0) {
-        try {
-          navigation.navigate("AppTabs", { screen: "HomeTab" });
-          return;
-        } catch {}
+        // Fallback to services if no routes detected
+        navigation.navigate("CartFlow", { screen: "ServicesHome" });
+        return;
       }
       if (availableRoutes.has("HomeTab")) {
         navigation.navigate("AppTabs", { screen: "HomeTab" });
@@ -154,6 +153,8 @@ export default function UnifiedCartScreen() {
         navigationRef.navigate("CategoriesTab" as never);
         return;
       }
+      // Final fallback - go to services
+      navigation.navigate("CartFlow", { screen: "ServicesHome" });
     }
   };
 
@@ -351,7 +352,8 @@ export default function UnifiedCartScreen() {
               style={styles.emptyBtn}
               onPress={() => {
                 setActiveMode('grocery');
-                try { navigation.navigate('HomeTab', { screen: 'ProductsHome' }); } catch {}
+                const { safeNavigateToHome } = require('../../utils/navigationHelpers'); // eslint-disable-line @typescript-eslint/no-require-imports
+                safeNavigateToHome(navigation, { screen: 'ProductsHome' });
               }}
             >
               <Ionicons name="basket-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
@@ -363,27 +365,13 @@ export default function UnifiedCartScreen() {
               style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
               onPress={() => {
                 setActiveMode('service');
-                if (navigationRef.isReady?.()) {
-                  const state = navigationRef.getRootState?.();
-                  const allRoutes: string[] = [];
-                  const collect = (s: any) => {
-                    if (!s) return;
-                    (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
-                    (s.routes ?? []).forEach((r: any) => collect(r.state));
-                  };
-                  collect(state);
-                  if (allRoutes.includes('HomeTab')) {
-                    (navigationRef.navigate as any)('HomeTab', { screen: 'ProductsHome' });
-                  } else {
-                    // Grocery off — reset CartFlow to ServicesHome directly
-                    (navigationRef as any).dispatch(
-                      CommonActions.reset({
-                        index: 0,
-                        routes: [{ name: 'CartFlow', state: { routes: [{ name: 'ServicesHome' }] } }],
-                      })
-                    );
-                  }
-                }
+                // Always navigate to services when service button is clicked
+                (navigationRef as any).dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'CartFlow', state: { routes: [{ name: 'ServicesHome' }] } }],
+                  })
+                );
               }}
             >
               <Ionicons name="construct-outline" size={20} color="#fff" style={{ marginRight: 8 }} />

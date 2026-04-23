@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 
 type ToggleMode = 'grocery' | 'service' | 'food';
 
@@ -10,10 +10,22 @@ type ToggleContextType = {
 const ToggleContext = createContext<ToggleContextType | undefined>(undefined);
 
 export const ToggleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeMode, setActiveMode] = useState<ToggleMode>('grocery');
+  const [activeMode, setActiveModeState] = useState<ToggleMode>('grocery');
+
+  // Memoize setActiveMode to prevent unnecessary re-renders
+  const setActiveMode = useCallback((mode: ToggleMode) => {
+    setActiveModeState(prevMode => {
+      // Only update if mode actually changed
+      if (prevMode === mode) return prevMode;
+      return mode;
+    });
+  }, []);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const value = useMemo(() => ({ activeMode, setActiveMode }), [activeMode, setActiveMode]);
 
   return (
-    <ToggleContext.Provider value={{ activeMode, setActiveMode }}>
+    <ToggleContext.Provider value={value}>
       {children}
     </ToggleContext.Provider>
   );

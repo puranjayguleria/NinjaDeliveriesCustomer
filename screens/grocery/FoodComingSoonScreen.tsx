@@ -186,7 +186,7 @@ const FoodComingSoonScreen: React.FC = () => {
             <MaterialCommunityIcons name="hamburger" size={34} color="#FF8E3C" />
           </View>
           <View style={[styles.floatingIcon, styles.icon3]}>
-            <MaterialCommunityIcons name="noodle" size={28} color="#4D96FF" />
+            <MaterialCommunityIcons name="noodles" size={28} color="#4D96FF" />
           </View>
         </Animated.View>
 
