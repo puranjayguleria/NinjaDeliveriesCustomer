@@ -167,7 +167,11 @@ export default function FoodScreen() {
                   setActiveMode("grocery");
                   // Navigate to HomeTab only if it exists (grocery is available)
                   if (location?.grocery !== false) {
-                    navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+                    try {
+                      navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                    } catch {
+                      try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                    }
                   }
                 }}
                 activeOpacity={0.7}
@@ -186,7 +190,11 @@ export default function FoodScreen() {
                   setActiveMode("service");
                   // Navigate to HomeTab only if it exists (grocery is available)
                   if (location?.grocery !== false) {
-                    navigation.reset({ index: 0, routes: [{ name: "HomeTab" }] });
+                    try {
+                      navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                    } catch {
+                      try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                    }
                   }
                   // If grocery is false, just set mode without navigation
                 }}

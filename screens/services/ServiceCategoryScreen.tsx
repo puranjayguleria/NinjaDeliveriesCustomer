@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect } from "react";
+import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -640,6 +641,7 @@ export default function ServiceCategoryScreen() {
           </View>
         </View>
       )}
+      <ServicesTabBar activeTab="explore" />
     </View>
   );
 }
@@ -954,7 +956,7 @@ const styles = StyleSheet.create({
   // Bottom Bar
   bottomBar: {
     position: "absolute",
-    bottom: 0,
+    bottom: 60,
     left: 0,
     right: 0,
     backgroundColor: "white",

@@ -1692,7 +1692,7 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {location?.grocery === false || Object.keys(cart).length === 0 ? (
+        {Object.keys(cart).length === 0 ? (
           <View style={styles.loaderContainer}>
             <Ionicons name="cart-outline" size={90} color="#ddd" />
             <Text style={{ color: '#333', fontSize: 20, fontWeight: '700', marginTop: 16, marginBottom: 6 }}>

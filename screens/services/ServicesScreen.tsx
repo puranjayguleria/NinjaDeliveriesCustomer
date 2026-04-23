@@ -19,6 +19,7 @@ import {
   Platform,
   Alert,
   ImageBackground,
+  Modal,
 } from "react-native";
 import { Image as ExpoImage, Image } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -264,6 +265,323 @@ const SERVICES_SEARCH_PLACEHOLDERS = [
 
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
 const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
+
+// ─── QuickServiceCard ────────────────────────────────────────────────────────
+// Extracted so each card can independently track its "see more" state.
+interface QuickServiceCardProps {
+  service: any;
+  fallbackBgColor: string;
+  fallbackIconName: string;
+  fallbackIconColor: string;
+  onPress: (svc: any) => void;
+}
+
+function QuickServiceCard({
+  service,
+  fallbackBgColor,
+  fallbackIconName,
+  fallbackIconColor,
+  onPress,
+}: QuickServiceCardProps) {
+  const [modalVisible, setModalVisible] = React.useState(false);
+  const description = String(service?.description || '').trim();
+  const hasDescription = description.length > 0;
+  const SHORT_LIMIT = 60;
+  const isLong = description.length > SHORT_LIMIT;
+
+  return (
+    <>
+      <TouchableOpacity
+        style={quickCardStyles.card}
+        activeOpacity={0.7}
+        onPress={() => onPress(service)}
+      >
+        {/* Image / Icon */}
+        <View style={quickCardStyles.imageContainer}>
+          {service.imageUrl ? (
+            <ExpoImage
+              source={{ uri: service.imageUrl }}
+              style={quickCardStyles.image}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+          ) : (
+            <View style={[quickCardStyles.iconFallback, { backgroundColor: fallbackBgColor }]}>
+              <Ionicons name={fallbackIconName as any} size={28} color={fallbackIconColor} />
+            </View>
+          )}
+        </View>
+
+        {/* Info */}
+        <View style={quickCardStyles.info}>
+          {/* Name + arrow button row */}
+          <View style={quickCardStyles.nameRow}>
+            <Text style={quickCardStyles.name} numberOfLines={2}>
+              {service.name || 'Service'}
+            </Text>
+            <TouchableOpacity
+              style={quickCardStyles.arrowBtn}
+              activeOpacity={0.7}
+              onPress={() => onPress(service)}
+            >
+              <LinearGradient
+                colors={['#10b981', '#059669', '#047857']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={quickCardStyles.arrowGradient}
+              >
+                <Ionicons name="arrow-forward" size={14} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          {/* Description */}
+          {hasDescription && (
+            <View>
+              <Text style={quickCardStyles.description} numberOfLines={2}>
+                {description}
+              </Text>
+              {isLong && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={quickCardStyles.seeMore}>See more</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {/* Description Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={quickCardStyles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalVisible(false)}
+        >
+          <View style={quickCardStyles.modalContent}>
+            {/* Modal Header */}
+            <View style={quickCardStyles.modalHeader}>
+              <View style={quickCardStyles.modalHeaderLeft}>
+                <View style={[quickCardStyles.modalIcon, { backgroundColor: fallbackBgColor }]}>
+                  <Ionicons name={fallbackIconName as any} size={20} color={fallbackIconColor} />
+                </View>
+                <Text style={quickCardStyles.modalTitle} numberOfLines={2}>
+                  {service.name || 'Service'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                style={quickCardStyles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Body */}
+            <ScrollView
+              style={quickCardStyles.modalBody}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={quickCardStyles.modalDescription}>{description}</Text>
+            </ScrollView>
+
+            {/* Modal Footer */}
+            <View style={quickCardStyles.modalFooter}>
+              <TouchableOpacity
+                style={quickCardStyles.bookButton}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setModalVisible(false);
+                  onPress(service);
+                }}
+              >
+                <LinearGradient
+                  colors={['#10b981', '#059669', '#047857']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={quickCardStyles.bookButtonGradient}
+                >
+                  <Text style={quickCardStyles.bookButtonText}>Book Now</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+}
+
+const quickCardStyles = StyleSheet.create({
+  card: {
+    width: 150,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  imageContainer: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#f8fafc',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  iconFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: {
+    padding: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  name: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+    lineHeight: 16,
+    paddingRight: 6,
+  },
+  arrowBtn: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  arrowGradient: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  description: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 15,
+    fontWeight: '400',
+  },
+  seeMore: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#00b4a0',
+    marginTop: 3,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 10,
+  },
+  modalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+    lineHeight: 20,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 300,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  bookButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  bookButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  bookButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
@@ -2390,64 +2708,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {electricianServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#FFFBEB' }]}>
-                          <Ionicons 
-                            name="flash-outline" 
-                            size={28} 
-                            color="#F59E0B" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {electricianServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#FFFBEB"
+                  fallbackIconName="flash-outline"
+                  fallbackIconColor="#F59E0B"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2482,64 +2752,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {plumberServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#EFF6FF' }]}>
-                          <Ionicons 
-                            name="water-outline" 
-                            size={28} 
-                            color="#3B82F6" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {plumberServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#EFF6FF"
+                  fallbackIconName="water-outline"
+                  fallbackIconColor="#3B82F6"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2578,64 +2800,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {automobileWashingServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#F0F9FF' }]}>
-                          <Ionicons 
-                            name="car-outline" 
-                            size={28} 
-                            color="#0EA5E9" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {automobileWashingServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#F0F9FF"
+                  fallbackIconName="car-outline"
+                  fallbackIconColor="#0EA5E9"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2674,64 +2848,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {homeCleaningServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#ECFDF5' }]}>
-                          <Ionicons 
-                            name="home-outline" 
-                            size={28} 
-                            color="#10B981" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {homeCleaningServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#ECFDF5"
+                  fallbackIconName="home-outline"
+                  fallbackIconColor="#10B981"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -3317,10 +3443,15 @@ export default function ServicesScreen() {
                     setActiveMode("grocery");
                     // Navigate to HomeTab only if it exists (grocery is available)
                     if (location?.grocery !== false) {
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: "HomeTab" }],
-                      });
+                      try {
+                        navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                      } catch {
+                        try {
+                          navigation.navigate("HomeTab" as any);
+                        } catch {
+                          // already on home, ignore
+                        }
+                      }
                     }
                   }}
                   activeOpacity={0.7}

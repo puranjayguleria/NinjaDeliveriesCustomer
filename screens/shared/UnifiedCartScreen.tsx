@@ -74,10 +74,10 @@ export default function UnifiedCartScreen() {
     fetchGroceryProducts();
   }, [cart]);
 
-  // Create unified cart items
+  // Create unified cart items - always show all items regardless of location flags
   const unifiedItems: UnifiedCartItem[] = [
-    // Grocery items - only show when grocery is enabled
-    ...(groceryEnabled ? groceryProducts.map(product => ({
+    // Always show grocery items (even if grocery is disabled in this area)
+    ...groceryProducts.map(product => ({
       id: product.id,
       type: 'grocery' as const,
       name: product.name || product.title || 'Unknown Product',
@@ -85,23 +85,23 @@ export default function UnifiedCartScreen() {
       quantity: cart[product.id] || 0,
       image: product.imageUrl || product.image,
       details: product,
-    })) : []),
-    // Service items - only show when services is enabled
-    ...(servicesEnabled ? Object.values(serviceState.items).map(service => ({
+    })),
+    // Always show service items (even if services is disabled in this area)
+    ...Object.values(serviceState.items).map(service => ({
       id: service.id,
       type: 'service' as const,
       name: service.serviceTitle,
       price: service.company.price ?? 0,
       quantity: service.quantity,
       details: service,
-    })) : [])
+    }))
   ];
 
-  const groceryTotal = groceryEnabled ? groceryProducts.reduce((total, product) => {
+  const groceryTotal = groceryProducts.reduce((total, product) => {
     return total + (product.price * (cart[product.id] || 0));
-  }, 0) : 0;
+  }, 0);
 
-  const grandTotal = groceryTotal + (servicesEnabled ? serviceTotalAmount : 0);
+  const grandTotal = groceryTotal + serviceTotalAmount;
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleBackPress = () => {
@@ -216,8 +216,8 @@ export default function UnifiedCartScreen() {
   };
 
   const handleCheckout = () => {
-    const hasGrocery = groceryEnabled && groceryProducts.length > 0;
-    const hasServices = servicesEnabled && Object.keys(serviceState.items).length > 0;
+    const hasGrocery = groceryProducts.length > 0;
+    const hasServices = Object.keys(serviceState.items).length > 0;
 
     if (hasGrocery && hasServices) {
       Alert.alert(
@@ -416,13 +416,13 @@ export default function UnifiedCartScreen() {
 
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
-          {groceryEnabled && (
+          {groceryProducts.length > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Grocery Items:</Text>
               <Text style={styles.totalValue}>₹{groceryTotal.toFixed(2)}</Text>
             </View>
           )}
-          {servicesEnabled && (
+          {Object.keys(serviceState.items).length > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Services:</Text>
               <Text style={styles.totalValue}>₹{serviceTotalAmount.toFixed(2)}</Text>

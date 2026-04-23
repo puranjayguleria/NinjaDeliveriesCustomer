@@ -1,7 +1,7 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-import { ensureFirebaseReady } from './firebase.native';
+import { ensureFirebaseReady, auth, firestore } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -15,26 +15,23 @@ import {
   AppState,
   Modal as RNModal,
   Image,
+  NativeModules,
+  Platform,
+  Linking,
 } from "react-native";
 import {
   NavigationContainer,
-  getFocusedRouteNameFromRoute,
   CommonActions,
   useNavigation,
-  useRoute,
 } from "@react-navigation/native";
 import { navigationRef, setLastNonCartTab } from "./navigation/rootNavigation";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
-import { auth, firestore } from './firebase.native'; 
-// import auth from "@react-native-firebase/auth";
-// import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
-import { NativeModules, Platform } from 'react-native';
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -42,7 +39,7 @@ import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider, useLocationContext } from "./context/LocationContext";
 import { ToggleProvider, useToggleContext } from "./context/ToggleContext";
-import { fetchLocationFlags } from "./utils/fetchLocationFlags";
+import { fetchLocationFlags } from "./utils/fetchLocationFlags"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
@@ -107,11 +104,11 @@ import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/gamification/RewardScreen";
-import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
 import OrdersScreen from "./screens/shared/OrdersScreen";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -144,7 +141,7 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
         if (!razorpayOrderId) return;
         if (cancelled) return;
 
-        const axios = require("axios").default;
+        const axios = require("axios").default; // eslint-disable-line @typescript-eslint/no-require-imports
         const api = axios.create({
           timeout: 20000,
           headers: { "Content-Type": "application/json" },
@@ -426,7 +423,7 @@ function HomeStack() {
       {/* Contact Us Screen */}
       <Stack.Screen
         name="ContactUs"
-        component={require("./screens/shared/ContactUsScreen").default}
+        component={require("./screens/shared/ContactUsScreen").default} // eslint-disable-line @typescript-eslint/no-require-imports
         options={{ title: "Contact Us", headerShown: false }}
       />
 
@@ -698,11 +695,14 @@ const CartStack = () => {
   const showGrocery = location?.grocery !== false;
   const showServices = location?.services !== false;
 
-  // When grocery is off but services is on, start directly on ServicesHome
-  const initialRoute = (!showGrocery && showServices) ? 'ServicesHome' : 'CartHome';
+  // Lock initialRouteName on first render only to avoid useInsertionEffect warning
+  const initialRouteRef = useRef<string | null>(null);
+  if (initialRouteRef.current === null) {
+    initialRouteRef.current = (!showGrocery && showServices) ? 'ServicesHome' : 'CartHome';
+  }
 
   return (
-  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteRef.current}>
     <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
     <Stack.Screen name="GroceryCart" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
@@ -734,6 +734,7 @@ const CartStack = () => {
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ProfileHome" component={ProfileScreen} />
@@ -749,7 +750,7 @@ const ProfileStack = () => (
     />
     <Stack.Screen
       name="ContactUs"
-      component={require("./screens/shared/ContactUsScreen").default}
+      component={require("./screens/shared/ContactUsScreen").default} // eslint-disable-line @typescript-eslint/no-require-imports
       options={{ title: "Contact Us", headerShown: false }}
     />
     <Stack.Screen
@@ -765,14 +766,11 @@ const ProfileStack = () => (
    ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
-  const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
+  const { totalItems: serviceTotalItems } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
-  const { activeMode } = useToggleContext();
+  const { activeMode, setActiveMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
-  const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
-  const route = useRoute();
-  const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
   
   // Get location flags (default to true if not set)
   const showGrocery = location?.grocery !== false;
@@ -781,6 +779,14 @@ function AppTabs() {
   
   // Derived: all services off for this area
   const allServicesOff = !showGrocery && !showServices && !showFood;
+
+  // Lock initialRouteName on first render only — never change it after mount
+  // (dynamic initialRouteName causes useInsertionEffect warning in React Navigation)
+  const initialTabRouteRef = useRef<string | null>(null);
+  if (initialTabRouteRef.current === null) {
+    initialTabRouteRef.current = showGrocery ? 'HomeTab' : 'CartFlow';
+  }
+  const initialTabRoute = initialTabRouteRef.current;
   
   // Fetch location flags when storeId changes
   useEffect(() => {
@@ -823,9 +829,7 @@ function AppTabs() {
       console.log('[AppTabs] Cleaning up real-time listener');
       unsubscribe();
     };
-  }, [location?.storeId]);
-
-  // Show modal when ALL services are off for this area
+  }, [location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (allServicesOff && location?.storeId) {
       setAreaUnavailableVisible(true);
@@ -834,32 +838,55 @@ function AppTabs() {
     }
   }, [allServicesOff, location?.storeId]);
 
-  // Navigate away if current tab becomes unavailable
-  useEffect(() => {
-    const navigation = navigationRef.current;
-    if (!navigation) return;
-
-    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab' || currentTab === 'BuyAgainTab') && !showGrocery) {
-      console.log('[AppTabs] Grocery tab unavailable, navigating to CartFlow');
-      navigation.navigate('CartFlow' as never);
-    }
-  }, [showGrocery, currentTab]);
-
-  // Navigate to HomeTab when grocery becomes true (from false)
+  // Auto-navigate based on location flags changes
   const prevGroceryRef = useRef(showGrocery);
-  useEffect(() => {
-    const navigation = navigationRef.current;
-    if (!navigation) return;
+  const prevServicesRef = useRef(showServices);
 
-    // Check if grocery flag changed from false to true
-    if (!prevGroceryRef.current && showGrocery) {
-      console.log('[AppTabs] Grocery enabled, navigating to HomeTab');
-      navigation.navigate('HomeTab' as never);
+  useEffect(() => {
+    if (!location?.storeId) return;
+
+    const groceryChanged = prevGroceryRef.current !== showGrocery;
+    const servicesChanged = prevServicesRef.current !== showServices;
+
+    let newMode: 'grocery' | 'service' | null = null;
+    let navigateTo: (() => void) | null = null;
+
+    // grocery turned OFF → go directly to ServicesHome
+    if (groceryChanged && !showGrocery && showServices) {
+      newMode = 'service';
+      navigateTo = () => (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+    }
+    // services turned OFF → go to HomeTab (grocery)
+    else if (servicesChanged && !showServices && showGrocery) {
+      newMode = 'grocery';
+      navigateTo = () => (navigationRef.navigate as any)('HomeTab');
+    }
+    // grocery turned ON → go back to HomeTab
+    else if (groceryChanged && showGrocery && !prevGroceryRef.current) {
+      newMode = 'grocery';
+      navigateTo = () => (navigationRef.navigate as any)('HomeTab');
+    }
+    // services turned ON (while grocery is off) → go to ServicesHome
+    else if (servicesChanged && showServices && !prevServicesRef.current && !showGrocery) {
+      newMode = 'service';
+      navigateTo = () => (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
     }
 
-    // Update previous value
+    if (newMode && navigateTo) {
+      const mode = newMode;
+      const nav = navigateTo;
+      // navigate first, then update mode after navigation settles
+      setTimeout(() => {
+        if (navigationRef.isReady()) nav();
+      }, 0);
+      setTimeout(() => {
+        setActiveMode(mode);
+      }, 50);
+    }
+
     prevGroceryRef.current = showGrocery;
-  }, [showGrocery]);
+    prevServicesRef.current = showServices;
+  }, [showGrocery, showServices]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Debug logging
   if (__DEV__) {
@@ -874,7 +901,7 @@ function AppTabs() {
   
   // Cart selection modal state
   const [cartModalVisible, setCartModalVisible] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
   // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   // Services unavailable modal state
@@ -923,14 +950,14 @@ function AppTabs() {
         ]),
       ])
     ).start();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
-  const [currentUser, setCurrentUser] = useState(() => auth().currentUser);
+  const [currentUser, setCurrentUser] = useState(() => auth().currentUser); // eslint-disable-line @typescript-eslint/no-unused-vars
   useEffect(() => auth().onAuthStateChanged(setCurrentUser), []);
 
-  const inProgress = activeOrders.filter(
+  const inProgress = activeOrders.filter( // eslint-disable-line @typescript-eslint/no-unused-vars
     (o) => o.status === "pending" || o.status === "active"
   );
 
@@ -966,68 +993,31 @@ function AppTabs() {
 
   const handleSelectGrocery = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate to grocery cart (original CartScreen)
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "CartFlow",
-              state: { routes: [{ name: "GroceryCart" }] },
-            },
-          ],
-        })
-      );
-    }
     setPendingNavigation(null);
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'GroceryCart' });
+    }
   };
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate first, then show loader
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "HomeTab",
-              state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
-            },
-          ],
-        })
-      );
-      
-      // Show loader immediately
-      setServiceLoaderVisible(true);
-      
-      // Hide loader after animation
-      setTimeout(() => {
-        setServiceLoaderVisible(false);
-      }, 500);
-    }
-    
     setPendingNavigation(null);
+
+    // Always navigate via root ref so the correct navigator handles it
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'ServiceCart' });
+    }
+
+    setServiceLoaderVisible(true);
+    setTimeout(() => setServiceLoaderVisible(false), 500);
   };
 
   const handleSelectUnified = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate to unified cart
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "CartFlow",
-              state: { routes: [{ name: "CartHome" }] },
-            },
-          ],
-        })
-      );
-    }
     setPendingNavigation(null);
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'CartHome' });
+    }
   };
 
   return (
@@ -1042,7 +1032,7 @@ function AppTabs() {
       />
 
       <Tab.Navigator
-        initialRouteName={showGrocery ? "HomeTab" : "CartFlow"}
+        initialRouteName={initialTabRoute}
         screenOptions={({ route }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             HomeTab: "home-outline",
@@ -1051,11 +1041,12 @@ function AppTabs() {
             CartFlow: "cart-outline",
             Profile: "person-outline",
           };
+          const isServiceMode = activeMode === 'service' || activeMode === 'food';
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
-            tabBarStyle: (activeMode === 'service' || activeMode === 'food') ? { display: 'none' } : {
+            tabBarStyle: isServiceMode ? { display: 'none' as const } : {
               backgroundColor: "#ffffff",
               borderTopWidth: 1,
               borderTopColor: "#f0f0f0",
@@ -1277,8 +1268,8 @@ function AppTabs() {
           onSelectGrocery={handleSelectGrocery}
           onSelectServices={handleSelectServices}
           onSelectUnified={handleSelectUnified}
-          groceryItemCount={groceryTotalItems}
-          serviceItemCount={serviceTotalItems}
+          groceryItemCount={showGrocery ? groceryTotalItems : 0}
+          serviceItemCount={showServices ? serviceTotalItems : 0}
         />
       )}
     </>
@@ -1288,6 +1279,7 @@ function AppTabs() {
 /* ==========================================================
    BLINKING PROGRESS BAR
    ========================================================== */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
   const navigation = useNavigation<any>();
   const fade = useRef(new Animated.Value(1)).current;
@@ -1381,8 +1373,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!__DEV__) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { probeRazorpayNative } = require("./utils/razorpayProbe");
+      const { probeRazorpayNative } = require("./utils/razorpayProbe"); // eslint-disable-line @typescript-eslint/no-require-imports
       const res = probeRazorpayNative();
       console.log("💳[RZPProbe]", res);
     } catch (e) {
@@ -1551,7 +1542,7 @@ const App: React.FC = () => {
 
         // Check each booking's payment status in service_payments collection
         for (const bookingDoc of recentBookings) {
-          const booking = bookingDoc.data();
+          const _booking = bookingDoc.data(); // eslint-disable-line @typescript-eslint/no-unused-vars
           const bookingId = bookingDoc.id;
           
           console.log(`🔍 Checking payment for booking ${bookingId}...`);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   computeQuantityOfferPricing,
   getBestActiveQuantityOffer,
@@ -1643,6 +1644,7 @@ export default function CompanySelectionScreen() {
           navigation.navigate("ServiceCart");
         }}
       />
+      <ServicesTabBar activeTab="explore" />
     </View>
   );
 }
@@ -2249,7 +2251,7 @@ const styles = StyleSheet.create({
   // Modern Bottom Action Bar
   bottomActionBar: {
     position: "absolute",
-    bottom: 0,
+    bottom: 60,
     left: 0,
     right: 0,
     backgroundColor: "white",

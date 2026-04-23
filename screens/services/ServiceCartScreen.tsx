@@ -1,4 +1,5 @@
 import React from "react";
+import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -17,7 +18,7 @@ import { getBestActiveQuantityOffer } from "../../utils/serviceQuantityOffers";
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
-  const { state, removeService, updateService, clearCart, totalItems, hasServices } = useServiceCart();
+  const { state, removeService, updateService, clearCart, totalItems, totalAmount, hasServices } = useServiceCart();
 
   React.useEffect(() => {
     if (!__DEV__) return;
@@ -67,31 +68,7 @@ export default function ServiceCartScreen() {
     };
   };
 
-  // Defensive total calculation: some older cart items may have totalPrice=0 even though
-  // issues/package/unitPrice exist. This keeps the UI correct and prevents showing ₹0.
-  const computedTotalAmount = React.useMemo(() => {
-    return Object.values(state.items).reduce((sum, item) => {
-      const explicit = Number(item.totalPrice);
-      if (Number.isFinite(explicit) && explicit > 0) return sum + explicit;
 
-      // Derive from issues if present
-      const issuesTotal = (item.issues || []).reduce((issueSum: number, issue: any) => {
-        const obj = typeof issue === 'object' ? issue : { name: issue, price: item.unitPrice, quantity: 1 };
-        const p = Number(obj?.price) || 0;
-        const q = Number(obj?.quantity) || 1;
-        return issueSum + p * q;
-      }, 0);
-      if (issuesTotal > 0) return sum + issuesTotal;
-
-      // Package price fallback
-      const pkgPrice = Number(item.additionalInfo?.package?.price);
-      if (Number.isFinite(pkgPrice) && pkgPrice > 0) return sum + pkgPrice;
-
-      const unit = Number(item.unitPrice) || Number(item.company?.price) || 0;
-      const qty = Number(item.quantity) || 1;
-      return sum + unit * qty;
-    }, 0);
-  }, [state.items]);
 
   const handleRemoveService = (serviceId: string) => {
     Alert.alert(
@@ -138,7 +115,7 @@ export default function ServiceCartScreen() {
     
     navigation.navigate("ServiceCheckout", {
       services: Object.values(state.items),
-      totalAmount: computedTotalAmount,
+      totalAmount: totalAmount,
     });
   };
 
@@ -487,6 +464,7 @@ export default function ServiceCartScreen() {
             <Text style={styles.browseButtonText}>Browse Services</Text>
           </TouchableOpacity>
         </View>
+        <ServicesTabBar activeTab="cart" />
       </View>
     );
   }
@@ -526,7 +504,7 @@ export default function ServiceCartScreen() {
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Total Amount:</Text>
-          <Text style={styles.totalAmount}>₹{computedTotalAmount}</Text>
+          <Text style={styles.totalAmount}>₹{Math.round(totalAmount)}</Text>
         </View>
         <TouchableOpacity
           style={styles.checkoutButton}
@@ -536,7 +514,10 @@ export default function ServiceCartScreen() {
             Proceed to Checkout ({totalItems} services)
           </Text>
         </TouchableOpacity>
+        {/* Spacer so tab bar doesn't overlap the checkout button */}
+        <View style={{ height: 64 }} />
       </View>
+      <ServicesTabBar activeTab="cart" />
     </View>
   );
 }
@@ -586,6 +567,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
+    paddingBottom: 220,
   },
   serviceCard: {
     backgroundColor: "#fff",
