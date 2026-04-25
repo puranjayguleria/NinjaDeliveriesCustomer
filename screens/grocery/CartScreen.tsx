@@ -42,6 +42,7 @@ import NotificationModal from "../../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { openRazorpayNative } from "../../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../../utils/razorpayWebViewCallbacks";
 import { useWeather } from "../../context/WeatherContext";
@@ -74,6 +75,8 @@ const CLOUD_FUNCTIONS_BASE_URL =
   "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net"; // <-- change if region/project differs
 const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
 const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+
+const GROCERY_PAYMENT_RECOVERY_KEY = "grocery_payment_recovery";
 
 
 /**
@@ -650,6 +653,8 @@ const CartScreen: React.FC = () => {
       }
 
       const productIds = Object.keys(cart);
+      console.log('[CartScreen] Fetching cart items for IDs:', productIds);
+      
       if (productIds.length === 0) {
         setCartItems([]);
         return;
@@ -679,10 +684,29 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(batchPromises);
 
       const byId = new Map<string, Product>();
+      const skippedProducts: Array<{id: string; reason: string; data?: any}> = [];
+      
       snapshots.forEach((snap: any) => {
         snap.forEach((doc: any) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) <= 0) return;
+          
+          // Debug: Log each product found
+          console.log('[CartScreen] Found product:', {
+            id: doc.id,
+            name: data.name,
+            quantity: data.quantity,
+            storeId: data.storeId,
+            collection: doc.ref.parent.path,
+          });
+          
+          if ((data.quantity ?? 0) <= 0) {
+            skippedProducts.push({
+              id: doc.id,
+              reason: 'Out of stock',
+              data: { name: data.name, quantity: data.quantity }
+            });
+            return;
+          }
 
           const { id: _ignoredId, ...rest } = (data as any) ?? {};
           const next = { id: doc.id, ...rest } as Product;
@@ -699,8 +723,36 @@ const CartScreen: React.FC = () => {
         });
       });
 
+      // Check for products not found in Firestore
+      productIds.forEach(id => {
+        if (!byId.has(id)) {
+          skippedProducts.push({
+            id,
+            reason: 'Not found in Firestore',
+          });
+        }
+      });
+
+      if (skippedProducts.length > 0) {
+        console.warn('[CartScreen] ⚠️ Skipped products:', skippedProducts);
+        
+        // Auto-cleanup: Remove unavailable products from cart
+        if (__DEV__) {
+          console.log('[CartScreen] 🧹 Auto-cleaning unavailable products from cart...');
+        }
+        
+        skippedProducts.forEach(({ id, reason }) => {
+          if (reason === 'Out of stock' || reason === 'Not found in Firestore') {
+            removeFromCart(id);
+            console.log(`[CartScreen] Removed ${id} from cart (${reason})`);
+          }
+        });
+      }
+
       // Preserve cart ordering so UI feels stable.
       const visible = productIds.map((id) => byId.get(id)).filter(Boolean) as Product[];
+      console.log('[CartScreen] Visible cart items:', visible.length, 'out of', productIds.length);
+      
       setCartItems(visible);
 
       // Don't block cart rendering on recommendations.
@@ -1098,10 +1150,76 @@ const CartScreen: React.FC = () => {
 
       // Create Razorpay order on server
       const serverOrder = await createRazorpayOrderOnServer(finalTotal);
-      
+
       // Navigate directly to RazorpayWebView for immediate payment
       const user = auth().currentUser;
       if (!user) throw new Error("Not logged in");
+
+      // Build order snapshot once — reused in both native and WebView success paths
+      const orderSnapshotForRecovery = {
+        orderedBy: user?.uid || "",
+        items: cartItems.map((item) => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price,
+          discount: item.discount || 0,
+          quantity: cart[item.id] || 0,
+          CGST: item.CGST || 0,
+          SGST: item.SGST || 0,
+          cess: item.cess || 0,
+        })),
+        subtotal,
+        productCgst,
+        productSgst,
+        productCess,
+        discount,
+        deliveryCharge,
+        rideCgst,
+        rideSgst,
+        platformFee,
+        convenienceFee,
+        surgeFee: surgeLine,
+        finalTotal,
+        distance,
+        paymentMethod: "online",
+        status: "pending",
+        storeId: location.storeId,
+        usedPromo: selectedPromo ? selectedPromo.id : null,
+        hotspotId: activeHotspot?.id || null,
+        dropoffCoords: {
+          latitude: Number(selectedLocation?.lat) || 0,
+          longitude: Number(selectedLocation?.lng) || 0,
+        },
+        pickupCoords: fareData?.fixedPickupLocation
+          ? {
+              latitude: Number(fareData.fixedPickupLocation.coordinates.latitude),
+              longitude: Number(fareData.fixedPickupLocation.coordinates.longitude),
+            }
+          : null,
+        payment: {
+          method: "online",
+          status: "paid",
+          amountPaise: toPaise(finalTotal),
+          currency: "INR",
+          razorpay: { orderId: serverOrder.orderId },
+        },
+      };
+
+      const saveRecoverySnapshot = async () => {
+        try {
+          await AsyncStorage.setItem(
+            GROCERY_PAYMENT_RECOVERY_KEY,
+            JSON.stringify({
+              razorpayOrderId: serverOrder.orderId,
+              createdAt: Date.now(),
+              orderSnapshot: orderSnapshotForRecovery,
+            })
+          );
+          console.log("[GroceryPayment] Recovery snapshot saved after payment success");
+        } catch (e) {
+          console.warn("[GroceryPayment] Failed to save recovery snapshot:", e);
+        }
+      };
 
       const contact = (user.phoneNumber || "").replace("+91", "");
 
@@ -1126,6 +1244,9 @@ const CartScreen: React.FC = () => {
           razorpay_payment_id: nativeRes.razorpay_payment_id,
           razorpay_signature: nativeRes.razorpay_signature,
         };
+
+        // ✅ Payment confirmed — save recovery snapshot NOW (after payment, before order create)
+        await saveRecoverySnapshot();
 
         await verifyRazorpayPaymentOnServer(razorpayMeta);
         await handlePaymentComplete("online", razorpayMeta, serverOrder);
@@ -1153,6 +1274,9 @@ const CartScreen: React.FC = () => {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             };
+
+            // ✅ Payment confirmed — save recovery snapshot NOW
+            await saveRecoverySnapshot();
 
             // Verify payment on server
             await verifyRazorpayPaymentOnServer(razorpayMeta);
@@ -1275,6 +1399,9 @@ const CartScreen: React.FC = () => {
         // Don't clear services cart as it's independent
         clearCart();
         setSelectedLocation(null);
+
+        // Clear recovery key — order was successfully created
+        AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY).catch(() => {});
 
         console.log("Navigating to OrderAllocating with:", {
           orderId,

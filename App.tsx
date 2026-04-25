@@ -108,14 +108,21 @@ import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
+// Import cart debug utilities (available in __DEV__ mode)
+import "./utils/cartDebugUtils";
+
 import OrdersScreen from "./screens/shared/OrdersScreen";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
+import OrdersStack from "./navigation/OrdersStack";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
 const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
+
+const GROCERY_PAYMENT_RECOVERY_KEY = "grocery_payment_recovery";
+const GROCERY_CONFIRMED_BANNER_KEY = "grocery_confirmed_banner";
 
 type ServiceConfirmedBannerPayload = {
   razorpayOrderId: string;
@@ -198,7 +205,105 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
   return null;
 };
 
-// NinjaEats screens (fallback mappings)
+// ── Grocery Payment Recovery (app-start) ─────────────────────────────────────
+const StartupGroceryPaymentRecovery: React.FC<{ user: any; firebaseReady: boolean; onRecovered: () => void }> = ({
+  user,
+  firebaseReady,
+  onRecovered,
+}) => {
+  const { clearCart: clearGroceryCart } = useCart();
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        console.log('[GroceryRecovery] Checking for recovery snapshot...');
+        const raw = await AsyncStorage.getItem(GROCERY_PAYMENT_RECOVERY_KEY);
+        if (!raw) {
+          console.log('[GroceryRecovery] No recovery snapshot found');
+          return;
+        }
+
+        console.log('[GroceryRecovery] Recovery snapshot found!');
+        const recovery = JSON.parse(raw);
+        const { razorpayOrderId, orderSnapshot } = recovery || {};
+        if (!razorpayOrderId || !orderSnapshot) {
+          console.warn('[GroceryRecovery] Invalid recovery data');
+          return;
+        }
+        if (cancelled) return;
+
+        console.log('[GroceryRecovery] Verifying payment with Razorpay...');
+        const axios = require("axios").default; // eslint-disable-line @typescript-eslint/no-require-imports
+        const api = axios.create({ timeout: 20000, headers: { "Content-Type": "application/json" } });
+
+        const token = await user.getIdToken(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+
+        // Verify payment with recovery mode
+        let verified = false;
+        try {
+          const { data } = await api.post(
+            `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`,
+            { razorpay_order_id: razorpayOrderId, recovery: true },
+            { headers }
+          );
+          verified = !!data?.verified;
+          console.log('[GroceryRecovery] Payment verification result:', verified);
+        } catch (err) {
+          console.error('[GroceryRecovery] Payment verification failed:', err);
+          return; // network error — retry next launch
+        }
+
+        if (!verified) {
+          console.log('[GroceryRecovery] Payment not verified, removing recovery key');
+          await AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY);
+          return;
+        }
+
+        if (cancelled) return;
+
+        console.log('[GroceryRecovery] Creating Firestore order...');
+        // Create Firestore order from snapshot
+        const { default: firestoreDb } = require("@react-native-firebase/firestore"); // eslint-disable-line @typescript-eslint/no-require-imports
+        const orderRef = await firestoreDb()
+          .collection("orders")
+          .add({
+            ...orderSnapshot,
+            orderedBy: user.uid,
+            createdAt: firestoreDb.FieldValue.serverTimestamp(),
+            recoveredFromCrash: true,
+          });
+
+        console.log('[GroceryRecovery] ✅ Order created:', orderRef.id);
+        clearGroceryCart();
+        await AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY);
+
+        // Save banner key so modal shows on next render
+        await AsyncStorage.setItem(
+          GROCERY_CONFIRMED_BANNER_KEY,
+          JSON.stringify({ orderId: orderRef.id, createdAt: Date.now() })
+        );
+        console.log('[GroceryRecovery] Banner key saved, triggering modal...');
+
+        // Directly trigger modal — no need to re-read AsyncStorage
+        onRecovered();
+        console.log('[GroceryRecovery] ✅ Recovery complete!');
+      } catch (e) {
+        console.error("🛒[GroceryPay] app_start_recovery_failed_nonfatal", e);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [user, firebaseReady, clearGroceryCart]);
+
+  return null;
+};
 // Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
 // Map them to existing screens to avoid launch-time crashes / compile failures.
 
@@ -755,6 +860,31 @@ function AppTabs() {
   const { activeMode, setActiveMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const { activeOrders } = useOrder();
+
+  // Debug: Log cart state changes
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[CartBadge] Cart state:', {
+        cart,
+        groceryTotalItems,
+        serviceTotalItems,
+        cartKeys: Object.keys(cart),
+        cartValues: Object.values(cart),
+      });
+    }
+  }, [cart, groceryTotalItems, serviceTotalItems]);
+
+  // 🧪 TEMPORARY: Auto-clear cart on app start for testing
+  // Remove this after testing!
+  /* useEffect(() => {
+    if (__DEV__) {
+      const clearTestCart = async () => {
+        await AsyncStorage.multiRemove(['@myapp_cart', '@service_cart_data']);
+        console.log('🧹 [DEBUG] Test carts cleared on app start');
+      };
+      clearTestCart();
+    }
+  }, []); */
   
   // Get location flags (default to true if not set)
   const showGrocery = location?.grocery !== false;
@@ -817,17 +947,23 @@ function AppTabs() {
       unsubscribe();
     };
   }, [location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset dismissed flag ONLY when storeId changes (user picked a new location)
+  const prevStoreIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    // Reset modal dismissed flag when location changes
-    modalDismissedRef.current = false;
-    
-    // Show modal if any service is unavailable and location is selected
-    // But don't show if user manually dismissed it
+    if (location?.storeId && location.storeId !== prevStoreIdRef.current) {
+      modalDismissedRef.current = false;
+      prevStoreIdRef.current = location.storeId;
+    }
+  }, [location?.storeId]);
+
+  // Show/hide modal based on service availability — respects dismissed flag
+  useEffect(() => {
     if (anyServiceUnavailable && location?.storeId && !modalDismissedRef.current) {
       setAreaUnavailableVisible(true);
-    } else {
+    } else if (!anyServiceUnavailable) {
       setAreaUnavailableVisible(false);
     }
+    // If dismissed, do nothing — keep it hidden
   }, [anyServiceUnavailable, location?.storeId]);
 
   // Auto-navigate based on location flags changes
@@ -1054,6 +1190,7 @@ function AppTabs() {
     CategoriesTab: "apps-outline",
     BuyAgainTab: "repeat-outline",
     CartFlow: "cart-outline",
+    OrdersTab: "receipt-outline",
     Profile: "person-outline",
   }), []);
 
@@ -1105,6 +1242,17 @@ function AppTabs() {
                     const activeGroceryItems = showGrocery ? groceryTotalItems : 0;
                     const activeServiceItems = showServices ? serviceTotalItems : 0;
                     const activeTotalItems = activeGroceryItems + activeServiceItems;
+                    
+                    // Debug log
+                    if (__DEV__ && activeTotalItems > 0) {
+                      console.log('[CartBadge] Showing badge:', {
+                        activeGroceryItems,
+                        activeServiceItems,
+                        activeTotalItems,
+                        showGrocery,
+                        showServices,
+                      });
+                    }
                     
                     return activeTotalItems > 0 ? (
                       <View style={styles.badgeContainer}>
@@ -1253,6 +1401,23 @@ function AppTabs() {
             },
           })}
         />
+
+        {/* ⿥ Orders Tab - Show order history */}
+        {showGrocery && (
+          <Tab.Screen
+            name="OrdersTab"
+            component={OrdersStack}
+            options={{ title: "Orders" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                if (!auth().currentUser) {
+                  e.preventDefault();
+                  promptLogin(navigation, "Orders");
+                }
+              },
+            })}
+          />
+        )}
       </Tab.Navigator>
       
       {/* Service Loader Modal */}
@@ -1290,34 +1455,28 @@ function AppTabs() {
           food: location?.food,
         }}
         onClose={() => {
-          setAreaUnavailableVisible(false);
           modalDismissedRef.current = true;
+          setAreaUnavailableVisible(false);
         }}
         onChangeLocation={() => {
-          setAreaUnavailableVisible(false);
           modalDismissedRef.current = true;
-          if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)('LocationSelector');
-          }
+          setAreaUnavailableVisible(false);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              (navigationRef.navigate as any)('LocationSelector');
+            }
+          }, 50);
         }}
         onNavigateToService={(service) => {
-          setAreaUnavailableVisible(false);
           modalDismissedRef.current = true;
-          
-          // Set the active mode
+          setAreaUnavailableVisible(false);
           setActiveMode(service);
-          
-          // Direct navigation to appropriate screen
           setTimeout(() => {
             if (!navigationRef.isReady()) return;
-            
             if (service === 'grocery') {
-              // Navigate directly to grocery home
               const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
               navigateHome();
-            } else if (service === 'service') {
-              // Navigate directly to services screen
-              // Check if CategoriesTab exists (grocery enabled)
+            } else if (service === 'services') {
               const state = navigationRef.getRootState?.();
               const allRoutes: string[] = [];
               const collect = (s: any) => {
@@ -1326,16 +1485,12 @@ function AppTabs() {
                 (s.routes ?? []).forEach((r: any) => collect(r.state));
               };
               collect(state);
-              
               if (allRoutes.includes('CategoriesTab')) {
-                // CategoriesTab exists, navigate there (shows AllServicesScreen in service mode)
                 (navigationRef.navigate as any)('CategoriesTab');
               } else {
-                // CategoriesTab doesn't exist, navigate to CartFlow > ServicesHome
                 (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
               }
             } else if (service === 'food') {
-              // Navigate directly to food screen
               const state = navigationRef.getRootState?.();
               const allRoutes: string[] = [];
               const collect = (s: any) => {
@@ -1344,14 +1499,13 @@ function AppTabs() {
                 (s.routes ?? []).forEach((r: any) => collect(r.state));
               };
               collect(state);
-              
               if (allRoutes.includes('CategoriesTab')) {
                 (navigationRef.navigate as any)('CategoriesTab');
               } else {
                 (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
               }
             }
-          }, 100);
+          }, 50);
         }}
       />
 
@@ -1521,6 +1675,93 @@ const App: React.FC = () => {
 
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
+
+  /* grocery payment recovery modal */
+  const [showGroceryRecoveredModal, setShowGroceryRecoveredModal] = useState(false);
+
+  useEffect(() => {
+    // Handle edge case: recovery completed but app was killed before modal showed
+    const checkGroceryBanner = async () => {
+      try {
+        console.log('[GroceryRecovery] Checking for banner key...');
+        const raw = await AsyncStorage.getItem(GROCERY_CONFIRMED_BANNER_KEY);
+        console.log('[GroceryRecovery] Banner key found:', !!raw);
+        if (!raw) return;
+        await AsyncStorage.removeItem(GROCERY_CONFIRMED_BANNER_KEY);
+        console.log('[GroceryRecovery] ✅ Showing recovery modal');
+        setShowGroceryRecoveredModal(true);
+      } catch (e) {
+        console.error('[GroceryRecovery] Failed to check banner:', e);
+      }
+    };
+    checkGroceryBanner();
+  }, []);
+
+  // 🧪 AUTO-DEBUG: Check recovery state on app start
+  useEffect(() => {
+    if (!__DEV__) return;
+    
+    const autoCheckRecovery = async () => {
+      try {
+        console.log('');
+        console.log('═══════════════════════════════════════════');
+        console.log('🔍 [AUTO-DEBUG] Checking Recovery State...');
+        console.log('═══════════════════════════════════════════');
+        
+        const [recoveryKey, bannerKey, groceryCart, serviceCart] = await Promise.all([
+          AsyncStorage.getItem('grocery_payment_recovery'),
+          AsyncStorage.getItem('grocery_confirmed_banner'),
+          AsyncStorage.getItem('@myapp_cart'),
+          AsyncStorage.getItem('@service_cart_data'),
+        ]);
+        
+        console.log('📦 Recovery Snapshot:', recoveryKey ? '✅ EXISTS' : '❌ NONE');
+        if (recoveryKey) {
+          const parsed = JSON.parse(recoveryKey);
+          console.log('   - Razorpay Order ID:', parsed.razorpayOrderId);
+          console.log('   - Created At:', new Date(parsed.createdAt).toLocaleString());
+        }
+        
+        console.log('🎯 Banner Key:', bannerKey ? '✅ EXISTS' : '❌ NONE');
+        if (bannerKey) {
+          const parsed = JSON.parse(bannerKey);
+          console.log('   - Order ID:', parsed.orderId);
+          console.log('   - Created At:', new Date(parsed.createdAt).toLocaleString());
+        }
+        
+        console.log('🛒 Grocery Cart:', groceryCart ? '✅ HAS ITEMS' : '❌ EMPTY');
+        if (groceryCart) {
+          const parsed = JSON.parse(groceryCart);
+          const count = Object.values(parsed).reduce((sum: number, qty: any) => sum + Number(qty), 0);
+          console.log('   - Total Items:', count);
+          console.log('   - Product IDs:', Object.keys(parsed));
+        }
+        
+        console.log('🔧 Service Cart:', serviceCart ? '✅ HAS ITEMS' : '❌ EMPTY');
+        if (serviceCart) {
+          const parsed = JSON.parse(serviceCart);
+          const count = Object.keys(parsed.items || {}).length;
+          console.log('   - Total Items:', count);
+        }
+        
+        console.log('═══════════════════════════════════════════');
+        
+        if (!recoveryKey && !bannerKey) {
+          console.log('✅ [AUTO-DEBUG] No pending recovery - All clear!');
+        } else {
+          console.log('⚠️ [AUTO-DEBUG] Recovery data found - Check logs above');
+        }
+        
+        console.log('═══════════════════════════════════════════');
+        console.log('');
+      } catch (error) {
+        console.error('❌ [AUTO-DEBUG] Failed:', error);
+      }
+    };
+    
+    // Run after a short delay to let other logs settle
+    setTimeout(autoCheckRecovery, 2000);
+  }, []);
   const NOTIF_MODAL_SNOOZE_UNTIL_KEY = "notif_modal_snooze_until_v1";
   const NOTIF_MODAL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -1708,6 +1949,7 @@ const App: React.FC = () => {
             <FoodCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
+              <StartupGroceryPaymentRecovery user={user} firebaseReady={firebaseReady} onRecovered={() => setShowGroceryRecoveredModal(true)} />
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>
@@ -1753,6 +1995,46 @@ const App: React.FC = () => {
         </CartProvider>
       </CustomerProvider>
         </ToggleProvider>
+
+      {/* grocery payment recovered modal */}
+      {showGroceryRecoveredModal && (
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGroceryRecoveredModal(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Ionicons name="checkmark-circle" size={52} color="#00C853" style={{ marginBottom: 10 }} />
+              <Text style={styles.modalTitle}>Payment Successful!</Text>
+              <Text style={styles.modalMessage}>
+                Your payment was completed successfully. You can view your order by tapping the profile icon and going to <Text style={{ fontWeight: "700" }}>Your Orders</Text>.
+              </Text>
+              <View style={styles.modalButtonContainer}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => {
+                    setShowGroceryRecoveredModal(false);
+                    try {
+                      navigationRef.navigate("Profile" as never);
+                    } catch {}
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>View Orders</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={() => setShowGroceryRecoveredModal(false)}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalCancelButtonText]}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </RNModal>
+      )}
 
       {/* push-permission modal */}
       {showNotifModal && (

@@ -927,17 +927,6 @@ const ProfileScreen: React.FC = () => {
             <Text style={[styles.cardTitle, { color: "#fff" }]}>Account options</Text>
 
             <TileButton
-              icon="receipt-outline"
-              iconColor="#60A5FA" // Lighter blue for dark mode
-              title="📦 Your Orders"
-              subtitle="Track & manage orders"
-              onPress={() => {
-                vibrateTap();
-                (navigation as any).navigate("Orders");
-              }}
-            />
-
-            <TileButton
               icon="gift-outline"
               iconColor={ACCENT}
               title="⭐ Rewards"

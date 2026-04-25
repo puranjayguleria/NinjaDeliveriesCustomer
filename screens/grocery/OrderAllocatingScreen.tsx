@@ -26,6 +26,7 @@ import riderIcon from "../../assets/rider-icon-1.png";
 import pickupMarker from "../../assets/pickup-marker.png";
 import dropoffMarker from "../../assets/dropoff-marker.png";
 import { useOrder } from "@/context/OrderContext";
+import { useCart } from "@/context/CartContext";
 import { Ionicons } from "@expo/vector-icons";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
@@ -76,6 +77,7 @@ const OrderAllocatingScreen: React.FC = () => {
 
   // If you have an OrderContext to set the active order:
   const { setActiveOrder } = useOrder();
+  const { clearCart } = useCart();
 
   // --------------------------------------------------
   // LOCAL STATES
@@ -279,7 +281,7 @@ const OrderAllocatingScreen: React.FC = () => {
               });
 
               setActiveOrder?.(null);
-
+              clearCart();
               navigation.navigate(
                 "HomeTab" as never,
                 { screen: "OrderCancelled", params: { orderId, refundAmount: 0 } } as never
@@ -298,7 +300,7 @@ const OrderAllocatingScreen: React.FC = () => {
               });
 
               setActiveOrder?.(null);
-
+              clearCart();
               navigation.navigate(
                 "HomeTab" as never,
                 { screen: "OrderCancelled", params: { orderId, refundAmount: 0 } } as never
@@ -330,7 +332,7 @@ const OrderAllocatingScreen: React.FC = () => {
                   : refundAmount;
 
             setActiveOrder?.(null);
-
+            clearCart();
             navigation.navigate(
               "HomeTab" as never,
               { screen: "OrderCancelled", params: { orderId, refundAmount: refunded } } as never

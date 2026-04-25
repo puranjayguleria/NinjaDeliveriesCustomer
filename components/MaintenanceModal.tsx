@@ -72,6 +72,11 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
 
   useEffect(() => {
     if (visible) {
+      // Reset animations
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.85);
+      slideAnim.setValue(40);
+      
       // Entry animation
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
@@ -121,11 +126,29 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
     outputRange: ['0deg', '360deg'],
   });
 
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  const handleChangeLocation = () => {
+    if (onChangeLocation) {
+      onChangeLocation();
+    }
+  };
+
+  const handleNavigateToService = (service: 'grocery' | 'services' | 'food') => {
+    if (onNavigateToService) {
+      onNavigateToService(service);
+    }
+  };
+
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose}>
-      <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
+    <Modal visible transparent animationType="none" onRequestClose={handleClose}>
+      <Animated.View style={[styles.overlay, { opacity: fadeAnim }]} pointerEvents="box-none">
         <Animated.View
           style={[
             styles.card,
@@ -136,7 +159,7 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
           {onClose && (
             <TouchableOpacity
               style={styles.closeButton}
-              onPress={onClose}
+              onPress={handleClose}
               activeOpacity={0.7}
             >
               <Ionicons name="close" size={24} color="#64748b" />
@@ -202,7 +225,7 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
                   <TouchableOpacity
                     key={service.key}
                     style={[styles.serviceButton, { shadowColor }]}
-                    onPress={() => onNavigateToService(service.key)}
+                    onPress={() => handleNavigateToService(service.key)}
                     activeOpacity={0.7}
                   >
                     <LinearGradient
@@ -227,7 +250,7 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
           {onChangeLocation && (
             <TouchableOpacity
               style={styles.locationBtn}
-              onPress={onChangeLocation}
+              onPress={handleChangeLocation}
               activeOpacity={0.8}
             >
               <LinearGradient
