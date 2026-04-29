@@ -1,5 +1,5 @@
 // context/LocationContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 import { findNearestStore } from '../utils/findNearestStore';
 
 export type LocationData = {
@@ -35,24 +35,35 @@ export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children
   });
 
   /** called from CategoriesScreen once we know the zone */
-  const setStoreId = (id:string)=>{
+  const setStoreId = useCallback((id:string)=>{
     setLocation(prev=>({...prev, storeId:id}));
-  };
+  }, []);
 
-  const updateLocation = (loc: Partial<LocationData>) => {
+  const updateLocation = useCallback((loc: Partial<LocationData>) => {
     setLocation(prev => ({
       ...prev,
       ...loc,
       // preserve current id if caller did not supply one
       storeId: loc.storeId !== undefined ? loc.storeId : prev.storeId,
     }));
-  };
-  const clearLocation = ()=> setLocation({lat:null,lng:null,address:'',storeId:null});
+  }, []);
+
+  const clearLocation = useCallback(()=> setLocation({lat:null,lng:null,address:'',storeId:null}), []);
+
  /** called by CategoriesScreen after weather evaluation */
-   const setSurge = (s:{active:boolean;fee:number}) =>
-      setLocation(prev=>({ ...prev, surge:s }));
+  const setSurge = useCallback((s:{active:boolean;fee:number}) =>
+      setLocation(prev=>({ ...prev, surge:s })), []);
+
+  const value = useMemo(() => ({
+    location, 
+    updateLocation, 
+    clearLocation, 
+    setStoreId, 
+    setSurge
+  }), [location, updateLocation, clearLocation, setStoreId, setSurge]);
+
   return (
-  <LocationContext.Provider value={{location, updateLocation, clearLocation, setStoreId, setSurge}}>
+  <LocationContext.Provider value={value}>
     {children}
     </LocationContext.Provider>
   );

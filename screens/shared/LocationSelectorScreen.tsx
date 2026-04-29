@@ -429,26 +429,25 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
   const confirmLocation = async () => {
     setIsLoading(true);
     try {
-      const addr = await reverseGeocodeLatLng(
-        markerCoord.latitude,
-        markerCoord.longitude
-      );
-
       const destinations = deliveryZones
         .map((z) => `${z.latitude},${z.longitude}`)
         .join("|");
 
-      const distResp = await axios.get(
-        "https://maps.googleapis.com/maps/api/distancematrix/json",
-        {
-          params: {
-            origins: `${markerCoord.latitude},${markerCoord.longitude}`,
-            destinations,
-            key: GOOGLE_PLACES_API_KEY,
-            units: "metric",
-          },
-        }
-      );
+      // Run both API calls in parallel for faster loading
+      const [addr, distResp] = await Promise.all([
+        reverseGeocodeLatLng(markerCoord.latitude, markerCoord.longitude),
+        axios.get(
+          "https://maps.googleapis.com/maps/api/distancematrix/json",
+          {
+            params: {
+              origins: `${markerCoord.latitude},${markerCoord.longitude}`,
+              destinations,
+              key: GOOGLE_PLACES_API_KEY,
+              units: "metric",
+            },
+          }
+        ),
+      ]);
 
       if (distResp.data.status !== "OK") {
         showErrorModal("Error", "Failed to check deliverability.");
@@ -475,36 +474,36 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         storeId: nearest.storeId,
       };
 
-      // Fetch location flags from Firestore
-      const flags = await fetchLocationFlags(nearest.storeId);
-      
-      updateLocation({
-        ...newLocationData,
-        ...flags,
-      });
+      // Optimistic update - update location immediately for instant UI
+      updateLocation(newLocationData);
 
+      // Navigate immediately for instant feel
       if (fromScreenKey === "cart") {
         const allCartsEmpty = isAllCartsEmpty();
         
         if (allCartsEmpty) {
-          // If cart is empty, navigate to home screen instead of cart
           (navigation.navigate as any)("AppTabs", { screen: "HomeTab" });
         } else {
-          // If cart has items, collect delivery details
           setHouseNo("");
           setPlaceLabel("");
           setShowSaveForm(true);
         }
       } else if (fromScreenKey === "servicecheckout") {
-        // Navigate back to checkout screen
         navigation.goBack();
       } else if (fromScreenKey === "services") {
-        // User came here by tapping Services tab while not deliverable.
-        // After choosing a deliverable location, take them to Services.
         returnToServices();
       } else {
         (navigation.navigate as any)("AppTabs", { screen: "HomeTab" });
       }
+
+      // Fetch location flags in background (non-blocking)
+      fetchLocationFlags(nearest.storeId).then((flags) => {
+        if (flags) {
+          updateLocation({ ...newLocationData, ...flags });
+        }
+      }).catch((err) => {
+        console.warn("Failed to fetch location flags:", err);
+      });
     } catch (err) {
       console.error("confirmLocation:", err);
       showErrorModal("Error", "Failed to confirm location. Please retry.");

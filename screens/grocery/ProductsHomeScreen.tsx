@@ -1387,27 +1387,26 @@ export default function ProductsHomeScreen() {
         return;
       }
 
-      let addr = "";
-      try {
-        const g = await Location.reverseGeocodeAsync({
-          latitude: lat,
-          longitude: lng,
-        });
-        if (g.length) {
-          const { name, district, city } = g[0];
+      // Optimistic update - set storeId immediately for instant UI
+      updateLocation({ storeId: (picked as DeliveryZone).storeId });
+
+      // Fetch address and flags in parallel (non-blocking)
+      Promise.all([
+        Location.reverseGeocodeAsync({ latitude: lat, longitude: lng }).catch(() => []),
+        fetchLocationFlags((picked as DeliveryZone).storeId).catch(() => null),
+      ]).then(([geocodeResult, flags]) => {
+        let addr = "";
+        if (geocodeResult.length) {
+          const { name, district, city } = geocodeResult[0];
           addr = [name, district, city].filter(Boolean).join(", ");
         }
-      } catch (_) {
-        // ignore
-      }
-
-      updateLocation({ storeId: (picked as DeliveryZone).storeId, address: addr });
-      
-      // Fetch and update location flags
-      const flags = await fetchLocationFlags((picked as DeliveryZone).storeId);
-      if (flags) {
-        updateLocation({ ...flags } as any);
-      }
+        
+        updateLocation({ 
+          storeId: (picked as DeliveryZone).storeId,
+          address: addr,
+          ...flags 
+        });
+      });
     },
     [zones, location.storeId, updateLocation, nav]
   );
