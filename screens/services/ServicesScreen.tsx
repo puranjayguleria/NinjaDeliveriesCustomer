@@ -366,11 +366,7 @@ function QuickServiceCard({
         animationType="fade"
         onRequestClose={() => setModalVisible(false)}
       >
-        <TouchableOpacity
-          style={quickCardStyles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
+        <View style={quickCardStyles.modalOverlay}>
           <View style={quickCardStyles.modalContent}>
             {/* Modal Header */}
             <View style={quickCardStyles.modalHeader}>
@@ -394,7 +390,10 @@ function QuickServiceCard({
             {/* Modal Body */}
             <ScrollView
               style={quickCardStyles.modalBody}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+              alwaysBounceVertical={false}
+              contentContainerStyle={{ paddingBottom: 4 }}
             >
               <Text style={quickCardStyles.modalDescription}>{description}</Text>
             </ScrollView>
@@ -421,7 +420,7 @@ function QuickServiceCard({
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </>
   );
@@ -510,6 +509,7 @@ const quickCardStyles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     maxHeight: '80%',
+    flexShrink: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
@@ -550,7 +550,7 @@ const quickCardStyles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
-    maxHeight: 300,
+    flexShrink: 1,
   },
   modalDescription: {
     fontSize: 14,
