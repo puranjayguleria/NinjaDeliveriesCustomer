@@ -284,11 +284,46 @@ function QuickServiceCard({
   onPress,
 }: QuickServiceCardProps) {
   const [modalVisible, setModalVisible] = React.useState(false);
+  const scrollViewRef = React.useRef<any>(null);
+  const scrollIndicatorAnim = React.useRef(new Animated.Value(0)).current;
+  const [scrollbarHeight, setScrollbarHeight] = React.useState(0);
+  const [thumbHeight, setThumbHeight] = React.useState(0);
+  const [isScrollable, setIsScrollable] = React.useState(false);
+  const contentHeightRef = React.useRef(0);
+  const layoutHeightRef = React.useRef(0);
   const description = String(service?.description || '').trim();
   const hasDescription = description.length > 0;
   const SHORT_LIMIT = 60;
   const isLong = description.length > SHORT_LIMIT;
 
+  const handleScrollbarLayout = (e: any) => {
+    const h = e.nativeEvent.layout.height;
+    setScrollbarHeight(h);
+    layoutHeightRef.current = h;
+    if (contentHeightRef.current > 0) {
+      const ratio = h / contentHeightRef.current;
+      setThumbHeight(Math.max(30, h * ratio));
+      setIsScrollable(contentHeightRef.current > h + 10);
+    }
+  };
+
+  const handleContentSizeChange = (_: number, contentH: number) => {
+    contentHeightRef.current = contentH;
+    if (layoutHeightRef.current > 0) {
+      const ratio = layoutHeightRef.current / contentH;
+      setThumbHeight(Math.max(30, layoutHeightRef.current * ratio));
+      setIsScrollable(contentH > layoutHeightRef.current + 10);
+    }
+  };
+
+  const handleScroll = (e: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    if (contentSize.height <= layoutMeasurement.height) return;
+    const maxScroll = contentSize.height - layoutMeasurement.height;
+    const maxThumbTravel = layoutMeasurement.height - thumbHeight;
+    const thumbPos = (contentOffset.y / maxScroll) * maxThumbTravel;
+    scrollIndicatorAnim.setValue(thumbPos);
+  };
   return (
     <>
       <TouchableOpacity
@@ -368,7 +403,8 @@ function QuickServiceCard({
       >
         <View style={quickCardStyles.modalOverlay}>
           <View style={quickCardStyles.modalContent}>
-            {/* Modal Header */}
+
+            {/* Header */}
             <View style={quickCardStyles.modalHeader}>
               <View style={quickCardStyles.modalHeaderLeft}>
                 <View style={[quickCardStyles.modalIcon, { backgroundColor: fallbackBgColor }]}>
@@ -387,18 +423,38 @@ function QuickServiceCard({
               </TouchableOpacity>
             </View>
 
-            {/* Modal Body */}
-            <ScrollView
-              style={quickCardStyles.modalBody}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-              alwaysBounceVertical={false}
-              contentContainerStyle={{ paddingBottom: 4 }}
-            >
-              <Text style={quickCardStyles.modalDescription}>{description}</Text>
-            </ScrollView>
+            {/* Scrollable description */}
+            <View style={quickCardStyles.modalBodyWrapper}>
+              <ScrollView
+                ref={scrollViewRef}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                scrollEventThrottle={16}
+                onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={handleScrollbarLayout}
+                contentContainerStyle={quickCardStyles.modalBodyContent}
+              >
+                <Text style={quickCardStyles.modalDescription}>{description}</Text>
+              </ScrollView>
 
-            {/* Modal Footer */}
+              {/* Custom right-side scrollbar */}
+              {isScrollable && (
+                <View style={quickCardStyles.customScrollbar}>
+                  <Animated.View
+                    style={[
+                      quickCardStyles.customScrollbarThumb,
+                      {
+                        height: thumbHeight,
+                        transform: [{ translateY: scrollIndicatorAnim }],
+                      },
+                    ]}
+                  />
+                </View>
+              )}
+            </View>
+
+            {/* Fixed footer */}
             <View style={quickCardStyles.modalFooter}>
               <TouchableOpacity
                 style={quickCardStyles.bookButton}
@@ -419,6 +475,7 @@ function QuickServiceCard({
                 </LinearGradient>
               </TouchableOpacity>
             </View>
+
           </View>
         </View>
       </Modal>
@@ -507,9 +564,9 @@ const quickCardStyles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 20,
     width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    flexShrink: 1,
+    maxWidth: 420,
+    maxHeight: '82%',
+    flexDirection: 'column',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
@@ -548,9 +605,36 @@ const quickCardStyles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  modalBody: {
-    padding: 20,
+  modalBodyWrapper: {
     flexShrink: 1,
+    flexGrow: 1,
+    position: 'relative',
+    minHeight: 80,
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  modalBodyContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    paddingRight: 30,
+  },
+  customScrollbar: {
+    position: 'absolute',
+    right: 6,
+    top: 16,
+    bottom: 12,
+    width: 4,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 2,
+  },
+  customScrollbarThumb: {
+    width: 4,
+    backgroundColor: '#00b4a0',
+    borderRadius: 2,
   },
   modalDescription: {
     fontSize: 14,
