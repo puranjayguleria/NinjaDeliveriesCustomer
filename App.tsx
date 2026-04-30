@@ -881,7 +881,6 @@ function FoodCartStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodCartHome" component={FoodCartScreen} />
-      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
       <FoodStack.Screen name="FoodOrderSuccess" component={FoodOrderSuccessScreen} />
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
       <FoodStack.Screen name="RazorpayWebView" component={RazorpayWebView} />

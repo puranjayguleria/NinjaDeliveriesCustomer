@@ -19,7 +19,6 @@ import {
   type FoodCategory as Category,
   type FoodBanner,
 } from "@/firebase/foodFirebase";
-import DishModal from "@/components/food/DishModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
@@ -77,6 +76,99 @@ const pl = StyleSheet.create({
   dot:  { width: 10, height: 10, borderRadius: 5, backgroundColor: ORANGE },
 });
 
+// ── Animated Veg / Non-Veg Switch ──────────────────────────────────────────
+function VegSwitch({ isVeg, onToggle }: { isVeg: boolean; onToggle: () => void }) {
+  const slideAnim = useRef(new Animated.Value(isVeg ? 0 : 1)).current;
+
+  useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: isVeg ? 0 : 1,
+      friction: 6,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+  }, [isVeg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const TRACK_W  = 72;
+  const TRACK_H  = 34;
+  const THUMB_SZ = 26;
+  const TRAVEL   = TRACK_W - THUMB_SZ - 8; // 4px padding each side
+
+  const thumbX = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [4, TRAVEL + 4],
+  });
+
+  const vegOpacity    = slideAnim.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: "clamp" });
+  const nonVegOpacity = slideAnim.interpolate({ inputRange: [0.5, 1], outputRange: [0, 1], extrapolate: "clamp" });
+
+  return (
+    <TouchableOpacity
+      onPress={onToggle}
+      activeOpacity={0.9}
+      style={{
+        width: TRACK_W,
+        height: TRACK_H,
+        borderRadius: TRACK_H / 2,
+        backgroundColor: isVeg ? "#00666A" : "#B70000",
+        justifyContent: "center",
+        borderWidth: 2,
+        borderColor: isVeg ? "#00999F" : "#FF4444",
+        shadowColor: isVeg ? "#00666A" : "#B70000",
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.5,
+        shadowRadius: 6,
+        elevation: 6,
+      }}
+    >
+      {/* VEG label — left side */}
+      <Animated.Text style={{
+        position: "absolute",
+        left: 8,
+        fontSize: 8,
+        fontWeight: "800",
+        color: "#fff",
+        letterSpacing: 0.5,
+        opacity: vegOpacity,
+      }}>
+        🥦
+      </Animated.Text>
+
+      {/* NON-VEG label — right side */}
+      <Animated.Text style={{
+        position: "absolute",
+        right: 7,
+        fontSize: 8,
+        fontWeight: "800",
+        color: "#fff",
+        letterSpacing: 0.5,
+        opacity: nonVegOpacity,
+      }}>
+        🍗
+      </Animated.Text>
+
+      {/* Sliding thumb */}
+      <Animated.View style={{
+        position: "absolute",
+        width: THUMB_SZ,
+        height: THUMB_SZ,
+        borderRadius: THUMB_SZ / 2,
+        backgroundColor: "#fff",
+        transform: [{ translateX: thumbX }],
+        justifyContent: "center",
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 4,
+      }}>
+        <Text style={{ fontSize: 13 }}>{isVeg ? "🥦" : "🍗"}</Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
 export default function FoodScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -98,13 +190,7 @@ export default function FoodScreen() {
   // restaurantIds that have at least one veg item / non-veg item
   const [vegRestaurantIds,     setVegRestaurantIds]     = useState<Set<string>>(new Set());
   const [nonVegRestaurantIds,  setNonVegRestaurantIds]  = useState<Set<string>>(new Set());
-  const [dishModal,            setDishModal]            = useState<{
-    visible: boolean; restaurantId: string; restaurantName: string; filterCategoryId?: string | null;
-    isRushHour?: boolean; rushTimeText?: string;
-  }>({ visible: false, restaurantId: "", restaurantName: "" });
   const [rejectionModal, setRejectionModal] = useState<{ visible: boolean; restaurantName: string }>({ visible: false, restaurantName: "" });
-  // Rush hours state: Map<restaurantId, { rushHours: boolean, rushHoursUntil: Date | null }>
-  const [rushHoursMap, setRushHoursMap] = useState<Map<string, { rushHours: boolean; rushHoursUntil: Date | null }>>(new Map());
 
   // Helper: parse "HH:MM AM/PM" or "HH:MM" string to a comparable Date (today)
   const parseTimeString = (t: string): Date | null => {
@@ -259,7 +345,10 @@ export default function FoodScreen() {
   const confirmVeg = () => { if (pendingVeg !== null) setIsVegMode(pendingVeg); setShowVegModal(false); setPendingVeg(null); };
   const cancelVeg  = () => { setShowVegModal(false); setPendingVeg(null); };
   const openDish = (id: string, name: string, catId?: string | null, rushHour?: boolean, rushTime?: string) =>
-    setDishModal({ visible: true, restaurantId: id, restaurantName: name, filterCategoryId: catId, isRushHour: rushHour, rushTimeText: rushTime });
+    navigation.navigate("RestaurantDetail", {
+      restaurantId: id,
+      restaurantName: name,
+    });
 
   const filtered = React.useMemo(() => {
     let list = [...restaurants];
@@ -410,12 +499,7 @@ export default function FoodScreen() {
                 <Ionicons name="search-outline" size={17} color={GRAY} />
                 <Text style={s.searchTxt}>Search restaurants, cuisines...</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.vegToggleBtn, { backgroundColor: isVegMode ? "#00666A" : "#B70000" }]}
-                onPress={handleVegToggle} activeOpacity={0.85}>
-                <View style={s.vegDot} />
-                <Text style={s.vegToggleTxt}>{isVegMode ? "VEG" : "NON-VEG"}</Text>
-              </TouchableOpacity>
+              <VegSwitch isVeg={isVegMode} onToggle={handleVegToggle} />
             </View>
             <View style={s.modeToggleWrap}>
               <ModeToggle compact activeMode={activeMode} onPress={setActiveMode} />
@@ -639,16 +723,6 @@ export default function FoodScreen() {
         </View>
       </ScrollView>
 
-      <DishModal
-        visible={dishModal.visible}
-        onClose={() => setDishModal(p => ({ ...p, visible: false }))}
-        restaurantId={dishModal.restaurantId}
-        restaurantName={dishModal.restaurantName}
-        filterCategoryId={dishModal.filterCategoryId}
-        vegMode={isVegMode}
-        isRushHour={dishModal.isRushHour}
-        rushTimeText={dishModal.rushTimeText}
-      />
     </View>
   );
 }
@@ -704,9 +778,6 @@ const s = StyleSheet.create({
   searchWrap:   { flexDirection: "row", alignItems: "center", gap: 10 },
   searchBar:    { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
   searchTxt:    { fontSize: 14, color: GRAY, flex: 1 },
-  vegToggleBtn: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6, minWidth: 58 },
-  vegDot:       { width: 9, height: 9, borderRadius: 5, backgroundColor: "#fff", marginBottom: 4 },
-  vegToggleTxt: { fontSize: 10, fontWeight: "800", letterSpacing: 1, color: "#fff" },
   modeToggleWrap: { paddingHorizontal: 0 },
 
   // ── Categories ──
