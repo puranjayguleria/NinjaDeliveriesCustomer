@@ -819,7 +819,7 @@ export default function ServicesScreen() {
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const liveDotBlinkAnim = React.useRef(new Animated.Value(1)).current;
-  const liveParticleAnim = React.useRef(new Animated.Value(0)).current;
+  const liveParticleAnim = React.useRef(new Animated.Value(0)).current; // kept for dep compat
   const liveShimmerAnim = React.useRef(new Animated.Value(0)).current;
   const liveCounterBounceAnim = React.useRef(new Animated.Value(1)).current;
   const liveTypingAnim = React.useRef(new Animated.Value(0)).current;
@@ -2523,47 +2523,6 @@ export default function ServicesScreen() {
     };
   }, [liveDotBlinkAnim]);
 
-  // Floating particles animation
-  useEffect(() => {
-    const particleFloat = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveParticleAnim, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(liveParticleAnim, {
-          toValue: 0,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    particleFloat.start();
-
-    return () => {
-      particleFloat.stop();
-    };
-  }, [liveParticleAnim]);
-
-  // Shimmer effect for live booking background
-  useEffect(() => {
-    const shimmer = Animated.loop(
-      Animated.timing(liveShimmerAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: true,
-      })
-    );
-
-    shimmer.start();
-
-    return () => {
-      shimmer.stop();
-    };
-  }, [liveShimmerAnim]);
-
   // Typing dots animation for empty state
   useEffect(() => {
     const typing = Animated.loop(
@@ -2587,30 +2546,6 @@ export default function ServicesScreen() {
       typing.stop();
     };
   }, [liveTypingAnim]);
-
-  // Border glow animation
-  useEffect(() => {
-    const borderGlow = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveBorderAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(liveBorderAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-      ])
-    );
-
-    borderGlow.start();
-
-    return () => {
-      borderGlow.stop();
-    };
-  }, [liveBorderAnim]);
 
   // Smooth blinking animation for Book Now buttons
   useEffect(() => {
@@ -3817,23 +3752,6 @@ export default function ServicesScreen() {
                   end={{ x: 1, y: 1 }}
                   style={styles.liveUpdatesGradient}
                 >
-                  {/* Shimmer overlay */}
-                  <Animated.View style={[
-                    styles.liveShimmerOverlay,
-                    {
-                      opacity: liveShimmerAnim.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [0, 0.3, 0]
-                      }),
-                      transform: [{
-                        translateX: liveShimmerAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-100, 400]
-                        })
-                      }]
-                    }
-                  ]} />
-
                   <View style={styles.liveUpdatesContent}>
                     {/* Header with pulse animation */}
                     <View style={styles.liveUpdatesHeader}>
@@ -3915,43 +3833,6 @@ export default function ServicesScreen() {
                           </View>
                         </View>
                       )}
-                    </View>
-
-                    {/* Floating particles effect */}
-                    <View style={styles.liveParticlesContainer}>
-                      <Animated.View style={[
-                        styles.liveParticle, 
-                        styles.liveParticle1, 
-                        { 
-                          opacity: liveDotBlinkAnim,
-                          transform: [{ translateY: liveParticleAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -10]
-                          })}]
-                        }
-                      ]} />
-                      <Animated.View style={[
-                        styles.liveParticle, 
-                        styles.liveParticle2, 
-                        { 
-                          opacity: liveDotBlinkAnim,
-                          transform: [{ translateY: liveParticleAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, 8]
-                          })}]
-                        }
-                      ]} />
-                      <Animated.View style={[
-                        styles.liveParticle, 
-                        styles.liveParticle3, 
-                        { 
-                          opacity: liveDotBlinkAnim,
-                          transform: [{ translateY: liveParticleAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -6]
-                          })}]
-                        }
-                      ]} />
                     </View>
                   </View>
                 </LinearGradient>
