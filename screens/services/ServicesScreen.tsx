@@ -3592,18 +3592,14 @@ export default function ServicesScreen() {
                   ]}
                   onPress={() => {
                     setActiveMode("grocery");
-                    // Navigate to HomeTab only if it exists (grocery is available)
-                    if (location?.grocery !== false) {
+                    // Navigate to HomeTab (which has HomeScreenWrapper)
+                    requestAnimationFrame(() => {
                       try {
                         navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
                       } catch {
-                        try {
-                          navigation.navigate("HomeTab" as any);
-                        } catch {
-                          // already on home, ignore
-                        }
+                        try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
                       }
-                    }
+                    });
                   }}
                   activeOpacity={0.7}
                 >
@@ -3649,11 +3645,17 @@ export default function ServicesScreen() {
                   onPress={() => {
                     setActiveMode("food");
                     // Navigate based on grocery availability
-                    if (location?.grocery !== false) {
-                      // HomeTab exists
-                      navigation.navigate("ProductsHome");
-                    }
-                    // If grocery is false, just set mode, user is already on a screen
+                    requestAnimationFrame(() => {
+                      if (location?.grocery === false) {
+                        // Grocery is false - navigate within CartFlow to FoodComingSoon
+                        try {
+                          navigation.navigate("FoodComingSoon" as any);
+                        } catch (err) {
+                          console.log('[ServicesScreen] Food navigation error:', err);
+                        }
+                      }
+                      // If grocery is true, HomeScreenWrapper handles it automatically
+                    });
                   }}
                   activeOpacity={0.7}
                 >

@@ -924,8 +924,8 @@ export default function ProductsHomeScreen() {
   // (e.g. pausedMessage) from appearing after closing a higher priority message.
   const [messageDismissed, setMessageDismissed] = useState(false);
   const [headerGradientColors, setHeaderGradientColors] = useState<string[]>(
-    ["#FFFDE7", "#FFFDE7", "#FFFDE7"]
-  ); // fallback defaults
+    ["#FFFDE7", "#FFF9C4", "#FFF59D"]
+  ); // fallback defaults - light yellow gradient
 
   const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
 
@@ -1148,10 +1148,10 @@ export default function ProductsHomeScreen() {
             : null;
 
           setHeaderGradientColors(
-            arr && arr.length ? arr : ["#FFFFFF", "#FFFFFF", "#FFFFFF"]
+            arr && arr.length ? arr : ["#FFFDE7", "#FFF9C4", "#FFF59D"]
           );
         },
-        () => setHeaderGradientColors(["#FFFFFF", "#FFFFFF", "#FFFFFF"])
+        () => setHeaderGradientColors(["#FFFDE7", "#FFF9C4", "#FFF59D"])
       );
 
     return unsub;
@@ -2738,6 +2738,7 @@ chipTxt: {
     right: 0,
     zIndex: 999,
     elevation: 20,
+    backgroundColor: "transparent",
   },
   badgeText: {
     color: "#fff",

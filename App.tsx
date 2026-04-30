@@ -781,7 +781,7 @@ function CategoriesStack() {
           />
         </>
       ) : (
-        <Stack.Screen name="CategoriesHome" component={FoodScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="CategoriesHome" component={FoodComingSoonScreen} options={{ headerShown: false }} />
       )}
     </Stack.Navigator>
   );
@@ -797,6 +797,7 @@ const CartStack = React.memo(() => {
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
     <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+    <Stack.Screen name="FoodComingSoon" component={FoodComingSoonScreen} />
     <Stack.Screen name="AllServices" component={AllServicesScreen} />
     <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />
     <Stack.Screen name="PackageSelection" component={PackageSelectionScreen} />
@@ -1454,6 +1455,7 @@ function AppTabs() {
           services: location?.services,
           food: location?.food,
         }}
+        activeMode={activeMode}
         onClose={() => {
           modalDismissedRef.current = true;
           setAreaUnavailableVisible(false);
@@ -1470,7 +1472,13 @@ function AppTabs() {
         onNavigateToService={(service) => {
           modalDismissedRef.current = true;
           setAreaUnavailableVisible(false);
-          setActiveMode(service);
+          // Map 'services' key to 'service' mode
+          const modeMap: Record<string, 'grocery' | 'service' | 'food'> = {
+            grocery: 'grocery',
+            services: 'service',
+            food: 'food',
+          };
+          setActiveMode(modeMap[service] ?? 'grocery');
           setTimeout(() => {
             if (!navigationRef.isReady()) return;
             if (service === 'grocery') {
@@ -1491,19 +1499,13 @@ function AppTabs() {
                 (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
               }
             } else if (service === 'food') {
-              const state = navigationRef.getRootState?.();
-              const allRoutes: string[] = [];
-              const collect = (s: any) => {
-                if (!s) return;
-                (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
-                (s.routes ?? []).forEach((r: any) => collect(r.state));
-              };
-              collect(state);
-              if (allRoutes.includes('CategoriesTab')) {
-                (navigationRef.navigate as any)('CategoriesTab');
-              } else {
-                (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
-              }
+              // Set food mode — HomeScreenWrapper will render FoodComingSoonScreen automatically
+              setActiveMode('food');
+              setTimeout(() => {
+                if (!navigationRef.isReady()) return;
+                const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+                navigateHome();
+              }, 50);
             }
           }, 50);
         }}
@@ -1979,6 +1981,11 @@ const App: React.FC = () => {
                       name="LocationSelector"
                       component={LocationSelectorScreen}
                       options={{ title: "Select Location" }}
+                    />
+                    <RootStack.Screen
+                      name="Profile"
+                      component={ProfileScreen}
+                      options={{ headerShown: false }}
                     />
                     <RootStack.Screen
                       name="RewardScreen"

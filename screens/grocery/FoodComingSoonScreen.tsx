@@ -72,10 +72,24 @@ const FoodComingSoonScreen: React.FC = () => {
   });
 
   const handleHomePress = () => {
-    // Force the global mode back to grocery.
-    // Since this component is rendered by HomeScreenWrapper in App.tsx,
-    // changing the mode will automatically switch the view back to ProductsHomeScreen.
-    setActiveMode("grocery");
+    // Navigate back based on what's available
+    if (location?.grocery !== false) {
+      // Grocery is available - go back to grocery mode
+      setActiveMode("grocery");
+    } else if (location?.services !== false) {
+      // Grocery is false but services is available - go back to service mode
+      setActiveMode("service");
+      // If we're in CartFlow, navigate back to ServicesHome
+      requestAnimationFrame(() => {
+        try {
+          navigation.goBack();
+        } catch {
+          try {
+            navigation.navigate("ServicesHome" as any);
+          } catch { /* ignore */ }
+        }
+      });
+    }
   };
 
   return (
@@ -103,7 +117,20 @@ const FoodComingSoonScreen: React.FC = () => {
               styles.toggleBtn,
               activeMode === "grocery" && styles.toggleBtnActive,
             ]}
-            onPress={() => { setActiveMode("grocery"); }}
+            onPress={() => {
+              setActiveMode("grocery");
+              // Navigate back - HomeScreenWrapper will show ProductsHomeScreen
+              requestAnimationFrame(() => {
+                try {
+                  navigation.goBack();
+                } catch {
+                  // If goBack fails, try navigating to HomeTab
+                  try {
+                    navigation.navigate("HomeTab" as any);
+                  } catch { /* ignore */ }
+                }
+              });
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 
@@ -123,7 +150,22 @@ const FoodComingSoonScreen: React.FC = () => {
               styles.toggleBtn,
               activeMode === "service" && styles.toggleBtnActive,
             ]}
-            onPress={() => { setActiveMode("service"); }}
+            onPress={() => {
+              setActiveMode("service");
+              // Navigate back - HomeScreenWrapper will show ServicesScreen
+              requestAnimationFrame(() => {
+                try {
+                  navigation.goBack();
+                } catch {
+                  // If goBack fails and grocery is false, try CartFlow
+                  if (location?.grocery === false) {
+                    try {
+                      navigation.navigate("ServicesHome" as any);
+                    } catch { /* ignore */ }
+                  }
+                }
+              });
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons 

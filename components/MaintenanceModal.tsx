@@ -21,6 +21,7 @@ interface MaintenanceModalProps {
     food?: boolean;
   };
   onNavigateToService?: (service: 'grocery' | 'services' | 'food') => void;
+  activeMode?: 'grocery' | 'service' | 'food';
 }
 
 const { width } = Dimensions.get('window');
@@ -30,7 +31,8 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
   onClose,
   onChangeLocation, 
   unavailableServices,
-  onNavigateToService 
+  onNavigateToService,
+  activeMode,
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -215,12 +217,20 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
             <View style={styles.availableServicesBox}>
               <Text style={styles.availableServicesTitle}>Available in your area:</Text>
               {availableServices.map((service) => {
+                // Map service key to activeMode value
+                const modeKey = service.key === 'services' ? 'service' : service.key;
+                const isActive = activeMode === modeKey;
                 const isFood = service.key === 'food';
-                const gradientColors: [string, string] = isFood
-                  ? ['#f97316', '#ea580c']
-                  : ['#0d9488', '#0f766e'];
-                const iconColor = isFood ? '#f97316' : '#0d9488';
-                const shadowColor = isFood ? '#f97316' : '#0d9488';
+
+                // Active = green, inactive = original color
+                const gradientColors: [string, string] = isActive
+                  ? ['#16a34a', '#15803d']
+                  : isFood
+                    ? ['#f97316', '#ea580c']
+                    : ['#0d9488', '#0f766e'];
+                const iconColor = isActive ? '#16a34a' : isFood ? '#f97316' : '#0d9488';
+                const shadowColor = isActive ? '#16a34a' : isFood ? '#f97316' : '#0d9488';
+
                 return (
                   <TouchableOpacity
                     key={service.key}
@@ -238,7 +248,14 @@ const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
                         <Ionicons name={service.icon as any} size={20} color={iconColor} />
                       </View>
                       <Text style={styles.serviceButtonText}>{service.name}</Text>
-                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                      {isActive ? (
+                        <View style={styles.activeIndicator}>
+                          <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                          <Text style={styles.activeIndicatorText}>Active</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="arrow-forward" size={18} color="#fff" />
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
                 );
@@ -499,6 +516,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     flex: 1,
     marginLeft: 12,
+  },
+  activeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  activeIndicatorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
   },
   unavailableServicesBox: {
     width: '100%',

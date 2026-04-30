@@ -165,14 +165,16 @@ export default function FoodScreen() {
                 style={[s.toggleBtn, activeMode === "grocery" && s.toggleBtnActive]}
                 onPress={() => {
                   setActiveMode("grocery");
-                  // Navigate to HomeTab only if it exists (grocery is available)
-                  if (location?.grocery !== false) {
-                    try {
-                      navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
-                    } catch {
-                      try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                  // Navigate after a frame to avoid useInsertionEffect warning
+                  requestAnimationFrame(() => {
+                    if (location?.grocery !== false) {
+                      try {
+                        navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                      } catch {
+                        try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                      }
                     }
-                  }
+                  });
                 }}
                 activeOpacity={0.7}
               >
@@ -188,15 +190,16 @@ export default function FoodScreen() {
                 style={[s.toggleBtn, activeMode === "service" && s.toggleBtnActive]}
                 onPress={() => {
                   setActiveMode("service");
-                  // Navigate to HomeTab only if it exists (grocery is available)
-                  if (location?.grocery !== false) {
-                    try {
-                      navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
-                    } catch {
-                      try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                  // Navigate after a frame to avoid useInsertionEffect warning
+                  requestAnimationFrame(() => {
+                    if (location?.grocery !== false) {
+                      try {
+                        navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                      } catch {
+                        try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                      }
                     }
-                  }
-                  // If grocery is false, just set mode without navigation
+                  });
                 }}
                 activeOpacity={0.7}
               >
