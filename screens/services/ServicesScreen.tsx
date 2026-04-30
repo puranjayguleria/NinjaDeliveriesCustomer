@@ -15,6 +15,7 @@ import {
   TextInput,
   ScrollView,
   Animated,
+  InteractionManager,
   RefreshControl,
   Platform,
   Alert,
@@ -410,6 +411,7 @@ export default function ServicesScreen() {
   const bannerScrollRef = React.useRef<FlatList>(null);
   const liveBookingsScrollRef = React.useRef<ScrollView>(null);
   const currentBannerIndex = React.useRef(0);
+  const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const headerImageAutoScrollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   // const currentBookingIndex = React.useRef(0);
@@ -1000,17 +1002,36 @@ export default function ServicesScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     // Real-time listeners will automatically fetch fresh data
-    setTimeout(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    refreshTimeoutRef.current = setTimeout(() => {
       setRefreshing(false);
+      refreshTimeoutRef.current = null;
     }, 1000);
   }, []);
 
   // Reset active tab to home when screen comes back into focus
   useFocusEffect(
     useCallback(() => {
-      setActiveTab('home');
+      const task = InteractionManager.runAfterInteractions(() => {
+        setActiveTab('home');
+      });
+
+      return () => {
+        task.cancel();
+      };
     }, [])
   );
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Re-subscribe to listeners when screen comes into focus
   useFocusEffect(
@@ -3578,7 +3599,7 @@ export default function ServicesScreen() {
             <Text style={styles.emptyLoadingText}>Loading services...</Text>
           </View>
         ) : (
-          <Animated.FlatList
+          <FlatList
             data={isLoading ? [] : (listCategories || [])}
             keyExtractor={(item, index) => item?.id || `item-${index}`}
             ListHeaderComponent={renderListHeader}
@@ -3612,10 +3633,9 @@ export default function ServicesScreen() {
             }
             contentContainerStyle={{ paddingTop: SERVICES_STICKY_HEADER_HEIGHT, paddingBottom: 80, backgroundColor: 'white' }}
             showsVerticalScrollIndicator={false}
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: false }
-            )}
+            onScroll={(event) => {
+              scrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
             scrollEventThrottle={16}
             refreshControl={
               <RefreshControl
