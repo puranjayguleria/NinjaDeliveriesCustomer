@@ -108,6 +108,8 @@ import HiddenCouponCard from "./screens/gamification/RewardScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
+import { CartClearListener } from "./components/CartClearListener";
+
 // Import cart debug utilities (available in __DEV__ mode)
 import "./utils/cartDebugUtils";
 
@@ -1950,6 +1952,7 @@ const App: React.FC = () => {
         <CartProvider>
             <FoodCartProvider>
             <ServiceCartProvider>
+              <CartClearListener />
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
               <StartupGroceryPaymentRecovery user={user} firebaseReady={firebaseReady} onRecovered={() => setShowGroceryRecoveredModal(true)} />
               <LocationProvider>
