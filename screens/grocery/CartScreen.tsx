@@ -1173,16 +1173,15 @@ const CartScreen: React.FC = () => {
       );
     }
 
-    // ✅ TESTING: Delivery charges set to 0
     let _deliveryCharge = 0;
-    // if (distanceInKm <= n(fareData.distanceThreshold)) {
-    //   _deliveryCharge = n(fareData.baseDeliveryCharge);
-    // } else {
-    //   const extraKms = distanceInKm - n(fareData.distanceThreshold);
-    //   _deliveryCharge =
-    //     n(fareData.baseDeliveryCharge) +
-    //     extraKms * n(fareData.additionalCostPerKm);
-    // }
+    if (distanceInKm <= n(fareData.distanceThreshold)) {
+      _deliveryCharge = n(fareData.baseDeliveryCharge);
+    } else {
+      const extraKms = distanceInKm - n(fareData.distanceThreshold);
+      _deliveryCharge =
+        n(fareData.baseDeliveryCharge) +
+        extraKms * n(fareData.additionalCostPerKm);
+    }
 
     const totalGstOnDelivery =
       (_deliveryCharge * n(fareData.gstPercentage)) / 100;
