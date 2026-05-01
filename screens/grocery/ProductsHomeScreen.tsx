@@ -612,97 +612,32 @@ const MultiRowProductGrid: React.FC<{
   isPanProd: (p: any) => boolean;
   maybeGate: (cb: () => void, isPan: boolean) => void;
 }> = ({ products, isPanProd, maybeGate }) => {
-  const groupMap: Record<string, { items: any[]; total: number }> = {};
-
-  products.forEach((p) => {
-    const subId =
-      (
-        p.subcategoryId ||
-        p.subCategoryId ||
-        p.subcategory ||
-        "unknown"
-      ).toString();
-    const weekly = Number(p.weeklySold ?? 0);
-    if (!groupMap[subId]) {
-      groupMap[subId] = { items: [], total: 0 };
-    }
-    groupMap[subId].items.push(p);
-    groupMap[subId].total += weekly;
-  });
-
-  const groups = Object.entries(groupMap)
-    .map(([id, g]) => ({ id, items: g.items, total: g.total }))
-    .sort((a, b) => b.total - a.total);
-
-  const DESIRED_COUNT = 7;
-  const total = products.length;
-  const maxPerRow = Math.floor(total / 2);
-  const rowCount = Math.max(1, Math.min(DESIRED_COUNT, maxPerRow));
-
-  const topGroups = groups.slice(0, 2);
-  const rows: any[][] = [[], []];
-  const usedIds: Set<string> = new Set();
-
-  const tryPush = (rowIdx: number, item: any) => {
-    if (rows[rowIdx].length >= rowCount) return;
-    const idStr = String(item.id);
-    if (!usedIds.has(idStr)) {
-      rows[rowIdx].push(item);
-      usedIds.add(idStr);
-    }
-  };
-
-  if (topGroups.length >= 1) {
-    topGroups[0].items.forEach((item: any) => {
-      tryPush(0, item);
-    });
-  }
-  if (topGroups.length >= 2) {
-    topGroups[1].items.forEach((item: any) => {
-      tryPush(1, item);
-    });
-  }
-
-  const leftover: any[] = [];
-  if (topGroups.length >= 1) {
-    topGroups[0].items.forEach((item: any) => {
-      if (!usedIds.has(String(item.id))) leftover.push(item);
-    });
-  }
-  if (topGroups.length >= 2) {
-    topGroups[1].items.forEach((item: any) => {
-      if (!usedIds.has(String(item.id))) leftover.push(item);
-    });
-  }
-  groups.slice(topGroups.length).forEach((grp) => {
-    grp.items.forEach((item: any) => {
-      if (!usedIds.has(String(item.id))) leftover.push(item);
-    });
-  });
-
-  leftover.sort(
+  // Sort all products by popularity
+  const sorted = [...products].sort(
     (a, b) => Number(b.weeklySold ?? 0) - Number(a.weeklySold ?? 0)
   );
 
-  let idx = 0;
-  while (
-    (rows[0].length < rowCount || rows[1].length < rowCount) &&
-    idx < leftover.length
-  ) {
-    const targetRow = rows[0].length <= rows[1].length ? 0 : 1;
-    const rowIdx =
-      rows[targetRow].length < rowCount ? targetRow : 1 - targetRow;
-    const item = leftover[idx++];
-    const idStr = String(item.id);
-    if (!usedIds.has(idStr)) {
-      rows[rowIdx].push(item);
-      usedIds.add(idStr);
-    }
+  const total = sorted.length;
+
+  // Use a single row when there are 4 or fewer products; two rows otherwise
+  const useOneRow = total <= 4;
+
+  const rows: any[][] = useOneRow ? [sorted] : [[], []];
+
+  if (!useOneRow) {
+    // Distribute evenly across two rows in round-robin fashion so both
+    // rows stay balanced regardless of total count.
+    sorted.forEach((item, i) => {
+      rows[i % 2].push(item);
+    });
   }
+
+  // Filter out empty rows (safety)
+  const visibleRows = rows.filter((r) => r.length > 0);
 
   return (
     <View>
-      {rows.map((rowItems, rowIdx) => (
+      {visibleRows.map((rowItems, rowIdx) => (
         <ScrollView
           key={`row${rowIdx}`}
           horizontal
@@ -2738,7 +2673,11 @@ chipTxt: {
     right: 0,
     zIndex: 999,
     elevation: 20,
-    backgroundColor: "transparent",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   badgeText: {
     color: "#fff",

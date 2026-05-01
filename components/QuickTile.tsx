@@ -54,11 +54,11 @@ function QuickTileBase({ p, guard, isPan, ribbonColor }: QuickTileProps) {
   // —— Derivations —— //
   const mrp = useMemo(() => {
     const raw = Number(p.price ?? 0) + Number(p.CGST ?? 0) + Number(p.SGST ?? 0);
-    return Math.round(raw * 100) / 100;
+    return Math.round(raw);
   }, [p.price, p.CGST, p.SGST]);
 
   const discount = p.discount ?? 0;
-  const price = useMemo(() => mrp - discount, [mrp, discount]);
+  const price = useMemo(() => Math.round(mrp - discount), [mrp, discount]);
 
   const discountPercent = useMemo(
     () => (discount > 0 && mrp > 0 ? Math.round((discount / mrp) * 100) : 0),
