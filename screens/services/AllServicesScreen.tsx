@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ServicesTabBar from '../../components/ServicesTabBar';
 import {
   View,
   Text,
@@ -283,6 +284,7 @@ export default function AllServicesScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
+      <ServicesTabBar activeTab="explore" />
     </ImageBackground>
   );
 }

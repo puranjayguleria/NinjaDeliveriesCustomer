@@ -19,6 +19,7 @@ import {
   Platform,
   Alert,
   ImageBackground,
+  Modal,
 } from "react-native";
 import { Image as ExpoImage, Image } from "expo-image";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -265,6 +266,407 @@ const SERVICES_SEARCH_PLACEHOLDERS = [
 const SERVICES_SEARCH_PLACEHOLDER_CYCLE_MS = 4000;
 const SERVICES_SEARCH_PLACEHOLDER_ANIM_MS = 240;
 
+// ─── QuickServiceCard ────────────────────────────────────────────────────────
+// Extracted so each card can independently track its "see more" state.
+interface QuickServiceCardProps {
+  service: any;
+  fallbackBgColor: string;
+  fallbackIconName: string;
+  fallbackIconColor: string;
+  onPress: (svc: any) => void;
+}
+
+function QuickServiceCard({
+  service,
+  fallbackBgColor,
+  fallbackIconName,
+  fallbackIconColor,
+  onPress,
+}: QuickServiceCardProps) {
+  const [modalVisible, setModalVisible] = React.useState(false);
+  const scrollViewRef = React.useRef<any>(null);
+  const scrollIndicatorAnim = React.useRef(new Animated.Value(0)).current;
+  const [scrollbarHeight, setScrollbarHeight] = React.useState(0);
+  const [thumbHeight, setThumbHeight] = React.useState(0);
+  const [isScrollable, setIsScrollable] = React.useState(false);
+  const contentHeightRef = React.useRef(0);
+  const layoutHeightRef = React.useRef(0);
+  const description = String(service?.description || '').trim();
+  const hasDescription = description.length > 0;
+  const SHORT_LIMIT = 60;
+  const isLong = description.length > SHORT_LIMIT;
+
+  const handleScrollbarLayout = (e: any) => {
+    const h = e.nativeEvent.layout.height;
+    setScrollbarHeight(h);
+    layoutHeightRef.current = h;
+    if (contentHeightRef.current > 0) {
+      const ratio = h / contentHeightRef.current;
+      setThumbHeight(Math.max(30, h * ratio));
+      setIsScrollable(contentHeightRef.current > h + 10);
+    }
+  };
+
+  const handleContentSizeChange = (_: number, contentH: number) => {
+    contentHeightRef.current = contentH;
+    if (layoutHeightRef.current > 0) {
+      const ratio = layoutHeightRef.current / contentH;
+      setThumbHeight(Math.max(30, layoutHeightRef.current * ratio));
+      setIsScrollable(contentH > layoutHeightRef.current + 10);
+    }
+  };
+
+  const handleScroll = (e: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    if (contentSize.height <= layoutMeasurement.height) return;
+    const maxScroll = contentSize.height - layoutMeasurement.height;
+    const maxThumbTravel = layoutMeasurement.height - thumbHeight;
+    const thumbPos = (contentOffset.y / maxScroll) * maxThumbTravel;
+    scrollIndicatorAnim.setValue(thumbPos);
+  };
+  return (
+    <>
+      <TouchableOpacity
+        style={quickCardStyles.card}
+        activeOpacity={0.7}
+        onPress={() => onPress(service)}
+      >
+        {/* Image / Icon */}
+        <View style={quickCardStyles.imageContainer}>
+          {service.imageUrl ? (
+            <ExpoImage
+              source={{ uri: service.imageUrl }}
+              style={quickCardStyles.image}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+          ) : (
+            <View style={[quickCardStyles.iconFallback, { backgroundColor: fallbackBgColor }]}>
+              <Ionicons name={fallbackIconName as any} size={28} color={fallbackIconColor} />
+            </View>
+          )}
+        </View>
+
+        {/* Info */}
+        <View style={quickCardStyles.info}>
+          {/* Name + arrow button row */}
+          <View style={quickCardStyles.nameRow}>
+            <Text style={quickCardStyles.name} numberOfLines={2}>
+              {service.name || 'Service'}
+            </Text>
+            <TouchableOpacity
+              style={quickCardStyles.arrowBtn}
+              activeOpacity={0.7}
+              onPress={() => onPress(service)}
+            >
+              <LinearGradient
+                colors={['#10b981', '#059669', '#047857']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={quickCardStyles.arrowGradient}
+              >
+                <Ionicons name="arrow-forward" size={14} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          {/* Description */}
+          {hasDescription && (
+            <View>
+              <Text style={quickCardStyles.description} numberOfLines={2}>
+                {description}
+              </Text>
+              {isLong && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={quickCardStyles.seeMore}>See more</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {/* Description Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={quickCardStyles.modalOverlay}>
+          <View style={quickCardStyles.modalContent}>
+
+            {/* Header */}
+            <View style={quickCardStyles.modalHeader}>
+              <View style={quickCardStyles.modalHeaderLeft}>
+                <View style={[quickCardStyles.modalIcon, { backgroundColor: fallbackBgColor }]}>
+                  <Ionicons name={fallbackIconName as any} size={20} color={fallbackIconColor} />
+                </View>
+                <Text style={quickCardStyles.modalTitle} numberOfLines={2}>
+                  {service.name || 'Service'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                style={quickCardStyles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable description */}
+            <View style={quickCardStyles.modalBodyWrapper}>
+              <ScrollView
+                ref={scrollViewRef}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                scrollEventThrottle={16}
+                onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={handleScrollbarLayout}
+                contentContainerStyle={quickCardStyles.modalBodyContent}
+              >
+                <Text style={quickCardStyles.modalDescription}>{description}</Text>
+              </ScrollView>
+
+              {/* Custom right-side scrollbar */}
+              {isScrollable && (
+                <View style={quickCardStyles.customScrollbar}>
+                  <Animated.View
+                    style={[
+                      quickCardStyles.customScrollbarThumb,
+                      {
+                        height: thumbHeight,
+                        transform: [{ translateY: scrollIndicatorAnim }],
+                      },
+                    ]}
+                  />
+                </View>
+              )}
+            </View>
+
+            {/* Fixed footer */}
+            <View style={quickCardStyles.modalFooter}>
+              <TouchableOpacity
+                style={quickCardStyles.bookButton}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setModalVisible(false);
+                  onPress(service);
+                }}
+              >
+                <LinearGradient
+                  colors={['#10b981', '#059669', '#047857']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={quickCardStyles.bookButtonGradient}
+                >
+                  <Text style={quickCardStyles.bookButtonText}>Book Now</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+const quickCardStyles = StyleSheet.create({
+  card: {
+    width: 150,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  imageContainer: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#f8fafc',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  iconFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: {
+    padding: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  name: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+    lineHeight: 16,
+    paddingRight: 6,
+  },
+  arrowBtn: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  arrowGradient: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  description: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 15,
+    fontWeight: '400',
+  },
+  seeMore: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#00b4a0',
+    marginTop: 3,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '82%',
+    flexDirection: 'column',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 10,
+  },
+  modalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+    lineHeight: 20,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBodyWrapper: {
+    flexShrink: 1,
+    flexGrow: 1,
+    position: 'relative',
+    minHeight: 80,
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  modalBodyContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    paddingRight: 30,
+  },
+  customScrollbar: {
+    position: 'absolute',
+    right: 6,
+    top: 16,
+    bottom: 12,
+    width: 4,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 2,
+  },
+  customScrollbarThumb: {
+    width: 4,
+    backgroundColor: '#00b4a0',
+    borderRadius: 2,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  bookButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  bookButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  bookButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
@@ -417,6 +819,11 @@ export default function ServicesScreen() {
   const blinkAnim = React.useRef(new Animated.Value(1)).current;
   const bookingBlinkAnim = React.useRef(new Animated.Value(1)).current;
   const liveDotBlinkAnim = React.useRef(new Animated.Value(1)).current;
+  const liveParticleAnim = React.useRef(new Animated.Value(0)).current; // kept for dep compat
+  const liveShimmerAnim = React.useRef(new Animated.Value(0)).current;
+  const liveCounterBounceAnim = React.useRef(new Animated.Value(1)).current;
+  const liveTypingAnim = React.useRef(new Animated.Value(0)).current;
+  const liveBorderAnim = React.useRef(new Animated.Value(0)).current;
   const arrowAnim = React.useRef(new Animated.Value(0)).current;
   const [randomServices, setRandomServices] = useState<any[]>([]);
   const [plumberServices, setPlumberServices] = useState<any[]>([]);
@@ -1353,7 +1760,7 @@ export default function ServicesScreen() {
     const unsubscribe = firestore()
       .collection('service_bookings')
       .orderBy('createdAt', 'desc')
-      .limit(15)
+      .limit(10) // Reduced limit for better performance
       .onSnapshot(
         (snapshot) => {
           if (__DEV__) {
@@ -1368,11 +1775,11 @@ export default function ServicesScreen() {
             const serviceName = data.serviceName || data.serviceTitle || 'Service';
             const location = data.address?.city || data.address?.area || 'Your area';
             
-            // Create unique key based on service name and location
-            const uniqueKey = `${serviceName}-${location}`;
+            // Create unique key based on service name and location to avoid duplicates
+            const uniqueKey = `${serviceName.toLowerCase().trim()}-${location.toLowerCase().trim()}`;
             
-            // Only add if not already seen
-            if (!seenBookings.has(uniqueKey)) {
+            // Only add if not already seen and limit to unique services
+            if (!seenBookings.has(uniqueKey) && bookings.length < 8) {
               seenBookings.add(uniqueKey);
               bookings.push({
                 id: doc.id,
@@ -1463,44 +1870,94 @@ export default function ServicesScreen() {
     };
   }, [serviceBanners.length]);
 
-  // Auto-cycle through live bookings vertically (one by one)
+  // Auto-cycle through live bookings vertically (one by one) - Smooth transition
   const [currentBookingIndex, setCurrentBookingIndex] = useState(0);
   const [shouldBlinkBooking, setShouldBlinkBooking] = useState(false);
   const bookingTransitionAnim = React.useRef(new Animated.Value(0)).current;
+  const bookingOpacityAnim = React.useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (liveBookings.length <= 1) return;
+    if (liveBookings.length <= 1) {
+      // Reset animations when there's only one or no bookings
+      bookingTransitionAnim.setValue(0);
+      bookingOpacityAnim.setValue(1);
+      return;
+    }
 
     const interval = setInterval(() => {
-      // Slide up animation
-      Animated.timing(bookingTransitionAnim, {
-        toValue: -24,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
+      // Smooth fade out and slide transition
+      Animated.parallel([
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingTransitionAnim, {
+          toValue: -20,
+          duration: 300,
+          useNativeDriver: true,
+        })
+      ]).start(({ finished }) => {
+        if (!finished) return; // Don't proceed if animation was interrupted
+        
         // Change booking
         setCurrentBookingIndex((prevIndex) => 
           (prevIndex + 1) % liveBookings.length
         );
-        // Reset position to bottom and slide up
-        bookingTransitionAnim.setValue(24);
-        Animated.timing(bookingTransitionAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start();
+        
+        // Reset position immediately (no animation)
+        bookingTransitionAnim.setValue(20);
+        bookingOpacityAnim.setValue(0);
+        
+        // Small delay before fading in
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(bookingOpacityAnim, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.timing(bookingTransitionAnim, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            })
+          ]).start();
+        }, 50);
       });
-    }, 3000); // Change booking every 3 seconds
+    }, 4000); // Change booking every 4 seconds
 
-    return () => clearInterval(interval);
-  }, [liveBookings.length, bookingTransitionAnim]);
+    return () => {
+      clearInterval(interval);
+      // Stop any ongoing animations
+      bookingTransitionAnim.stopAnimation();
+      bookingOpacityAnim.stopAnimation();
+    };
+  }, [liveBookings.length, bookingTransitionAnim, bookingOpacityAnim]);
 
   // Trigger blink only when new bookings are added
   useEffect(() => {
     if (liveBookings.length > 0) {
-      setShouldBlinkBooking(true);
+      // Use requestAnimationFrame to avoid useInsertionEffect warning
+      requestAnimationFrame(() => {
+        setShouldBlinkBooking(true);
+        
+        // Bounce animation for counter when new booking arrives
+        Animated.sequence([
+          Animated.timing(liveCounterBounceAnim, {
+            toValue: 1.3,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(liveCounterBounceAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     }
-  }, [liveBookings.length]);
+  }, [liveBookings.length, liveCounterBounceAnim]);
 
   const latestLiveBooking = React.useMemo(() => {
     if (!liveBookings?.length) return null;
@@ -2038,29 +2495,57 @@ export default function ServicesScreen() {
 
 
 
-  // Continuous blinking animation for live dot
+  // Continuous pulse animation for live dot with scale effect
   useEffect(() => {
-    const liveDotBlink = Animated.loop(
+    const liveDotPulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(liveDotBlinkAnim, {
-          toValue: 0.3,
-          duration: 800,
+        Animated.parallel([
+          Animated.timing(liveDotBlinkAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(liveDotBlinkAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+
+    liveDotPulse.start();
+
+    return () => {
+      liveDotPulse.stop();
+    };
+  }, [liveDotBlinkAnim]);
+
+  // Typing dots animation for empty state
+  useEffect(() => {
+    const typing = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveTypingAnim, {
+          toValue: 1,
+          duration: 600,
           useNativeDriver: true,
         }),
-        Animated.timing(liveDotBlinkAnim, {
-          toValue: 1,
-          duration: 800,
+        Animated.timing(liveTypingAnim, {
+          toValue: 0,
+          duration: 600,
           useNativeDriver: true,
         }),
       ])
     );
 
-    liveDotBlink.start();
+    typing.start();
 
     return () => {
-      liveDotBlink.stop();
+      typing.stop();
     };
-  }, [liveDotBlinkAnim]);
+  }, [liveTypingAnim]);
 
   // Smooth blinking animation for Book Now buttons
   useEffect(() => {
@@ -2090,42 +2575,45 @@ export default function ServicesScreen() {
   useEffect(() => {
     if (!shouldBlinkBooking || !latestLiveBooking) return;
 
-    // Reset to 1 first
-    bookingBlinkAnim.setValue(1);
+    // Use requestAnimationFrame to avoid useInsertionEffect warning
+    requestAnimationFrame(() => {
+      // Reset to 1 first
+      bookingOpacityAnim.setValue(1);
 
-    // Then animate blink
-    const blinkAnimation = Animated.sequence([
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 0.2,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 0.2,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(bookingBlinkAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]);
+      // Then animate blink
+      const blinkAnimation = Animated.sequence([
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bookingOpacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]);
 
-    blinkAnimation.start(() => {
-      // Reset the flag after animation completes
-      setShouldBlinkBooking(false);
+      blinkAnimation.start(() => {
+        // Reset the flag after animation completes
+        setShouldBlinkBooking(false);
+      });
     });
 
     return () => {
-      blinkAnimation.stop();
+      bookingOpacityAnim.stopAnimation();
     };
-  }, [shouldBlinkBooking, bookingBlinkAnim]);
+  }, [shouldBlinkBooking, latestLiveBooking, bookingOpacityAnim]);
 
   // Arrow movement animation for View All button and package cards
   useEffect(() => {
@@ -2390,64 +2878,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {electricianServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#FFFBEB' }]}>
-                          <Ionicons 
-                            name="flash-outline" 
-                            size={28} 
-                            color="#F59E0B" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {electricianServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#FFFBEB"
+                  fallbackIconName="flash-outline"
+                  fallbackIconColor="#F59E0B"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2482,64 +2922,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {plumberServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#EFF6FF' }]}>
-                          <Ionicons 
-                            name="water-outline" 
-                            size={28} 
-                            color="#3B82F6" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {plumberServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#EFF6FF"
+                  fallbackIconName="water-outline"
+                  fallbackIconColor="#3B82F6"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2578,64 +2970,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {automobileWashingServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#F0F9FF' }]}>
-                          <Ionicons 
-                            name="car-outline" 
-                            size={28} 
-                            color="#0EA5E9" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {automobileWashingServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#F0F9FF"
+                  fallbackIconName="car-outline"
+                  fallbackIconColor="#0EA5E9"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -2674,64 +3018,16 @@ export default function ServicesScreen() {
               contentContainerStyle={styles.quickServicesScroll}
               scrollEventThrottle={16}
             >
-              {homeCleaningServices.map((service, index) => {
-                const hasPackages = Array.isArray(service?.packages) && service.packages.length > 0;
-                const displayPrice = hasPackages 
-                  ? `₹${service.packages[0]?.price || 'N/A'}`
-                  : service.price 
-                    ? `₹${service.price}`
-                    : 'Contact for price';
-
-                return (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={styles.quickServiceCard}
-                    activeOpacity={0.7}
-                    onPress={() => onServicePress(service)}
-                  >
-                    <View style={styles.quickServiceImageContainer}>
-                      {service.imageUrl ? (
-                        <ExpoImage
-                          source={{ uri: service.imageUrl }}
-                          style={styles.quickServiceImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                      ) : (
-                        <View style={[styles.quickServiceIconFallback, { backgroundColor: '#ECFDF5' }]}>
-                          <Ionicons 
-                            name="home-outline" 
-                            size={28} 
-                            color="#10B981" 
-                          />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.quickServiceInfo}>
-                      <View style={styles.quickServiceTextContainer}>
-                        <Text style={styles.quickServiceName} numberOfLines={2}>
-                          {service.name || 'Service'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        style={styles.addToCartButton}
-                        activeOpacity={0.7}
-                        onPress={() => onServicePress(service)}
-                      >
-                        <LinearGradient
-                          colors={['#10b981', '#059669', '#047857']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.addToCartIconContainer}
-                        >
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {homeCleaningServices.map((service) => (
+                <QuickServiceCard
+                  key={service.id}
+                  service={service}
+                  fallbackBgColor="#ECFDF5"
+                  fallbackIconName="home-outline"
+                  fallbackIconColor="#10B981"
+                  onPress={onServicePress}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -3315,13 +3611,14 @@ export default function ServicesScreen() {
                   ]}
                   onPress={() => {
                     setActiveMode("grocery");
-                    // Navigate to HomeTab only if it exists (grocery is available)
-                    if (location?.grocery !== false) {
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: "HomeTab" }],
-                      });
-                    }
+                    // Navigate to HomeTab (which has HomeScreenWrapper)
+                    requestAnimationFrame(() => {
+                      try {
+                        navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
+                      } catch {
+                        try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                      }
+                    });
                   }}
                   activeOpacity={0.7}
                 >
@@ -3367,11 +3664,17 @@ export default function ServicesScreen() {
                   onPress={() => {
                     setActiveMode("food");
                     // Navigate based on grocery availability
-                    if (location?.grocery !== false) {
-                      // HomeTab exists
-                      navigation.navigate("ProductsHome");
-                    }
-                    // If grocery is false, just set mode, user is already on a screen
+                    requestAnimationFrame(() => {
+                      if (location?.grocery === false) {
+                        // Grocery is false - navigate within CartFlow to FoodComingSoon
+                        try {
+                          navigation.navigate("FoodComingSoon" as any);
+                        } catch (err) {
+                          console.log('[ServicesScreen] Food navigation error:', err);
+                        }
+                      }
+                      // If grocery is true, HomeScreenWrapper handles it automatically
+                    });
                   }}
                   activeOpacity={0.7}
                 >
@@ -3443,44 +3746,98 @@ export default function ServicesScreen() {
                 )}
               </View>
 
-              {/* Live Updates Section */}
+              {/* Live Updates Section - Modern Design */}
               <View style={styles.liveUpdatesContainer}>
-                <View style={styles.liveUpdatesHeader}>
-                  <View style={styles.liveIndicator}>
-                    <Animated.View style={[styles.liveDot, { opacity: liveDotBlinkAnim }]} />
-                    <Text style={styles.liveText}>Live Bookings</Text>
-                  </View>
-                </View>
-                <View style={styles.liveUpdatesWrapper}>
-                  {latestLiveBooking ? (
-                    <Animated.View style={[
-                      styles.liveUpdateItem, 
-                      { 
-                        transform: [{ translateY: bookingTransitionAnim }]
-                      }
-                    ]}>
-                      <View style={styles.liveUpdateDot} />
-                      <Text style={styles.liveUpdateText} numberOfLines={1}>
-                        <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
-                        {' '}booked in{' '}
-                        <Text style={[
-                          styles.liveUpdateLocation,
-                          latestLiveBooking.location === 'Your area' && styles.liveUpdateLocationRed
-                        ]}>
-                          {latestLiveBooking.location}
-                        </Text>
-                      </Text>
-                    </Animated.View>
-                  ) : (
-                    <View style={styles.liveUpdateItem}>
-                      <View style={[styles.liveUpdateDot, { backgroundColor: '#cbd5e1' }]} />
-                      <Text style={styles.liveUpdateText}>
-                        <Text style={styles.liveUpdateBold}>No live bookings</Text>
-                        {' '}at the moment
-                      </Text>
+                <LinearGradient
+                  colors={['#ff3b30', '#ff6b35', '#ff8f00', '#ffb300']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.liveUpdatesGradient}
+                >
+                  <View style={styles.liveUpdatesContent}>
+                    {/* Header with pulse animation */}
+                    <View style={styles.liveUpdatesHeader}>
+                      <View style={styles.liveIndicator}>
+                        <Animated.View style={[styles.livePulseContainer, { opacity: liveDotBlinkAnim }]}>
+                          <View style={styles.livePulseOuter} />
+                          <View style={styles.livePulseInner} />
+                        </Animated.View>
+                        <Text style={styles.liveText}>🔥 Live Bookings</Text>
+                      </View>
                     </View>
-                  )}
-                </View>
+
+                    {/* Booking ticker */}
+                    <View style={styles.liveUpdatesWrapper}>
+                      {latestLiveBooking ? (
+                        <Animated.View 
+                          key={`booking-${currentBookingIndex}-${latestLiveBooking.id}`}
+                          style={[
+                            styles.liveUpdateItem, 
+                            { 
+                              transform: [{ translateY: bookingTransitionAnim }],
+                              opacity: bookingOpacityAnim
+                            }
+                          ]}
+                        >
+                          <View style={styles.liveUpdateIconContainer}>
+                            <MaterialCommunityIcons name="account-check" size={16} color="#ffffff" />
+                          </View>
+                          <View style={styles.liveUpdateTextContainer}>
+                            <Text style={styles.liveUpdateText} numberOfLines={2}>
+                              <Text style={styles.liveUpdateBold}>{latestLiveBooking.serviceName}</Text>
+                              <Text style={styles.liveUpdateNormal}> just booked in </Text>
+                              <Text style={styles.liveUpdateLocation}>
+                                {latestLiveBooking.location}
+                              </Text>
+                            </Text>
+                            <View style={styles.liveUpdateTimeContainer}>
+                              <MaterialCommunityIcons name="clock-outline" size={12} color="#ffffff80" />
+                              <Text style={styles.liveUpdateTime}>Just now</Text>
+                            </View>
+                          </View>
+                        </Animated.View>
+                      ) : (
+                        <View style={styles.liveUpdateItem}>
+                          <View style={styles.liveUpdateIconContainer}>
+                            <MaterialCommunityIcons name="clock-outline" size={16} color="#ffffff60" />
+                          </View>
+                          <View style={styles.liveUpdateTextContainer}>
+                            <View style={styles.liveWaitingContainer}>
+                              <Text style={styles.liveUpdateText}>
+                                <Text style={styles.liveUpdateBold}>Waiting for bookings</Text>
+                              </Text>
+                              <View style={styles.liveTypingDots}>
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { opacity: liveTypingAnim }
+                                ]} />
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { 
+                                    opacity: liveTypingAnim.interpolate({
+                                      inputRange: [0, 1],
+                                      outputRange: [0.3, 1]
+                                    })
+                                  }
+                                ]} />
+                                <Animated.View style={[
+                                  styles.liveTypingDot,
+                                  { 
+                                    opacity: liveTypingAnim.interpolate({
+                                      inputRange: [0, 1],
+                                      outputRange: [0.1, 0.8]
+                                    })
+                                  }
+                                ]} />
+                              </View>
+                            </View>
+                            <Text style={styles.liveUpdateTime}>Be the first to book!</Text>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </LinearGradient>
               </View>
             </View>
 
@@ -4330,79 +4687,237 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Live Updates Styles
+  // Live Updates Styles - Modern Design
   liveUpdatesContainer: {
-    paddingVertical: 12,
-    backgroundColor: "white",
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#ff3b30',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.6,
+    shadowRadius: 25,
+    elevation: 20,
+    // Add a vibrant glow effect on Android
+    ...(Platform.OS === 'android' && {
+      backgroundColor: '#ff3b3040',
+      padding: 3,
+    }),
+  },
+
+  liveUpdatesGradient: {
+    borderRadius: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+
+  liveGlowBorder: {
+    borderRadius: 22,
+    padding: 2,
+    backgroundColor: '#ff3b3050',
+  },
+
+  liveShimmerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 100,
+    backgroundColor: '#ffffff',
+    transform: [{ skewX: '-20deg' }],
+  },
+
+  liveUpdatesContent: {
+    position: 'relative',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
 
   liveUpdatesHeader: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 4,
   },
 
   liveIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 12,
   },
 
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#ef4444",
-    shadowColor: "#ef4444",
-    shadowOpacity: 0.5,
+  livePulseContainer: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  livePulseOuter: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffffff60',
+    borderWidth: 2,
+    borderColor: '#ffffff80',
+  },
+
+  livePulseInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    shadowColor: '#ffffff',
+    shadowOpacity: 1,
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 4,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   liveText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#ffffff",
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    flex: 1,
+    letterSpacing: 0.5,
   },
 
+
   liveUpdatesWrapper: {
-    paddingHorizontal: 16,
-    height: 24,
+    minHeight: 60,
+    justifyContent: 'center',
     overflow: "hidden",
   },
 
   liveUpdateItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
+    paddingVertical: 4,
   },
 
-  liveUpdateDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#00b4a0",
+  liveUpdateIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ffffff30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff50',
+    shadowColor: '#ffffff',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  liveUpdateTextContainer: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 8,
   },
 
   liveUpdateText: {
-    fontSize: 13,
-    color: "#64748b",
+    fontSize: 14,
+    color: "#ffffff",
     fontWeight: "400",
-    flex: 1,
+    lineHeight: 20,
+    flexWrap: 'wrap',
   },
 
   liveUpdateBold: {
-    fontWeight: "700",
-    color: "#0f172a",
+    fontWeight: "800",
+    color: "#ffffff",
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  liveUpdateNormal: {
+    fontWeight: "500",
+    color: "#ffffff95",
   },
 
   liveUpdateLocation: {
-    color: "#00b4a0",
-    fontWeight: "600",
+    color: "#ffffff",
+    fontWeight: "700",
+    textDecorationLine: 'underline',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
 
-  liveUpdateLocationRed: {
-    color: "#ef4444",
+  liveUpdateTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  liveUpdateTime: {
+    fontSize: 11,
+    color: "#ffffff80",
+    fontWeight: "500",
+  },
+
+  liveWaitingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  liveTypingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+
+  liveTypingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ffffff80',
+  },
+
+
+  // Floating particles
+  liveParticlesContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
+  },
+
+  liveParticle: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ffffff80',
+    shadowColor: '#ffffff',
+    shadowOpacity: 0.8,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 4,
+  },
+
+  liveParticle1: {
+    top: 20,
+    right: 30,
+  },
+
+  liveParticle2: {
+    top: 40,
+    right: 60,
+  },
+
+  liveParticle3: {
+    bottom: 25,
+    right: 45,
   },
 
   // Grid Styles (3 columns)

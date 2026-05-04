@@ -1,4 +1,5 @@
 import React from "react";
+import ServicesTabBar from "../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -210,6 +211,7 @@ export default function ServiceCartScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      <ServicesTabBar activeTab="cart" />
     </View>
   );
 }

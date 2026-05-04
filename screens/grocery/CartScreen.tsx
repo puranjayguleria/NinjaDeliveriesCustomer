@@ -20,6 +20,7 @@ import {
   Modal,
   Animated,
   InteractionManager,
+  AppState,
 } from "react-native";
 import {
   useFocusEffect,
@@ -42,6 +43,7 @@ import NotificationModal from "../../components/NotificationModal";
 import RecommendCard from "@/components/RecommendedCard";
 import Loader from "@/components/VideoLoader";
 import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { openRazorpayNative } from "../../utils/razorpayNative";
 import { registerRazorpayWebViewCallbacks } from "../../utils/razorpayWebViewCallbacks";
 import { useWeather } from "../../context/WeatherContext";
@@ -74,6 +76,9 @@ const CLOUD_FUNCTIONS_BASE_URL =
   "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net"; // <-- change if region/project differs
 const CREATE_RZP_ORDER_URL = `${CLOUD_FUNCTIONS_BASE_URL}/createRazorpayOrder`;
 const VERIFY_RZP_PAYMENT_URL = `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`;
+
+const GROCERY_PAYMENT_RECOVERY_KEY = "grocery_payment_recovery";
+const GROCERY_PAYMENT_PENDING_KEY = "grocery_payment_pending";
 
 
 /**
@@ -512,6 +517,171 @@ const CartScreen: React.FC = () => {
   };
 
   /***************************************
+   * Payment Recovery on App Start
+   ***************************************/
+  useEffect(() => {
+    checkAndRecoverPendingPayment();
+  }, []);
+
+  const checkAndRecoverPendingPayment = async () => {
+    try {
+      const pendingPaymentStr = await AsyncStorage.getItem(GROCERY_PAYMENT_PENDING_KEY);
+      if (!pendingPaymentStr) return;
+
+      const pendingPayment = JSON.parse(pendingPaymentStr);
+      const { razorpayOrderId, firestoreOrderId, timestamp } = pendingPayment;
+
+      // Check if payment is older than 15 minutes (stale)
+      if (Date.now() - timestamp > 15 * 60 * 1000) {
+        await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+        return;
+      }
+
+      console.log("[PaymentRecovery] Found pending payment, checking status...");
+
+      // ✅ Check if order was already processed by webhook
+      if (firestoreOrderId) {
+        try {
+          const orderDoc = await firestore().collection("orders").doc(firestoreOrderId).get();
+          
+          if (orderDoc.exists) {
+            const orderData = orderDoc.data();
+            
+            // If order is already confirmed (webhook processed it), just clean up
+            if (orderData?.status === "pending" && orderData?.payment?.status === "paid") {
+              console.log("[PaymentRecovery] Order already processed by webhook");
+              clearCart();
+              await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+              
+              Alert.alert(
+                "Order Placed",
+                "Your order has been placed successfully!",
+                [
+                  {
+                    text: "Track Order",
+                    onPress: () => {
+                      navigation.navigate("OrderAllocating", {
+                        orderId: firestoreOrderId,
+                        pickupCoords: orderData.pickupCoords,
+                        dropoffCoords: orderData.dropoffCoords,
+                        totalCost: orderData.finalTotal,
+                      });
+                    },
+                  },
+                  { text: "OK" },
+                ]
+              );
+              return;
+            }
+            
+            // If still payment_pending, check with Razorpay
+            if (orderData?.status === "payment_pending") {
+              const paymentStatus = await verifyRazorpayPaymentRecovery(razorpayOrderId);
+              
+              if (paymentStatus === "paid") {
+                console.log("[PaymentRecovery] Payment confirmed, updating order...");
+                
+                // Update order status
+                await firestore().collection("orders").doc(firestoreOrderId).update({
+                  status: "pending",
+                  "payment.status": "paid",
+                  paymentCompletedAt: firestore.FieldValue.serverTimestamp(),
+                  updatedAt: firestore.FieldValue.serverTimestamp(),
+                });
+                
+                clearCart();
+                await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+                
+                Alert.alert(
+                  "Order Placed",
+                  "Your order has been placed successfully!",
+                  [{ text: "OK" }]
+                );
+              } else if (paymentStatus === "failed" || paymentStatus === "not_found") {
+                // Payment failed, delete order
+                await firestore().collection("orders").doc(firestoreOrderId).delete();
+                await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+                console.log("[PaymentRecovery] Deleted failed order");
+              }
+            }
+          } else {
+            // Order doesn't exist, clean up
+            await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+          }
+        } catch (error) {
+          console.error("[PaymentRecovery] Error checking order:", error);
+        }
+      }
+    } catch (error) {
+      console.error("[PaymentRecovery] Error:", error);
+    }
+  };
+
+  const verifyRazorpayPaymentRecovery = async (orderId: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      const { data } = await api.post(
+        VERIFY_RZP_PAYMENT_URL,
+        { 
+          razorpay_order_id: orderId,
+          recovery: true, // ✅ Use recovery mode
+        },
+        { headers }
+      );
+      return data.verified ? "paid" : "failed";
+    } catch (error) {
+      console.error("[verifyRazorpayPaymentRecovery]", error);
+      return "unknown";
+    }
+  };
+
+  const createOrderFromSnapshot = async (orderSnapshot: any) => {
+    try {
+      // Create order in Firestore
+      const orderRef = await firestore().collection("orders").add({
+        ...orderSnapshot,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        recoveredFromPendingPayment: true,
+      });
+
+      console.log("[createOrderFromSnapshot] Order created:", orderRef.id);
+
+      // Save order ID in recovery for navigation
+      await AsyncStorage.setItem(
+        GROCERY_PAYMENT_RECOVERY_KEY,
+        JSON.stringify({
+          orderId: orderRef.id,
+          orderSnapshot,
+          createdAt: Date.now(),
+        })
+      );
+
+      // Update promo usage if applicable
+      if (orderSnapshot.usedPromo) {
+        const user = auth().currentUser;
+        if (user) {
+          const updates: Record<string, any> = {
+            usedBy: firestore.FieldValue.arrayUnion(user.uid),
+            usedByIds: firestore.FieldValue.arrayUnion(user.uid),
+          };
+          if (user.phoneNumber) {
+            updates.usedByPhones = firestore.FieldValue.arrayUnion(user.phoneNumber);
+          }
+          await firestore()
+            .collection("promoCodes")
+            .doc(orderSnapshot.usedPromo)
+            .set(updates, { merge: true });
+        }
+      }
+
+      return orderRef.id;
+    } catch (error) {
+      console.error("[createOrderFromSnapshot]", error);
+      throw error;
+    }
+  };
+
+  /***************************************
    * Fetch Data On Mount
    ***************************************/
   useEffect(() => {
@@ -650,6 +820,8 @@ const CartScreen: React.FC = () => {
       }
 
       const productIds = Object.keys(cart);
+      console.log('[CartScreen] Fetching cart items for IDs:', productIds);
+      
       if (productIds.length === 0) {
         setCartItems([]);
         return;
@@ -679,10 +851,29 @@ const CartScreen: React.FC = () => {
       const snapshots = await Promise.all(batchPromises);
 
       const byId = new Map<string, Product>();
+      const skippedProducts: Array<{id: string; reason: string; data?: any}> = [];
+      
       snapshots.forEach((snap: any) => {
         snap.forEach((doc: any) => {
           const data = doc.data() as Product;
-          if ((data.quantity ?? 0) <= 0) return;
+          
+          // Debug: Log each product found
+          console.log('[CartScreen] Found product:', {
+            id: doc.id,
+            name: data.name,
+            quantity: data.quantity,
+            storeId: data.storeId,
+            collection: doc.ref.parent.path,
+          });
+          
+          if ((data.quantity ?? 0) <= 0) {
+            skippedProducts.push({
+              id: doc.id,
+              reason: 'Out of stock',
+              data: { name: data.name, quantity: data.quantity }
+            });
+            return;
+          }
 
           const { id: _ignoredId, ...rest } = (data as any) ?? {};
           const next = { id: doc.id, ...rest } as Product;
@@ -699,8 +890,36 @@ const CartScreen: React.FC = () => {
         });
       });
 
+      // Check for products not found in Firestore
+      productIds.forEach(id => {
+        if (!byId.has(id)) {
+          skippedProducts.push({
+            id,
+            reason: 'Not found in Firestore',
+          });
+        }
+      });
+
+      if (skippedProducts.length > 0) {
+        console.warn('[CartScreen] ⚠️ Skipped products:', skippedProducts);
+        
+        // Auto-cleanup: Remove unavailable products from cart
+        if (__DEV__) {
+          console.log('[CartScreen] 🧹 Auto-cleaning unavailable products from cart...');
+        }
+        
+        skippedProducts.forEach(({ id, reason }) => {
+          if (reason === 'Out of stock' || reason === 'Not found in Firestore') {
+            removeFromCart(id);
+            console.log(`[CartScreen] Removed ${id} from cart (${reason})`);
+          }
+        });
+      }
+
       // Preserve cart ordering so UI feels stable.
       const visible = productIds.map((id) => byId.get(id)).filter(Boolean) as Product[];
+      console.log('[CartScreen] Visible cart items:', visible.length, 'out of', productIds.length);
+      
       setCartItems(visible);
 
       // Don't block cart rendering on recommendations.
@@ -1098,10 +1317,91 @@ const CartScreen: React.FC = () => {
 
       // Create Razorpay order on server
       const serverOrder = await createRazorpayOrderOnServer(finalTotal);
-      
+
       // Navigate directly to RazorpayWebView for immediate payment
       const user = auth().currentUser;
       if (!user) throw new Error("Not logged in");
+
+      // Build order snapshot once — reused in both native and WebView success paths
+      const orderSnapshotForRecovery = {
+        orderedBy: user?.uid || "",
+        items: cartItems.map((item) => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price,
+          discount: item.discount || 0,
+          quantity: cart[item.id] || 0,
+          CGST: item.CGST || 0,
+          SGST: item.SGST || 0,
+          cess: item.cess || 0,
+        })),
+        subtotal,
+        productCgst,
+        productSgst,
+        productCess,
+        discount,
+        deliveryCharge,
+        rideCgst,
+        rideSgst,
+        platformFee,
+        convenienceFee,
+        surgeFee: surgeLine,
+        finalTotal,
+        distance,
+        paymentMethod: "online",
+        status: "pending",
+        storeId: location.storeId,
+        usedPromo: selectedPromo ? selectedPromo.id : null,
+        hotspotId: activeHotspot?.id || null,
+        dropoffCoords: {
+          latitude: Number(selectedLocation?.lat) || 0,
+          longitude: Number(selectedLocation?.lng) || 0,
+        },
+        pickupCoords: fareData?.fixedPickupLocation
+          ? {
+              latitude: Number(fareData.fixedPickupLocation.coordinates.latitude),
+              longitude: Number(fareData.fixedPickupLocation.coordinates.longitude),
+            }
+          : null,
+        payment: {
+          method: "online",
+          status: "paid",
+          amountPaise: toPaise(finalTotal),
+          currency: "INR",
+          razorpay: { orderId: serverOrder.orderId },
+        },
+      };
+
+      // ✅ Save pending payment AFTER Firestore order is created
+      // This ensures order exists even if app crashes during payment
+      if (serverOrder.firestoreOrderId) {
+        await AsyncStorage.setItem(
+          GROCERY_PAYMENT_PENDING_KEY,
+          JSON.stringify({
+            razorpayOrderId: serverOrder.orderId,
+            firestoreOrderId: serverOrder.firestoreOrderId, // ✅ Save Firestore order ID
+            timestamp: Date.now(),
+          })
+        );
+        console.log("[GroceryPayment] Pending payment saved with Firestore order ID");
+      }
+
+      const saveRecoverySnapshot = async () => {
+        try {
+          await AsyncStorage.setItem(
+            GROCERY_PAYMENT_RECOVERY_KEY,
+            JSON.stringify({
+              razorpayOrderId: serverOrder.orderId,
+              firestoreOrderId: serverOrder.firestoreOrderId,
+              createdAt: Date.now(),
+              orderSnapshot: orderSnapshotForRecovery,
+            })
+          );
+          console.log("[GroceryPayment] Recovery snapshot saved after payment success");
+        } catch (e) {
+          console.warn("[GroceryPayment] Failed to save recovery snapshot:", e);
+        }
+      };
 
       const contact = (user.phoneNumber || "").replace("+91", "");
 
@@ -1127,8 +1427,28 @@ const CartScreen: React.FC = () => {
           razorpay_signature: nativeRes.razorpay_signature,
         };
 
+        // ✅ Payment confirmed — verify and update existing order
         await verifyRazorpayPaymentOnServer(razorpayMeta);
-        await handlePaymentComplete("online", razorpayMeta, serverOrder);
+        
+        // ✅ Update Firestore order with payment details (order already exists)
+        if (serverOrder.firestoreOrderId) {
+          await updateOrderAfterPayment(serverOrder.firestoreOrderId, razorpayMeta);
+        }
+
+        // Clear cart immediately
+        clearCart();
+        
+        // Remove pending payment flag
+        await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+
+        // Navigate to success screen
+        navigation.navigate("OrderAllocating", {
+          orderId: serverOrder.firestoreOrderId,
+          pickupCoords: orderSnapshotForRecovery.pickupCoords,
+          dropoffCoords: orderSnapshotForRecovery.dropoffCoords,
+          totalCost: finalTotal,
+        });
+        
         setNavigating(false);
         onlinePaymentInFlightRef.current = false;
         return; // don't fall through to WebView
@@ -1154,11 +1474,27 @@ const CartScreen: React.FC = () => {
               razorpay_signature: response.razorpay_signature,
             };
 
-            // Verify payment on server
+            // ✅ Payment confirmed — verify and update existing order
             await verifyRazorpayPaymentOnServer(razorpayMeta);
+            
+            // ✅ Update Firestore order with payment details (order already exists)
+            if (serverOrder.firestoreOrderId) {
+              await updateOrderAfterPayment(serverOrder.firestoreOrderId, razorpayMeta);
+            }
 
-            // Complete the order
-            await handlePaymentComplete("online", razorpayMeta, serverOrder);
+            // Clear cart immediately
+            clearCart();
+            
+            // Remove pending payment flag
+            await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+
+            // Navigate to success screen
+            navigation.navigate("OrderAllocating", {
+              orderId: serverOrder.firestoreOrderId,
+              pickupCoords: orderSnapshotForRecovery.pickupCoords,
+              dropoffCoords: orderSnapshotForRecovery.dropoffCoords,
+              totalCost: finalTotal,
+            });
           } catch (error) {
             console.error("Payment completion error:", error);
             Alert.alert("Error", "Payment verification failed. Please contact support.");
@@ -1167,7 +1503,7 @@ const CartScreen: React.FC = () => {
             onlinePaymentInFlightRef.current = false;
           }
         },
-        onFailure: (error: any) => {
+        onFailure: (error) => {
           console.error("Payment failed:", error);
           Alert.alert(
             "Payment Failed",
@@ -1215,6 +1551,47 @@ const CartScreen: React.FC = () => {
   const amountPaise = toPaise(amountRupees);
   const headers = await getAuthHeaders();
 
+  // ✅ Build complete order data to send to server
+  const orderDataForServer = {
+    orderedBy: user.uid,
+    items: cartItems.map((item) => ({
+      productId: item.id,
+      name: item.name,
+      price: item.price,
+      discount: item.discount || 0,
+      quantity: cart[item.id] || 0,
+      CGST: item.CGST || 0,
+      SGST: item.SGST || 0,
+      cess: item.cess || 0,
+    })),
+    subtotal,
+    productCgst,
+    productSgst,
+    productCess,
+    discount,
+    deliveryCharge,
+    rideCgst,
+    rideSgst,
+    platformFee,
+    convenienceFee,
+    surgeFee: surgeLine,
+    finalTotal,
+    distance,
+    storeId: location.storeId,
+    usedPromo: selectedPromo ? selectedPromo.id : null,
+    hotspotId: activeHotspot?.id || null,
+    dropoffCoords: {
+      latitude: Number(selectedLocation?.lat) || 0,
+      longitude: Number(selectedLocation?.lng) || 0,
+    },
+    pickupCoords: fareData?.fixedPickupLocation
+      ? {
+          latitude: Number(fareData.fixedPickupLocation.coordinates.latitude),
+          longitude: Number(fareData.fixedPickupLocation.coordinates.longitude),
+        }
+      : null,
+  };
+
   const { data } = await api.post(
     CREATE_RZP_ORDER_URL,
     {
@@ -1222,6 +1599,7 @@ const CartScreen: React.FC = () => {
       currency: "INR",
       receipt: `rcpt_${user.uid}_${Date.now()}`,
       notes: { uid: user.uid, storeId: location.storeId || "" },
+      orderData: orderDataForServer, // ✅ Send order data to create Firestore order
     },
     { headers }
   );
@@ -1236,6 +1614,7 @@ const CartScreen: React.FC = () => {
     keyId: String(data.keyId),
     amountPaise: Number(data.amountPaise ?? amountPaise),
     currency: String(data.currency ?? "INR"),
+    firestoreOrderId: data.firestoreOrderId, // ✅ Firestore order ID
   };
 };
 
@@ -1250,6 +1629,33 @@ const CartScreen: React.FC = () => {
   return true;
 };
 
+  const updateOrderAfterPayment = async (
+    firestoreOrderId: string,
+    razorpayMeta: RazorpayPaymentMeta
+  ) => {
+    try {
+      const headers = await getAuthHeaders();
+      const { data } = await api.post(
+        `${CLOUD_FUNCTIONS_BASE_URL}/updateOrderAfterPayment`,
+        {
+          firestoreOrderId,
+          ...razorpayMeta,
+        },
+        { headers }
+      );
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to update order");
+      }
+
+      console.log("[updateOrderAfterPayment] Order updated successfully:", firestoreOrderId);
+      return true;
+    } catch (error) {
+      console.error("[updateOrderAfterPayment] Error:", error);
+      throw error;
+    }
+  };
+
   /***************************************
    * PAYMENT COMPLETION HANDLER
    ***************************************/
@@ -1261,48 +1667,70 @@ const CartScreen: React.FC = () => {
     console.log("Payment completion handler called:", { paymentMethod, razorpayMeta, serverOrder });
     try {
       setNavigating(true);
-      const result = await handleCreateOrder(paymentMethod, razorpayMeta, serverOrder);
-      console.log("Order creation result:", result);
       
-      if (result) {
-        if (selectedPromo) {
-          setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
-          setSelectedPromo(null);
+      let orderId: string;
+      let pickupCoords: any;
+      
+      if (paymentMethod === "online") {
+        // For online payment, order is already created
+        // Just fetch the order ID from AsyncStorage recovery
+        const recoveryStr = await AsyncStorage.getItem(GROCERY_PAYMENT_RECOVERY_KEY);
+        if (recoveryStr) {
+          const recovery = JSON.parse(recoveryStr);
+          orderId = recovery.orderId || "";
+          pickupCoords = recovery.orderSnapshot?.pickupCoords;
+        } else {
+          throw new Error("Order ID not found");
         }
-        
-        const { orderId, pickupCoords } = result;
-        // Clear only grocery cart after successful grocery order
-        // Don't clear services cart as it's independent
-        clearCart();
-        setSelectedLocation(null);
-
-        console.log("Navigating to OrderAllocating with:", {
-          orderId,
-          pickupCoords,
-          dropoffCoords: {
-            latitude: Number(selectedLocation?.lat) || 0,
-            longitude: Number(selectedLocation?.lng) || 0,
-          },
-          totalCost: finalTotal,
-        });
-
-        navigation.navigate("OrderAllocating", {
-          orderId,
-          pickupCoords: {
-            latitude: Number(pickupCoords?.latitude) || 0,
-            longitude: Number(pickupCoords?.longitude) || 0,
-          },
-          dropoffCoords: {
-            latitude: Number(selectedLocation?.lat) || 0,
-            longitude: Number(selectedLocation?.lng) || 0,
-          },
-          totalCost: finalTotal,
-        });
+      } else {
+        // For COD, create order now
+        const result = await handleCreateOrder(paymentMethod, razorpayMeta, serverOrder);
+        if (!result) {
+          throw new Error("Failed to create order");
+        }
+        orderId = result.orderId;
+        pickupCoords = result.pickupCoords;
       }
+      
+      if (selectedPromo) {
+        setPromos((prev) => prev.filter((p) => p.id !== selectedPromo.id));
+        setSelectedPromo(null);
+      }
+      
+      // Clear only grocery cart after successful grocery order
+      clearCart();
+      setSelectedLocation(null);
+
+      // Clear recovery keys
+      await AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY);
+      await AsyncStorage.removeItem(GROCERY_PAYMENT_PENDING_KEY);
+
+      console.log("Navigating to OrderAllocating with:", {
+        orderId,
+        pickupCoords,
+        dropoffCoords: {
+          latitude: Number(selectedLocation?.lat) || 0,
+          longitude: Number(selectedLocation?.lng) || 0,
+        },
+        totalCost: finalTotal,
+      });
+
+      navigation.navigate("OrderAllocating", {
+        orderId,
+        pickupCoords: {
+          latitude: Number(pickupCoords?.latitude) || 0,
+          longitude: Number(pickupCoords?.longitude) || 0,
+        },
+        dropoffCoords: {
+          latitude: Number(selectedLocation?.lat) || 0,
+          longitude: Number(selectedLocation?.lng) || 0,
+        },
+        totalCost: finalTotal,
+      });
     } catch (error) {
       console.error("Error during checkout:", error);
       Alert.alert("Error", "Unable to complete checkout. Please try again.");
-      throw error; // Re-throw to let CartPaymentScreen handle the error display
+      throw error;
     } finally {
       setNavigating(false);
     }
@@ -1692,7 +2120,7 @@ const CartScreen: React.FC = () => {
           </View>
         )}
 
-        {location?.grocery === false || Object.keys(cart).length === 0 ? (
+        {Object.keys(cart).length === 0 ? (
           <View style={styles.loaderContainer}>
             <Ionicons name="cart-outline" size={90} color="#ddd" />
             <Text style={{ color: '#333', fontSize: 20, fontWeight: '700', marginTop: 16, marginBottom: 6 }}>

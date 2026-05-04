@@ -1,7 +1,7 @@
 // **************************************************************
 //  App.tsx – consolidated & fixed  (May 2025)
 // **************************************************************
-import { ensureFirebaseReady } from './firebase.native';
+import { ensureFirebaseReady, auth, firestore } from './firebase.native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -15,26 +15,23 @@ import {
   AppState,
   Modal as RNModal,
   Image,
+  NativeModules,
+  Platform,
+  Linking,
 } from "react-native";
 import {
   NavigationContainer,
-  getFocusedRouteNameFromRoute,
   CommonActions,
   useNavigation,
-  useRoute,
 } from "@react-navigation/native";
 import { navigationRef, setLastNonCartTab } from "./navigation/rootNavigation";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
-import { auth, firestore } from './firebase.native'; 
-// import auth from "@react-native-firebase/auth";
-// import firestore from "@react-native-firebase/firestore";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
-import { NativeModules, Platform } from 'react-native';
 /* ──────────────────────────────────────────────────────────
    Context Providers
    ────────────────────────────────────────────────────────── */
@@ -42,7 +39,7 @@ import { CustomerProvider } from "./context/CustomerContext";
 import { CartProvider, useCart } from "./context/CartContext";
 import { LocationProvider, useLocationContext } from "./context/LocationContext";
 import { ToggleProvider, useToggleContext } from "./context/ToggleContext";
-import { fetchLocationFlags } from "./utils/fetchLocationFlags";
+import { fetchLocationFlags } from "./utils/fetchLocationFlags"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { OrderProvider, useOrder } from "./context/OrderContext";
 import { ServiceCartProvider, useServiceCart } from "./context/ServiceCartContext";
 
@@ -81,6 +78,7 @@ import UnifiedCartScreen from "./screens/shared/UnifiedCartScreen";
 import CartSelectionModal from "./components/CartSelectionModal";
 import ServicesUnavailableModal from "./components/ServicesUnavailableModal";
 import AreaUnavailableModal from "./components/AreaUnavailableModal";
+import MaintenanceModal from "./components/MaintenanceModal";
 import RazorpayWebView from "./screens/shared/RazorpayWebView";
 import ProfileScreen from "./screens/shared/ProfileScreen";
 import LocationSelectorScreen from "./screens/shared/LocationSelectorScreen";
@@ -107,17 +105,26 @@ import { WeatherProvider } from "./context/WeatherContext";
 import { StatusBar } from "expo-status-bar";
 import GlobalCongrats from "./components/CongratulationModal ";
 import HiddenCouponCard from "./screens/gamification/RewardScreen";
-import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
+import { CartClearListener } from "./components/CartClearListener";
+
+// Import cart debug utilities (available in __DEV__ mode)
+import "./utils/cartDebugUtils";
+
 import OrdersScreen from "./screens/shared/OrdersScreen";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import OrderSummaryScreen from "./screens/shared/OrderSummaryScreen";
+import OrdersStack from "./navigation/OrdersStack";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
 const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
+
+const GROCERY_PAYMENT_RECOVERY_KEY = "grocery_payment_recovery";
+const GROCERY_CONFIRMED_BANNER_KEY = "grocery_confirmed_banner";
 
 type ServiceConfirmedBannerPayload = {
   razorpayOrderId: string;
@@ -144,7 +151,7 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
         if (!razorpayOrderId) return;
         if (cancelled) return;
 
-        const axios = require("axios").default;
+        const axios = require("axios").default; // eslint-disable-line @typescript-eslint/no-require-imports
         const api = axios.create({
           timeout: 20000,
           headers: { "Content-Type": "application/json" },
@@ -200,7 +207,105 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
   return null;
 };
 
-// NinjaEats screens (fallback mappings)
+// ── Grocery Payment Recovery (app-start) ─────────────────────────────────────
+const StartupGroceryPaymentRecovery: React.FC<{ user: any; firebaseReady: boolean; onRecovered: () => void }> = ({
+  user,
+  firebaseReady,
+  onRecovered,
+}) => {
+  const { clearCart: clearGroceryCart } = useCart();
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        console.log('[GroceryRecovery] Checking for recovery snapshot...');
+        const raw = await AsyncStorage.getItem(GROCERY_PAYMENT_RECOVERY_KEY);
+        if (!raw) {
+          console.log('[GroceryRecovery] No recovery snapshot found');
+          return;
+        }
+
+        console.log('[GroceryRecovery] Recovery snapshot found!');
+        const recovery = JSON.parse(raw);
+        const { razorpayOrderId, orderSnapshot } = recovery || {};
+        if (!razorpayOrderId || !orderSnapshot) {
+          console.warn('[GroceryRecovery] Invalid recovery data');
+          return;
+        }
+        if (cancelled) return;
+
+        console.log('[GroceryRecovery] Verifying payment with Razorpay...');
+        const axios = require("axios").default; // eslint-disable-line @typescript-eslint/no-require-imports
+        const api = axios.create({ timeout: 20000, headers: { "Content-Type": "application/json" } });
+
+        const token = await user.getIdToken(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const CLOUD_FUNCTIONS_BASE_URL = "https://asia-south1-ninjadeliveries-91007.cloudfunctions.net";
+
+        // Verify payment with recovery mode
+        let verified = false;
+        try {
+          const { data } = await api.post(
+            `${CLOUD_FUNCTIONS_BASE_URL}/verifyRazorpayPayment`,
+            { razorpay_order_id: razorpayOrderId, recovery: true },
+            { headers }
+          );
+          verified = !!data?.verified;
+          console.log('[GroceryRecovery] Payment verification result:', verified);
+        } catch (err) {
+          console.error('[GroceryRecovery] Payment verification failed:', err);
+          return; // network error — retry next launch
+        }
+
+        if (!verified) {
+          console.log('[GroceryRecovery] Payment not verified, removing recovery key');
+          await AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY);
+          return;
+        }
+
+        if (cancelled) return;
+
+        console.log('[GroceryRecovery] Creating Firestore order...');
+        // Create Firestore order from snapshot
+        const { default: firestoreDb } = require("@react-native-firebase/firestore"); // eslint-disable-line @typescript-eslint/no-require-imports
+        const orderRef = await firestoreDb()
+          .collection("orders")
+          .add({
+            ...orderSnapshot,
+            orderedBy: user.uid,
+            createdAt: firestoreDb.FieldValue.serverTimestamp(),
+            recoveredFromCrash: true,
+          });
+
+        console.log('[GroceryRecovery] ✅ Order created:', orderRef.id);
+        clearGroceryCart();
+        await AsyncStorage.removeItem(GROCERY_PAYMENT_RECOVERY_KEY);
+
+        // Save banner key so modal shows on next render
+        await AsyncStorage.setItem(
+          GROCERY_CONFIRMED_BANNER_KEY,
+          JSON.stringify({ orderId: orderRef.id, createdAt: Date.now() })
+        );
+        console.log('[GroceryRecovery] Banner key saved, triggering modal...');
+
+        // Directly trigger modal — no need to re-read AsyncStorage
+        onRecovered();
+        console.log('[GroceryRecovery] ✅ Recovery complete!');
+      } catch (e) {
+        console.error("🛒[GroceryPay] app_start_recovery_failed_nonfatal", e);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [user, firebaseReady, clearGroceryCart]);
+
+  return null;
+};
 // Some older branches referenced dedicated NinjaEats* screens that aren't present in this repo.
 // Map them to existing screens to avoid launch-time crashes / compile failures.
 
@@ -272,37 +377,20 @@ const RootStack = createNativeStackNavigator();
    ========================================================== */
 
 // Wrapper component that shows the right home screen based on toggle
-const HomeScreenWrapper = () => {
+const HomeScreenWrapper = React.memo(() => {
   const { activeMode } = useToggleContext();
-  const [mountedModes, setMountedModes] = useState<Record<string, boolean>>(() => ({
-    [activeMode]: true,
-  }));
-
-  useEffect(() => {
-    setMountedModes((prev) => (prev[activeMode] ? prev : { ...prev, [activeMode]: true }));
-  }, [activeMode]);
-
-  return (
-    <>
-      {/* Lazy-mount mode screens so grocery home doesn't pay the startup cost of hidden screens. */}
-      {mountedModes.service && (
-        <View style={{ flex: 1, display: activeMode === 'service' ? 'flex' : 'none' }}>
-          <ServicesScreen />
-        </View>
-      )}
-      {mountedModes.food && (
-        <View style={{ flex: 1, display: activeMode === 'food' ? 'flex' : 'none' }}>
-          <FoodComingSoonScreen />
-        </View>
-      )}
-      {mountedModes.grocery && (
-        <View style={{ flex: 1, display: activeMode === 'grocery' ? 'flex' : 'none' }}>
-          <ProductsHomeScreen />
-        </View>
-      )}
-    </>
-  );
-};
+  
+  // Render only the active screen for better performance
+  if (activeMode === 'service') {
+    return <ServicesScreen />;
+  }
+  
+  if (activeMode === 'food') {
+    return <FoodComingSoonScreen />;
+  }
+  
+  return <ProductsHomeScreen />;
+});
 
 function HomeStack() {
   return (
@@ -436,7 +524,7 @@ function HomeStack() {
       {/* Contact Us Screen */}
       <Stack.Screen
         name="ContactUs"
-        component={require("./screens/shared/ContactUsScreen").default}
+        component={require("./screens/shared/ContactUsScreen").default} // eslint-disable-line @typescript-eslint/no-require-imports
         options={{ title: "Contact Us", headerShown: false }}
       />
 
@@ -695,7 +783,7 @@ function CategoriesStack() {
           />
         </>
       ) : (
-        <Stack.Screen name="CategoriesHome" component={FoodScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="CategoriesHome" component={FoodComingSoonScreen} options={{ headerShown: false }} />
       )}
     </Stack.Navigator>
   );
@@ -703,21 +791,15 @@ function CategoriesStack() {
 
 
 
-const CartStack = () => {
-  const { location } = useLocationContext();
-  const showGrocery = location?.grocery !== false;
-  const showServices = location?.services !== false;
-
-  // When grocery is off but services is on, start directly on ServicesHome
-  const initialRoute = (!showGrocery && showServices) ? 'ServicesHome' : 'CartHome';
-
+const CartStack = React.memo(() => {
   return (
-  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="CartHome">
     <Stack.Screen name="CartHome" component={UnifiedCartScreen} />
     <Stack.Screen name="GroceryCart" component={CartScreen} />
     <Stack.Screen name="CartPayment" component={CartPaymentScreen} />
     <Stack.Screen name="RazorpayWebView" component={RazorpayWebView} />
     <Stack.Screen name="ServicesHome" component={ServicesScreen} />
+    <Stack.Screen name="FoodComingSoon" component={FoodComingSoonScreen} />
     <Stack.Screen name="AllServices" component={AllServicesScreen} />
     <Stack.Screen name="ServiceCategory" component={ServiceCategoryScreen} />
     <Stack.Screen name="PackageSelection" component={PackageSelectionScreen} />
@@ -742,8 +824,9 @@ const CartStack = () => {
     />
   </Stack.Navigator>
   );
-};
+});
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ProfileHome" component={ProfileScreen} />
@@ -759,7 +842,7 @@ const ProfileStack = () => (
     />
     <Stack.Screen
       name="ContactUs"
-      component={require("./screens/shared/ContactUsScreen").default}
+      component={require("./screens/shared/ContactUsScreen").default} // eslint-disable-line @typescript-eslint/no-require-imports
       options={{ title: "Contact Us", headerShown: false }}
     />
     <Stack.Screen
@@ -775,14 +858,36 @@ const ProfileStack = () => (
    ========================================================== */
 function AppTabs() {
   const { cart } = useCart();
-  const { totalItems: serviceTotalItems, hasServices } = useServiceCart();
+  const { totalItems: serviceTotalItems } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
-  const { activeMode } = useToggleContext();
+  const { activeMode, setActiveMode } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
-  const totalItems = groceryTotalItems + serviceTotalItems;
   const { activeOrders } = useOrder();
-  const route = useRoute();
-  const currentTab = getFocusedRouteNameFromRoute(route) ?? "HomeTab";
+
+  // Debug: Log cart state changes
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[CartBadge] Cart state:', {
+        cart,
+        groceryTotalItems,
+        serviceTotalItems,
+        cartKeys: Object.keys(cart),
+        cartValues: Object.values(cart),
+      });
+    }
+  }, [cart, groceryTotalItems, serviceTotalItems]);
+
+  // 🧪 TEMPORARY: Auto-clear cart on app start for testing
+  // Remove this after testing!
+  /* useEffect(() => {
+    if (__DEV__) {
+      const clearTestCart = async () => {
+        await AsyncStorage.multiRemove(['@myapp_cart', '@service_cart_data']);
+        console.log('🧹 [DEBUG] Test carts cleared on app start');
+      };
+      clearTestCart();
+    }
+  }, []); */
   
   // Get location flags (default to true if not set)
   const showGrocery = location?.grocery !== false;
@@ -791,6 +896,17 @@ function AppTabs() {
   
   // Derived: all services off for this area
   const allServicesOff = !showGrocery && !showServices && !showFood;
+  
+  // Check if any service is unavailable (at least one is false)
+  const anyServiceUnavailable = 
+    location?.grocery === false || 
+    location?.services === false || 
+    location?.food === false;
+
+  // Lock initialRouteName on first render only — never change it after mount
+  // (dynamic initialRouteName causes useInsertionEffect warning in React Navigation)
+  // Always use 'HomeTab' as initial route to prevent useInsertionEffect warning
+  const initialTabRoute = 'HomeTab';
   
   // Fetch location flags when storeId changes
   useEffect(() => {
@@ -833,43 +949,89 @@ function AppTabs() {
       console.log('[AppTabs] Cleaning up real-time listener');
       unsubscribe();
     };
+  }, [location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset dismissed flag ONLY when storeId changes (user picked a new location)
+  const prevStoreIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (location?.storeId && location.storeId !== prevStoreIdRef.current) {
+      modalDismissedRef.current = false;
+      prevStoreIdRef.current = location.storeId;
+    }
   }, [location?.storeId]);
 
-  // Show modal when ALL services are off for this area
+  // Show/hide modal based on service availability — respects dismissed flag
   useEffect(() => {
-    if (allServicesOff && location?.storeId) {
+    if (anyServiceUnavailable && location?.storeId && !modalDismissedRef.current) {
       setAreaUnavailableVisible(true);
-    } else {
+    } else if (!anyServiceUnavailable) {
       setAreaUnavailableVisible(false);
     }
-  }, [allServicesOff, location?.storeId]);
+    // If dismissed, do nothing — keep it hidden
+  }, [anyServiceUnavailable, location?.storeId]);
 
-  // Navigate away if current tab becomes unavailable
-  useEffect(() => {
-    const navigation = navigationRef.current;
-    if (!navigation) return;
-
-    if ((currentTab === 'HomeTab' || currentTab === 'CategoriesTab' || currentTab === 'BuyAgainTab') && !showGrocery) {
-      console.log('[AppTabs] Grocery tab unavailable, navigating to CartFlow');
-      navigation.navigate('CartFlow' as never);
-    }
-  }, [showGrocery, currentTab]);
-
-  // Navigate to HomeTab when grocery becomes true (from false)
+  // Auto-navigate based on location flags changes
   const prevGroceryRef = useRef(showGrocery);
-  useEffect(() => {
-    const navigation = navigationRef.current;
-    if (!navigation) return;
+  const prevServicesRef = useRef(showServices);
+  const isInitialMount = useRef(true);
 
-    // Check if grocery flag changed from false to true
-    if (!prevGroceryRef.current && showGrocery) {
-      console.log('[AppTabs] Grocery enabled, navigating to HomeTab');
-      navigation.navigate('HomeTab' as never);
+  useEffect(() => {
+    // Skip on initial mount to prevent unnecessary navigation
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevGroceryRef.current = showGrocery;
+      prevServicesRef.current = showServices;
+      return;
     }
 
-    // Update previous value
+    if (!location?.storeId) return;
+
+    const groceryChanged = prevGroceryRef.current !== showGrocery;
+    const servicesChanged = prevServicesRef.current !== showServices;
+
+    // Only navigate if something actually changed
+    if (!groceryChanged && !servicesChanged) return;
+
+    let newMode: 'grocery' | 'service' | null = null;
+    let navigateTo: string | null = null;
+
+    // grocery turned OFF → go directly to service mode
+    if (groceryChanged && !showGrocery && showServices) {
+      newMode = 'service';
+      navigateTo = 'service';
+    }
+    // services turned OFF → go to grocery mode
+    else if (servicesChanged && !showServices && showGrocery) {
+      newMode = 'grocery';
+      navigateTo = 'grocery';
+    }
+    // grocery turned ON → go back to grocery mode
+    else if (groceryChanged && showGrocery && !prevGroceryRef.current) {
+      newMode = 'grocery';
+      navigateTo = 'grocery';
+    }
+    // services turned ON (while grocery is off) → go to service mode
+    else if (servicesChanged && showServices && !prevServicesRef.current && !showGrocery) {
+      newMode = 'service';
+      navigateTo = 'service';
+    }
+
+    if (newMode && navigateTo && navigationRef.isReady()) {
+      // Update mode immediately to prevent flicker
+      setActiveMode(newMode);
+      
+      // Navigate after a single frame to ensure mode is updated
+      requestAnimationFrame(() => {
+        if (navigateTo === 'grocery' || navigateTo === 'service') {
+          // Use navigateHome helper which safely handles HomeTab availability
+          const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+          navigateHome();
+        }
+      });
+    }
+
     prevGroceryRef.current = showGrocery;
-  }, [showGrocery]);
+    prevServicesRef.current = showServices;
+  }, [showGrocery, showServices, location?.storeId]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Debug logging
   if (__DEV__) {
@@ -884,13 +1046,14 @@ function AppTabs() {
   
   // Cart selection modal state
   const [cartModalVisible, setCartModalVisible] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
   // Service tab loader state (shows ninjaServiceLoader.gif when Services tab is tapped)
   const [serviceLoaderVisible, setServiceLoaderVisible] = useState(false);
   // Services unavailable modal state
   const [servicesUnavailableModalVisible, setServicesUnavailableModalVisible] = useState(false);
   // Area unavailable modal state (all services off)
   const [areaUnavailableVisible, setAreaUnavailableVisible] = useState(false);
+  const modalDismissedRef = useRef(false);
 
 
   // One-time welcome modal -> jump user to Services (uses root navigation ref)
@@ -933,7 +1096,7 @@ function AppTabs() {
         ]),
       ])
     ).start();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -1035,10 +1198,11 @@ function AppTabs() {
       {
         text: "Continue",
         onPress: () => {
-            try {
+            const { isHomeTabAvailable } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+            if (isHomeTabAvailable()) {
               navigation.navigate("HomeTab", { screen: "LoginInHomeStack" });
-            } catch {
-              navigation.navigate("CartFlow");
+            } else {
+              navigation.navigate("CartFlow", { screen: "ServicesHome" });
             }
           },
       },
@@ -1052,69 +1216,62 @@ function AppTabs() {
 
   const handleSelectGrocery = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate to grocery cart (original CartScreen)
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "CartFlow",
-              state: { routes: [{ name: "GroceryCart" }] },
-            },
-          ],
-        })
-      );
-    }
     setPendingNavigation(null);
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'GroceryCart' });
+    }
   };
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate first, then show loader
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "HomeTab",
-              state: { routes: [{ name: "ProductsHome" }, { name: "ServiceCart" }], index: 1 },
-            },
-          ],
-        })
-      );
-      
-      // Show loader immediately
-      setServiceLoaderVisible(true);
-      
-      // Hide loader after animation
-      setTimeout(() => {
-        setServiceLoaderVisible(false);
-      }, 500);
-    }
-    
     setPendingNavigation(null);
+
+    // Always navigate via root ref so the correct navigator handles it
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'ServiceCart' });
+    }
+
+    setServiceLoaderVisible(true);
+    setTimeout(() => setServiceLoaderVisible(false), 500);
   };
 
   const handleSelectUnified = () => {
     setCartModalVisible(false);
-    if (pendingNavigation) {
-      // Navigate to unified cart
-      pendingNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "CartFlow",
-              state: { routes: [{ name: "CartHome" }] },
-            },
-          ],
-        })
-      );
-    }
     setPendingNavigation(null);
+    if (navigationRef.isReady()) {
+      (navigationRef.navigate as any)('CartFlow', { screen: 'CartHome' });
+    }
   };
+
+  // Stable tab bar styles to prevent useInsertionEffect warning
+  const tabBarStyleVisible = React.useMemo(() => ({
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    height: Platform.OS === "android" ? 60 : 85,
+    paddingBottom: Platform.OS === "android" ? 10 : 30,
+    elevation: 8,
+  }), []);
+
+  const tabBarStyleHidden = React.useMemo(() => ({
+    display: 'none' as const
+  }), []);
+
+  // Memoize the tab bar style based on activeMode
+  const tabBarStyle = React.useMemo(() => 
+    activeMode === 'grocery' ? tabBarStyleVisible : tabBarStyleHidden,
+    [activeMode, tabBarStyleVisible, tabBarStyleHidden]
+  );
+
+  // Stable icon map to prevent re-creation on every render
+  const iconMap = React.useMemo<Record<string, keyof typeof Ionicons.glyphMap>>(() => ({
+    HomeTab: "home-outline",
+    CategoriesTab: "apps-outline",
+    BuyAgainTab: "repeat-outline",
+    CartFlow: "cart-outline",
+    OrdersTab: "receipt-outline",
+    Profile: "person-outline",
+  }), []);
 
   return (
     <>
@@ -1128,27 +1285,14 @@ function AppTabs() {
       />
 
       <Tab.Navigator
-        initialRouteName={showGrocery ? "HomeTab" : "CartFlow"}
+        initialRouteName={initialTabRoute}
         screenOptions={({ route }) => {
-          const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-            HomeTab: "home-outline",
-            CategoriesTab: "apps-outline",
-            BuyAgainTab: "repeat-outline",
-            CartFlow: "cart-outline",
-            Profile: "person-outline",
-          };
           return {
             headerShown: false,
             tabBarActiveTintColor: "blue",
             tabBarInactiveTintColor: "grey",
-            tabBarStyle: (activeMode === 'service' || activeMode === 'food') ? { display: 'none' } : {
-              backgroundColor: "#ffffff",
-              borderTopWidth: 1,
-              borderTopColor: "#f0f0f0",
-              height: Platform.OS === "android" ? 60 : 85,
-              paddingBottom: Platform.OS === "android" ? 10 : 30,
-              elevation: 8,
-            },
+            // Hide tab bar in service/food mode, show only in grocery mode
+            tabBarStyle: tabBarStyle,
             // tab bar icon configuration
             tabBarIcon: ({ color, size }) => {
               // Hide Profile tab icon
@@ -1178,6 +1322,17 @@ function AppTabs() {
                     const activeServiceItems = showServices ? serviceTotalItems : 0;
                     const activeTotalItems = activeGroceryItems + activeServiceItems;
                     
+                    // Debug log
+                    if (__DEV__ && activeTotalItems > 0) {
+                      console.log('[CartBadge] Showing badge:', {
+                        activeGroceryItems,
+                        activeServiceItems,
+                        activeTotalItems,
+                        showGrocery,
+                        showServices,
+                      });
+                    }
+                    
                     return activeTotalItems > 0 ? (
                       <View style={styles.badgeContainer}>
                         <Text style={styles.badgeText}>{activeTotalItems}</Text>
@@ -1200,14 +1355,24 @@ function AppTabs() {
             options={{ title: "Home" }}
             listeners={({ navigation }) => ({
               tabPress: (e) => {
-                // If we are already on HomeTab, pop to the top of its stack.
-                // This ensures that if the user is on ServiceCart (which is in HomeStack),
-                // they return to ProductsHome/ServicesScreen.
+                // Prevent default navigation
+                e.preventDefault();
+                
+                // Get current navigation state
                 const state = navigation.getState();
-                const homeRoute = state.routes[state.index];
-                if (homeRoute.name === "HomeTab" && homeRoute.state && (homeRoute.state.index ?? 0) > 0) {
-                  // Navigate to the first screen of the HomeStack
-                  navigation.navigate("HomeTab", { screen: "ProductsHome" });
+                const currentRoute = state.routes[state.index];
+                
+                // If already on HomeTab
+                if (currentRoute.name === "HomeTab") {
+                  const homeState = currentRoute.state;
+                  // If we're deep in the stack, reset to ProductsHome
+                  if (homeState && (homeState.index ?? 0) > 0) {
+                    navigation.navigate("HomeTab", { screen: "ProductsHome" });
+                  }
+                  // If already on ProductsHome, do nothing (prevents flicker)
+                } else {
+                  // Navigate to HomeTab normally
+                  navigation.navigate("HomeTab");
                 }
               },
             })}
@@ -1315,6 +1480,23 @@ function AppTabs() {
             },
           })}
         />
+
+        {/* ⿥ Orders Tab - Show order history */}
+        {showGrocery && (
+          <Tab.Screen
+            name="OrdersTab"
+            component={OrdersStack}
+            options={{ title: "Orders" }}
+            listeners={({ navigation }) => ({
+              tabPress: (e) => {
+                if (!auth().currentUser) {
+                  e.preventDefault();
+                  promptLogin(navigation, "Orders");
+                }
+              },
+            })}
+          />
+        )}
       </Tab.Navigator>
 
       {activeMode === "grocery" && inProgress.length > 0 && (
@@ -1347,15 +1529,67 @@ function AppTabs() {
         />
       )}
 
-      {/* Area Unavailable Modal (all services off) */}
-      <AreaUnavailableModal
+      {/* Maintenance Modal (all services off for this location) */}
+      <MaintenanceModal
         visible={areaUnavailableVisible}
-        onClose={() => setAreaUnavailableVisible(false)}
-        onChangeLocation={() => {
+        unavailableServices={{
+          grocery: location?.grocery,
+          services: location?.services,
+          food: location?.food,
+        }}
+        activeMode={activeMode}
+        onClose={() => {
+          modalDismissedRef.current = true;
           setAreaUnavailableVisible(false);
-          if (navigationRef.isReady()) {
-            (navigationRef.navigate as any)('LocationSelector');
-          }
+        }}
+        onChangeLocation={() => {
+          modalDismissedRef.current = true;
+          setAreaUnavailableVisible(false);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              (navigationRef.navigate as any)('LocationSelector');
+            }
+          }, 50);
+        }}
+        onNavigateToService={(service) => {
+          modalDismissedRef.current = true;
+          setAreaUnavailableVisible(false);
+          // Map 'services' key to 'service' mode
+          const modeMap: Record<string, 'grocery' | 'service' | 'food'> = {
+            grocery: 'grocery',
+            services: 'service',
+            food: 'food',
+          };
+          setActiveMode(modeMap[service] ?? 'grocery');
+          setTimeout(() => {
+            if (!navigationRef.isReady()) return;
+            if (service === 'grocery') {
+              const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+              navigateHome();
+            } else if (service === 'services') {
+              const state = navigationRef.getRootState?.();
+              const allRoutes: string[] = [];
+              const collect = (s: any) => {
+                if (!s) return;
+                (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
+                (s.routes ?? []).forEach((r: any) => collect(r.state));
+              };
+              collect(state);
+              if (allRoutes.includes('CategoriesTab')) {
+                (navigationRef.navigate as any)('CategoriesTab');
+              } else {
+                (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
+              }
+            } else if (service === 'food') {
+              // Set food mode — HomeScreenWrapper will render FoodComingSoonScreen automatically
+              setActiveMode('food');
+              setTimeout(() => {
+                if (!navigationRef.isReady()) return;
+                const { navigateHome } = require('./navigation/rootNavigation'); // eslint-disable-line @typescript-eslint/no-require-imports
+                navigateHome();
+              }, 50);
+            }
+          }, 50);
         }}
       />
 
@@ -1367,8 +1601,8 @@ function AppTabs() {
           onSelectGrocery={handleSelectGrocery}
           onSelectServices={handleSelectServices}
           onSelectUnified={handleSelectUnified}
-          groceryItemCount={groceryTotalItems}
-          serviceItemCount={serviceTotalItems}
+          groceryItemCount={showGrocery ? groceryTotalItems : 0}
+          serviceItemCount={showServices ? serviceTotalItems : 0}
         />
       )}
     </>
@@ -1378,7 +1612,8 @@ function AppTabs() {
 /* ==========================================================
    BLINKING PROGRESS BAR
    ========================================================== */
-const LiveTrackingBar: React.FC<{ orders: any[] }> = ({ orders }) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const BlinkingInProgressBar: React.FC<{ orders: any[] }> = ({ orders }) => {
   const navigation = useNavigation<any>();
   const pulse = useRef(new Animated.Value(1)).current;
   
@@ -1545,8 +1780,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!__DEV__) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { probeRazorpayNative } = require("./utils/razorpayProbe");
+      const { probeRazorpayNative } = require("./utils/razorpayProbe"); // eslint-disable-line @typescript-eslint/no-require-imports
       const res = probeRazorpayNative();
       console.log("💳[RZPProbe]", res);
     } catch (e) {
@@ -1599,6 +1833,93 @@ const App: React.FC = () => {
 
   /* push-token permission modal */
   const [showNotifModal, setShowNotifModal] = useState(false);
+
+  /* grocery payment recovery modal */
+  const [showGroceryRecoveredModal, setShowGroceryRecoveredModal] = useState(false);
+
+  useEffect(() => {
+    // Handle edge case: recovery completed but app was killed before modal showed
+    const checkGroceryBanner = async () => {
+      try {
+        console.log('[GroceryRecovery] Checking for banner key...');
+        const raw = await AsyncStorage.getItem(GROCERY_CONFIRMED_BANNER_KEY);
+        console.log('[GroceryRecovery] Banner key found:', !!raw);
+        if (!raw) return;
+        await AsyncStorage.removeItem(GROCERY_CONFIRMED_BANNER_KEY);
+        console.log('[GroceryRecovery] ✅ Showing recovery modal');
+        setShowGroceryRecoveredModal(true);
+      } catch (e) {
+        console.error('[GroceryRecovery] Failed to check banner:', e);
+      }
+    };
+    checkGroceryBanner();
+  }, []);
+
+  // 🧪 AUTO-DEBUG: Check recovery state on app start
+  useEffect(() => {
+    if (!__DEV__) return;
+    
+    const autoCheckRecovery = async () => {
+      try {
+        console.log('');
+        console.log('═══════════════════════════════════════════');
+        console.log('🔍 [AUTO-DEBUG] Checking Recovery State...');
+        console.log('═══════════════════════════════════════════');
+        
+        const [recoveryKey, bannerKey, groceryCart, serviceCart] = await Promise.all([
+          AsyncStorage.getItem('grocery_payment_recovery'),
+          AsyncStorage.getItem('grocery_confirmed_banner'),
+          AsyncStorage.getItem('@myapp_cart'),
+          AsyncStorage.getItem('@service_cart_data'),
+        ]);
+        
+        console.log('📦 Recovery Snapshot:', recoveryKey ? '✅ EXISTS' : '❌ NONE');
+        if (recoveryKey) {
+          const parsed = JSON.parse(recoveryKey);
+          console.log('   - Razorpay Order ID:', parsed.razorpayOrderId);
+          console.log('   - Created At:', new Date(parsed.createdAt).toLocaleString());
+        }
+        
+        console.log('🎯 Banner Key:', bannerKey ? '✅ EXISTS' : '❌ NONE');
+        if (bannerKey) {
+          const parsed = JSON.parse(bannerKey);
+          console.log('   - Order ID:', parsed.orderId);
+          console.log('   - Created At:', new Date(parsed.createdAt).toLocaleString());
+        }
+        
+        console.log('🛒 Grocery Cart:', groceryCart ? '✅ HAS ITEMS' : '❌ EMPTY');
+        if (groceryCart) {
+          const parsed = JSON.parse(groceryCart);
+          const count = Object.values(parsed).reduce((sum: number, qty: any) => sum + Number(qty), 0);
+          console.log('   - Total Items:', count);
+          console.log('   - Product IDs:', Object.keys(parsed));
+        }
+        
+        console.log('🔧 Service Cart:', serviceCart ? '✅ HAS ITEMS' : '❌ EMPTY');
+        if (serviceCart) {
+          const parsed = JSON.parse(serviceCart);
+          const count = Object.keys(parsed.items || {}).length;
+          console.log('   - Total Items:', count);
+        }
+        
+        console.log('═══════════════════════════════════════════');
+        
+        if (!recoveryKey && !bannerKey) {
+          console.log('✅ [AUTO-DEBUG] No pending recovery - All clear!');
+        } else {
+          console.log('⚠️ [AUTO-DEBUG] Recovery data found - Check logs above');
+        }
+        
+        console.log('═══════════════════════════════════════════');
+        console.log('');
+      } catch (error) {
+        console.error('❌ [AUTO-DEBUG] Failed:', error);
+      }
+    };
+    
+    // Run after a short delay to let other logs settle
+    setTimeout(autoCheckRecovery, 2000);
+  }, []);
   const NOTIF_MODAL_SNOOZE_UNTIL_KEY = "notif_modal_snooze_until_v1";
   const NOTIF_MODAL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -1715,7 +2036,7 @@ const App: React.FC = () => {
 
         // Check each booking's payment status in service_payments collection
         for (const bookingDoc of recentBookings) {
-          const booking = bookingDoc.data();
+          const _booking = bookingDoc.data(); // eslint-disable-line @typescript-eslint/no-unused-vars
           const bookingId = bookingDoc.id;
           
           console.log(`🔍 Checking payment for booking ${bookingId}...`);
@@ -1785,7 +2106,9 @@ const App: React.FC = () => {
         <CartProvider>
             <FoodCartProvider>
             <ServiceCartProvider>
+              <CartClearListener />
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
+              <StartupGroceryPaymentRecovery user={user} firebaseReady={firebaseReady} onRecovered={() => setShowGroceryRecoveredModal(true)} />
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>
@@ -1817,6 +2140,11 @@ const App: React.FC = () => {
                       options={{ title: "Select Location" }}
                     />
                     <RootStack.Screen
+                      name="Profile"
+                      component={ProfileScreen}
+                      options={{ headerShown: false }}
+                    />
+                    <RootStack.Screen
                       name="RewardScreen"
                       component={HiddenCouponCard}
                       options={{ title: "Reward Screen", headerShown: false }}
@@ -1831,6 +2159,46 @@ const App: React.FC = () => {
         </CartProvider>
       </CustomerProvider>
         </ToggleProvider>
+
+      {/* grocery payment recovered modal */}
+      {showGroceryRecoveredModal && (
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGroceryRecoveredModal(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Ionicons name="checkmark-circle" size={52} color="#00C853" style={{ marginBottom: 10 }} />
+              <Text style={styles.modalTitle}>Payment Successful!</Text>
+              <Text style={styles.modalMessage}>
+                Your payment was completed successfully. You can view your order by tapping the profile icon and going to <Text style={{ fontWeight: "700" }}>Your Orders</Text>.
+              </Text>
+              <View style={styles.modalButtonContainer}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => {
+                    setShowGroceryRecoveredModal(false);
+                    try {
+                      navigationRef.navigate("Profile" as never);
+                    } catch {}
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>View Orders</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={() => setShowGroceryRecoveredModal(false)}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalCancelButtonText]}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </RNModal>
+      )}
 
       {/* push-permission modal */}
       {showNotifModal && (

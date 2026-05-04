@@ -71,7 +71,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
           {/* Amount Section */}
           <View style={styles.amountSection}>
             <Text style={styles.amountLabel}>Total Amount to Pay</Text>
-            <Text style={styles.amountValue}>₹{totalAmount.toFixed(2)}</Text>
+            <Text style={styles.amountValue}>₹{Math.round(totalAmount)}</Text>
             <View style={styles.savingsTag}>
               <Ionicons name="checkmark-circle" size={16} color="#059669" />
               <Text style={styles.savingsText}>Best prices guaranteed</Text>

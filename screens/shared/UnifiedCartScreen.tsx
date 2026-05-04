@@ -74,10 +74,10 @@ export default function UnifiedCartScreen() {
     fetchGroceryProducts();
   }, [cart]);
 
-  // Create unified cart items
+  // Create unified cart items - always show all items regardless of location flags
   const unifiedItems: UnifiedCartItem[] = [
-    // Grocery items - only show when grocery is enabled
-    ...(groceryEnabled ? groceryProducts.map(product => ({
+    // Always show grocery items (even if grocery is disabled in this area)
+    ...groceryProducts.map(product => ({
       id: product.id,
       type: 'grocery' as const,
       name: product.name || product.title || 'Unknown Product',
@@ -85,23 +85,23 @@ export default function UnifiedCartScreen() {
       quantity: cart[product.id] || 0,
       image: product.imageUrl || product.image,
       details: product,
-    })) : []),
-    // Service items - only show when services is enabled
-    ...(servicesEnabled ? Object.values(serviceState.items).map(service => ({
+    })),
+    // Always show service items (even if services is disabled in this area)
+    ...Object.values(serviceState.items).map(service => ({
       id: service.id,
       type: 'service' as const,
       name: service.serviceTitle,
       price: service.company.price ?? 0,
       quantity: service.quantity,
       details: service,
-    })) : [])
+    }))
   ];
 
-  const groceryTotal = groceryEnabled ? groceryProducts.reduce((total, product) => {
+  const groceryTotal = groceryProducts.reduce((total, product) => {
     return total + (product.price * (cart[product.id] || 0));
-  }, 0) : 0;
+  }, 0);
 
-  const grandTotal = groceryTotal + (servicesEnabled ? serviceTotalAmount : 0);
+  const grandTotal = groceryTotal + serviceTotalAmount;
   const totalItems = unifiedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleBackPress = () => {
@@ -137,10 +137,9 @@ export default function UnifiedCartScreen() {
     if (navigationRef.isReady?.()) {
       // If we cannot introspect route names, still attempt a sensible exit.
       if (availableRoutes.size === 0) {
-        try {
-          navigation.navigate("AppTabs", { screen: "HomeTab" });
-          return;
-        } catch {}
+        // Fallback to services if no routes detected
+        navigation.navigate("CartFlow", { screen: "ServicesHome" });
+        return;
       }
       if (availableRoutes.has("HomeTab")) {
         navigation.navigate("AppTabs", { screen: "HomeTab" });
@@ -154,6 +153,8 @@ export default function UnifiedCartScreen() {
         navigationRef.navigate("CategoriesTab" as never);
         return;
       }
+      // Final fallback - go to services
+      navigation.navigate("CartFlow", { screen: "ServicesHome" });
     }
   };
 
@@ -216,8 +217,8 @@ export default function UnifiedCartScreen() {
   };
 
   const handleCheckout = () => {
-    const hasGrocery = groceryEnabled && groceryProducts.length > 0;
-    const hasServices = servicesEnabled && Object.keys(serviceState.items).length > 0;
+    const hasGrocery = groceryProducts.length > 0;
+    const hasServices = Object.keys(serviceState.items).length > 0;
 
     if (hasGrocery && hasServices) {
       Alert.alert(
@@ -351,7 +352,8 @@ export default function UnifiedCartScreen() {
               style={styles.emptyBtn}
               onPress={() => {
                 setActiveMode('grocery');
-                try { navigation.navigate('HomeTab', { screen: 'ProductsHome' }); } catch {}
+                const { safeNavigateToHome } = require('../../utils/navigationHelpers'); // eslint-disable-line @typescript-eslint/no-require-imports
+                safeNavigateToHome(navigation, { screen: 'ProductsHome' });
               }}
             >
               <Ionicons name="basket-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
@@ -363,27 +365,13 @@ export default function UnifiedCartScreen() {
               style={[styles.emptyBtn, { backgroundColor: '#FF6B35' }]}
               onPress={() => {
                 setActiveMode('service');
-                if (navigationRef.isReady?.()) {
-                  const state = navigationRef.getRootState?.();
-                  const allRoutes: string[] = [];
-                  const collect = (s: any) => {
-                    if (!s) return;
-                    (s.routeNames ?? []).forEach((n: string) => allRoutes.push(n));
-                    (s.routes ?? []).forEach((r: any) => collect(r.state));
-                  };
-                  collect(state);
-                  if (allRoutes.includes('HomeTab')) {
-                    (navigationRef.navigate as any)('HomeTab', { screen: 'ProductsHome' });
-                  } else {
-                    // Grocery off — reset CartFlow to ServicesHome directly
-                    (navigationRef as any).dispatch(
-                      CommonActions.reset({
-                        index: 0,
-                        routes: [{ name: 'CartFlow', state: { routes: [{ name: 'ServicesHome' }] } }],
-                      })
-                    );
-                  }
-                }
+                // Always navigate to services when service button is clicked
+                (navigationRef as any).dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'CartFlow', state: { routes: [{ name: 'ServicesHome' }] } }],
+                  })
+                );
               }}
             >
               <Ionicons name="construct-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
@@ -416,13 +404,13 @@ export default function UnifiedCartScreen() {
 
       <View style={styles.footer}>
         <View style={styles.totalContainer}>
-          {groceryEnabled && (
+          {groceryProducts.length > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Grocery Items:</Text>
               <Text style={styles.totalValue}>₹{groceryTotal.toFixed(2)}</Text>
             </View>
           )}
-          {servicesEnabled && (
+          {Object.keys(serviceState.items).length > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Services:</Text>
               <Text style={styles.totalValue}>₹{serviceTotalAmount.toFixed(2)}</Text>

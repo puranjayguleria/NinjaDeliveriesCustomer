@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import ServicesTabBar from "../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -670,6 +671,7 @@ export default function CompanySelectionScreen() {
           navigation.navigate("ServiceCart");
         }}
       />
+      <ServicesTabBar activeTab="explore" />
     </View>
   );
 }
@@ -702,6 +704,7 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
     flexDirection: "row",
+    paddingBottom: 60,
   },
 
   // Left Sidebar - Service Display

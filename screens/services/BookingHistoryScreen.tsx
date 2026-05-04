@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -918,6 +919,7 @@ export default function BookingHistoryScreen() {
         totalAmount={bookingToCancel?.totalPrice || 0}
         deductionPercentage={25}
       />
+      <ServicesTabBar activeTab="bookings" />
     </View>
   );
 }

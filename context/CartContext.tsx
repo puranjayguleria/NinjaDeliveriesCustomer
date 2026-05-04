@@ -226,7 +226,12 @@ export const CartProvider: React.FC<Props> = ({ children }) => {
   //  CLEAR CART
   // -------------------------------
   const clearCart = useCallback(() => {
+    console.log('[CartContext] Clearing cart...');
     setCart({});
+    // Force clear AsyncStorage immediately
+    AsyncStorage.removeItem(CART_STORAGE_KEY).catch((e) => {
+      console.error('[CartContext] Failed to clear cart from storage:', e);
+    });
   }, []);
 
   // Memoize the context value to prevent unnecessary re-renders

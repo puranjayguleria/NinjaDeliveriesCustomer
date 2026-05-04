@@ -132,8 +132,8 @@ const ProductCardBase: React.FC<ProductCardProps> = ({
       ? item.price + n(item.CGST) + n(item.SGST) + n(item.cess)
       : item.price;
 
-  const safeFinal = Number((finalPrice ?? 0).toFixed(2));
-  const safeOriginal = Number((originalPriceIncl ?? 0).toFixed(2));
+  const safeFinal = Math.round(finalPrice ?? 0);
+  const safeOriginal = Math.round(originalPriceIncl ?? 0);
 
   const discountAmount = safeOriginal - safeFinal;
   const discountPercent =
@@ -174,9 +174,9 @@ const ProductCardBase: React.FC<ProductCardProps> = ({
         )}
         {/* Price Overlay */}
         <View style={[styles.priceOverlay, { backgroundColor: theme.priceOverlayBg }]}>
-          <Text style={styles.discountedPrice}>₹{safeFinal.toFixed(2)}</Text>
+          <Text style={styles.discountedPrice}>₹{safeFinal}</Text>
           {typeof item.discount === "number" && item.discount > 0 && (
-            <Text style={styles.originalPrice}>₹{safeOriginal.toFixed(2)}</Text>
+            <Text style={styles.originalPrice}>₹{safeOriginal}</Text>
           )}
         </View>
       </TouchableOpacity>

@@ -43,11 +43,11 @@ export default function RecommendCard({
   const rawPrice = Number(item.price ?? 0);
 
   // Round individually
-  const saving = Math.round(rawSaving * 100) / 100;
+  const saving = Math.round(rawSaving);
   const cgstRate = Math.round(rawCgst * 100) / 100;
   const sgstRate = Math.round(rawSgst * 100) / 100;
-  const base = Math.round((rawPrice + cgstRate + sgstRate) * 100) / 100;
-  const final = Math.round(Math.max(base - saving, 0) * 100) / 100;
+  const base = Math.round(rawPrice + cgstRate + sgstRate);
+  const final = Math.round(Math.max(base - saving, 0));
   const discountPercent = saving > 0 ? Math.round((saving / base) * 100) : 0;
 
   return (

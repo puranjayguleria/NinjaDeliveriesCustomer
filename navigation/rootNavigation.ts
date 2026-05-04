@@ -42,3 +42,19 @@ export function navigateHome(params?: { screen?: string; params?: any }) {
     (navigationRef.navigate as any)('CartFlow', { screen: 'ServicesHome' });
   }
 }
+
+/**
+ * Check if HomeTab exists in the current navigation tree
+ */
+export function isHomeTabAvailable(): boolean {
+  if (!navigationRef.isReady()) return false;
+  const state = navigationRef.getRootState?.();
+  const allRouteNames: string[] = [];
+  const collect = (s: any) => {
+    if (!s) return;
+    (s.routeNames ?? []).forEach((n: string) => allRouteNames.push(n));
+    (s.routes ?? []).forEach((r: any) => collect(r.state));
+  };
+  collect(state);
+  return allRouteNames.includes('HomeTab');
+}

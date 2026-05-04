@@ -100,9 +100,9 @@ const ProductDetailsScreen = () => {
           <Text style={styles.brand}>{product.brand || product.vendorName || "Ninja Local"}</Text>
           
           <View style={styles.priceRow}>
-             <Text style={styles.finalPrice}>₹{finalPrice.toFixed(2)}</Text>
+             <Text style={styles.finalPrice}>₹{Math.round(finalPrice)}</Text>
              {discount > 0 && (
-                <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
+                <Text style={styles.originalPrice}>₹{Math.round(originalPrice)}</Text>
              )}
              {discount > 0 && (
                 <View style={styles.discountBadge}>

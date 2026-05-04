@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ServicesTabBar from "../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -662,6 +663,7 @@ export default function PackageSelectionScreen() {
           </TouchableOpacity>
         </View>
       )}
+      <ServicesTabBar activeTab="explore" />
     </View>
   );
 }
@@ -843,7 +845,7 @@ const styles = StyleSheet.create({
 
   bottomBar: {
     position: "absolute",
-    bottom: 0,
+    bottom: 60,
     left: 0,
     right: 0,
     backgroundColor: "white",

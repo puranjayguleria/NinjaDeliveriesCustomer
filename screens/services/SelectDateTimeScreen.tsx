@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   View,
   Text,
@@ -3170,14 +3171,14 @@ export default function SelectDateTimeScreen() {
             </Text>
           )}
 
-          {isServiceFlow && loadingAvailability && (
+          {isServiceFlow && loadingAvailability && !isBlockingAvailabilityModal && (
             <View style={styles.availabilityRow}>
               <ActivityIndicator size="small" color="#64748b" />
               <Text style={styles.availabilityText}>Checking availability…</Text>
             </View>
           )}
 
-          {!isServiceFlow && !isRecurringPackage && loadingAvailability && (
+          {!isServiceFlow && !isRecurringPackage && loadingAvailability && !isBlockingAvailabilityModal && (
             <View style={styles.availabilityRow}>
               <ActivityIndicator size="small" color="#64748b" />
               <Text style={styles.availabilityText}>
@@ -3195,7 +3196,7 @@ export default function SelectDateTimeScreen() {
             </View>
           )}
 
-          {!isServiceFlow && isMonthlyPlan && loadingMonthlyPrecheck && (
+          {!isServiceFlow && isMonthlyPlan && loadingMonthlyPrecheck && !isBlockingAvailabilityModal && (
             <View style={styles.availabilityRow}>
               <ActivityIndicator size="small" color="#64748b" />
               <Text style={styles.availabilityText}>
@@ -3212,19 +3213,6 @@ export default function SelectDateTimeScreen() {
 
           {/* All Slots - Pill / Chip Layout */}
           <View style={styles.slotsVerticalContainer}>
-            {isServiceFlow && !canInteractWithSlots && (
-              <View style={styles.slotsBlockingOverlay} pointerEvents="none">
-                <View style={styles.slotsBlockingCard}>
-                  <ActivityIndicator size="small" color="#0f172a" />
-                  <Text style={styles.slotsBlockingText}>
-                    {availabilityStatusText && availabilityStatusText.trim().length > 0
-                      ? availabilityStatusText
-                      : 'Please wait, checking availability…'}
-                  </Text>
-                </View>
-              </View>
-            )}
-
             {slots.filter((slot) => {
               // IMPORTANT UX:
               // - Service flow: always show all slots (we disable booked ones).
@@ -3583,6 +3571,7 @@ export default function SelectDateTimeScreen() {
           <Text style={styles.continueBtnText}>{continueLabel}</Text>
         </TouchableOpacity>
       </View>
+      <ServicesTabBar activeTab="explore" />
       </>
       )}
     </View>
@@ -4319,6 +4308,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     paddingHorizontal: 16,
     paddingVertical: 18,
+    paddingBottom: 78,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
     shadowColor: '#000',

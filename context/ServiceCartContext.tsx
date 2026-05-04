@@ -263,7 +263,12 @@ export const ServiceCartProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const clearCart = () => {
+    console.log('[ServiceCartContext] Clearing service cart...');
     setState({ items: {} });
+    // Force clear AsyncStorage immediately
+    AsyncStorage.removeItem(CART_STORAGE_KEY).catch((e) => {
+      console.error('[ServiceCartContext] Failed to clear service cart from storage:', e);
+    });
   };
 
   const getServiceById = (serviceId: string) => {
