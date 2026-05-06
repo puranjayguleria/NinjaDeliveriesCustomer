@@ -438,7 +438,7 @@ function QuickServiceCard({
                 <Text style={quickCardStyles.modalDescription}>{description}</Text>
               </ScrollView>
 
-              {/* Custom right-side scrollbar */}
+              {/* Custom right-side scrollbar - positioned to stay above footer */}
               {isScrollable && (
                 <View style={quickCardStyles.customScrollbar}>
                   <Animated.View
@@ -610,6 +610,8 @@ const quickCardStyles = StyleSheet.create({
     flexGrow: 1,
     position: 'relative',
     minHeight: 80,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
   modalBody: {
     paddingHorizontal: 20,
@@ -619,22 +621,23 @@ const quickCardStyles = StyleSheet.create({
   modalBodyContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 16,
     paddingRight: 30,
   },
   customScrollbar: {
     position: 'absolute',
     right: 6,
     top: 16,
-    bottom: 12,
+    bottom: 16,
     width: 4,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#dcfce7',
     borderRadius: 2,
   },
   customScrollbarThumb: {
     width: 4,
-    backgroundColor: '#00b4a0',
+    backgroundColor: '#4CAF50',
     borderRadius: 2,
+    minHeight: 30,
   },
   modalDescription: {
     fontSize: 14,

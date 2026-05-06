@@ -11,6 +11,8 @@ import {
   Modal,
   Pressable,
   TextInput,
+  ScrollView,
+  Animated,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -49,6 +51,45 @@ export default function ServiceCategoryScreen() {
     description: string;
   }>({ visible: false, title: '', description: '' });
   
+  // Modal scroll states for custom scrollbar
+  const scrollViewRef = React.useRef<ScrollView>(null);
+  const scrollIndicatorAnim = React.useRef(new Animated.Value(0)).current;
+  const [scrollbarHeight, setScrollbarHeight] = useState(0);
+  const [thumbHeight, setThumbHeight] = useState(0);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const contentHeightRef = React.useRef(0);
+  const layoutHeightRef = React.useRef(0);
+  
+  // Modal scroll handlers for custom scrollbar
+  const handleScrollbarLayout = (e: any) => {
+    const h = e.nativeEvent.layout.height;
+    setScrollbarHeight(h);
+    layoutHeightRef.current = h;
+    if (contentHeightRef.current > 0) {
+      const ratio = h / contentHeightRef.current;
+      setThumbHeight(Math.max(40, h * ratio));
+      setIsScrollable(contentHeightRef.current > h + 10);
+    }
+  };
+
+  const handleContentSizeChange = (_: number, contentH: number) => {
+    contentHeightRef.current = contentH;
+    if (layoutHeightRef.current > 0) {
+      const ratio = layoutHeightRef.current / contentH;
+      setThumbHeight(Math.max(40, layoutHeightRef.current * ratio));
+      setIsScrollable(contentH > layoutHeightRef.current + 10);
+    }
+  };
+
+  const handleScroll = (e: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    if (contentSize.height <= layoutMeasurement.height) return;
+    const maxScroll = contentSize.height - layoutMeasurement.height;
+    const maxThumbTravel = layoutMeasurement.height - thumbHeight;
+    const thumbPos = (contentOffset.y / maxScroll) * maxThumbTravel;
+    scrollIndicatorAnim.setValue(thumbPos);
+  };
+
   // 🆕 New states for category sidebar
   const [categories] = useState<ServiceCategory[]>([]);
   const [selectedCategoryId] = useState<string>(categoryId || "");
@@ -545,23 +586,61 @@ export default function ServiceCategoryScreen() {
         animationType="fade"
         onRequestClose={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
       >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
-        >
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>{descriptionModal.title}</Text>
-              <Pressable
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <View style={styles.modalIcon}>
+                  <Ionicons name="information-circle-outline" size={20} color="#2563eb" />
+                </View>
+                <Text style={styles.modalTitle} numberOfLines={2}>
+                  {descriptionModal.title}
+                </Text>
+              </View>
+              <TouchableOpacity
                 onPress={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
-                hitSlop={10}
+                style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Text style={styles.modalCloseText}>Close</Text>
-              </Pressable>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
             </View>
-            <Text style={styles.modalDescription}>{descriptionModal.description}</Text>
-          </Pressable>
-        </Pressable>
+
+            {/* Scrollable description */}
+            <View style={styles.modalBodyWrapper}>
+              <ScrollView
+                ref={scrollViewRef}
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+                scrollEventThrottle={8}
+                decelerationRate="normal"
+                onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={handleScrollbarLayout}
+                contentContainerStyle={styles.modalBodyContent}
+                style={styles.modalScrollView}
+              >
+                <Text style={styles.modalDescription}>{descriptionModal.description}</Text>
+              </ScrollView>
+
+              {/* Custom side scrollbar */}
+              {isScrollable && (
+                <View style={styles.customScrollbar}>
+                  <Animated.View
+                    style={[
+                      styles.customScrollbarThumb,
+                      {
+                        height: thumbHeight,
+                        transform: [{ translateY: scrollIndicatorAnim }],
+                      },
+                    ]}
+                  />
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Header */}
@@ -882,59 +961,110 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 
-  modalBackdrop: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
-    padding: 20,
-    justifyContent: "center",
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
-
-  modalCard: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    maxHeight: "80%",
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '92%',
+    minHeight: '65%',
+    flexDirection: 'column',
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.3,
+    shadowRadius: 25,
+    elevation: 15,
+    overflow: 'hidden',
   },
-
-  modalHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    paddingBottom: 16,
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
+    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#fafbfc',
   },
-
-  modalTitle: {
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0f172a",
     paddingRight: 12,
+  },
+  modalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#e0f2fe',
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
     lineHeight: 26,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
-
-  modalCloseText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#2563eb",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  closeButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-
+  modalBodyWrapper: {
+    flexShrink: 1,
+    flexGrow: 1,
+    position: 'relative',
+    minHeight: 180,
+    maxHeight: 550,
+    backgroundColor: '#ffffff',
+  },
+  modalScrollView: {
+    flex: 1,
+    marginRight: 16,
+  },
+  modalBodyContent: {
+    paddingHorizontal: 28,
+    paddingTop: 24,
+    paddingBottom: 24,
+    paddingRight: 28,
+    flexGrow: 1,
+  },
+  customScrollbar: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    bottom: 8,
+    width: 4,
+    backgroundColor: '#dcfce7',
+    borderRadius: 2,
+  },
+  customScrollbarThumb: {
+    width: 4,
+    backgroundColor: '#4CAF50',
+    borderRadius: 2,
+    minHeight: 40,
+  },
   modalDescription: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: "#475569",
-    letterSpacing: -0.2,
+    fontSize: 16,
+    color: '#374151',
+    lineHeight: 26,
+    fontWeight: '400',
+    letterSpacing: -0.1,
   },
 
   serviceTitle: { 
