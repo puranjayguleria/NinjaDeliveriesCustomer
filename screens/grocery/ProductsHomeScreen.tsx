@@ -42,6 +42,7 @@ import { useToggleContext } from "@/context/ToggleContext";
 import NotificationModal from "../../components/ErrorModal";
 import AreaUnavailableModal from "../../components/AreaUnavailableModal";
 import Loader from "@/components/VideoLoader";
+import LoadingModal from "../../components/LoadingModal";
 import { QuickTile } from "@/components/QuickTile";
 import { useWeather } from "../../context/WeatherContext";
 import BannerSwitcher from "@/components/BannerSwitcher";
@@ -854,6 +855,11 @@ export default function ProductsHomeScreen() {
   const [homeMsg, setHomeMsg] = useState<any | null>(null);
   const [homeMsgLoading, setHomeMsgLoading] = useState(false);
 
+  // Per-section loading flags for the initial data load
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
+  const [shortcutsLoading, setShortcutsLoading] = useState(false);
+  const [lastOrderLoading, setLastOrderLoading] = useState(false);
+
   // Tracks whether the user has dismissed a message in this session. Once a
   // message is dismissed, no further messages (including paused messages) will
   // appear until a new homeMsg is received. This prevents fallback messages
@@ -1088,8 +1094,11 @@ export default function ProductsHomeScreen() {
   useEffect(() => {
     if (!location.storeId) {
       setCategoryShortcuts([]);
+      setShortcutsLoading(false);
       return;
     }
+
+    setShortcutsLoading(true);
 
     const unsub = firestore()
       .collection("category_shortcuts")
@@ -1102,17 +1111,18 @@ export default function ProductsHomeScreen() {
               id: doc.id,
               ...doc.data(),
             }))
-            // Sort on the client to avoid composite index requirements.
             .sort(
               (a: any, b: any) =>
                 Number(a?.priority ?? Number.MAX_SAFE_INTEGER) -
                 Number(b?.priority ?? Number.MAX_SAFE_INTEGER)
             );
           setCategoryShortcuts(shortcuts);
+          setShortcutsLoading(false);
         },
         (error) => {
           console.warn("Error fetching category shortcuts:", error);
           setCategoryShortcuts([]);
+          setShortcutsLoading(false);
         }
       );
 
@@ -1125,44 +1135,51 @@ export default function ProductsHomeScreen() {
     // If no user or no store selected yet, clear Buy Again
     if (!currentUser || !location.storeId) {
       setLastOrder(null);
+      setLastOrderLoading(false);
       return;
     }
 
     const fetchOrders = async () => {
-      // Latest orders for this user *for this store only*
-      const snap = await firestore()
-        .collection("orders")
-        .where("orderedBy", "==", currentUser.uid)
-        .where("storeId", "==", location.storeId)
-        .orderBy("createdAt", "desc")
-        .limit(20)
-        .get();
+      setLastOrderLoading(true);
+      try {
+        const snap = await firestore()
+          .collection("orders")
+          .where("orderedBy", "==", currentUser.uid)
+          .where("storeId", "==", location.storeId)
+          .orderBy("createdAt", "desc")
+          .limit(20)
+          .get();
 
-      if (snap.empty) {
+        if (snap.empty) {
+          setLastOrder(null);
+          return;
+        }
+
+        const latestCompleted = snap.docs.find((doc) => {
+          const status = String(doc.data().status || "").toLowerCase();
+          return status === "tripended";
+        });
+
+        if (!latestCompleted) {
+          setLastOrder(null);
+          return;
+        }
+
+        const data = latestCompleted.data();
+        const items: any[] = data.items || [];
+
+        setLastOrder({
+          id: latestCompleted.id,
+          items,
+          createdAt: data.createdAt,
+          status: data.status,
+        });
+      } catch (err) {
+        console.error("Failed to load last order", err);
         setLastOrder(null);
-        return;
+      } finally {
+        setLastOrderLoading(false);
       }
-
-      // First order with status = tripEnded (case-insensitive)
-      const latestCompleted = snap.docs.find((doc) => {
-        const status = String(doc.data().status || "").toLowerCase();
-        return status === "tripended";
-      });
-
-      if (!latestCompleted) {
-        setLastOrder(null);
-        return;
-      }
-
-      const data = latestCompleted.data();
-      const items: any[] = data.items || [];
-
-      setLastOrder({
-        id: latestCompleted.id,
-        items,
-        createdAt: data.createdAt,
-        status: data.status,
-      });
     };
 
     fetchOrders();
@@ -1423,6 +1440,7 @@ export default function ProductsHomeScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [noMore, setNoMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalogueLoading, setCatalogueLoading] = useState(false);
   const prevStoreIdRef = useRef<string | null>(null);
 
   const initFetch = useCallback(async () => {
@@ -1440,6 +1458,7 @@ export default function ProductsHomeScreen() {
     }
     prevStoreIdRef.current = location.storeId;
 
+    setCatalogueLoading(true);
     try {
       const [catSnap, subSnap] = await Promise.all([
         firestore()
@@ -1467,6 +1486,8 @@ export default function ProductsHomeScreen() {
       setNoMore(false);
     } catch (e) {
       setError("Could not load catalogue.");
+    } finally {
+      setCatalogueLoading(false);
     }
   }, [location.storeId]);
 
@@ -1715,6 +1736,7 @@ export default function ProductsHomeScreen() {
       setFreshProducts([]);
       return;
     }
+    setHighlightsLoading(true);
     try {
       const snap = await firestore()
         .collection("products")
@@ -1748,6 +1770,8 @@ export default function ProductsHomeScreen() {
       );
     } catch (err) {
       console.error("Failed to load highlights", err);
+    } finally {
+      setHighlightsLoading(false);
     }
   }, [location.storeId]);
 
@@ -2027,8 +2051,14 @@ export default function ProductsHomeScreen() {
 
   if (hasPerm === null) {
     return (
-      <View style={[styles.center, { flex: 1 }]}>        
-        <Loader />
+      <View style={[styles.center, { flex: 1 }]}>
+        <LoadingModal
+          visible={true}
+          title="Loading your store"
+          subtitle="Finding products near you"
+          emoji="🛒"
+          accentColor="#00C853"
+        />
       </View>
     );
   }
@@ -2057,6 +2087,7 @@ export default function ProductsHomeScreen() {
           nav.navigate("LocationSelector");
         }}
       />
+
       <View
         style={{
           flex: 1,
@@ -2371,6 +2402,26 @@ export default function ProductsHomeScreen() {
           setIsErrorModalVisible(false);
           onErrorConfirm();
         }}
+      />
+
+      {/* Loading overlay — last child so it renders above everything */}
+      <LoadingModal
+        visible={
+          catalogueLoading ||
+          homeMsgLoading ||
+          highlightsLoading ||
+          shortcutsLoading ||
+          lastOrderLoading
+        }
+        title="Loading your store"
+        subtitle="Finding products near you"
+        emoji="🛒"
+        accentColor="#00C853"
+        chips={[
+          { label: '🥦', bg: '#f0fdf4' },
+          { label: '🛒', bg: '#eff6ff' },
+          { label: '🥛', bg: '#fefce8' },
+        ]}
       />
     </>
   );

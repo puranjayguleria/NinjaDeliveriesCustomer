@@ -31,6 +31,7 @@ import { setSharedCategories } from "../../services/sharedCategoriesStore";
 import { firestore } from "../../firebase.native";
 import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import LoadingModal from "../../components/LoadingModal";
 
 const { width } = Dimensions.get('window');
 
@@ -834,6 +835,12 @@ export default function ServicesScreen() {
   const [homeCleaningServices, setHomeCleaningServices] = useState<any[]>([]);
   const [electricianServices, setElectricianServices] = useState<any[]>([]);
 
+  // Per-section loading flags — used to keep the modal up until all sections are ready
+  const [plumberLoading, setPlumberLoading] = useState(false);
+  const [autoWashLoading, setAutoWashLoading] = useState(false);
+  const [homeCleanLoading, setHomeCleanLoading] = useState(false);
+  const [electricianLoading, setElectricianLoading] = useState(false);
+
   const categorySnapshotSeqRef = React.useRef(0);
 
   const prefetchedUrlsRef = React.useRef<string>('');
@@ -844,9 +851,19 @@ export default function ServicesScreen() {
     null | { razorpayOrderId: string; createdAt: number }
   >(null);
 
-  // Important: do NOT block the initial UI on loading the full `service_services` dataset.
-  // That collection can be large and may take a long time to stream the first snapshot.
-  const isLoading = loading || zoneCompaniesLoading;
+  // Show modal until ALL data is ready:
+  // categories + banners + zone mapping + all service sections
+  // If no location is selected yet, skip zone-dependent loaders.
+  const isLoading =
+    loading ||
+    bannersLoading ||
+    (hasSelectedLocation && (
+      zoneCompaniesLoading ||
+      plumberLoading ||
+      autoWashLoading ||
+      homeCleanLoading ||
+      electricianLoading
+    ));
 
   // If services become unavailable, silently switch to an available mode
   useEffect(() => {
@@ -942,6 +959,7 @@ export default function ServicesScreen() {
           if (!cancelled) {
             setZoneCompanyIdsKey('');
             setZoneCompanyNamesKey('');
+            setZoneCompaniesLoading(false);
           }
           return;
         }
@@ -2129,7 +2147,10 @@ export default function ServicesScreen() {
     };
 
     if (location?.storeId && !zoneCompaniesLoading) {
-      fetchPlumberServices();
+      setPlumberLoading(true);
+      fetchPlumberServices().finally(() => setPlumberLoading(false));
+    } else {
+      setPlumberLoading(false);
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
@@ -2251,7 +2272,10 @@ export default function ServicesScreen() {
     };
 
     if (location?.storeId && !zoneCompaniesLoading) {
-      fetchAutomobileWashingServices();
+      setAutoWashLoading(true);
+      fetchAutomobileWashingServices().finally(() => setAutoWashLoading(false));
+    } else {
+      setAutoWashLoading(false);
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
@@ -2373,7 +2397,10 @@ export default function ServicesScreen() {
     };
 
     if (location?.storeId && !zoneCompaniesLoading) {
-      fetchHomeCleaningServices();
+      setHomeCleanLoading(true);
+      fetchHomeCleaningServices().finally(() => setHomeCleanLoading(false));
+    } else {
+      setHomeCleanLoading(false);
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
@@ -2492,7 +2519,10 @@ export default function ServicesScreen() {
     };
 
     if (location?.storeId && !zoneCompaniesLoading) {
-      fetchElectricianServices();
+      setElectricianLoading(true);
+      fetchElectricianServices().finally(() => setElectricianLoading(false));
+    } else {
+      setElectricianLoading(false);
     }
   }, [location?.storeId, zoneCompanyIdsKey, zoneCompanyNamesKey, zoneCompaniesLoading]);
 
@@ -4015,6 +4045,20 @@ export default function ServicesScreen() {
           cartItemCount={serviceTotalItems}
         />
       </View>
+
+      {/* Loading overlay — last child so it renders above everything */}
+      <LoadingModal
+        visible={isLoading}
+        title="Loading Services"
+        subtitle="Finding services near you"
+        emoji="🔧"
+        accentColor="#6D28D9"
+        chips={[
+          { label: '🔧', bg: '#fff7ed' },
+          { label: '🏠', bg: '#f0fdf4' },
+          { label: '⚡', bg: '#fefce8' },
+        ]}
+      />
     </View>
   );
 }

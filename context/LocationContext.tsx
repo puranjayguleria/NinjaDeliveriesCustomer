@@ -1,6 +1,8 @@
 // context/LocationContext.tsx
-import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { findNearestStore } from '../utils/findNearestStore';
+import { prefetchGroceryData } from '../utils/groceryPrefetch';
+import { prefetchServicesData } from '../utils/servicesPrefetch';
 
 export type LocationData = {
   lat: number | null;
@@ -33,6 +35,17 @@ export const LocationProvider: React.FC<{children:React.ReactNode}> = ({children
     lat:null, lng:null, address:'', storeId:null, surge:{ active:false, fee:0 },
     grocery: true, food: true, services: true // default to true
   });
+
+  // Fire prefetch as soon as storeId is known so screens load faster
+  const lastPrefetchedStoreId = useRef<string | null>(null);
+  useEffect(() => {
+    const sid = location.storeId;
+    if (!sid || sid === lastPrefetchedStoreId.current) return;
+    lastPrefetchedStoreId.current = sid;
+    // Fire both in parallel, non-blocking — errors are swallowed inside each util
+    prefetchGroceryData(sid);
+    prefetchServicesData(sid);
+  }, [location.storeId]);
 
   /** called from CategoriesScreen once we know the zone */
   const setStoreId = useCallback((id:string)=>{

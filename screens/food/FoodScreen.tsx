@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { useLocationContext } from '@/context/LocationContext';
 import { useToggleContext } from '@/context/ToggleContext';
 import { navigationRef } from '@/navigation/rootNavigation';
+import LoadingModal from '../../components/LoadingModal';
 import {
   getActiveRestaurants,
   getFoodCategories,
@@ -91,8 +92,13 @@ export default function FoodScreen() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#FF6B35" />
-        <Text style={s.loaderText}>Finding restaurants near you...</Text>
+        <LoadingModal
+          visible={true}
+          title="Finding Restaurants"
+          subtitle="Loading restaurants near you"
+          emoji="🍔"
+          accentColor="#FF6B35"
+        />
       </View>
     );
   }

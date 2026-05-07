@@ -109,6 +109,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import WelcomeServicesOnceModal from "@/components/WelcomeServicesOnceModal";
 
 import { CartClearListener } from "./components/CartClearListener";
+import LoadingModal from "./components/LoadingModal";
 
 // Import cart debug utilities (available in __DEV__ mode)
 import "./utils/cartDebugUtils";
@@ -2082,9 +2083,17 @@ const App: React.FC = () => {
   // OTA checks run in the background and will reload when an update is fetched.
   if (!firebaseReady || loadingAuth) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00C853" />
-      </View>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <LoadingModal
+            visible={true}
+            title="Starting up..."
+            subtitle="Getting things ready for you"
+            emoji="🛵"
+            accentColor="#00C853"
+          />
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
     );
   }
 
