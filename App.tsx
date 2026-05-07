@@ -861,7 +861,7 @@ function AppTabs() {
   const { cart } = useCart();
   const { totalItems: serviceTotalItems } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
-  const { activeMode, setActiveMode } = useToggleContext();
+  const { activeMode, setActiveMode, screenLoading } = useToggleContext();
   const groceryTotalItems = Object.values(cart).reduce((a, q) => a + q, 0);
   const { activeOrders } = useOrder();
 
@@ -1258,10 +1258,32 @@ function AppTabs() {
     display: 'none' as const
   }), []);
 
-  // Memoize the tab bar style based on activeMode
+  // Deferred activeMode for tab bar visibility — prevents the glitch where
+  // grocery tabs appear while ServicesScreen content is still rendering.
+  // We hide the tab bar immediately when leaving grocery, but only show it
+  // again after two animation frames so HomeScreenWrapper has time to swap screens.
+  const [tabBarMode, setTabBarMode] = React.useState(activeMode);
+  React.useEffect(() => {
+    if (activeMode !== 'grocery') {
+      // Hide immediately when switching away from grocery
+      setTabBarMode(activeMode);
+    } else {
+      // Wait two frames: first frame lets HomeScreenWrapper re-render,
+      // second frame shows the grocery tab bar cleanly
+      let id1: number;
+      const id0 = requestAnimationFrame(() => {
+        id1 = requestAnimationFrame(() => setTabBarMode('grocery'));
+      });
+      return () => {
+        cancelAnimationFrame(id0);
+        cancelAnimationFrame(id1);
+      };
+    }
+  }, [activeMode]);
+
   const tabBarStyle = React.useMemo(() => 
-    activeMode === 'grocery' ? tabBarStyleVisible : tabBarStyleHidden,
-    [activeMode, tabBarStyleVisible, tabBarStyleHidden]
+    tabBarMode === 'grocery' ? tabBarStyleVisible : tabBarStyleHidden,
+    [tabBarMode, tabBarStyleVisible, tabBarStyleHidden]
   );
 
   // Stable icon map to prevent re-creation on every render
@@ -1499,6 +1521,23 @@ function AppTabs() {
           />
         )}
       </Tab.Navigator>
+
+      {/* Tab-bar touch-blocker — rendered above the native tab bar when a screen's
+          LoadingModal is visible, so the user cannot tap tabs during loading */}
+      {screenLoading && tabBarMode === 'grocery' && (
+        <View
+          pointerEvents="auto"
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: Platform.OS === 'android' ? 60 : 85,
+            zIndex: 99999,
+            elevation: 99999,
+          }}
+        />
+      )}
 
       {activeMode === "grocery" && inProgress.length > 0 && (
         <LiveTrackingBar orders={inProgress} />

@@ -5,12 +5,16 @@ type ToggleMode = 'grocery' | 'service' | 'food';
 type ToggleContextType = {
   activeMode: ToggleMode;
   setActiveMode: (mode: ToggleMode) => void;
+  /** True while any screen is showing its LoadingModal — used to block the native tab bar */
+  screenLoading: boolean;
+  setScreenLoading: (loading: boolean) => void;
 };
 
 const ToggleContext = createContext<ToggleContextType | undefined>(undefined);
 
 export const ToggleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeMode, setActiveModeState] = useState<ToggleMode>('grocery');
+  const [screenLoading, setScreenLoadingState] = useState(false);
 
   // Memoize setActiveMode to prevent unnecessary re-renders
   const setActiveMode = useCallback((mode: ToggleMode) => {
@@ -21,8 +25,15 @@ export const ToggleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
+  const setScreenLoading = useCallback((loading: boolean) => {
+    setScreenLoadingState(loading);
+  }, []);
+
   // Memoize context value to prevent unnecessary re-renders
-  const value = useMemo(() => ({ activeMode, setActiveMode }), [activeMode, setActiveMode]);
+  const value = useMemo(
+    () => ({ activeMode, setActiveMode, screenLoading, setScreenLoading }),
+    [activeMode, setActiveMode, screenLoading, setScreenLoading]
+  );
 
   return (
     <ToggleContext.Provider value={value}>

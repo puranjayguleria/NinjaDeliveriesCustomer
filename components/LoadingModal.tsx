@@ -172,10 +172,8 @@ export default function LoadingModal({
   return (
     <Animated.View
       style={[styles.overlay, { opacity: fadeAnim }]}
-      pointerEvents="box-none"
+      pointerEvents="auto"
     >
-      {/* Tap-blocker so user can't interact with screen behind */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="auto" />
 
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
         {/* Floating chips */}
@@ -263,7 +261,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     // Sit above everything — tabs, headers, modals
     zIndex: 9999,
-    elevation: 999,
+    elevation: 9999,
   },
   card: {
     backgroundColor: '#ffffff',

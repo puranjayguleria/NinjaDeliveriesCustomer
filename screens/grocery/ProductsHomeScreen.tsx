@@ -869,7 +869,10 @@ export default function ProductsHomeScreen() {
     [HOME_BG, HOME_BG, HOME_BG]
   ); // fallback defaults
 
-  const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode } = useToggleContext();
+  const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode, setScreenLoading } = useToggleContext();
+
+  // Sync grocery loading state into context so the native tab bar can be blocked
+  // (useEffect is placed near the LoadingModal render, after all loading states are declared)
 
   /* ========== Pan Corner age-gate state ========== */
   const [catAlert, setCatAlert] = useState<CategoryAlert | null>(null);
@@ -2048,6 +2051,17 @@ export default function ProductsHomeScreen() {
       </>
     );
   }, [bestHeader, freshHeader]);
+
+  // Sync grocery loading state into context so the native tab bar can be blocked
+  // while LoadingModal is visible. Cleanup on unmount resets to false.
+  useEffect(() => {
+    const isGroceryLoading =
+      catalogueLoading || homeMsgLoading || highlightsLoading || shortcutsLoading || lastOrderLoading;
+    setScreenLoading(isGroceryLoading);
+  }, [catalogueLoading, homeMsgLoading, highlightsLoading, shortcutsLoading, lastOrderLoading, setScreenLoading]);
+
+  // Reset on unmount
+  useEffect(() => () => setScreenLoading(false), [setScreenLoading]);
 
   if (hasPerm === null) {
     return (

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import ServicesTabBar from "../../components/ServicesTabBar";
 import {
   View,
@@ -13,7 +13,12 @@ import {
   TextInput,
   ScrollView,
   Animated,
+  Dimensions,
+  Platform,
+  PanResponder,
 } from "react-native";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -44,51 +49,112 @@ export default function ServiceCategoryScreen() {
   // Ref for FlatList to enable scrolling
   const flatListRef = React.useRef<FlatList>(null);
 
-  // Description modal
+  // Description bottom-sheet modal
   const [descriptionModal, setDescriptionModal] = useState<{
     visible: boolean;
     title: string;
     description: string;
-  }>({ visible: false, title: '', description: '' });
-  
-  // Modal scroll states for custom scrollbar
-  const scrollViewRef = React.useRef<ScrollView>(null);
-  const scrollIndicatorAnim = React.useRef(new Animated.Value(0)).current;
-  const [scrollbarHeight, setScrollbarHeight] = useState(0);
-  const [thumbHeight, setThumbHeight] = useState(0);
-  const [isScrollable, setIsScrollable] = useState(false);
-  const contentHeightRef = React.useRef(0);
-  const layoutHeightRef = React.useRef(0);
-  
-  // Modal scroll handlers for custom scrollbar
-  const handleScrollbarLayout = (e: any) => {
+    imageUrl: string | null;
+    itemId: string;
+  }>({ visible: false, title: '', description: '', imageUrl: null, itemId: '' });
+
+  // Bottom-sheet slide animation
+  const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  // Custom scrollbar state for sheet description
+  const sheetScrollRef = useRef<ScrollView>(null);
+  const sheetScrollIndicator = useRef(new Animated.Value(0)).current;
+  const [sheetThumbHeight, setSheetThumbHeight] = useState(0);
+  const [sheetIsScrollable, setSheetIsScrollable] = useState(false);
+  const sheetContentH = useRef(0);
+  const sheetLayoutH = useRef(0);
+
+  const handleSheetLayout = (e: any) => {
     const h = e.nativeEvent.layout.height;
-    setScrollbarHeight(h);
-    layoutHeightRef.current = h;
-    if (contentHeightRef.current > 0) {
-      const ratio = h / contentHeightRef.current;
-      setThumbHeight(Math.max(40, h * ratio));
-      setIsScrollable(contentHeightRef.current > h + 10);
+    sheetLayoutH.current = h;
+    if (sheetContentH.current > 0) {
+      const ratio = h / sheetContentH.current;
+      setSheetThumbHeight(Math.max(30, h * ratio));
+      setSheetIsScrollable(sheetContentH.current > h + 10);
     }
   };
 
-  const handleContentSizeChange = (_: number, contentH: number) => {
-    contentHeightRef.current = contentH;
-    if (layoutHeightRef.current > 0) {
-      const ratio = layoutHeightRef.current / contentH;
-      setThumbHeight(Math.max(40, layoutHeightRef.current * ratio));
-      setIsScrollable(contentH > layoutHeightRef.current + 10);
+  const handleSheetContentSize = (_: number, contentH: number) => {
+    sheetContentH.current = contentH;
+    if (sheetLayoutH.current > 0) {
+      const ratio = sheetLayoutH.current / contentH;
+      setSheetThumbHeight(Math.max(30, sheetLayoutH.current * ratio));
+      setSheetIsScrollable(contentH > sheetLayoutH.current + 10);
     }
   };
 
-  const handleScroll = (e: any) => {
+  const handleSheetScroll = (e: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
     if (contentSize.height <= layoutMeasurement.height) return;
     const maxScroll = contentSize.height - layoutMeasurement.height;
-    const maxThumbTravel = layoutMeasurement.height - thumbHeight;
-    const thumbPos = (contentOffset.y / maxScroll) * maxThumbTravel;
-    scrollIndicatorAnim.setValue(thumbPos);
+    const maxTravel = layoutMeasurement.height - sheetThumbHeight;
+    sheetScrollIndicator.setValue((contentOffset.y / maxScroll) * maxTravel);
+    // dismiss on overscroll down
+    if (contentOffset.y < -50) closeSheet();
   };
+
+  const openSheet = (item: any) => {
+    const desc = typeof item?.description === 'string' ? item.description.trim() : '';
+    setDescriptionModal({
+      visible: true,
+      title: String(item?.name || 'Service'),
+      description: desc,
+      imageUrl: item?.imageUrl || null,
+      itemId: item?.id || '',
+    });
+    Animated.spring(sheetAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+    }).start();
+  };
+
+  const closeSheet = () => {
+    Animated.timing(sheetAnim, {
+      toValue: SCREEN_HEIGHT,
+      duration: 280,
+      useNativeDriver: true,
+    }).start(() => {
+      setDescriptionModal((p) => ({ ...p, visible: false }));
+    });
+  };
+
+  // Drag-to-dismiss: swipe down on the sheet closes it
+  const dragY = useRef(new Animated.Value(0)).current;
+  const sheetPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        gs.dy > 8 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) dragY.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 80 || gs.vy > 0.5) {
+          // dismiss
+          Animated.timing(sheetAnim, {
+            toValue: SCREEN_HEIGHT,
+            duration: 260,
+            useNativeDriver: true,
+          }).start(() => {
+            dragY.setValue(0);
+            setDescriptionModal((p) => ({ ...p, visible: false }));
+          });
+        } else {
+          // snap back
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   // 🆕 New states for category sidebar
   const [categories] = useState<ServiceCategory[]>([]);
@@ -472,8 +538,10 @@ export default function ServiceCategoryScreen() {
     const desc = typeof item?.description === 'string' ? item.description.trim() : '';
 
     return (
-      <View
+      <TouchableOpacity
         style={[styles.serviceCard, hasQuantity && styles.serviceCardSelected]}
+        onPress={() => openSheet(item)}
+        activeOpacity={0.75}
       >
         {/* Service Image */}
         {item.imageUrl ? (
@@ -501,27 +569,16 @@ export default function ServiceCategoryScreen() {
               <Text style={styles.serviceDescription} numberOfLines={2}>
                 {desc}
               </Text>
-              <Pressable
-                onPress={() =>
-                  setDescriptionModal({
-                    visible: true,
-                    title: String(item?.name || 'Service'),
-                    description: desc,
-                  })
-                }
-                hitSlop={8}
-              >
-                <Text style={styles.seeMoreText}>See more</Text>
-              </Pressable>
+              <Text style={styles.seeMoreText}>See more</Text>
             </View>
           )}
         </View>
         
-        {/* Quantity Controls */}
+        {/* Quantity Controls — stop propagation so tapping +/- doesn't open sheet */}
         {!hasQuantity ? (
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => addService(item.id)}
+            onPress={(e) => { e.stopPropagation?.(); addService(item.id); }}
             activeOpacity={0.7}
           >
             <Text style={styles.addButtonText}>ADD</Text>
@@ -530,7 +587,7 @@ export default function ServiceCategoryScreen() {
           <View style={styles.quantityContainer}>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => removeService(item.id)}
+              onPress={(e) => { e.stopPropagation?.(); removeService(item.id); }}
               activeOpacity={0.7}
             >
               <Text style={styles.quantityButtonText}>−</Text>
@@ -538,14 +595,14 @@ export default function ServiceCategoryScreen() {
             <Text style={styles.quantityText}>{quantity}</Text>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => addService(item.id)}
+              onPress={(e) => { e.stopPropagation?.(); addService(item.id); }}
               activeOpacity={0.7}
             >
               <Text style={styles.quantityButtonText}>+</Text>
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -579,68 +636,153 @@ export default function ServiceCategoryScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Description Modal */}
+      {/* Description Bottom-Sheet Modal */}
       <Modal
         visible={descriptionModal.visible}
         transparent
-        animationType="fade"
-        onRequestClose={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeSheet}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalIcon}>
-                  <Ionicons name="information-circle-outline" size={20} color="#2563eb" />
-                </View>
-                <Text style={styles.modalTitle} numberOfLines={2}>
-                  {descriptionModal.title}
+        {/* Backdrop */}
+        <Pressable style={styles.sheetBackdrop} onPress={closeSheet} />
+
+        {/* Sheet */}
+        <Animated.View
+          style={[
+            styles.sheetContainer,
+            { transform: [{ translateY: Animated.add(sheetAnim, dragY) }] },
+          ]}
+        >
+          {/* ── Hero: full-width image with service name overlaid ── */}
+          <View style={styles.sheetHero} {...sheetPan.panHandlers}>
+            {/* Background image */}
+            {descriptionModal.imageUrl ? (
+              <Image
+                source={{ uri: descriptionModal.imageUrl }}
+                style={StyleSheet.absoluteFillObject as any}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
+            ) : (
+              <View style={styles.sheetHeroFallback}>
+                <Text style={styles.sheetHeroFallbackText}>
+                  {descriptionModal.title.charAt(0).toUpperCase()}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setDescriptionModal((p) => ({ ...p, visible: false }))}
-                style={styles.closeButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={24} color="#64748b" />
-              </TouchableOpacity>
+            )}
+
+            {/* Gradient-like dark overlay so text is readable */}
+            <View style={styles.sheetHeroOverlay} />
+
+            {/* Drag pill */}
+            <View style={styles.sheetHandleWrap}>
+              <View style={styles.sheetHandle} />
             </View>
 
-            {/* Scrollable description */}
-            <View style={styles.modalBodyWrapper}>
-              <ScrollView
-                ref={scrollViewRef}
-                showsVerticalScrollIndicator={false}
-                bounces={true}
-                scrollEventThrottle={8}
-                decelerationRate="normal"
-                onScroll={handleScroll}
-                onContentSizeChange={handleContentSizeChange}
-                onLayout={handleScrollbarLayout}
-                contentContainerStyle={styles.modalBodyContent}
-                style={styles.modalScrollView}
-              >
-                <Text style={styles.modalDescription}>{descriptionModal.description}</Text>
-              </ScrollView>
+            {/* Close button */}
+            <TouchableOpacity
+              style={styles.sheetCloseBtn}
+              onPress={closeSheet}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={18} color="#fff" />
+            </TouchableOpacity>
 
-              {/* Custom side scrollbar */}
-              {isScrollable && (
-                <View style={styles.customScrollbar}>
-                  <Animated.View
-                    style={[
-                      styles.customScrollbarThumb,
-                      {
-                        height: thumbHeight,
-                        transform: [{ translateY: scrollIndicatorAnim }],
-                      },
-                    ]}
-                  />
-                </View>
-              )}
-            </View>
+            {/* Service name */}
+            <Text style={styles.sheetHeroTitle} numberOfLines={3}>
+              {descriptionModal.title}
+            </Text>
           </View>
-        </View>
+
+          {/* ── Scrollable body ── */}
+          <View style={styles.sheetBodyWrapper}>
+            <ScrollView
+              ref={sheetScrollRef}
+              style={styles.sheetBody}
+              contentContainerStyle={styles.sheetBodyContent}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+              scrollEventThrottle={16}
+              onLayout={handleSheetLayout}
+              onContentSizeChange={handleSheetContentSize}
+              onScroll={handleSheetScroll}
+              onScrollEndDrag={(e) => {
+                if (e.nativeEvent.contentOffset.y < -30) closeSheet();
+              }}
+            >
+              <Text style={styles.sheetDescLabel}>About this service</Text>
+              <Text style={styles.sheetDescription}>
+                {descriptionModal.description || 'No description available.'}
+              </Text>
+            </ScrollView>
+
+            {/* Custom right-side scrollbar */}
+            {sheetIsScrollable && (
+              <View style={styles.sheetScrollbar}>
+                <Animated.View
+                  style={[
+                    styles.sheetScrollbarThumb,
+                    {
+                      height: sheetThumbHeight,
+                      transform: [{ translateY: sheetScrollIndicator }],
+                    },
+                  ]}
+                />
+              </View>
+            )}
+          </View>
+
+          {/* ── Footer: ADD button or stepper + Continue ── */}
+          <View style={styles.sheetFooter}>
+            {(() => {
+              const qty = serviceQuantities[descriptionModal.itemId] || 0;
+              if (qty === 0) {
+                return (
+                  <TouchableOpacity
+                    style={styles.sheetAddBtn}
+                    activeOpacity={0.8}
+                    onPress={() => addService(descriptionModal.itemId)}
+                  >
+                    <Text style={styles.sheetAddBtnText}>ADD</Text>
+                  </TouchableOpacity>
+                );
+              }
+              return (
+                <View style={styles.sheetFooterRow}>
+                  {/* Stepper */}
+                  <View style={styles.sheetStepper}>
+                    <TouchableOpacity
+                      style={styles.sheetStepBtn}
+                      onPress={() => removeService(descriptionModal.itemId)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.sheetStepBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.sheetStepCount}>{qty}</Text>
+                    <TouchableOpacity
+                      style={styles.sheetStepBtn}
+                      onPress={() => addService(descriptionModal.itemId)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.sheetStepBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Continue */}
+                  <TouchableOpacity
+                    style={styles.sheetContinueBtn}
+                    activeOpacity={0.85}
+                    onPress={() => { closeSheet(); onContinue(); }}
+                  >
+                    <Text style={styles.sheetContinueBtnText}>Continue</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
+          </View>
+        </Animated.View>
       </Modal>
 
       {/* Header */}
@@ -961,110 +1103,232 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+  // ── Bottom-sheet modal ──────────────────────────────────────────────────────
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    width: '100%',
-    maxWidth: 480,
-    maxHeight: '92%',
-    minHeight: '65%',
-    flexDirection: 'column',
+  sheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: SCREEN_HEIGHT * 0.78,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.3,
-    shadowRadius: 25,
-    elevation: 15,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 16,
     overflow: 'hidden',
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    backgroundColor: '#fafbfc',
+
+  // Hero section
+  sheetHero: {
+    height: 210,
+    width: '100%',
+    justifyContent: 'flex-end',
+    backgroundColor: '#dbeafe',
   },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    paddingRight: 12,
-  },
-  modalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+  sheetHeroFallback: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#dbeafe',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#e0f2fe',
   },
-  modalTitle: {
-    fontSize: 19,
+  sheetHeroFallbackText: {
+    fontSize: 72,
     fontWeight: '700',
-    color: '#0f172a',
-    flex: 1,
-    lineHeight: 26,
-    letterSpacing: -0.3,
+    color: '#2563eb',
+    opacity: 0.25,
   },
-  closeButton: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  sheetHeroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    // bottom-heavy gradient simulation: transparent top → dark bottom
+    backgroundColor: 'transparent',
+    // We use a simple semi-transparent layer; for a real gradient use expo-linear-gradient
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  modalBodyWrapper: {
-    flexShrink: 1,
-    flexGrow: 1,
-    position: 'relative',
-    minHeight: 180,
-    maxHeight: 550,
-    backgroundColor: '#ffffff',
-  },
-  modalScrollView: {
-    flex: 1,
-    marginRight: 16,
-  },
-  modalBodyContent: {
-    paddingHorizontal: 28,
-    paddingTop: 24,
-    paddingBottom: 24,
-    paddingRight: 28,
-    flexGrow: 1,
-  },
-  customScrollbar: {
+  sheetHandleWrap: {
     position: 'absolute',
-    right: 8,
-    top: 8,
-    bottom: 8,
+    top: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  sheetCloseBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHeroTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 40,
+    // dark-to-transparent gradient effect via background
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+
+  // Body
+  sheetBodyWrapper: {
+    flexShrink: 1,
+    position: 'relative',
+  },
+  sheetBody: {
+    flexShrink: 1,
+  },
+  sheetBodyContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    paddingRight: 28, // leave room for scrollbar
+  },
+  sheetDescLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  sheetDescription: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  sheetScrollbar: {
+    position: 'absolute',
+    right: 6,
+    top: 16,
+    bottom: 16,
     width: 4,
     backgroundColor: '#dcfce7',
     borderRadius: 2,
   },
-  customScrollbarThumb: {
+  sheetScrollbarThumb: {
     width: 4,
     backgroundColor: '#4CAF50',
     borderRadius: 2,
-    minHeight: 40,
+    minHeight: 30,
   },
-  modalDescription: {
-    fontSize: 16,
-    color: '#374151',
-    lineHeight: 26,
-    fontWeight: '400',
-    letterSpacing: -0.1,
+
+  // Footer
+  sheetFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    backgroundColor: '#fff',
+  },
+  sheetFooterRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  // ADD button — matches card style exactly
+  sheetAddBtn: {
+    backgroundColor: 'white',
+    borderWidth: 1.5,
+    borderColor: '#4CAF50',
+    paddingHorizontal: 28,
+    paddingVertical: 8,
+    borderRadius: 7,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sheetAddBtnText: {
+    color: '#4CAF50',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  // Stepper — matches card style exactly
+  sheetStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    borderRadius: 7,
+    paddingHorizontal: 3,
+    paddingVertical: 3,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sheetStepBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 5,
+  },
+  sheetStepBtnText: {
+    color: '#4CAF50',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  sheetStepCount: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700',
+    marginHorizontal: 10,
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  sheetContinueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  sheetContinueBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 
   serviceTitle: { 
