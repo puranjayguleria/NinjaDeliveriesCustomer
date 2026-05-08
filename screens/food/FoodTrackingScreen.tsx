@@ -261,7 +261,7 @@ export default function FoodTrackingScreen() {
     <View style={s.root}>
       <StatusBar backgroundColor={statusColor} barStyle="light-content" />
 
-      {/* ─── HEADER ─── */}
+      {/* ΓöÇΓöÇΓöÇ HEADER ΓöÇΓöÇΓöÇ */}
       <View style={[s.header, { backgroundColor: statusColor }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.headerBack}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -273,7 +273,7 @@ export default function FoodTrackingScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      {/* ─── MAP ─── */}
+      {/* ΓöÇΓöÇΓöÇ MAP ΓöÇΓöÇΓöÇ */}
       <View style={s.mapWrap}>
         <MapView
           ref={mapRef}
@@ -313,10 +313,10 @@ export default function FoodTrackingScreen() {
         )}
       </View>
 
-      {/* ─── BOTTOM CARD ─── */}
+      {/* ΓöÇΓöÇΓöÇ BOTTOM CARD ΓöÇΓöÇΓöÇ */}
       <View style={s.card}>
 
-        {/* ── HORIZONTAL TABS ── */}
+        {/* ΓöÇΓöÇ HORIZONTAL TABS ΓöÇΓöÇ */}
         {!isCancelled && !isScheduled && (
           <ScrollView 
             horizontal 
@@ -386,7 +386,7 @@ export default function FoodTrackingScreen() {
 
         <View style={s.sep} />
 
-        {/* ── RIDER ROW ── */}
+        {/* ΓöÇΓöÇ RIDER ROW ΓöÇΓöÇ */}
         {!isCompleted && !isCancelled && !isScheduled && (
           <>
             {riderId ? (
@@ -418,14 +418,14 @@ export default function FoodTrackingScreen() {
           </>
         )}
 
-        {/* ── ORDER SUMMARY ── */}
+        {/* ΓöÇΓöÇ ORDER SUMMARY ΓöÇΓöÇ */}
         <TouchableOpacity style={s.billToggle} onPress={() => setShowBill(v => !v)} activeOpacity={0.8}>
           <View style={s.billToggleLeft}>
             <Ionicons name="receipt-outline" size={16} color={DARK} />
             <View style={{ marginLeft: 10 }}>
               <Text style={s.billToggleTitle}>{orderDoc?.restaurantName}</Text>
               <Text style={s.billToggleSub}>
-                {(orderDoc?.items?.length ?? 0)} item{(orderDoc?.items?.length ?? 0) !== 1 ? "s" : ""} · ₹{(orderDoc?.grandTotal || 0).toFixed(0)}
+                {(orderDoc?.items?.length ?? 0)} item{(orderDoc?.items?.length ?? 0) !== 1 ? "s" : ""} ┬╖ Γé╣{(orderDoc?.grandTotal || 0).toFixed(0)}
               </Text>
             </View>
           </View>
@@ -440,26 +440,26 @@ export default function FoodTrackingScreen() {
                   <Text style={s.itemQtyTxt}>{item.qty ?? item.quantity}</Text>
                 </View>
                 <Text style={s.itemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={s.itemPrice}>₹{((item.price ?? 0) * (item.qty ?? item.quantity ?? 1)).toFixed(0)}</Text>
+                <Text style={s.itemPrice}>Γé╣{((item.price ?? 0) * (item.qty ?? item.quantity ?? 1)).toFixed(0)}</Text>
               </View>
             ))}
             <View style={s.billSep} />
-            <View style={s.billRow}><Text style={s.billLbl}>Item Total</Text><Text style={s.billVal}>₹{(orderDoc?.subtotal||0).toFixed(0)}</Text></View>
+            <View style={s.billRow}><Text style={s.billLbl}>Item Total</Text><Text style={s.billVal}>Γé╣{(orderDoc?.subtotal||0).toFixed(0)}</Text></View>
             <View style={s.billRow}>
               <Text style={s.billLbl}>Delivery Fee</Text>
               <Text style={[s.billVal, orderDoc?.deliveryFee===0 && {color:"#60b246"}]}>
-                {orderDoc?.deliveryFee===0 ? "FREE" : `₹${(orderDoc?.deliveryFee||0).toFixed(0)}`}
+                {orderDoc?.deliveryFee===0 ? "FREE" : `Γé╣${(orderDoc?.deliveryFee||0).toFixed(0)}`}
               </Text>
             </View>
-            <View style={s.billRow}><Text style={s.billLbl}>Taxes & Charges</Text><Text style={s.billVal}>₹{(orderDoc?.taxes||0).toFixed(0)}</Text></View>
+            <View style={s.billRow}><Text style={s.billLbl}>Taxes & Charges</Text><Text style={s.billVal}>Γé╣{(orderDoc?.taxes||0).toFixed(0)}</Text></View>
             <View style={[s.billRow, s.billTotalRow]}>
               <Text style={s.billTotalLbl}>Bill Total</Text>
-              <Text style={s.billTotalVal}>₹{(orderDoc?.grandTotal||0).toFixed(0)}</Text>
+              <Text style={s.billTotalVal}>Γé╣{(orderDoc?.grandTotal||0).toFixed(0)}</Text>
             </View>
           </ScrollView>
         )}
 
-        {/* ── RATE CTA ── */}
+        {/* ΓöÇΓöÇ RATE CTA ΓöÇΓöÇ */}
         {isCompleted && !reviewed && !orderDoc?.reviewed && (
           <TouchableOpacity style={[s.rateCta, { backgroundColor: statusColor }]} onPress={openReview} activeOpacity={0.9}>
             <Text style={s.rateCtaTxt}>Rate your order</Text>
@@ -473,7 +473,7 @@ export default function FoodTrackingScreen() {
         )}
       </View>
 
-      {/* ─── REVIEW MODAL ─── */}
+      {/* ΓöÇΓöÇΓöÇ REVIEW MODAL ΓöÇΓöÇΓöÇ */}
       <Modal visible={reviewModal} transparent animationType="none" onRequestClose={closeReview}>
         <View style={s.overlay}>
           <Animated.View style={[s.modalCard, { transform: [{ scale: scaleA }], opacity: opacA }]}>
@@ -532,7 +532,7 @@ const s = StyleSheet.create({
   root:   { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  // ── header ──
+  // ΓöÇΓöÇ header ΓöÇΓöÇ
   header: {
     backgroundColor: ORANGE,
     paddingTop: Platform.OS === "ios" ? 52 : (StatusBar.currentHeight ?? 24) + 8,
@@ -546,7 +546,7 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: "800", color: "#fff" },
   headerSub:   { fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
 
-  // ── map ──
+  // ΓöÇΓöÇ map ΓöÇΓöÇ
   mapWrap: { height: SH * 0.42, backgroundColor: "#e8e8e8" },
   locateBtn: {
     position: "absolute", bottom: 16, right: 16,
@@ -556,7 +556,7 @@ const s = StyleSheet.create({
     shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 8,
   },
 
-  // ── bottom card ──
+  // ΓöÇΓöÇ bottom card ΓöÇΓöÇ
   card: {
     flex: 1,
     backgroundColor: "#fff",

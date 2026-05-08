@@ -26,6 +26,8 @@ export type Restaurant = {
   createdAt?: any;
   updatedAt?: any;
   profileImage?: string;
+  coverImage?: string;          // Cover image for restaurant banner
+  description?: string;         // Restaurant description
   // Extended fields
   rating?: number;
   deliveryTime?: number;       // in minutes
@@ -112,6 +114,40 @@ export type RestaurantOffer = {
   description?: string;
   active: boolean;
   createdAt?: any;
+};
+
+export type MenuPhase = {
+  id: string;
+  addonIds: string[];
+  createdAt: any;
+  daysActive: {
+    monday: boolean;
+    tuesday: boolean;
+    wednesday: boolean;
+    thursday: boolean;
+    friday: boolean;
+    saturday: boolean;
+    sunday: boolean;
+  };
+  enabled: boolean;
+  endTime: string;
+  startTime?: string;
+  menuItemIds?: {
+    phase: 'breakfast' | 'lunch' | 'dinner' | 'snacks';
+    restaurantId: string;
+    startTime: string;
+    updatedAt: any;
+  };
+  items?: MenuItem[];
+};
+
+export type RestaurantSuggestion = {
+  id: string;
+  restaurantId: string;
+  itemIds: string[];
+  addonIds: string[];
+  suggestionMap: Record<string, string[]>;
+  updatedAt?: any;
 };
 
 // ─── Banner Queries ───────────────────────────────────────────────────────────
@@ -384,4 +420,427 @@ export function listenAllMenuItems(
       })),
       onError
     );
+}
+
+// ─── Menu Phases Queries ──────────────────────────────────────────────────────
+
+/** Fetch all menu phases (Live Kitchen data) */
+export async function getAllMenuPhases(): Promise<MenuPhase[]> {
+  const snap = await firestore()
+    .collection('restaurant_menu_phases')
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuPhase, 'id'>) }));
+}
+
+/** Fetch menu phase for a specific restaurant */
+export async function getMenuPhaseByRestaurant(restaurantId: string): Promise<MenuPhase | null> {
+  const doc = await firestore()
+    .collection('restaurant_menu_phases')
+    .doc(restaurantId)
+    .get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...(doc.data() as Omit<MenuPhase, 'id'>) };
+}
+
+/** Real-time listener for all menu phases */
+export function listenAllMenuPhases(
+  onData: (phases: MenuPhase[]) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_menu_phases')
+    .onSnapshot(
+      snap => onData(snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<MenuPhase, 'id'>) }))),
+      onError
+    );
+}
+
+/** Real-time listener for a specific restaurant's menu phase */
+export function listenMenuPhaseByRestaurant(
+  restaurantId: string,
+  onData: (phase: MenuPhase | null) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_menu_phases')
+    .doc(restaurantId)
+    .onSnapshot(
+      doc => {
+        if (!doc.exists) {
+          onData(null);
+        } else {
+          onData({ id: doc.id, ...(doc.data() as Omit<MenuPhase, 'id'>) });
+        }
+      },
+      onError
+    );
+}
+
+/** Fetch enabled menu phases filtered by meal type */
+export async function getMenuPhasesByMealType(
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+): Promise<MenuPhase[]> {
+  const snap = await firestore()
+    .collection('restaurant_menu_phases')
+    .where('enabled', '==', true)
+    .get();
+  
+  return snap.docs
+    .map(d => ({ id: d.id, ...(d.data() as Omit<MenuPhase, 'id'>) }))
+    .filter(phase => phase.menuItemIds?.phase === mealType);
+}
+
+// ─── Suggestions Queries ──────────────────────────────────────────────────────
+
+/** Fetch suggestions for a specific restaurant */
+export async function getSuggestionsByRestaurant(restaurantId: string): Promise<RestaurantSuggestion | null> {
+  const doc = await firestore()
+    .collection('restaurant_suggestions')
+    .doc(restaurantId)
+    .get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...(doc.data() as Omit<RestaurantSuggestion, 'id'>) };
+}
+
+/** Real-time listener for restaurant suggestions */
+export function listenSuggestionsByRestaurant(
+  restaurantId: string,
+  onData: (suggestion: RestaurantSuggestion | null) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_suggestions')
+    .doc(restaurantId)
+    .onSnapshot(
+      doc => {
+        if (!doc.exists) {
+          onData(null);
+        } else {
+          onData({ id: doc.id, ...(doc.data() as Omit<RestaurantSuggestion, 'id'>) });
+        }
+      },
+      onError
+    );
+}
+
+// ─── Enhanced Addon Queries ───────────────────────────────────────────────────
+
+/** Fetch addons by multiple addon IDs */
+export async function getAddonsByIds(addonIds: string[]): Promise<MenuAddon[]> {
+  if (addonIds.length === 0) return [];
+  
+  // Firestore 'in' query supports max 10 items, so batch if needed
+  const batches: string[][] = [];
+  for (let i = 0; i < addonIds.length; i += 10) {
+    batches.push(addonIds.slice(i, i + 10));
+  }
+  
+  const results: MenuAddon[] = [];
+  for (const batch of batches) {
+    const snap = await firestore()
+      .collection('restaurant_menuAddons')
+      .where(firestore.FieldPath.documentId(), 'in', batch)
+      .get();
+    
+    snap.docs.forEach(d => {
+      const data = d.data() as any;
+      results.push({
+        id: d.id,
+        ...data,
+        image: data.image || data.imageUrl || data.imageURL || '',
+      } as MenuAddon);
+    });
+  }
+  
+  return results;
+}
+
+/** Real-time listener for addons by restaurant */
+export function listenAddonsByRestaurant(
+  restaurantId: string,
+  onData: (addons: MenuAddon[]) => void,
+  onError?: (e: Error) => void
+) {
+  return firestore()
+    .collection('restaurant_menuAddons')
+    .where('restaurantId', '==', restaurantId)
+    .where('available', '==', true)
+    .onSnapshot(
+      snap => onData(snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          ...data,
+          image: data.image || data.imageUrl || data.imageURL || '',
+        } as MenuAddon;
+      })),
+      onError
+    );
+}
+
+// ─── Enhanced Offer Queries ───────────────────────────────────────────────────
+
+/** Fetch offer for a specific menu item */
+export async function getOfferByMenuItem(menuItemId: string): Promise<RestaurantOffer | null> {
+  const snap = await firestore()
+    .collection('restaurant_offers')
+    .where('menuItemId', '==', menuItemId)
+    .where('active', '==', true)
+    .limit(1)
+    .get();
+  
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { id: doc.id, ...(doc.data() as Omit<RestaurantOffer, 'id'>) };
+}
+
+/** Fetch multiple offers by menu item IDs */
+export async function getOffersByMenuItemIds(menuItemIds: string[]): Promise<Map<string, RestaurantOffer>> {
+  if (menuItemIds.length === 0) return new Map();
+  
+  const batches: string[][] = [];
+  for (let i = 0; i < menuItemIds.length; i += 10) {
+    batches.push(menuItemIds.slice(i, i + 10));
+  }
+  
+  const offerMap = new Map<string, RestaurantOffer>();
+  
+  for (const batch of batches) {
+    const snap = await firestore()
+      .collection('restaurant_offers')
+      .where('menuItemId', 'in', batch)
+      .where('active', '==', true)
+      .get();
+    
+    snap.docs.forEach(d => {
+      const offer = { id: d.id, ...(d.data() as Omit<RestaurantOffer, 'id'>) };
+      offerMap.set(offer.menuItemId, offer);
+    });
+  }
+  
+  return offerMap;
+}
+
+// ─── Combined Data Queries ────────────────────────────────────────────────────
+
+/** Fetch complete restaurant data with menu, addons, offers, and phase */
+export async function getCompleteRestaurantData(restaurantId: string) {
+  const [restaurant, menu, addons, offers, phase, suggestions] = await Promise.all([
+    getRestaurantById(restaurantId),
+    getMenuByRestaurant(restaurantId),
+    getAddonsByRestaurant(restaurantId),
+    getOffersByRestaurant(restaurantId),
+    getMenuPhaseByRestaurant(restaurantId),
+    getSuggestionsByRestaurant(restaurantId),
+  ]);
+  
+  return {
+    restaurant,
+    menu,
+    addons,
+    offers,
+    phase,
+    suggestions,
+  };
+}
+
+/** Fetch menu items with their associated offers */
+export async function getMenuWithOffers(restaurantId: string) {
+  const menu = await getMenuByRestaurant(restaurantId);
+  const menuItemIds = menu.map(item => item.id);
+  const offerMap = await getOffersByMenuItemIds(menuItemIds);
+  
+  return menu.map(item => ({
+    ...item,
+    offer: offerMap.get(item.id) || null,
+  }));
+}
+
+// ─── Live Kitchen Queries ─────────────────────────────────────────────────────
+
+export type LiveKitchenData = {
+  id: string;
+  name: string;
+  restaurantName?: string;
+  ownerName?: string;
+  phone?: string;
+  email?: string;
+  photo?: string;
+  profileImage?: string;
+  coverImage?: string;
+  description?: string;
+  address?: string;
+  area?: string;
+  rating?: number;
+  totalOrders?: number;
+  isActive: boolean;
+  access?: boolean;
+  accountEnabled?: boolean;
+  role?: string;
+  type?: string;
+  tags?: string[];
+  createdAt?: any;
+  updatedAt?: any;
+  menuPhases: MenuPhase[];
+  activePhase?: MenuPhase | null;
+};
+
+/** Fetch all restaurants with menu_phases role and their phases */
+export async function getLiveKitchens(): Promise<LiveKitchenData[]> {
+  try {
+    // Fetch restaurants with menu_phases role
+    const restaurantsSnapshot = await firestore()
+      .collection('registerRestaurant')
+      .where('role', '==', 'menu_phases')
+      .where('isActive', '==', true)
+      .where('accountEnabled', '==', true)
+      .get();
+
+    if (restaurantsSnapshot.empty) {
+      return [];
+    }
+
+    // Fetch all menu phases
+    const allPhases = await getAllMenuPhases();
+
+    // Map restaurants with their phases
+    const kitchens: LiveKitchenData[] = [];
+
+    for (const doc of restaurantsSnapshot.docs) {
+      const restaurantId = doc.id;
+      const restaurant = doc.data();
+
+      // Filter phases that belong to this restaurant
+      const restaurantPhases = allPhases.filter(phase => {
+        const phaseId = phase.id;
+        const phaseRestaurantId = phase.menuItemIds?.restaurantId;
+        
+        return (
+          phaseId === restaurantId || 
+          phaseId.startsWith(`${restaurantId}_`) ||
+          phaseRestaurantId === restaurantId ||
+          (phase as any).restaurantId === restaurantId
+        );
+      });
+
+      // Only include restaurants that have at least one phase
+      if (restaurantPhases.length > 0) {
+        kitchens.push({
+          id: restaurantId,
+          name: restaurant.restaurantName || 'Restaurant',
+          restaurantName: restaurant.restaurantName,
+          ownerName: restaurant.ownerName,
+          phone: restaurant.phone,
+          email: restaurant.email,
+          address: restaurant.address,
+          area: restaurant.area,
+          photo: restaurant.image,
+          profileImage: restaurant.profileImage || restaurant.image,
+          coverImage: restaurant.coverImage,
+          description: restaurant.description,
+          isActive: restaurant.isActive,
+          access: restaurant.access,
+          accountEnabled: restaurant.accountEnabled,
+          role: restaurant.role,
+          type: restaurant.type || 'restaurant',
+          rating: restaurant.rating || 4.0,
+          totalOrders: restaurant.totalOrders || 0,
+          tags: restaurant.tags || [],
+          createdAt: restaurant.createdAt,
+          updatedAt: restaurant.updatedAt,
+          menuPhases: restaurantPhases,
+          activePhase: null, // Will be set by the caller based on current time
+        });
+      }
+    }
+
+    return kitchens;
+  } catch (error) {
+    console.error('[foodFirebase] Error fetching live kitchens:', error);
+    return [];
+  }
+}
+
+/** Real-time listener for live kitchens */
+export function listenLiveKitchens(
+  onData: (kitchens: LiveKitchenData[]) => void,
+  onError?: (e: Error) => void
+) {
+  // Listen to restaurants
+  const unsubRestaurants = firestore()
+    .collection('registerRestaurant')
+    .where('role', '==', 'menu_phases')
+    .where('isActive', '==', true)
+    .where('accountEnabled', '==', true)
+    .onSnapshot(
+      async (restaurantsSnapshot) => {
+        try {
+          if (restaurantsSnapshot.empty) {
+            onData([]);
+            return;
+          }
+
+          // Fetch all menu phases
+          const allPhases = await getAllMenuPhases();
+
+          // Map restaurants with their phases
+          const kitchens: LiveKitchenData[] = [];
+
+          for (const doc of restaurantsSnapshot.docs) {
+            const restaurantId = doc.id;
+            const restaurant = doc.data();
+
+            // Filter phases that belong to this restaurant
+            const restaurantPhases = allPhases.filter(phase => {
+              const phaseId = phase.id;
+              const phaseRestaurantId = phase.menuItemIds?.restaurantId;
+              
+              return (
+                phaseId === restaurantId || 
+                phaseId.startsWith(`${restaurantId}_`) ||
+                phaseRestaurantId === restaurantId ||
+                (phase as any).restaurantId === restaurantId
+              );
+            });
+
+            // Only include restaurants that have at least one phase
+            if (restaurantPhases.length > 0) {
+              kitchens.push({
+                id: restaurantId,
+                name: restaurant.restaurantName || 'Restaurant',
+                restaurantName: restaurant.restaurantName,
+                ownerName: restaurant.ownerName,
+                phone: restaurant.phone,
+                email: restaurant.email,
+                address: restaurant.address,
+                area: restaurant.area,
+                photo: restaurant.image,
+                profileImage: restaurant.profileImage || restaurant.image,
+                coverImage: restaurant.coverImage,
+                description: restaurant.description,
+                isActive: restaurant.isActive,
+                access: restaurant.access,
+                accountEnabled: restaurant.accountEnabled,
+                role: restaurant.role,
+                type: restaurant.type || 'restaurant',
+                rating: restaurant.rating || 4.0,
+                totalOrders: restaurant.totalOrders || 0,
+                tags: restaurant.tags || [],
+                createdAt: restaurant.createdAt,
+                updatedAt: restaurant.updatedAt,
+                menuPhases: restaurantPhases,
+                activePhase: null,
+              });
+            }
+          }
+
+          onData(kitchens);
+        } catch (error) {
+          if (onError) onError(error as Error);
+        }
+      },
+      onError
+    );
+
+  return unsubRestaurants;
 }

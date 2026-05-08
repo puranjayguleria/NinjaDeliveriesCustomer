@@ -35,7 +35,18 @@ export default function RestaurantDetailScreen() {
     restaurantId, restaurantName, restaurantImage,
     rating, deliveryTime, avgPrice, freeDelivery,
     cuisineType, address, openingTime, closingTime,
+    profileImage, coverImage, description,
   } = route.params ?? {};
+
+  // Debug: Log received params
+  console.log('[RestaurantDetail] Route params:', {
+    restaurantId,
+    restaurantName,
+    profileImage,
+    coverImage,
+    restaurantImage,
+    description,
+  });
 
   const { addItem, removeItem, getItemQty, totalItems, totalPrice } = useFoodCart();
 
@@ -54,6 +65,7 @@ export default function RestaurantDetailScreen() {
   const [showSearch,       setShowSearch]       = useState(false);
   const [searchQuery,      setSearchQuery]      = useState('');
   const [showMoreSheet,    setShowMoreSheet]    = useState(false);
+  const [descExpanded,     setDescExpanded]     = useState(false);
   const [itemSheet,        setItemSheet]        = useState<{
     visible: boolean; item: MenuItem | null; qty: number; cookingNote: string;
   }>({ visible: false, item: null, qty: 1, cookingNote: '' });
@@ -79,7 +91,16 @@ export default function RestaurantDetailScreen() {
       ]);
       setMenuItems(items);
       setOffers(offerItems);
-      if (restData) setRestaurant(restData);
+      if (restData) {
+        setRestaurant(restData);
+        console.log('[RestaurantDetail] Fetched restaurant data:', {
+          id: restData.id,
+          name: restData.restaurantName,
+          profileImage: restData.profileImage,
+          coverImage: restData.coverImage,
+          image: restData.image,
+        });
+      }
 
       // Fetch reviews and calculate average rating
       const reviewsSnap = await firestore()
@@ -255,6 +276,16 @@ export default function RestaurantDetailScreen() {
   const displayAddress   = restaurant?.address ?? address;
   const displayFreeDeliv = restaurant?.freeDelivery ?? freeDelivery;
   const displayAvgPrice  = restaurant?.avgPrice ?? avgPrice;
+  const displayCoverImage = restaurant?.coverImage ?? coverImage;
+  const displayProfileImage = restaurant?.profileImage ?? restaurant?.image ?? profileImage ?? restaurantImage;
+  const displayDescription = restaurant?.description ?? description;
+
+  // Debug: Log what will be displayed
+  console.log('[RestaurantDetail] Display values:', {
+    displayCoverImage,
+    displayProfileImage,
+    displayDescription,
+  });
 
   if (loading) {
     return (
@@ -284,8 +315,31 @@ export default function RestaurantDetailScreen() {
 
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} bounces={false}>
 
+        {/* ── Cover Image Banner ── */}
+        {displayCoverImage && (
+          <View style={s.coverImageWrap}>
+            <Image 
+              source={{ uri: displayCoverImage }} 
+              style={s.coverImage} 
+              contentFit="cover" 
+            />
+            <View style={s.coverOverlay} />
+          </View>
+        )}
+
         {/* ── Restaurant Info Card ── */}
-        <View style={s.infoCard}>
+        <View style={[s.infoCard, displayCoverImage && s.infoCardWithCover]}>
+          {/* Profile Image in Top Right Corner */}
+          {displayProfileImage && (
+            <View style={s.profileImageCorner}>
+              <Image 
+                source={{ uri: displayProfileImage }} 
+                style={s.profileImageInCorner} 
+                contentFit="cover" 
+              />
+            </View>
+          )}
+          
           {isPureVeg && (
             <View style={s.pureVegBadge}>
               <Ionicons name="leaf" size={11} color={GREEN} />
@@ -296,6 +350,30 @@ export default function RestaurantDetailScreen() {
           <View style={s.infoRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.restName}>{restaurantName}</Text>
+              
+              {/* Restaurant Description */}
+              {displayDescription && (
+                <View style={s.descSection}>
+                  <Text 
+                    style={s.restDescription} 
+                    numberOfLines={descExpanded ? undefined : 2}
+                  >
+                    {displayDescription}
+                  </Text>
+                  {displayDescription.length > 80 && (
+                    <TouchableOpacity 
+                      onPress={() => setDescExpanded(!descExpanded)} 
+                      activeOpacity={0.7}
+                      style={s.seeMoreBtn}
+                    >
+                      <Text style={s.seeMoreTxt}>
+                        {descExpanded ? 'See less' : 'See more'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              
               <View style={s.metaRow}>
                 <Ionicons name="location-outline" size={13} color={GRAY} />
                 <Text style={s.metaTxt} numberOfLines={1}>{displayAddress || '1 km · Nearby'}</Text>
@@ -1029,6 +1107,45 @@ const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: '#fff' },
   loader:     { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
 
+  // ── Cover Image ──
+  coverImageWrap: { 
+    width: '100%', 
+    height: 200, 
+    position: 'relative',
+  },
+  coverImage: { 
+    width: '100%', 
+    height: 200,
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  
+  // ── Profile Image in Corner ──
+  profileImageCorner: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#f0f0f5',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 10,
+  },
+  profileImageInCorner: {
+    width: '100%',
+    height: '100%',
+  },
+
   // ── Top Bar ──
   topBar: {
     flexDirection: 'row', alignItems: 'center',
@@ -1046,15 +1163,21 @@ const s = StyleSheet.create({
   moreBtn:   { padding: 6 },
 
   // ── Info Card ──
-  infoCard: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: '#fff' },
+  infoCard: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: '#fff', position: 'relative' },
+  infoCardWithCover: { paddingTop: 16 },
   pureVegBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     marginBottom: 8, alignSelf: 'flex-start',
     backgroundColor: '#edfaf3', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4,
+    marginLeft: 96,
   },
   pureVegTxt: { fontSize: 11, fontWeight: '700', color: '#3d9b6e' },
-  infoRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  infoRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingLeft: 96 },
   restName:   { fontSize: 22, fontWeight: '800', color: '#282c3f', marginBottom: 6 },
+  descSection: { marginBottom: 8 },
+  restDescription: { fontSize: 13, color: '#686b78', lineHeight: 18 },
+  seeMoreBtn: { marginTop: 4 },
+  seeMoreTxt: { fontSize: 13, color: GREEN, fontWeight: '600' },
   metaRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   metaTxt:    { fontSize: 13, color: '#686b78' },
   metaDot:    { fontSize: 13, color: '#686b78' },

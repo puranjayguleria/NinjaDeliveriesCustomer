@@ -107,6 +107,7 @@ import FoodOrderBillScreen from "@/screens/food/FoodOrderBillScreen";
 import FoodCategoriesScreen from "@/screens/food/FoodCategoriesScreen";
 import FoodDishDetailsScreen from "@/screens/food/FoodDishDetailsScreen";
 import FoodSearchScreen from "@/screens/food/FoodSearchScreen";
+import LiveKitchenTab from "@/screens/food/LiveKitchenTab";
 import { FoodCartProvider } from "./context/FoodCartContext";
 import { useFoodCart } from "./context/FoodCartContext";
 import SwiggyTabBar from "@/components/Footertabs";
@@ -963,6 +964,16 @@ function FoodHistoryTabStack() {
   );
 }
 
+function LiveKitchenStack() {
+  return (
+    <FoodStack.Navigator screenOptions={{ headerShown: false }}>
+      <FoodStack.Screen name="LiveKitchenHome" component={LiveKitchenTab} />
+      <FoodStack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
+      <FoodStack.Screen name="LoginInHomeStack" component={LoginScreen} />
+    </FoodStack.Navigator>
+  );
+}
+
 function FoodTabs() {
   const { totalItems } = useFoodCart();
 
@@ -974,6 +985,7 @@ function FoodTabs() {
         const tabs = [
           { name: 'FoodRestaurants', label: 'Home',    icon: 'home-outline' as const,       iconFocused: 'home' as const },
           { name: 'FoodMenu',        label: 'Explore', icon: 'compass-outline' as const,    iconFocused: 'compass' as const },
+          { name: 'LiveKitchenTab',  label: 'Live Kitchen', icon: 'storefront-outline' as const, iconFocused: 'storefront' as const },
           { name: 'FoodCartTab',     label: 'Cart',    icon: 'bag-outline' as const,        iconFocused: 'bag' as const, badge: totalItems },
           { name: 'FoodHistoryTab',  label: 'Orders',  icon: 'receipt-outline' as const,    iconFocused: 'receipt' as const },
         ];
@@ -997,6 +1009,7 @@ function FoodTabs() {
     >
       <FoodTab.Screen name="FoodRestaurants" component={FoodHomeStack} />
       <FoodTab.Screen name="FoodMenu"        component={FoodMenuStack} />
+      <FoodTab.Screen name="LiveKitchenTab"  component={LiveKitchenStack} />
       <FoodTab.Screen name="FoodCartTab"     component={FoodCartStack} />
       <FoodTab.Screen name="FoodHistoryTab"  component={FoodHistoryTabStack} />
     </FoodTab.Navigator>

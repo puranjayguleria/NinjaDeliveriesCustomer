@@ -1,4 +1,9 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿// ✅ Updated to fetch settings from 'foodOrderSettings' collection (similar to grocery 'orderSetting')
+// ✅ Settings are fetched based on restaurantId (where restaurantId == currentRestaurantId)
+// ✅ Structure matches grocery orderSetting with fields like: additionalCostPerKm, baseDeliveryCharge, 
+//    distanceThreshold, gstPercentage, platformFee, surgeFee, weatherThreshold, fixedPickupLocation, etc.
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Platform, StatusBar, Animated, Modal, ActivityIndicator, Alert,
@@ -14,20 +19,123 @@ import { useLocationContext } from '@/context/LocationContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import PaymentMethodModal from '@/components/PaymentMethodModal';
 
+type MenuItem = {
+  id: string;
+  name: string;
+  price: number;
+  image?: string;
+  description?: string;
+  category?: string;
+  isVeg?: boolean;
+  restaurantId?: string;
+  restaurantName?: string;
+};
+
 const ORANGE    = '#FF6B35';
 const ORANGE_LT = '#FFF3EE';
+const ORANGE_DK = '#E85A28';
 const DARK      = '#1A1D2E';
 const DARK2     = '#2D3142';
 const GRAY      = '#8A8FA8';
-const GRAY_LT   = '#F4F5F9';
+const GRAY_LT   = '#F8F9FC';
 const GREEN     = '#22C55E';
 const GREEN_LT  = '#F0FDF4';
 const RED       = '#EF4444';
 const WHITE     = '#FFFFFF';
-const BORDER    = '#ECEEF5';
-const FOOTER_H  = 72;
+const BORDER    = '#E8EBF3';
+const FOOTER_H  = 76;
 
 type PaymentMethod = 'Cash on Delivery' | 'UPI';
+
+type FoodOrderSettings = {
+  additionalCostPerKm: number;
+  badWeather: boolean;
+  baseDeliveryCharge: number;
+  distanceThreshold: number;
+  gstPercentage: number;
+  platformFee: number;
+  restaurantId?: string;
+  surgeFee: number;
+  weatherFromApi: boolean;
+  fixedPickupLocation?: {
+    address: string;
+    coordinates: {
+      latitude: string;
+      longitude: string;
+    };
+    name: string;
+  };
+  weatherThreshold?: {
+    precipMmPerHr: number;
+    windSpeedKph: number;
+  };
+  // Keep some existing fields for backward compatibility
+  freeDeliveryAbove?: number;
+  packagingFee?: number;
+  itemGstDefaultPercent?: number;
+  highGstPercent?: number;
+  nightSurgeEnabled?: boolean;
+  nightSurgePercent?: number;
+  nightSurgeFromHour?: number;
+  nightSurgeToHour?: number;
+};
+
+const DEFAULT_FOOD_ORDER_SETTINGS: FoodOrderSettings = {
+  additionalCostPerKm: 8,
+  badWeather: false,
+  baseDeliveryCharge: 5,
+  distanceThreshold: 0,
+  gstPercentage: 5,
+  platformFee: 1,
+  surgeFee: 10,
+  weatherFromApi: false,
+  // Backward compatibility defaults
+  freeDeliveryAbove: 199,
+  packagingFee: 20,
+  itemGstDefaultPercent: 5,
+  highGstPercent: 18,
+  nightSurgeEnabled: true,
+  nightSurgePercent: 10,
+  nightSurgeFromHour: 22,
+  nightSurgeToHour: 6,
+};
+
+const numberOrDefault = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeFoodOrderSettings = (
+  data?: Partial<FoodOrderSettings> | null,
+  base: FoodOrderSettings = DEFAULT_FOOD_ORDER_SETTINGS
+): FoodOrderSettings => ({
+  additionalCostPerKm: numberOrDefault(data?.additionalCostPerKm, base.additionalCostPerKm ?? 8),
+  badWeather: typeof data?.badWeather === 'boolean' ? data.badWeather : (base.badWeather ?? false),
+  baseDeliveryCharge: numberOrDefault(data?.baseDeliveryCharge, base.baseDeliveryCharge ?? 5),
+  distanceThreshold: numberOrDefault(data?.distanceThreshold, base.distanceThreshold ?? 0),
+  gstPercentage: numberOrDefault(data?.gstPercentage, base.gstPercentage ?? 5),
+  platformFee: numberOrDefault(data?.platformFee, base.platformFee ?? 1),
+  restaurantId: data?.restaurantId ?? base.restaurantId,
+  surgeFee: numberOrDefault(data?.surgeFee, base.surgeFee ?? 10),
+  weatherFromApi: typeof data?.weatherFromApi === 'boolean' ? data.weatherFromApi : (base.weatherFromApi ?? false),
+  fixedPickupLocation: data?.fixedPickupLocation ?? base.fixedPickupLocation,
+  weatherThreshold: data?.weatherThreshold ?? base.weatherThreshold,
+  // Backward compatibility
+  freeDeliveryAbove: numberOrDefault(data?.freeDeliveryAbove, base.freeDeliveryAbove ?? 199),
+  packagingFee: numberOrDefault(data?.packagingFee, base.packagingFee ?? 20),
+  itemGstDefaultPercent: numberOrDefault(data?.itemGstDefaultPercent, base.itemGstDefaultPercent ?? 5),
+  highGstPercent: numberOrDefault(data?.highGstPercent, base.highGstPercent ?? 18),
+  nightSurgeEnabled: typeof data?.nightSurgeEnabled === 'boolean' ? data.nightSurgeEnabled : (base.nightSurgeEnabled ?? true),
+  nightSurgePercent: numberOrDefault(data?.nightSurgePercent, base.nightSurgePercent ?? 10),
+  nightSurgeFromHour: numberOrDefault(data?.nightSurgeFromHour, base.nightSurgeFromHour ?? 22),
+  nightSurgeToHour: numberOrDefault(data?.nightSurgeToHour, base.nightSurgeToHour ?? 6),
+});
+
+const isHourInWindow = (hour: number, fromHour: number, toHour: number) => {
+  if (fromHour === toHour) return true;
+  if (fromHour < toHour) return hour >= fromHour && hour < toHour;
+  return hour >= fromHour || hour < toHour;
+};
 
 export default function FoodCartScreen() {
   const navigation = useNavigation<any>();
@@ -44,30 +152,138 @@ export default function FoodCartScreen() {
   const [scheduledDate, setScheduledDate]       = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker]     = useState(false);
   const [showTimePicker, setShowTimePicker]     = useState(false);
+  const [relatedItems, setRelatedItems]         = useState<MenuItem[]>([]);
+  const [loadingRelated, setLoadingRelated]     = useState(false);
+  const [foodSettings, setFoodSettings]         = useState<FoodOrderSettings>(DEFAULT_FOOD_ORDER_SETTINGS);
 
   useEffect(() => { if (location?.address) setDeliveryAddress(location.address); }, [location]);
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const currentRestaurantId = cartItems[0]?.restaurantId ?? null;
+
+  useEffect(() => {
+    if (!currentRestaurantId) {
+      setFoodSettings(DEFAULT_FOOD_ORDER_SETTINGS);
+      return;
+    }
+
+    // ✅ Real-time listener for foodOrderSettings (updates automatically without reload)
+    console.log(`🔥 Setting up real-time listener for restaurant: ${currentRestaurantId}`);
+    
+    const unsubscribe = firestore()
+      .collection('foodOrderSettings')
+      .where('restaurantId', '==', currentRestaurantId)
+      .limit(1)
+      .onSnapshot(
+        (snapshot) => {
+          if (!snapshot.empty && snapshot.docs[0].exists) {
+            const data = snapshot.docs[0].data() as Partial<FoodOrderSettings>;
+            const nextSettings = normalizeFoodOrderSettings(data);
+            setFoodSettings(nextSettings);
+            console.log(`✅ Real-time update: Settings loaded for ${currentRestaurantId}`);
+          } else {
+            console.warn('No foodOrderSettings found for restaurant', currentRestaurantId);
+            setFoodSettings(DEFAULT_FOOD_ORDER_SETTINGS);
+          }
+        },
+        (error) => {
+          console.error('Error in foodOrderSettings listener:', error);
+          setFoodSettings(DEFAULT_FOOD_ORDER_SETTINGS);
+        }
+      );
+
+    // Cleanup listener when component unmounts or restaurantId changes
+    return () => {
+      console.log(`🔥 Cleaning up listener for restaurant: ${currentRestaurantId}`);
+      unsubscribe();
+    };
+  }, [currentRestaurantId]);
+
+  // Fetch related items from the same restaurant
+  useEffect(() => {
+    const fetchRelatedItems = async () => {
+      if (cartItems.length === 0) return;
+      const restaurantId = cartItems[0]?.restaurantId;
+      if (!restaurantId) return;
+
+      setLoadingRelated(true);
+      try {
+        const snapshot = await firestore()
+          .collection('restaurants')
+          .doc(restaurantId)
+          .collection('menuItems')
+          .limit(6)
+          .get();
+
+        const items: MenuItem[] = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          // Exclude items already in cart
+          const inCart = cartItems.some(ci => ci.id === doc.id);
+          if (!inCart) {
+            items.push({
+              id: doc.id,
+              name: data.name || '',
+              price: data.price || 0,
+              image: data.image || null,
+              description: data.description || null,
+              category: data.category || null,
+              isVeg: data.isVeg ?? true,
+              restaurantId: restaurantId,
+              restaurantName: cartItems[0]?.restaurantName || '',
+            });
+          }
+        });
+        setRelatedItems(items.slice(0, 4));
+      } catch (err) {
+        console.error('Error fetching related items:', err);
+      } finally {
+        setLoadingRelated(false);
+      }
+    };
+
+    fetchRelatedItems();
+  }, [cartItems]);
+
+  const arrowAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.04, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
       ])
     );
     anim.start();
     return () => anim.stop();
   }, []);
 
+  const arrowTranslateX = arrowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 4],
+  });
+
   // Bill calculations
   const itemsSubtotal  = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const addonsSubtotal = cartItems.reduce((sum, item) =>
     sum + (item.addons || []).reduce((a, addon) => a + addon.price, 0) * item.qty, 0);
-  const deliveryFee  = totalPrice >= 199 ? 0 : 40;
-  const gst          = Math.round(totalPrice * 0.05);
-  const platformFee  = 5;
-  const packagingFee = 20;
-  const grandTotal   = totalPrice + deliveryFee + gst + platformFee + packagingFee;
+  
+  // Surge charges from foodSetting
+  const surgeCharge = foodSettings.surgeFee;
+  
+  // Delivery fee calculation (can be enhanced with distance-based calculation later)
+  const deliveryFee = (foodSettings.freeDeliveryAbove ?? 0) > 0 && totalPrice >= (foodSettings.freeDeliveryAbove ?? 0)
+    ? 0 
+    : foodSettings.baseDeliveryCharge;
+  
+  // GST calculation using gstPercentage from foodSetting
+  const gstRatePercent = (foodSettings.itemGstDefaultPercent ?? foodSettings.gstPercentage);
+  const gstRate = gstRatePercent / 100;
+  const itemsGST = Math.round(totalPrice * gstRate);
+  const deliveryGST = deliveryFee > 0 ? Math.round((deliveryFee * foodSettings.gstPercentage) / 100) : 0;
+  const totalGST = itemsGST + deliveryGST;
+  
+  const platformFee  = foodSettings.platformFee;
+  const packagingFee = foodSettings.packagingFee ?? 0;
+  const grandTotal   = totalPrice + surgeCharge + deliveryFee + totalGST + platformFee + packagingFee;
   const footerH      = FOOTER_H + (insets.bottom > 0 ? insets.bottom : 16);
 
   // Delivery time estimate
@@ -119,43 +335,127 @@ export default function FoodCartScreen() {
   // Place order
   const placeOrder = async (method: PaymentMethod) => {
     const user = auth().currentUser;
-    if (!user) { setShowPayModal(false); setShowLoginModal(true); return; }
-    if (!deliveryAddress) { Alert.alert('Address Missing', 'Please set a delivery address first.'); return; }
+    if (!user) { 
+      setShowPayModal(false); 
+      setShowLoginModal(true); 
+      console.log('❌ Order failed: User not logged in');
+      return; 
+    }
+    
+    if (!deliveryAddress) { 
+      Alert.alert('Address Missing', 'Please set a delivery address first.'); 
+      console.log('❌ Order failed: No delivery address');
+      return; 
+    }
+    
     if (isScheduled && scheduledDate) {
       if (scheduledDate < new Date(Date.now() + 30 * 60000)) {
-        Alert.alert('Invalid Time', 'Scheduled time must be at least 30 minutes from now.'); return;
+        Alert.alert('Invalid Time', 'Scheduled time must be at least 30 minutes from now.'); 
+        console.log('❌ Order failed: Invalid scheduled time');
+        return;
       }
     }
+    
     setShowPayModal(false);
     setPlacing(true);
+    
     try {
       const restaurantId = cartItems[0]?.restaurantId ?? '';
+      
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is missing');
+      }
+      
+      console.log('📝 Creating order for restaurant:', restaurantId);
+      console.log('💳 Payment method:', method);
+      console.log('📍 Delivery address:', deliveryAddress);
+      
+      // Helper function to remove undefined values (Firestore doesn't accept undefined)
+      const cleanObject = (obj: any): any => {
+        if (obj === null || obj === undefined) return null;
+        if (typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanObject);
+        
+        const cleaned: any = {};
+        for (const key in obj) {
+          const value = obj[key];
+          if (value !== undefined) {
+            cleaned[key] = cleanObject(value);
+          }
+        }
+        return cleaned;
+      };
+      
       const orderRef = firestore().collection('restaurant_Orders').doc();
       const orderData: any = {
-        userId: user.uid, userPhone: user.phoneNumber ?? '',
-        restaurantId, restaurantName,
+        userId: user.uid, 
+        userPhone: user.phoneNumber || '',
+        restaurantId, 
+        restaurantName,
         items: cartItems.map(item => ({
-          id: item.id, name: item.name, price: item.price, qty: item.qty,
-          variant: item.variant ?? null, addons: item.addons ?? [],
-          image: item.image ?? null, description: item.description ?? null,
-          cookingTimeHours: (item as any).cookingTimeHours ?? null,
-          cookingTimeMinutes: (item as any).cookingTimeMinutes ?? null,
+          id: item.id, 
+          name: item.name, 
+          price: item.price, 
+          qty: item.qty,
+          variant: item.variant || null, 
+          addons: item.addons || [],
+          image: item.image || null, 
+          description: item.description || null,
+          cookingTimeHours: (item as any).cookingTimeHours || null,
+          cookingTimeMinutes: (item as any).cookingTimeMinutes || null,
         })),
-        subtotal: totalPrice, deliveryFee, gst, platformFee, packagingFee, grandTotal,
+        subtotal: totalPrice,
+        surgeCharge,
+        deliveryFee,
+        gst: totalGST,
+        gstRate: gstRatePercent,
+        platformFee,
+        packagingFee,
+        grandTotal,
+        foodOrderSettings: cleanObject(foodSettings),
         paymentMethod: method,
-        deliveryAddress, deliveryLat: location?.lat ?? null, deliveryLng: location?.lng ?? null,
+        deliveryAddress, 
+        deliveryLat: location?.lat || null, 
+        deliveryLng: location?.lng || null,
         status: isScheduled ? 'scheduled' : 'pending',
         createdAt: firestore.FieldValue.serverTimestamp(),
         orderId: orderRef.id,
       };
+      
       if (isScheduled && scheduledDate) {
         orderData.scheduledFor = firestore.Timestamp.fromDate(scheduledDate);
         orderData.isScheduled = true;
+        console.log('📅 Scheduled order for:', scheduledDate);
       }
+      
+      console.log('💾 Saving order to restaurant_Orders collection...');
       await orderRef.set(orderData);
+      console.log('✅ Order created successfully! Order ID:', orderRef.id);
+      
       clearCart();
-      navigation.reset({ index: 0, routes: [{ name: 'FoodOrderSuccess', params: { grandTotal, restaurantName, orderId: orderRef.id, isScheduled } }] });
+      console.log('🛒 Cart cleared');
+      
+      navigation.reset({ 
+        index: 0, 
+        routes: [{ 
+          name: 'FoodOrderSuccess', 
+          params: { 
+            grandTotal, 
+            restaurantName, 
+            orderId: orderRef.id, 
+            isScheduled 
+          } 
+        }] 
+      });
+      console.log('🎉 Navigating to success screen');
+      
     } catch (err: any) {
+      console.error('❌ Order placement error:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack,
+      });
       Alert.alert('Error', `Failed to place order: ${err.message || 'Please try again.'}`);
     } finally {
       setPlacing(false);
@@ -198,9 +498,16 @@ export default function FoodCartScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
 
       {/* ADDRESS REQUIRED MODAL */}
-      <Modal visible={showAddressModal} transparent animationType="fade" onRequestClose={() => {}}>
+      <Modal visible={showAddressModal} transparent animationType="fade" onRequestClose={() => setShowAddressModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
+            <TouchableOpacity 
+              style={s.modalCloseBtn} 
+              onPress={() => setShowAddressModal(false)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={22} color={GRAY} />
+            </TouchableOpacity>
             <View style={[s.modalIconWrap, { backgroundColor: ORANGE_LT }]}>
               <Ionicons name="location" size={32} color={ORANGE} />
             </View>
@@ -213,9 +520,9 @@ export default function FoodCartScreen() {
               <Text style={s.modalPrimaryText}>Set Address</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.modalSecondaryBtn} activeOpacity={0.85} onPress={() => {
-              setShowAddressModal(false); navigation.goBack();
+              setShowAddressModal(false);
             }}>
-              <Text style={s.modalSecondaryText}>Go Back</Text>
+              <Text style={s.modalSecondaryText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -492,18 +799,36 @@ export default function FoodCartScreen() {
                 <Text style={s.billValue}>₹{addonsSubtotal}</Text>
               </View>
             )}
-            <View style={s.billRow}>
-              <Text style={s.billLabel}>GST (5%)</Text>
-              <Text style={s.billValue}>₹{gst}</Text>
-            </View>
+            {surgeCharge > 0 && (
+              <View style={s.billRow}>
+                <View>
+                  <Text style={s.billLabel}>🌙 Night Surge Charge</Text>
+                  <Text style={s.billHint}>
+                    {foodSettings.nightSurgePercent}% extra ({foodSettings.nightSurgeFromHour}:00 - {foodSettings.nightSurgeToHour}:00)
+                  </Text>
+                </View>
+                <Text style={s.billValue}>₹{surgeCharge}</Text>
+              </View>
+            )}
             <View style={s.billRow}>
               <View>
                 <Text style={s.billLabel}>Delivery Fee</Text>
-                {totalPrice < 199 && <Text style={s.billHint}>Free above ₹199</Text>}
+                {(foodSettings.freeDeliveryAbove ?? 0) > 0 && totalPrice < (foodSettings.freeDeliveryAbove ?? 0) && (
+                  <Text style={s.billHint}>Free above ₹{foodSettings.freeDeliveryAbove}</Text>
+                )}
               </View>
               <Text style={[s.billValue, deliveryFee === 0 && s.billFree]}>
                 {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
               </Text>
+            </View>
+            <View style={s.billRow}>
+              <View>
+                <Text style={s.billLabel}>GST ({gstRatePercent}%)</Text>
+                {deliveryGST > 0 && (
+                  <Text style={s.billHint}>Items: ₹{itemsGST} + Delivery: ₹{deliveryGST}</Text>
+                )}
+              </View>
+              <Text style={s.billValue}>₹{totalGST}</Text>
             </View>
             <View style={s.billRow}>
               <Text style={s.billLabel}>Platform Fee</Text>
@@ -521,13 +846,13 @@ export default function FoodCartScreen() {
 
             {deliveryFee === 0 ? (
               <View style={s.savingsBanner}>
-                <Text style={s.savingsText}>🎉 You saved ₹40 on delivery!</Text>
+                <Text style={s.savingsText}>🎉 You saved ₹{foodSettings.baseDeliveryCharge} on delivery!</Text>
               </View>
             ) : (
               <View style={[s.savingsBanner, { backgroundColor: ORANGE_LT }]}>
                 <Ionicons name="bicycle-outline" size={13} color={ORANGE} />
                 <Text style={[s.savingsText, { color: ORANGE, marginLeft: 5 }]}>
-                  Add ₹{199 - totalPrice} more for free delivery
+                  Add ₹{Math.max((foodSettings.freeDeliveryAbove ?? 0) - totalPrice, 0)} more for free delivery
                 </Text>
               </View>
             )}
@@ -540,6 +865,54 @@ export default function FoodCartScreen() {
           <Text style={s.upiNoteText}>Rider carries a QR code for instant UPI payment at doorstep</Text>
         </View>
 
+        {/* YOU MAY ALSO LIKE */}
+        {relatedItems.length > 0 && (
+          <View style={s.section}>
+            <View style={s.sectionLabelRow}>
+              <View style={s.sectionDot} />
+              <Text style={s.sectionLabel}>YOU MAY ALSO LIKE</Text>
+            </View>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.relatedScroll}
+            >
+              {relatedItems.map((item) => (
+                <View key={item.id} style={s.relatedCard}>
+                  <View style={s.relatedImgWrap}>
+                    {item.image ? (
+                      <Image source={{ uri: item.image }} style={s.relatedImg} contentFit="cover" />
+                    ) : (
+                      <View style={[s.relatedImg, s.relatedImgFallback]}>
+                        <Ionicons name="fast-food-outline" size={28} color="#CBD5E1" />
+                      </View>
+                    )}
+                    <View style={s.relatedVegBadge}>
+                      <View style={[s.vegDot, !item.isVeg && { backgroundColor: RED }]} />
+                    </View>
+                  </View>
+                  <View style={s.relatedInfo}>
+                    <Text style={s.relatedName} numberOfLines={2}>{item.name}</Text>
+                    <Text style={s.relatedPrice}>₹{item.price}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={s.relatedAddBtn}
+                    onPress={() => {
+                      if (item.restaurantId) {
+                        addItem(item as any);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add" size={16} color={WHITE} />
+                    <Text style={s.relatedAddText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
       </ScrollView>
 
       {/* FOOTER */}
@@ -549,19 +922,19 @@ export default function FoodCartScreen() {
             <Text style={s.footerAmount}>₹{grandTotal}</Text>
             <Text style={s.footerLabel}>{isScheduled ? '📅 Scheduled' : '⚡ Deliver Now'}</Text>
           </View>
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <TouchableOpacity
-              style={s.payBtn}
-              activeOpacity={0.88}
-              onPress={() => {
-                if (!deliveryAddress) { setShowAddressModal(true); return; }
-                setShowPayModal(true);
-              }}
-            >
-              <Text style={s.payBtnText}>Proceed to Pay</Text>
+          <TouchableOpacity
+            style={s.payBtn}
+            activeOpacity={0.88}
+            onPress={() => {
+              if (!deliveryAddress) { setShowAddressModal(true); return; }
+              setShowPayModal(true);
+            }}
+          >
+            <Text style={s.payBtnText}>{!deliveryAddress ? 'Checkout' : 'Proceed to Pay'}</Text>
+            <Animated.View style={{ transform: [{ translateX: arrowTranslateX }] }}>
               <Ionicons name="arrow-forward-circle" size={20} color={WHITE} />
-            </TouchableOpacity>
-          </Animated.View>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -606,304 +979,436 @@ export default function FoodCartScreen() {
 }
 
 const s = StyleSheet.create({
-  root:      { flex: 1, backgroundColor: '#F4F5F9' },
+  root:      { flex: 1, backgroundColor: GRAY_LT },
   emptyRoot: { flex: 1, backgroundColor: WHITE },
 
   /* ── HEADER ── */
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
     backgroundColor: WHITE,
-    paddingHorizontal: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: BORDER,
+    paddingHorizontal: 18, paddingBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 4,
   },
   iconBtn: {
-    width: 38, height: 38, borderRadius: 12,
+    width: 40, height: 40, borderRadius: 13,
     backgroundColor: GRAY_LT,
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle:  { fontSize: 17, fontWeight: '700', color: DARK, letterSpacing: -0.3 },
-  headerRestaurantRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  headerSub:    { fontSize: 11, color: GRAY },
+  headerTitle:  { fontSize: 18, fontWeight: '800', color: DARK, letterSpacing: -0.4 },
+  headerRestaurantRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  headerSub:    { fontSize: 11, color: GRAY, fontWeight: '500' },
 
   /* ── EMPTY STATE ── */
   emptyBody: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-  emptyIllustration: { marginBottom: 32 },
+  emptyIllustration: { marginBottom: 36 },
   emptyCircleOuter: {
-    width: 140, height: 140, borderRadius: 70,
-    backgroundColor: '#FFF3EE',
+    width: 160, height: 160, borderRadius: 80,
+    backgroundColor: '#FFF8F5',
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
   emptyCircleInner: {
-    width: 100, height: 100, borderRadius: 50,
+    width: 110, height: 110, borderRadius: 55,
     backgroundColor: ORANGE_LT,
     justifyContent: 'center', alignItems: 'center',
   },
-  emptyTitle: { fontSize: 22, fontWeight: '700', color: DARK, marginBottom: 8, letterSpacing: -0.4 },
-  emptySub:   { fontSize: 14, color: GRAY, textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: 24, fontWeight: '800', color: DARK, marginBottom: 10, letterSpacing: -0.5 },
+  emptySub:   { fontSize: 15, color: GRAY, textAlign: 'center', lineHeight: 24, fontWeight: '500' },
   browseBtn:  {
-    marginTop: 32, backgroundColor: ORANGE,
-    paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14,
+    marginTop: 36, backgroundColor: ORANGE,
+    paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16,
     flexDirection: 'row', alignItems: 'center',
-    shadowColor: ORANGE, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 6,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
   },
-  browseBtnTxt: { color: WHITE, fontWeight: '700', fontSize: 15, letterSpacing: 0.2 },
+  browseBtnTxt: { color: WHITE, fontWeight: '800', fontSize: 16, letterSpacing: 0.3 },
 
   /* ── SECTION ── */
-  section: { marginHorizontal: 14, marginTop: 14 },
+  section: { marginHorizontal: 16, marginTop: 16 },
   sectionLabelRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10,
   },
   sectionDot: {
-    width: 4, height: 14, borderRadius: 2, backgroundColor: ORANGE,
+    width: 5, height: 16, borderRadius: 2.5, backgroundColor: ORANGE,
   },
   sectionLabel: {
-    fontSize: 10, fontWeight: '700', color: GRAY, letterSpacing: 1.2,
+    fontSize: 11, fontWeight: '800', color: GRAY, letterSpacing: 1.4,
   },
   pill: {
-    backgroundColor: ORANGE_LT, paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 20, marginLeft: 4,
+    backgroundColor: ORANGE_LT, paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 20, marginLeft: 5,
   },
-  pillText: { fontSize: 10, fontWeight: '700', color: ORANGE },
+  pillText: { fontSize: 10, fontWeight: '800', color: ORANGE, letterSpacing: 0.3 },
 
   /* ── CARD ── */
   card: {
-    backgroundColor: WHITE, borderRadius: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 10, elevation: 3,
+    backgroundColor: WHITE, borderRadius: 18,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
     overflow: 'hidden',
   },
 
   /* ── ITEM ROW ── */
   itemRow: {
     flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: 14, paddingVertical: 14, gap: 12,
+    paddingHorizontal: 16, paddingVertical: 16, gap: 14,
   },
   itemImgWrap: { position: 'relative' },
-  itemImg: { width: 72, height: 72, borderRadius: 12 },
+  itemImg: { width: 80, height: 80, borderRadius: 14 },
   imgFallback: { backgroundColor: GRAY_LT, justifyContent: 'center', alignItems: 'center' },
   vegBadge: {
-    position: 'absolute', bottom: -4, left: -4,
-    width: 14, height: 14, borderRadius: 3,
-    backgroundColor: WHITE, borderWidth: 1.5, borderColor: GREEN,
+    position: 'absolute', bottom: -5, left: -5,
+    width: 16, height: 16, borderRadius: 4,
+    backgroundColor: WHITE, borderWidth: 2, borderColor: GREEN,
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  vegDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: GREEN },
+  vegDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN },
 
   itemDetails: { flex: 1, paddingTop: 2 },
-  itemName: { fontSize: 14, fontWeight: '600', color: DARK, lineHeight: 20, letterSpacing: -0.2 },
+  itemName: { fontSize: 15, fontWeight: '700', color: DARK, lineHeight: 21, letterSpacing: -0.3 },
   variantChip: {
-    alignSelf: 'flex-start', marginTop: 4,
-    backgroundColor: GRAY_LT, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6,
+    alignSelf: 'flex-start', marginTop: 5,
+    backgroundColor: GRAY_LT, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7,
+    borderWidth: 1, borderColor: BORDER,
   },
-  variantChipText: { fontSize: 10, fontWeight: '600', color: GRAY },
+  variantChipText: { fontSize: 10, fontWeight: '700', color: GRAY, letterSpacing: 0.2 },
   timeChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5,
   },
-  timeChipText: { fontSize: 10, color: GRAY },
-  itemPrice: { fontSize: 14, fontWeight: '700', color: DARK, marginTop: 6 },
+  timeChipText: { fontSize: 10, color: GRAY, fontWeight: '600' },
+  itemPrice: { fontSize: 15, fontWeight: '800', color: DARK, marginTop: 7 },
 
   /* ── STEPPER ── */
-  stepperWrap: { alignItems: 'center', gap: 4, paddingTop: 4 },
+  stepperWrap: { alignItems: 'center', gap: 6, paddingTop: 4 },
   stepMinus: {
-    width: 28, height: 28, borderRadius: 8,
-    borderWidth: 1.5, borderColor: ORANGE,
+    width: 32, height: 32, borderRadius: 10,
+    borderWidth: 2, borderColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
     backgroundColor: WHITE,
   },
-  stepQty: { fontSize: 14, fontWeight: '800', color: DARK, minWidth: 20, textAlign: 'center' },
+  stepQty: { fontSize: 15, fontWeight: '900', color: DARK, minWidth: 22, textAlign: 'center' },
   stepPlus: {
-    width: 28, height: 28, borderRadius: 8,
+    width: 32, height: 32, borderRadius: 10,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
 
-  divider: { height: 1, backgroundColor: BORDER, marginHorizontal: 14 },
+  divider: { height: 1, backgroundColor: BORDER, marginHorizontal: 16 },
 
   /* ── ADDONS ── */
   addonsBox: {
-    marginHorizontal: 14, marginBottom: 12,
-    backgroundColor: '#FAFBFF', borderRadius: 10,
-    padding: 10, borderWidth: 1, borderColor: BORDER,
+    marginHorizontal: 16, marginBottom: 14,
+    backgroundColor: '#FAFBFF', borderRadius: 12,
+    padding: 12, borderWidth: 1, borderColor: BORDER,
   },
-  addonsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
-  addonsLabel: { flex: 1, fontSize: 10, fontWeight: '700', color: ORANGE, letterSpacing: 0.5 },
-  addonsTotalText: { fontSize: 11, fontWeight: '700', color: ORANGE },
-  addonItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  addonDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: ORANGE },
-  addonName: { flex: 1, fontSize: 12, color: DARK2 },
-  addonPrice: { fontSize: 11, color: GRAY, fontWeight: '500' },
+  addonsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  addonsLabel: { flex: 1, fontSize: 11, fontWeight: '800', color: ORANGE, letterSpacing: 0.6 },
+  addonsTotalText: { fontSize: 12, fontWeight: '800', color: ORANGE },
+  addonItem: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 },
+  addonDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: ORANGE },
+  addonName: { flex: 1, fontSize: 13, color: DARK2, fontWeight: '500' },
+  addonPrice: { fontSize: 12, color: GRAY, fontWeight: '600' },
 
   /* ── ADD MORE ── */
   addMoreRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 14, paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 14,
     borderTopWidth: 1, borderTopColor: BORDER,
+    backgroundColor: '#FAFBFF',
   },
   addMoreIcon: {
-    width: 22, height: 22, borderRadius: 6,
+    width: 24, height: 24, borderRadius: 7,
     backgroundColor: ORANGE_LT, justifyContent: 'center', alignItems: 'center',
   },
-  addMoreText: { fontSize: 13, fontWeight: '600', color: ORANGE },
+  addMoreText: { fontSize: 14, fontWeight: '700', color: ORANGE, letterSpacing: 0.1 },
 
   /* ── ADDRESS ── */
   addressRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 14,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16,
   },
   addressIconWrap: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 40, height: 40, borderRadius: 12,
     backgroundColor: ORANGE_LT, justifyContent: 'center', alignItems: 'center',
     flexShrink: 0,
   },
-  addressText: { flex: 1, fontSize: 13, color: DARK2, lineHeight: 20 },
+  addressText: { flex: 1, fontSize: 14, color: DARK2, lineHeight: 22, fontWeight: '500' },
   editBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: ORANGE_LT, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: ORANGE_LT, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
+    borderWidth: 1, borderColor: '#FFD4BC',
   },
-  editBtnText: { fontSize: 11, fontWeight: '600', color: ORANGE },
+  editBtnText: { fontSize: 12, fontWeight: '700', color: ORANGE },
   addAddressBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16,
   },
   addAddressIcon: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 40, height: 40, borderRadius: 12,
     backgroundColor: ORANGE_LT, justifyContent: 'center', alignItems: 'center',
   },
-  addAddressText: { flex: 1, fontSize: 13, fontWeight: '600', color: DARK2 },
+  addAddressText: { flex: 1, fontSize: 14, fontWeight: '700', color: DARK2 },
 
   /* ── DELIVERY OPTIONS ── */
   deliveryOptions: { flexDirection: 'row' },
   deliveryOption: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 14,
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 16,
   },
   deliveryOptionActive: { backgroundColor: '#FFFAF7' },
-  deliveryOptionDivider: { width: 1, backgroundColor: BORDER, marginVertical: 10 },
+  deliveryOptionDivider: { width: 1, backgroundColor: BORDER, marginVertical: 12 },
   deliveryOptionIcon: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 40, height: 40, borderRadius: 12,
     backgroundColor: GRAY_LT, justifyContent: 'center', alignItems: 'center',
   },
-  deliveryOptionTitle: { fontSize: 13, fontWeight: '700', color: DARK },
-  deliveryOptionSub:   { fontSize: 11, color: GRAY, marginTop: 1 },
+  deliveryOptionTitle: { fontSize: 14, fontWeight: '800', color: DARK, letterSpacing: -0.2 },
+  deliveryOptionSub:   { fontSize: 12, color: GRAY, marginTop: 2, fontWeight: '500' },
   radioActive: {
-    width: 18, height: 18, borderRadius: 9,
+    width: 20, height: 20, borderRadius: 10,
     borderWidth: 2, borderColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
   },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ORANGE },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: ORANGE },
   radioInactive: {
-    width: 18, height: 18, borderRadius: 9,
+    width: 20, height: 20, borderRadius: 10,
     borderWidth: 2, borderColor: '#D1D5DB',
   },
 
   /* ── SCHEDULE BOX ── */
   scheduleBox: {
-    margin: 12, marginTop: 0,
-    backgroundColor: ORANGE_LT, borderRadius: 12,
-    padding: 12, borderWidth: 1, borderColor: '#FFD4BC',
+    margin: 14, marginTop: 0,
+    backgroundColor: ORANGE_LT, borderRadius: 14,
+    padding: 14, borderWidth: 1.5, borderColor: '#FFD4BC',
   },
-  scheduleBoxLabel: { fontSize: 10, fontWeight: '600', color: GRAY, letterSpacing: 0.5 },
-  scheduleBoxTime:  { fontSize: 15, fontWeight: '700', color: ORANGE, marginTop: 2, marginBottom: 10 },
-  schedulePickerRow: { flexDirection: 'row', gap: 8 },
+  scheduleBoxLabel: { fontSize: 11, fontWeight: '700', color: GRAY, letterSpacing: 0.6 },
+  scheduleBoxTime:  { fontSize: 16, fontWeight: '800', color: ORANGE, marginTop: 3, marginBottom: 12, letterSpacing: -0.2 },
+  schedulePickerRow: { flexDirection: 'row', gap: 10 },
   schedulePickerBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    backgroundColor: WHITE, paddingVertical: 8, borderRadius: 8,
-    borderWidth: 1, borderColor: '#FFD4BC',
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: WHITE, paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#FFD4BC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  schedulePickerText: { fontSize: 12, fontWeight: '600', color: DARK },
+  schedulePickerText: { fontSize: 13, fontWeight: '700', color: DARK },
 
   /* ── BILL ── */
   billRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 14, paddingVertical: 8,
+    paddingHorizontal: 16, paddingVertical: 10,
   },
-  billLabel: { fontSize: 13, color: GRAY, fontWeight: '500' },
-  billHint:  { fontSize: 10, color: GREEN, marginTop: 2 },
-  billValue: { fontSize: 13, color: DARK, fontWeight: '600' },
-  billFree:  { color: GREEN, fontWeight: '700' },
+  billLabel: { fontSize: 14, color: GRAY, fontWeight: '600' },
+  billHint:  { fontSize: 10, color: GREEN, marginTop: 3, fontWeight: '600' },
+  billValue: { fontSize: 14, color: DARK, fontWeight: '700' },
+  billFree:  { color: GREEN, fontWeight: '800' },
   billTotalBox: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginHorizontal: 14, marginTop: 4, marginBottom: 12,
-    paddingTop: 12, borderTopWidth: 1.5, borderTopColor: BORDER,
+    marginHorizontal: 16, marginTop: 6, marginBottom: 14,
+    paddingTop: 14, borderTopWidth: 2, borderTopColor: BORDER,
     borderStyle: 'dashed',
   },
-  billTotalLabel: { fontSize: 15, fontWeight: '700', color: DARK },
-  billTotalValue: { fontSize: 18, fontWeight: '800', color: ORANGE },
+  billTotalLabel: { fontSize: 16, fontWeight: '800', color: DARK, letterSpacing: -0.2 },
+  billTotalValue: { fontSize: 20, fontWeight: '900', color: ORANGE, letterSpacing: -0.3 },
   savingsBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: GREEN_LT, marginHorizontal: 14, marginBottom: 14,
-    paddingVertical: 8, borderRadius: 10,
+    backgroundColor: GREEN_LT, marginHorizontal: 16, marginBottom: 16,
+    paddingVertical: 10, borderRadius: 12,
+    borderWidth: 1, borderColor: '#D1FAE5',
   },
-  savingsText: { fontSize: 12, fontWeight: '600', color: GREEN },
+  savingsText: { fontSize: 13, fontWeight: '700', color: GREEN, letterSpacing: 0.1 },
 
   /* ── UPI NOTE ── */
   upiNote: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 14, marginTop: 10, marginBottom: 4,
-    backgroundColor: '#EEF2FF', borderRadius: 10, padding: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 6,
+    backgroundColor: '#EEF2FF', borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: '#DDD6FE',
   },
-  upiNoteText: { flex: 1, fontSize: 12, color: '#4F46E5', lineHeight: 17 },
+  upiNoteText: { flex: 1, fontSize: 13, color: '#4F46E5', lineHeight: 19, fontWeight: '600' },
 
   /* ── FOOTER ── */
   footer: {
     backgroundColor: WHITE,
-    paddingHorizontal: 16, paddingTop: 14,
+    paddingHorizontal: 18, paddingTop: 16,
     borderTopWidth: 1, borderTopColor: BORDER,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.07, shadowRadius: 12, elevation: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.1, shadowRadius: 16, elevation: 20,
   },
   footerInner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  footerAmount: { fontSize: 22, fontWeight: '800', color: DARK, letterSpacing: -0.5 },
-  footerLabel:  { fontSize: 11, color: GRAY, marginTop: 2 },
+  footerAmount: { fontSize: 24, fontWeight: '900', color: DARK, letterSpacing: -0.6 },
+  footerLabel:  { fontSize: 12, color: GRAY, marginTop: 3, fontWeight: '600' },
   payBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: ORANGE, paddingHorizontal: 22, paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: ORANGE, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: ORANGE, paddingHorizontal: 26, paddingVertical: 16,
+    borderRadius: 16,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45, shadowRadius: 16, elevation: 8,
   },
-  payBtnText: { fontSize: 15, fontWeight: '700', color: WHITE, letterSpacing: 0.2 },
+  payBtnText: { fontSize: 16, fontWeight: '800', color: WHITE, letterSpacing: 0.3 },
 
   /* ── MODALS ── */
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30,
   },
   modalCard: {
-    backgroundColor: WHITE, borderRadius: 24, padding: 28,
+    backgroundColor: WHITE, borderRadius: 26, padding: 30,
     alignItems: 'center', width: '100%',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15, shadowRadius: 20, elevation: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2, shadowRadius: 24, elevation: 12,
+    position: 'relative',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: GRAY_LT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
   modalIconWrap: {
-    width: 68, height: 68, borderRadius: 20,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 16,
+    width: 72, height: 72, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  modalTitle:    { fontSize: 19, fontWeight: '700', color: DARK, marginBottom: 6, textAlign: 'center' },
-  modalSubtitle: { fontSize: 13, color: GRAY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  modalTitle:    { fontSize: 20, fontWeight: '800', color: DARK, marginBottom: 8, textAlign: 'center', letterSpacing: -0.3 },
+  modalSubtitle: { fontSize: 14, color: GRAY, textAlign: 'center', lineHeight: 22, marginBottom: 26, fontWeight: '500' },
   modalPrimaryBtn: {
-    backgroundColor: ORANGE, borderRadius: 12,
-    paddingVertical: 14, width: '100%', alignItems: 'center', marginBottom: 10,
+    backgroundColor: ORANGE, borderRadius: 14,
+    paddingVertical: 16, width: '100%', alignItems: 'center', marginBottom: 12,
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  modalPrimaryText:  { color: WHITE, fontSize: 15, fontWeight: '700' },
+  modalPrimaryText:  { color: WHITE, fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
   modalSecondaryBtn: {
-    borderWidth: 1.5, borderColor: BORDER, borderRadius: 12,
-    paddingVertical: 13, width: '100%', alignItems: 'center',
+    borderWidth: 2, borderColor: BORDER, borderRadius: 14,
+    paddingVertical: 15, width: '100%', alignItems: 'center',
   },
-  modalSecondaryText: { color: GRAY, fontSize: 14, fontWeight: '600' },
+  modalSecondaryText: { color: GRAY, fontSize: 15, fontWeight: '700' },
 
   /* ── LOADING ── */
   loadingOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
   },
   loadingBox: {
-    backgroundColor: WHITE, borderRadius: 16, padding: 28,
-    alignItems: 'center', gap: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1, shadowRadius: 12, elevation: 8,
+    backgroundColor: WHITE, borderRadius: 18, padding: 32,
+    alignItems: 'center', gap: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15, shadowRadius: 16, elevation: 10,
   },
-  loadingText: { fontSize: 14, fontWeight: '600', color: DARK },
+  loadingText: { fontSize: 15, fontWeight: '700', color: DARK, letterSpacing: -0.2 },
+
+  /* ── RELATED ITEMS ── */
+  relatedScroll: { paddingHorizontal: 16, gap: 14 },
+  relatedCard: {
+    width: 150,
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  relatedImgWrap: { position: 'relative' },
+  relatedImg: { width: '100%', height: 110 },
+  relatedImgFallback: {
+    backgroundColor: GRAY_LT,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  relatedVegBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    backgroundColor: WHITE,
+    borderWidth: 2,
+    borderColor: GREEN,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  relatedInfo: { padding: 12, paddingBottom: 10 },
+  relatedName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: DARK,
+    lineHeight: 20,
+    marginBottom: 5,
+    letterSpacing: -0.2,
+  },
+  relatedPrice: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: DARK,
+  },
+  relatedAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: ORANGE,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  relatedAddText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: WHITE,
+    letterSpacing: 0.2,
+  },
 });

@@ -76,95 +76,66 @@ const pl = StyleSheet.create({
   dot:  { width: 10, height: 10, borderRadius: 5, backgroundColor: ORANGE },
 });
 
-// ── Animated Veg / Non-Veg Switch ──────────────────────────────────────────
-function VegSwitch({ isVeg, onToggle }: { isVeg: boolean; onToggle: () => void }) {
-  const slideAnim = useRef(new Animated.Value(isVeg ? 0 : 1)).current;
+// ── Enhanced Veg Toggle Switch with Symbols ──────────────────────────────────────────
+function VegSwitch({ filter, onToggle }: { filter: 'all' | 'veg' | 'nonveg'; onToggle: () => void }) {
+  const isVeg    = filter === 'veg';
+  const isNonVeg = filter === 'nonveg';
+  const isAll    = filter === 'all';
 
-  useEffect(() => {
-    Animated.spring(slideAnim, {
-      toValue: isVeg ? 0 : 1,
-      friction: 6,
-      tension: 100,
-      useNativeDriver: true,
-    }).start();
-  }, [isVeg]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const TRACK_W  = 72;
-  const TRACK_H  = 34;
-  const THUMB_SZ = 26;
-  const TRAVEL   = TRACK_W - THUMB_SZ - 8; // 4px padding each side
-
-  const thumbX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [4, TRAVEL + 4],
-  });
-
-  const vegOpacity    = slideAnim.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: "clamp" });
-  const nonVegOpacity = slideAnim.interpolate({ inputRange: [0.5, 1], outputRange: [0, 1], extrapolate: "clamp" });
+  const accentColor = isVeg ? GREEN : isNonVeg ? "#cc2200" : ORANGE;
+  const label       = isVeg ? "VEG" : isNonVeg ? "NON VEG" : "ALL";
 
   return (
     <TouchableOpacity
       onPress={onToggle}
-      activeOpacity={0.9}
+      activeOpacity={0.85}
       style={{
-        width: TRACK_W,
-        height: TRACK_H,
-        borderRadius: TRACK_H / 2,
-        backgroundColor: isVeg ? "#00666A" : "#B70000",
-        justifyContent: "center",
-        borderWidth: 2,
-        borderColor: isVeg ? "#00999F" : "#FF4444",
-        shadowColor: isVeg ? "#00666A" : "#B70000",
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.5,
-        shadowRadius: 6,
-        elevation: 6,
-      }}
-    >
-      {/* VEG label — left side */}
-      <Animated.Text style={{
-        position: "absolute",
-        left: 8,
-        fontSize: 8,
-        fontWeight: "800",
-        color: "#fff",
-        letterSpacing: 0.5,
-        opacity: vegOpacity,
-      }}>
-        🥦
-      </Animated.Text>
-
-      {/* NON-VEG label — right side */}
-      <Animated.Text style={{
-        position: "absolute",
-        right: 7,
-        fontSize: 8,
-        fontWeight: "800",
-        color: "#fff",
-        letterSpacing: 0.5,
-        opacity: nonVegOpacity,
-      }}>
-        🍗
-      </Animated.Text>
-
-      {/* Sliding thumb */}
-      <Animated.View style={{
-        position: "absolute",
-        width: THUMB_SZ,
-        height: THUMB_SZ,
-        borderRadius: THUMB_SZ / 2,
+        width: 52,
+        height: 52,
+        borderRadius: 14,
         backgroundColor: "#fff",
-        transform: [{ translateX: thumbX }],
+        borderWidth: 2.5,
+        borderColor: accentColor,
+        shadowColor: accentColor,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 5,
         justifyContent: "center",
         alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-        elevation: 4,
-      }}>
-        <Text style={{ fontSize: 13 }}>{isVeg ? "🥦" : "🍗"}</Text>
-      </Animated.View>
+        gap: 3,
+      }}
+    >
+      {isAll ? (
+        <Ionicons name="fast-food" size={18} color={ORANGE} />
+      ) : isVeg ? (
+        <View style={{
+          width: 20, height: 20,
+          borderWidth: 2.5, borderColor: GREEN,
+          borderRadius: 3, backgroundColor: "#fff",
+          justifyContent: "center", alignItems: "center",
+        }}>
+          <View style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN }} />
+        </View>
+      ) : (
+        <View style={{
+          width: 20, height: 20,
+          borderWidth: 2.5, borderColor: "#cc2200",
+          borderRadius: 3, backgroundColor: "#fff",
+          justifyContent: "center", alignItems: "center",
+        }}>
+          <View style={{
+            width: 0, height: 0,
+            borderLeftWidth: 4, borderRightWidth: 4, borderBottomWidth: 7,
+            borderLeftColor: "transparent", borderRightColor: "transparent",
+            borderBottomColor: "#cc2200",
+            transform: [{ rotate: "180deg" }],
+          }} />
+        </View>
+      )}
+      <Text style={{ fontSize: 7, fontWeight: "800", color: accentColor, letterSpacing: 0.3 }}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -184,13 +155,15 @@ export default function FoodScreen() {
   const [selectedFilter,       setSelectedFilter]       = useState<string | null>(null);
   const [selectedCategoryId,   setSelectedCategoryId]   = useState<string | null>(null);
   const [categoryRestaurantIds,setCategoryRestaurantIds]= useState<string[]>([]);
-  const [isVegMode,            setIsVegMode]            = useState(true);
+  const [vegFilter,            setVegFilter]            = useState<'all' | 'veg' | 'nonveg'>('all'); // 'all' = all restaurants, 'veg' = pure veg only, 'nonveg' = non-veg only
   const [showVegModal,         setShowVegModal]         = useState(false);
-  const [pendingVeg,           setPendingVeg]           = useState<boolean | null>(null);
+  const [pendingVegFilter,     setPendingVegFilter]     = useState<'all' | 'veg' | 'nonveg'>('all');
   // restaurantIds that have at least one veg item / non-veg item
   const [vegRestaurantIds,     setVegRestaurantIds]     = useState<Set<string>>(new Set());
   const [nonVegRestaurantIds,  setNonVegRestaurantIds]  = useState<Set<string>>(new Set());
   const [rejectionModal, setRejectionModal] = useState<{ visible: boolean; restaurantName: string }>({ visible: false, restaurantName: "" });
+  // Track which companies have menu_phases role
+  const [menuPhasesCompanyIds, setMenuPhasesCompanyIds] = useState<Set<string>>(new Set());
 
   // Helper: parse "HH:MM AM/PM" or "HH:MM" string to a comparable Date (today)
   const parseTimeString = (t: string): Date | null => {
@@ -238,11 +211,13 @@ export default function FoodScreen() {
   };
 
   useEffect(() => {
-    if (!showSearchModal) return;
+    if (!showSearchModal && !showVegModal) return;
     playBounce();
-    const t = setInterval(() => setModalImageIndex(p => (p + 1) % FOOD_IMAGES.length), 1500);
-    return () => clearInterval(t);
-  }, [showSearchModal]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (showSearchModal) {
+      const t = setInterval(() => setModalImageIndex(p => (p + 1) % FOOD_IMAGES.length), 1500);
+      return () => clearInterval(t);
+    }
+  }, [showSearchModal, showVegModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (showSearchModal) playBounce(); }, [modalImageIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -292,19 +267,44 @@ export default function FoodScreen() {
           const ft = (data.foodType || '').toLowerCase().trim();
           const rid = data.restaurantId;
           if (!rid) return;
-          if (ft === 'veg') vegIds.add(rid);
-          else if (ft === 'nonveg' || ft === 'non-veg') nonVegIds.add(rid);
-          else {
+          if (ft === 'veg') {
+            vegIds.add(rid);
+          } else if (ft === 'nonveg' || ft === 'non-veg') {
+            nonVegIds.add(rid);
+          } else {
             // foodType not set — include in both
             vegIds.add(rid);
             nonVegIds.add(rid);
           }
         });
+        
+        // Also check restaurant's cuisineType field as fallback
+        restaurants.forEach(r => {
+          const cuisineType = ((r as any).cuisineType || '').toLowerCase().trim();
+          if (cuisineType === 'veg') {
+            vegIds.add(r.id);
+          } else if (cuisineType === 'nonveg' || cuisineType === 'non-veg') {
+            nonVegIds.add(r.id);
+          }
+        });
+        
+        console.log('Veg Restaurant IDs:', Array.from(vegIds));
+        console.log('Non-Veg Restaurant IDs:', Array.from(nonVegIds));
         setVegRestaurantIds(vegIds);
         setNonVegRestaurantIds(nonVegIds);
       }, e => console.error(e));
 
-    return () => { u1(); u2(); u3(); };
+    // Track which companies have menu_phases role
+    const u4 = firestore()
+      .collection('registerRestaurant')
+      .where('role', '==', 'menu_phases')
+      .onSnapshot(snap => {
+        const phaseIds = new Set<string>();
+        snap.docs.forEach(d => phaseIds.add(d.id));
+        setMenuPhasesCompanyIds(phaseIds);
+      }, e => console.error(e));
+
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   useEffect(() => {
@@ -341,21 +341,58 @@ export default function FoodScreen() {
     }
   }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
-  const handleVegToggle = () => { setPendingVeg(!isVegMode); setShowVegModal(true); };
-  const confirmVeg = () => { if (pendingVeg !== null) setIsVegMode(pendingVeg); setShowVegModal(false); setPendingVeg(null); };
-  const cancelVeg  = () => { setShowVegModal(false); setPendingVeg(null); };
-  const openDish = (id: string, name: string, catId?: string | null, rushHour?: boolean, rushTime?: string) =>
+  const handleVegToggle = () => { 
+    setPendingVegFilter(vegFilter); // Start with current filter
+    setShowVegModal(true); 
+  };
+  const confirmVeg = () => { 
+    setVegFilter(pendingVegFilter); 
+    setShowVegModal(false); 
+  };
+  const cancelVeg  = () => { 
+    setShowVegModal(false); 
+    setPendingVegFilter(vegFilter); // Reset to current
+  };
+  const openDish = (
+    id: string, 
+    name: string, 
+    catId?: string | null, 
+    rushHour?: boolean, 
+    rushTime?: string,
+    coverImage?: string,
+    profileImage?: string,
+    restaurantImage?: string,
+    description?: string
+  ) =>
     navigation.navigate("RestaurantDetail", {
       restaurantId: id,
       restaurantName: name,
+      coverImage,
+      profileImage,
+      restaurantImage,
+      description,
     });
 
   const filtered = React.useMemo(() => {
     let list = [...restaurants];
 
-    // Veg/Non-veg filter — based on actual menu items, not just restaurant cuisineType
-    if (isVegMode) list = list.filter(r => vegRestaurantIds.has(r.id));
-    else           list = list.filter(r => nonVegRestaurantIds.has(r.id));
+    // Exclude restaurants with role "menu_phases"
+    list = list.filter(r => (r as any).role !== "menu_phases");
+
+    // Veg filter logic:
+    // 'all' = show all restaurants (both veg and non-veg)
+    // 'veg' = show only restaurants that have at least one veg item
+    // 'nonveg' = show only restaurants that have at least one non-veg item
+    if (vegFilter === 'veg') {
+      list = list.filter(r => vegRestaurantIds.has(r.id));
+      console.log('Veg Filter Applied - Showing restaurants:', list.length);
+    } else if (vegFilter === 'nonveg') {
+      list = list.filter(r => nonVegRestaurantIds.has(r.id));
+      console.log('Non-Veg Filter Applied - Showing restaurants:', list.length);
+    } else {
+      console.log('All Filter - Showing all restaurants:', list.length);
+    }
+    // If vegFilter === 'all', don't filter by veg/non-veg at all
 
     // Category filter
     if (selectedCategoryId && categoryRestaurantIds.length > 0) list = list.filter(r => categoryRestaurantIds.includes(r.id));
@@ -381,7 +418,7 @@ export default function FoodScreen() {
     }
 
     return list;
-  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, isVegMode, vegRestaurantIds, nonVegRestaurantIds]);
+  }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, vegFilter, vegRestaurantIds]);
 
   return (
     <View style={s.root}>
@@ -413,21 +450,113 @@ export default function FoodScreen() {
       {/* ── Veg Toggle Modal ── */}
       <Modal visible={showVegModal} transparent animationType="fade" statusBarTranslucent>
         <View style={s.modalBg}>
-          <View style={s.vegCard}>
-            <View style={[s.vegIconCircle, { backgroundColor: pendingVeg ? "#e8f8ef" : "#fef0f0" }]}>
-              <Text style={{ fontSize: 32 }}>{pendingVeg ? "🥦" : "🍗"}</Text>
+          <Animated.View style={[s.vegCard, {
+            opacity: fadeAnim,
+            transform: [
+              { scale: bounceAnim.interpolate({ inputRange: [0,1], outputRange: [0.88,1] }) },
+              { translateY: bounceAnim.interpolate({ inputRange: [0,1], outputRange: [40,0] }) },
+            ]
+          }]}>
+
+            {/* ── Colored header band — compact ── */}
+            <View style={[s.vegBand, {
+              backgroundColor:
+                pendingVegFilter === 'veg'    ? GREEN :
+                pendingVegFilter === 'nonveg' ? "#cc2200" : ORANGE,
+            }]}>
+              <TouchableOpacity style={s.vegCloseBtn} onPress={cancelVeg} activeOpacity={0.7}>
+                <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
+              </TouchableOpacity>
+              <Text style={s.vegBandTitle}>Food Preference</Text>
+              <Text style={s.vegBandSub}>What would you like to see?</Text>
             </View>
-            <Text style={s.vegTitle}>{pendingVeg ? "Switch to Veg?" : "Switch to Non-Veg?"}</Text>
-            <Text style={s.vegSub}>
-              {pendingVeg ? "Only veg restaurants will be shown." : "Only non-veg restaurants will be shown."}
-            </Text>
-            <TouchableOpacity style={[s.vegBtn, { backgroundColor: pendingVeg ? GREEN : "#ef4444" }]} onPress={confirmVeg} activeOpacity={0.85}>
-              <Text style={s.vegBtnTxt}>{pendingVeg ? "Yes, Go Veg" : "Yes, Non-Veg"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.vegCancelBtn} onPress={cancelVeg} activeOpacity={0.8}>
-              <Text style={s.vegCancelTxt}>Keep Current</Text>
-            </TouchableOpacity>
-          </View>
+
+            {/* ── Options ── */}
+            <View style={s.vegOptionsWrap}>
+
+              {/* ALL */}
+              <TouchableOpacity
+                style={[s.vegOption, pendingVegFilter === 'all' && { borderColor: ORANGE, backgroundColor: "#FFF8F0" }]}
+                activeOpacity={0.75}
+                onPress={() => setPendingVegFilter('all')}
+              >
+                <View style={[s.vegOptionIcon2, { backgroundColor: "#FFF3E0", borderColor: ORANGE }]}>
+                  <Ionicons name="fast-food" size={20} color={ORANGE} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.vegOptionText, pendingVegFilter === 'all' && { color: ORANGE }]}>All Restaurants</Text>
+                  <Text style={s.vegOptionDesc}>Veg & non-veg, everything</Text>
+                </View>
+                <View style={[s.radioOuter, pendingVegFilter === 'all' && { borderColor: ORANGE }]}>
+                  {pendingVegFilter === 'all' && <View style={[s.radioInner, { backgroundColor: ORANGE }]} />}
+                </View>
+              </TouchableOpacity>
+
+              {/* VEG */}
+              <TouchableOpacity
+                style={[s.vegOption, pendingVegFilter === 'veg' && { borderColor: GREEN, backgroundColor: "#F0FDF4" }]}
+                activeOpacity={0.75}
+                onPress={() => setPendingVegFilter('veg')}
+              >
+                <View style={[s.vegOptionIcon2, { backgroundColor: "#DCFCE7", borderColor: GREEN }]}>
+                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: GREEN, borderRadius: 3, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" }}>
+                    <View style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN }} />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.vegOptionText, pendingVegFilter === 'veg' && { color: GREEN }]}>Pure Veg Only</Text>
+                  <Text style={s.vegOptionDesc}>Only vegetarian restaurants</Text>
+                </View>
+                <View style={[s.radioOuter, pendingVegFilter === 'veg' && { borderColor: GREEN }]}>
+                  {pendingVegFilter === 'veg' && <View style={[s.radioInner, { backgroundColor: GREEN }]} />}
+                </View>
+              </TouchableOpacity>
+
+              {/* NON-VEG */}
+              <TouchableOpacity
+                style={[s.vegOption, pendingVegFilter === 'nonveg' && { borderColor: "#cc2200", backgroundColor: "#FFF5F5" }]}
+                activeOpacity={0.75}
+                onPress={() => setPendingVegFilter('nonveg')}
+              >
+                <View style={[s.vegOptionIcon2, { backgroundColor: "#FFE4E4", borderColor: "#cc2200" }]}>
+                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: "#cc2200", borderRadius: 3, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" }}>
+                    <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 9, borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: "#cc2200", transform: [{ rotate: "180deg" }] }} />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.vegOptionText, pendingVegFilter === 'nonveg' && { color: "#cc2200" }]}>Non-Veg Only</Text>
+                  <Text style={s.vegOptionDesc}>Only non-vegetarian restaurants</Text>
+                </View>
+                <View style={[s.radioOuter, pendingVegFilter === 'nonveg' && { borderColor: "#cc2200" }]}>
+                  {pendingVegFilter === 'nonveg' && <View style={[s.radioInner, { backgroundColor: "#cc2200" }]} />}
+                </View>
+              </TouchableOpacity>
+
+            </View>
+
+            {/* ── Buttons ── */}
+            <View style={s.vegButtonsRow}>
+              <TouchableOpacity style={s.vegCancelBtn} onPress={cancelVeg} activeOpacity={0.85}>
+                <Text style={s.vegCancelBtnTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.vegApplyBtn, {
+                  backgroundColor:
+                    pendingVegFilter === 'veg'    ? GREEN :
+                    pendingVegFilter === 'nonveg' ? "#cc2200" : ORANGE,
+                  shadowColor:
+                    pendingVegFilter === 'veg'    ? GREEN :
+                    pendingVegFilter === 'nonveg' ? "#cc2200" : ORANGE,
+                }]}
+                onPress={confirmVeg}
+                activeOpacity={0.85}
+              >
+                <Text style={s.vegApplyBtnTxt}>Show Restaurants</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+          </Animated.View>
         </View>
       </Modal>
 
@@ -464,10 +593,11 @@ export default function FoodScreen() {
         <View>
           <View style={[s.hero, { height: HERO_FULL }]}>
             <Image
-              key={isVegMode ? "veg" : "nonveg"}
-              source={isVegMode
-                ? require("../../assets/ninjafoodVeg.png")
-                : require("../../assets/ninjafoodNonVeg.png")}
+              source={
+                vegFilter === 'nonveg'
+                  ? require("../../assets/ninjafoodNonVeg.png")
+                  : require("../../assets/ninjafoodVeg.png")
+              }
               style={StyleSheet.absoluteFillObject}
               contentFit="fill"
             />
@@ -499,7 +629,7 @@ export default function FoodScreen() {
                 <Ionicons name="search-outline" size={17} color={GRAY} />
                 <Text style={s.searchTxt}>Search restaurants, cuisines...</Text>
               </TouchableOpacity>
-              <VegSwitch isVeg={isVegMode} onToggle={handleVegToggle} />
+              <VegSwitch filter={vegFilter} onToggle={handleVegToggle} />
             </View>
             <View style={s.modeToggleWrap}>
               <ModeToggle compact activeMode={activeMode} onPress={setActiveMode} />
@@ -518,7 +648,13 @@ export default function FoodScreen() {
               scrollEnabled={true}
               bounces={false}
             >
-              {[{ id: "all", name: "All", image: null }, ...categories].map((item) => {
+              {[{ id: "all", name: "All", image: null }, ...categories.filter(cat => {
+                // Only filter out categories where ALL companyIds have role "menu_phases"
+                const companyIds = cat.companyIds || [];
+                if (companyIds.length === 0) return true; // Show if no companies assigned
+                // Show category if at least one company is NOT menu_phases
+                return !companyIds.every(companyId => menuPhasesCompanyIds.has(companyId));
+              })].map((item) => {
                 const active = item.id === "all" ? selectedCategoryId === null : selectedCategoryId === item.id;
                 return (
                   <TouchableOpacity key={item.id} style={s.catItem} activeOpacity={0.75} onPress={async () => {
@@ -648,10 +784,20 @@ export default function FoodScreen() {
 
               return (
                 <TouchableOpacity key={item.id} style={s.card} activeOpacity={0.9}
-                  onPress={() => openDish(item.id, item.restaurantName, undefined, isRushHour, rushTimeText)}>
+                  onPress={() => openDish(
+                    item.id, 
+                    item.restaurantName, 
+                    undefined, 
+                    isRushHour, 
+                    rushTimeText,
+                    item.coverImage,
+                    item.profileImage,
+                    item.image,
+                    item.description
+                  )}>
                   <View style={s.cardImgWrap}>
-                    {item.profileImage || item.image
-                      ? <Image source={{ uri: item.profileImage || item.image }} style={s.cardImg} contentFit="cover" />
+                    {item.coverImage || item.profileImage || item.image
+                      ? <Image source={{ uri: item.coverImage || item.profileImage || item.image }} style={s.cardImg} contentFit="cover" />
                       : <View style={s.cardImgPlaceholder}><Ionicons name="restaurant" size={40} color={ORANGE} /></View>
                     }
                     {/* Dark overlay for rush hours - covers entire image */}
@@ -737,14 +883,48 @@ const s = StyleSheet.create({
   loadTitle:{ fontSize: 20, fontWeight: "700", color: DARK, marginBottom: 6 },
   loadSub:  { fontSize: 14, color: GRAY },
 
-  vegCard:       { backgroundColor: "#fff", borderRadius: 24, padding: 28, alignItems: "center", width: "88%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20, elevation: 10 },
-  vegIconCircle: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  vegTitle:      { fontSize: 19, fontWeight: "700", color: DARK, marginBottom: 8, textAlign: "center" },
-  vegSub:        { fontSize: 13, color: GRAY, textAlign: "center", lineHeight: 20, marginBottom: 24 },
-  vegBtn:        { width: "100%", paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 },
-  vegBtnTxt:     { color: "#fff", fontSize: 15, fontWeight: "700" },
-  vegCancelBtn:  { paddingVertical: 10 },
-  vegCancelTxt:  { color: GRAY, fontSize: 14, fontWeight: "500" },
+  vegCard:       { backgroundColor: "#fff", borderRadius: 24, width: "88%", maxWidth: 380, shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 20, overflow: "hidden" },
+  vegBand:       { paddingTop: 18, paddingBottom: 14, paddingHorizontal: 18, position: "relative" },
+  vegBandImg:    { width: 70, height: 70, marginBottom: 10 },
+  vegBandTitle:  { fontSize: 17, fontWeight: "800", color: "#fff", letterSpacing: -0.3 },
+  vegBandSub:    { fontSize: 11, color: "rgba(255,255,255,0.85)", marginTop: 2, fontWeight: "500" },
+  vegCloseBtn:   { position: "absolute", top: 10, right: 10, zIndex: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.25)", justifyContent: "center", alignItems: "center" },
+  vegTopBar:     { height: 0 },
+  vegTopBarGradient: { height: 0 },
+  vegCloseBtnInner: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#f5f5f5", justifyContent: "center", alignItems: "center" },
+  vegHeaderRow:  { flexDirection: "row" },
+  vegTitleMain:  { fontSize: 17, fontWeight: "800", color: DARK },
+  vegTitleSub:   { fontSize: 17, fontWeight: "800", color: GREEN },
+  vegHeaderDesc: { fontSize: 11, color: GRAY, marginTop: 2 },
+  vegHeaderImgWrap: { width: 60, height: 60, borderRadius: 30, backgroundColor: "#FFF8F0", justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "#FFE8CC" },
+  vegHeaderImg:  { width: 50, height: 50 },
+  vegHeaderImgGlow: { position: "absolute", width: 50, height: 50, borderRadius: 25, backgroundColor: ORANGE, opacity: 0.15 },
+  vegSubtitle:   { fontSize: 11, color: GRAY, paddingHorizontal: 18, marginBottom: 10 },
+  vegOptionsWrap:{ gap: 7, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 },
+  vegOption:     { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#fafafa", borderWidth: 1.5, borderColor: "#efefef" },
+  vegOptionActive: { backgroundColor: "#FFF8F0", borderColor: ORANGE },
+  vegOptionActiveNonVeg: { backgroundColor: "#FFF5F5", borderColor: "#cc2200" },
+  vegOptionContent: { flexDirection: "row", alignItems: "center", gap: 12 },
+  vegOptionIcon2: { width: 40, height: 40, borderRadius: 11, justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#e5e5e5" },
+  vegOptionIconWrap: { width: 40, height: 40, borderRadius: 11, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#e5e5e5" },
+  vegOptionIconWrapActive: { borderColor: ORANGE, backgroundColor: "#FFF8F0" },
+  vegOptionIconWrapActiveVeg: { borderColor: GREEN, backgroundColor: "#f0fdf4" },
+  vegOptionIconWrapActiveNonVeg: { borderColor: "#cc2200", backgroundColor: "#FFF5F5" },
+  vegOptionIcon: { fontSize: 20 },
+  vegOptionText: { fontSize: 13, color: DARK, fontWeight: "700", marginBottom: 2 },
+  vegOptionTextActive: { color: ORANGE },
+  vegOptionTextActiveNonVeg: { color: "#cc2200" },
+  vegOptionDesc: { fontSize: 11, color: GRAY, fontWeight: "400" },
+  radioOuter:    { width: 19, height: 19, borderRadius: 9.5, borderWidth: 2, borderColor: "#d5d5d5", justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
+  radioOuterActive: { borderColor: GREEN },
+  radioOuterActiveNonVeg: { borderColor: "#cc2200" },
+  radioInner:    { width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN },
+  radioInnerNonVeg: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: "#cc2200" },
+  vegButtonsRow: { flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingBottom: 16, paddingTop: 8 },
+  vegCancelBtn:  { flex: 1, backgroundColor: "#f5f5f5", paddingVertical: 12, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#e8e8e8" },
+  vegCancelBtnTxt: { color: GRAY, fontSize: 13, fontWeight: "700" },
+  vegApplyBtn:   { flex: 2, paddingVertical: 12, borderRadius: 12, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
+  vegApplyBtnTxt: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.2 },
 
   rejCard:    { backgroundColor: "#fff", borderRadius: 24, padding: 28, alignItems: "center", width: "88%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
   rejIconWrap:{ width: 88, height: 88, borderRadius: 44, backgroundColor: "#fef2f2", justifyContent: "center", alignItems: "center", marginBottom: 16 },

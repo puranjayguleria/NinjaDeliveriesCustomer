@@ -91,8 +91,8 @@ const s = StyleSheet.create({
   },
   wrapperCompact: {
     marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 6,
+    marginBottom: 6,
     gap: 6,
   },
   tab: {
@@ -104,8 +104,8 @@ const s = StyleSheet.create({
     overflow: 'visible',
   },
   tabCompact: {
-    height: 40,
-    borderRadius: 24,
+    height: 32,
+    borderRadius: 20,
   },
   tabActive: {
     backgroundColor: '#00b4a0',
@@ -167,7 +167,7 @@ const s = StyleSheet.create({
     color: '#64748b',
   },
   labelCompact: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
   },
   labelActive: {
