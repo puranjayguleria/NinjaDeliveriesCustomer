@@ -841,13 +841,6 @@ export default function BookingHistoryScreen() {
               })}
             </View>
           </View>
-          <LoadingModal
-            visible={loading}
-            title="Fetching your bookings"
-            subtitle="Showing bookings for you..."
-            emoji="📋"
-            iconColor="#3b82f6"
-          />
           {!loading && error ? (
             <View style={styles.errorContainer}>
               <Ionicons 
@@ -870,7 +863,7 @@ export default function BookingHistoryScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          ) : bookings.length === 0 ? (
+          ) : !loading && bookings.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="calendar-outline" size={64} color="#9CA3AF" />
               <Text style={styles.emptyTitle}>No Bookings Found</Text>
@@ -920,6 +913,16 @@ export default function BookingHistoryScreen() {
         deductionPercentage={25}
       />
       <ServicesTabBar activeTab="bookings" />
+
+      {/* Full-screen loading overlay — rendered last so it sits above everything
+          including the tab bar. pointerEvents blocks all touches while loading. */}
+      <LoadingModal
+        visible={loading}
+        title="Fetching your bookings"
+        subtitle="Showing bookings for you..."
+        emoji="📋"
+        iconColor="#3b82f6"
+      />
     </View>
   );
 }

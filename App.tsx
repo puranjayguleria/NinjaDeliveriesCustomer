@@ -378,10 +378,14 @@ const RootStack = createNativeStackNavigator();
    ========================================================== */
 
 // Wrapper component that shows the right home screen based on toggle
-const HomeScreenWrapper = React.memo(() => {
+const HomeScreenWrapper = () => {
   const { activeMode } = useToggleContext();
   
-  // Render only the active screen for better performance
+  if (__DEV__) {
+    console.log('[HomeScreenWrapper] Rendering with activeMode:', activeMode);
+  }
+  
+  // Render only the active screen based on activeMode
   if (activeMode === 'service') {
     return <ServicesScreen />;
   }
@@ -391,7 +395,7 @@ const HomeScreenWrapper = React.memo(() => {
   }
   
   return <ProductsHomeScreen />;
-});
+};
 
 function HomeStack() {
   return (
@@ -1258,33 +1262,18 @@ function AppTabs() {
     display: 'none' as const
   }), []);
 
-  // Deferred activeMode for tab bar visibility — prevents the glitch where
-  // grocery tabs appear while ServicesScreen content is still rendering.
-  // We hide the tab bar immediately when leaving grocery, but only show it
-  // again after two animation frames so HomeScreenWrapper has time to swap screens.
+  // Update tab bar visibility based on activeMode
   const [tabBarMode, setTabBarMode] = React.useState(activeMode);
   React.useEffect(() => {
-    if (activeMode !== 'grocery') {
-      // Hide immediately when switching away from grocery
-      setTabBarMode(activeMode);
-    } else {
-      // Wait two frames: first frame lets HomeScreenWrapper re-render,
-      // second frame shows the grocery tab bar cleanly
-      let id1: number;
-      const id0 = requestAnimationFrame(() => {
-        id1 = requestAnimationFrame(() => setTabBarMode('grocery'));
-      });
-      return () => {
-        cancelAnimationFrame(id0);
-        cancelAnimationFrame(id1);
-      };
-    }
+    setTabBarMode(activeMode);
   }, [activeMode]);
 
-  const tabBarStyle = React.useMemo(() => 
-    tabBarMode === 'grocery' ? tabBarStyleVisible : tabBarStyleHidden,
-    [tabBarMode, tabBarStyleVisible, tabBarStyleHidden]
-  );
+  const tabBarStyle = React.useMemo(() => {
+    if (tabBarMode !== 'grocery') return tabBarStyleHidden;
+    // Dim the tab bar while a screen's LoadingModal is active
+    if (screenLoading) return { ...tabBarStyleVisible, opacity: 0.35 };
+    return tabBarStyleVisible;
+  }, [tabBarMode, tabBarStyleVisible, tabBarStyleHidden, screenLoading]);
 
   // Stable icon map to prevent re-creation on every render
   const iconMap = React.useMemo<Record<string, keyof typeof Ionicons.glyphMap>>(() => ({

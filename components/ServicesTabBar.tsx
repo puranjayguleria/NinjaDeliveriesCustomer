@@ -19,7 +19,15 @@ export default function ServicesTabBar({ activeTab = 'explore' }: Props) {
         cartItemCount={totalItems}
         onTabPress={(tab) => {
           if (tab === 'home') {
-            navigation.navigate('ServicesHome');
+            // Use popToTop() to cleanly go back to ServicesHome without
+            // triggering a navigation "switch" error when ServicesHome is
+            // already in the stack below the current screen.
+            // If popToTop fails (e.g. already at root), fall back to navigate.
+            try {
+              navigation.popToTop();
+            } catch {
+              navigation.navigate('ServicesHome');
+            }
           } else if (tab === 'explore') {
             navigation.navigate('AllServices');
           } else if (tab === 'cart') {
