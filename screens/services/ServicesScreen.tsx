@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from "@react-navigation/native";
+import { navigationRef } from "../../navigation/rootNavigation";
 import { FirestoreService, ServiceCategory, ServiceBanner } from "../../services/firestoreService";
 import { setSharedCategories } from "../../services/sharedCategoriesStore";
 import { firestore } from "../../firebase.native";
@@ -3644,12 +3645,12 @@ export default function ServicesScreen() {
                   ]}
                   onPress={() => {
                     setActiveMode("grocery");
-                    // Navigate to HomeTab (which has HomeScreenWrapper)
+                    // Use root navigationRef so this works regardless of which
+                    // stack ServicesScreen is currently mounted in
+                    // (HomeStack, CartFlow, etc.)
                     requestAnimationFrame(() => {
-                      try {
-                        navigation.navigate("AppTabs" as any, { screen: "HomeTab" });
-                      } catch {
-                        try { navigation.navigate("HomeTab" as any); } catch { /* ignore */ }
+                      if (navigationRef.isReady()) {
+                        (navigationRef.navigate as any)('HomeTab', { screen: 'ProductsHome' });
                       }
                     });
                   }}
@@ -3696,17 +3697,12 @@ export default function ServicesScreen() {
                   ]}
                   onPress={() => {
                     setActiveMode("food");
-                    // Navigate based on grocery availability
+                    // Use root navigationRef so this works regardless of which
+                    // stack ServicesScreen is currently mounted in
                     requestAnimationFrame(() => {
-                      if (location?.grocery === false) {
-                        // Grocery is false - navigate within CartFlow to FoodComingSoon
-                        try {
-                          navigation.navigate("FoodComingSoon" as any);
-                        } catch (err) {
-                          console.log('[ServicesScreen] Food navigation error:', err);
-                        }
+                      if (navigationRef.isReady()) {
+                        (navigationRef.navigate as any)('HomeTab', { screen: 'ProductsHome' });
                       }
-                      // If grocery is true, HomeScreenWrapper handles it automatically
                     });
                   }}
                   activeOpacity={0.7}

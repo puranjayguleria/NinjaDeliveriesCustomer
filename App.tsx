@@ -1223,21 +1223,36 @@ function AppTabs() {
     setCartModalVisible(false);
     setPendingNavigation(null);
     if (navigationRef.isReady()) {
-      (navigationRef.navigate as any)('CartFlow', { screen: 'GroceryCart' });
+      (navigationRef as any).dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'CartFlow',
+              state: { routes: [{ name: 'GroceryCart' }] },
+            },
+          ],
+        })
+      );
     }
   };
 
   const handleSelectServices = () => {
     setCartModalVisible(false);
     setPendingNavigation(null);
-
-    // Always navigate via root ref so the correct navigator handles it
     if (navigationRef.isReady()) {
-      (navigationRef.navigate as any)('CartFlow', { screen: 'ServiceCart' });
+      (navigationRef as any).dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'CartFlow',
+              state: { routes: [{ name: 'ServiceCart' }] },
+            },
+          ],
+        })
+      );
     }
-
-    setServiceLoaderVisible(true);
-    setTimeout(() => setServiceLoaderVisible(false), 500);
   };
 
   const handleSelectUnified = () => {
@@ -1329,22 +1344,21 @@ function AppTabs() {
                   )}
 
                   {route.name === "CartFlow" && (() => {
-                    // Calculate active cart items based on location flags
-                    const activeGroceryItems = showGrocery ? groceryTotalItems : 0;
-                    const activeServiceItems = showServices ? serviceTotalItems : 0;
-                    const activeTotalItems = activeGroceryItems + activeServiceItems;
-                    
-                    // Debug log
-                    if (__DEV__ && activeTotalItems > 0) {
-                      console.log('[CartBadge] Showing badge:', {
-                        activeGroceryItems,
-                        activeServiceItems,
-                        activeTotalItems,
-                        showGrocery,
-                        showServices,
-                      });
+                    // Badge shows items from both carts when both have items,
+                    // otherwise only the active mode's count.
+                    const hasGroceryItems = showGrocery && groceryTotalItems > 0;
+                    const hasServiceItems = showServices && serviceTotalItems > 0;
+
+                    let activeTotalItems = 0;
+                    if (hasGroceryItems && hasServiceItems) {
+                      // Both carts active — show combined count
+                      activeTotalItems = groceryTotalItems + serviceTotalItems;
+                    } else if (hasGroceryItems) {
+                      activeTotalItems = groceryTotalItems;
+                    } else if (hasServiceItems) {
+                      activeTotalItems = serviceTotalItems;
                     }
-                    
+
                     return activeTotalItems > 0 ? (
                       <View style={styles.badgeContainer}>
                         <Text style={styles.badgeText}>{activeTotalItems}</Text>
@@ -1430,18 +1444,18 @@ function AppTabs() {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
               } else {
-                // Determine which carts are active based on location flags
-                const isGroceryActive = showGrocery && groceryTotalItems > 0;
-                const isServiceActive = showServices && serviceTotalItems > 0;
-                
-                // If both are active, show modal to choose
-                if (isGroceryActive && isServiceActive) {
+                // Check if BOTH carts have items — show selection modal regardless of mode
+                const hasGroceryItems = showGrocery && groceryTotalItems > 0;
+                const hasServiceItems = showServices && serviceTotalItems > 0;
+
+                // Both carts have items → show modal to let user pick
+                if (hasGroceryItems && hasServiceItems) {
                   e.preventDefault();
                   setPendingNavigation(navigation);
                   setCartModalVisible(true);
                 }
-                // If only grocery is active, go directly to grocery cart
-                else if (isGroceryActive && !isServiceActive) {
+                // Only grocery items → go to grocery cart
+                else if (hasGroceryItems) {
                   e.preventDefault();
                   navigation.dispatch(
                     CommonActions.reset({
@@ -1455,8 +1469,8 @@ function AppTabs() {
                     })
                   );
                 }
-                // If only service is active, go directly to service cart
-                else if (isServiceActive && !isGroceryActive) {
+                // Only service items → go to service cart
+                else if (hasServiceItems) {
                   e.preventDefault();
                   navigation.dispatch(
                     CommonActions.reset({
@@ -1470,18 +1484,29 @@ function AppTabs() {
                     })
                   );
                 }
-                // Empty cart or no active carts - go to unified cart
+                // Both empty → open mode-appropriate empty cart screen
                 else {
-                  const nestedState = (route as any)?.state ?? (route as any)?.params?.state;
-                  if (nestedState && typeof nestedState.index === "number" && nestedState.index > 0) {
-                    e.preventDefault();
+                  e.preventDefault();
+                  if (activeMode === 'service') {
                     navigation.dispatch(
                       CommonActions.reset({
                         index: 0,
                         routes: [
                           {
                             name: "CartFlow",
-                            state: { routes: [{ name: "CartHome" }] },
+                            state: { routes: [{ name: "ServiceCart" }] },
+                          },
+                        ],
+                      })
+                    );
+                  } else {
+                    navigation.dispatch(
+                      CommonActions.reset({
+                        index: 0,
+                        routes: [
+                          {
+                            name: "CartFlow",
+                            state: { routes: [{ name: "GroceryCart" }] },
                           },
                         ],
                       })
