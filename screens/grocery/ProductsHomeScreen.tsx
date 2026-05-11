@@ -871,6 +871,26 @@ export default function ProductsHomeScreen() {
 
   const { activeMode: activeVerticalMode, setActiveMode: setActiveVerticalMode, setScreenLoading } = useToggleContext();
 
+  // When the user switches back to grocery via the toggle (activeMode becomes
+  // 'grocery' again), clear the loaded-store cache so the LoadingModal shows
+  // fresh on that intentional navigation. We track the previous mode with a ref
+  // to detect the transition.
+  const prevActiveModeRef = useRef<string>(activeVerticalMode);
+  // Track which storeIds have already completed their first load.
+  // Once a store is loaded, suppress the LoadingModal on subsequent visits
+  // (e.g. tapping HomeTab again) — only show it on the very first load per store.
+  const loadedStoreIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const prev = prevActiveModeRef.current;
+    prevActiveModeRef.current = activeVerticalMode;
+    // Only clear when transitioning FROM a non-grocery mode TO grocery
+    // (i.e. the user pressed the toggle, not just a HomeTab tap)
+    if (prev !== 'grocery' && activeVerticalMode === 'grocery' && location.storeId) {
+      loadedStoreIdsRef.current.delete(location.storeId);
+    }
+  }, [activeVerticalMode, location.storeId]);
+
   // Sync grocery loading state into context so the native tab bar can be blocked
   // (useEffect is placed near the LoadingModal render, after all loading states are declared)
 
@@ -929,25 +949,25 @@ export default function ProductsHomeScreen() {
     const isServicesAvailable = location?.services !== false;
     const isFoodAvailable = location?.food !== false;
 
-    // If current mode is not available, switch to an available one
+    // If current mode is not available, switch to an available one.
+    // Defer via setTimeout to avoid scheduling a state update during React
+    // Navigation's useInsertionEffect layout phase (causes a warning on Android).
+    let nextMode: 'grocery' | 'service' | 'food' | null = null;
+
     if (activeVerticalMode === 'grocery' && !isGroceryAvailable) {
-      if (isServicesAvailable) {
-        setActiveVerticalMode('service');
-      } else if (isFoodAvailable) {
-        setActiveVerticalMode('food');
-      }
+      if (isServicesAvailable) nextMode = 'service';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeVerticalMode === 'service' && !isServicesAvailable) {
-      if (isGroceryAvailable) {
-        setActiveVerticalMode('grocery');
-      } else if (isFoodAvailable) {
-        setActiveVerticalMode('food');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeVerticalMode === 'food' && !isFoodAvailable) {
-      if (isGroceryAvailable) {
-        setActiveVerticalMode('grocery');
-      } else if (isServicesAvailable) {
-        setActiveVerticalMode('service');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isServicesAvailable) nextMode = 'service';
+    }
+
+    if (nextMode) {
+      const t = setTimeout(() => setActiveVerticalMode(nextMode!), 0);
+      return () => clearTimeout(t);
     }
   }, [location?.grocery, location?.services, location?.food, activeVerticalMode, setActiveVerticalMode]);
 
@@ -1491,6 +1511,11 @@ export default function ProductsHomeScreen() {
       setError("Could not load catalogue.");
     } finally {
       setCatalogueLoading(false);
+      // Mark this store as having completed its first load so the modal
+      // is suppressed on subsequent HomeTab visits.
+      if (location.storeId) {
+        loadedStoreIdsRef.current.add(location.storeId);
+      }
     }
   }, [location.storeId]);
 
@@ -2054,11 +2079,14 @@ export default function ProductsHomeScreen() {
 
   // Sync grocery loading state into context so the native tab bar can be blocked
   // while LoadingModal is visible. Cleanup on unmount resets to false.
+  // Suppress the modal if this store has already been loaded once (e.g. user
+  // tapped HomeTab again — no need to show the loading overlay again).
   useEffect(() => {
-    const isGroceryLoading =
-      catalogueLoading || homeMsgLoading || highlightsLoading || shortcutsLoading || lastOrderLoading;
+    const alreadyLoaded = !!location.storeId && loadedStoreIdsRef.current.has(location.storeId);
+    const isGroceryLoading = !alreadyLoaded &&
+      (catalogueLoading || homeMsgLoading || highlightsLoading || shortcutsLoading || lastOrderLoading);
     setScreenLoading(isGroceryLoading);
-  }, [catalogueLoading, homeMsgLoading, highlightsLoading, shortcutsLoading, lastOrderLoading, setScreenLoading]);
+  }, [catalogueLoading, homeMsgLoading, highlightsLoading, shortcutsLoading, lastOrderLoading, location.storeId, setScreenLoading]);
 
   // Reset on unmount
   useEffect(() => () => setScreenLoading(false), [setScreenLoading]);
@@ -2068,7 +2096,7 @@ export default function ProductsHomeScreen() {
       <View style={[styles.center, { flex: 1 }]}>
         <LoadingModal
           visible={true}
-          title="Loading your store"
+          title="Loading Grocery for you"
           subtitle="Finding products near you"
           emoji="🛒"
           accentColor="#00C853"
@@ -2421,13 +2449,14 @@ export default function ProductsHomeScreen() {
       {/* Loading overlay — last child so it renders above everything */}
       <LoadingModal
         visible={
-          catalogueLoading ||
+          !(location.storeId && loadedStoreIdsRef.current.has(location.storeId)) &&
+          (catalogueLoading ||
           homeMsgLoading ||
           highlightsLoading ||
           shortcutsLoading ||
-          lastOrderLoading
+          lastOrderLoading)
         }
-        title="Loading your store"
+        title="Loading Grocery For You"
         subtitle="Finding products near you"
         emoji="🛒"
         accentColor="#00C853"

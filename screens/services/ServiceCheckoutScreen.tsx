@@ -28,6 +28,7 @@ import auth from "@react-native-firebase/auth";
 import axios from "axios";
 import firestore from "@react-native-firebase/firestore";
 import { findNearestStore } from "../../utils/findNearestStore";
+import { useToggleContext } from "../../context/ToggleContext";
 
 const LOG_PREFIX = "🧾[SvcPay]";
 const log = (...args: any[]) => {
@@ -45,6 +46,7 @@ export default function ServiceCheckoutScreen() {
   const navigation = useNavigation<any>();
   const { clearCart, state } = useServiceCart();
   const { location, updateLocation } = useLocationContext();
+  const { activeMode } = useToggleContext();
   const [isScreenFocused, setIsScreenFocused] = useState(false);
 
   // Handle screen focus to prevent tab bar flicker
@@ -1979,7 +1981,7 @@ export default function ServiceCheckoutScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: activeMode === 'service' ? 60 : 0 }]}>
         <View style={styles.totalContainer}>
           <Text style={styles.footerTotalLabel}>Total: ₹{computedTotalAmount}</Text>
           <Text style={styles.footerServiceCount}>{services.length} service{services.length > 1 ? 's' : ''}</Text>

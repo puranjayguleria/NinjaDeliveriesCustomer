@@ -1263,7 +1263,13 @@ function AppTabs() {
     }
   };
 
-  // Stable tab bar styles to prevent useInsertionEffect warning
+  // Stable tab bar styles to prevent useInsertionEffect warning.
+  // Do NOT use intermediate state for activeMode — read it directly so there
+  // is no extra setState call during React Navigation's layout phase.
+  const tabBarStyleHidden = React.useMemo(() => ({
+    display: 'none' as const
+  }), []);
+
   const tabBarStyleVisible = React.useMemo(() => ({
     backgroundColor: "#ffffff",
     borderTopWidth: 1,
@@ -1273,22 +1279,21 @@ function AppTabs() {
     elevation: 8,
   }), []);
 
-  const tabBarStyleHidden = React.useMemo(() => ({
-    display: 'none' as const
+  const tabBarStyleDimmed = React.useMemo(() => ({
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    height: Platform.OS === "android" ? 60 : 85,
+    paddingBottom: Platform.OS === "android" ? 10 : 30,
+    elevation: 8,
+    opacity: 0.35,
   }), []);
 
-  // Update tab bar visibility based on activeMode
-  const [tabBarMode, setTabBarMode] = React.useState(activeMode);
-  React.useEffect(() => {
-    setTabBarMode(activeMode);
-  }, [activeMode]);
-
   const tabBarStyle = React.useMemo(() => {
-    if (tabBarMode !== 'grocery') return tabBarStyleHidden;
-    // Dim the tab bar while a screen's LoadingModal is active
-    if (screenLoading) return { ...tabBarStyleVisible, opacity: 0.35 };
+    if (activeMode !== 'grocery') return tabBarStyleHidden;
+    if (screenLoading) return tabBarStyleDimmed;
     return tabBarStyleVisible;
-  }, [tabBarMode, tabBarStyleVisible, tabBarStyleHidden, screenLoading]);
+  }, [activeMode, tabBarStyleVisible, tabBarStyleHidden, tabBarStyleDimmed, screenLoading]);
 
   // Stable icon map to prevent re-creation on every render
   const iconMap = React.useMemo<Record<string, keyof typeof Ionicons.glyphMap>>(() => ({
@@ -1444,9 +1449,10 @@ function AppTabs() {
                 e.preventDefault();
                 promptLogin(navigation, "Cart");
               } else {
-                // Check if BOTH carts have items — show selection modal regardless of mode
+                // Check cart states and current mode
                 const hasGroceryItems = showGrocery && groceryTotalItems > 0;
                 const hasServiceItems = showServices && serviceTotalItems > 0;
+                const isServiceMode = activeMode === 'service';
 
                 // Both carts have items → show modal to let user pick
                 if (hasGroceryItems && hasServiceItems) {
@@ -1454,8 +1460,8 @@ function AppTabs() {
                   setPendingNavigation(navigation);
                   setCartModalVisible(true);
                 }
-                // Only grocery items → go to grocery cart
-                else if (hasGroceryItems) {
+                // Only grocery items AND in grocery mode → go directly to grocery cart
+                else if (hasGroceryItems && !isServiceMode) {
                   e.preventDefault();
                   navigation.dispatch(
                     CommonActions.reset({
@@ -1469,8 +1475,8 @@ function AppTabs() {
                     })
                   );
                 }
-                // Only service items → go to service cart
-                else if (hasServiceItems) {
+                // Only service items AND in service mode → go directly to service cart
+                else if (hasServiceItems && isServiceMode) {
                   e.preventDefault();
                   navigation.dispatch(
                     CommonActions.reset({
@@ -1484,10 +1490,22 @@ function AppTabs() {
                     })
                   );
                 }
+                // Grocery items exist but user is in service mode → show modal (items in other cart)
+                else if (hasGroceryItems && isServiceMode) {
+                  e.preventDefault();
+                  setPendingNavigation(navigation);
+                  setCartModalVisible(true);
+                }
+                // Service items exist but user is in grocery mode → show modal (items in other cart)
+                else if (hasServiceItems && !isServiceMode) {
+                  e.preventDefault();
+                  setPendingNavigation(navigation);
+                  setCartModalVisible(true);
+                }
                 // Both empty → open mode-appropriate empty cart screen
                 else {
                   e.preventDefault();
-                  if (activeMode === 'service') {
+                  if (isServiceMode) {
                     navigation.dispatch(
                       CommonActions.reset({
                         index: 0,
@@ -1538,7 +1556,7 @@ function AppTabs() {
 
       {/* Tab-bar touch-blocker — rendered above the native tab bar when a screen's
           LoadingModal is visible, so the user cannot tap tabs during loading */}
-      {screenLoading && tabBarMode === 'grocery' && (
+      {screenLoading && activeMode === 'grocery' && (
         <View
           pointerEvents="auto"
           style={{

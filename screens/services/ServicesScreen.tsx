@@ -869,10 +869,12 @@ export default function ServicesScreen() {
   // If services become unavailable, silently switch to an available mode
   useEffect(() => {
     if (hasSelectedLocation && location?.services === false) {
-      if (location?.grocery !== false) {
-        setActiveMode('grocery');
-      } else if (location?.food !== false) {
-        setActiveMode('food');
+      let nextMode: 'grocery' | 'food' | null = null;
+      if (location?.grocery !== false) nextMode = 'grocery';
+      else if (location?.food !== false) nextMode = 'food';
+      if (nextMode) {
+        const t = setTimeout(() => setActiveMode(nextMode!), 0);
+        return () => clearTimeout(t);
       }
     }
   }, [location?.services, hasSelectedLocation]);
@@ -883,25 +885,22 @@ export default function ServicesScreen() {
     const isServicesAvailable = location?.services !== false;
     const isFoodAvailable = location?.food !== false;
 
-    // If current mode is not available, switch to an available one
+    let nextMode: 'grocery' | 'service' | 'food' | null = null;
+
     if (activeMode === 'grocery' && !isGroceryAvailable) {
-      if (isServicesAvailable) {
-        setActiveMode('service');
-      } else if (isFoodAvailable) {
-        setActiveMode('food');
-      }
+      if (isServicesAvailable) nextMode = 'service';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeMode === 'service' && !isServicesAvailable) {
-      if (isGroceryAvailable) {
-        setActiveMode('grocery');
-      } else if (isFoodAvailable) {
-        setActiveMode('food');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeMode === 'food' && !isFoodAvailable) {
-      if (isGroceryAvailable) {
-        setActiveMode('grocery');
-      } else if (isServicesAvailable) {
-        setActiveMode('service');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isServicesAvailable) nextMode = 'service';
+    }
+
+    if (nextMode) {
+      const t = setTimeout(() => setActiveMode(nextMode!), 0);
+      return () => clearTimeout(t);
     }
   }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
@@ -1576,12 +1575,18 @@ export default function ServicesScreen() {
       return;
     }
 
-    // If we don't have a deliverable zone or zone mapping yet, show none.
+    // If we don't have a deliverable zone selected yet, show all categories
+    if (!location?.storeId) {
+      setServiceCategories(rawServiceCategories);
+      return;
+    }
+
+    // If zone mapping is still loading, show all categories temporarily
     const zoneIds = zoneCategoryIdsKey
       ? zoneCategoryIdsKey.split('|').filter(Boolean)
       : [];
-    if (!location?.storeId || zoneIds.length === 0) {
-      setServiceCategories([]);
+    if (zoneCompaniesLoading || zoneIds.length === 0) {
+      setServiceCategories(rawServiceCategories);
       return;
     }
 
@@ -1616,7 +1621,7 @@ export default function ServicesScreen() {
     }
 
     setServiceCategories(filtered);
-  }, [activeServiceCategoryIdsKey, rawServiceCategories, zoneCategoryIdsKey, location?.storeId]);
+  }, [activeServiceCategoryIdsKey, rawServiceCategories, zoneCategoryIdsKey, location?.storeId, zoneCompaniesLoading]);
 
   // NOTE: we intentionally do not subscribe to all active services.
 
@@ -3961,7 +3966,7 @@ export default function ServicesScreen() {
         ) : !serviceCategories && isLoading ? (
           <View style={styles.emptyLoadingContainer}>
             <ActivityIndicator size="large" color="#00b4a0" />
-            <Text style={styles.emptyLoadingText}>Loading services...</Text>
+            <Text style={styles.emptyLoadingText}>Loading Services</Text>
           </View>
         ) : (
           <Animated.FlatList
@@ -4045,7 +4050,7 @@ export default function ServicesScreen() {
       {/* Loading overlay — last child so it renders above everything */}
       <LoadingModal
         visible={isLoading}
-        title="Loading Services"
+        title="Loading Services For You"
         subtitle="Finding services near you"
         emoji="🔧"
         accentColor="#6D28D9"

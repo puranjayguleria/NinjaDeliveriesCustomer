@@ -15,10 +15,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useServiceCart, ServiceCartItem } from "../../context/ServiceCartContext";
 import { getBestActiveQuantityOffer } from "../../utils/serviceQuantityOffers";
+import { useToggleContext } from "../../context/ToggleContext";
+
 
 export default function ServiceCartScreen() {
   const navigation = useNavigation<any>();
   const { state, removeService, updateService, clearCart, totalItems, totalAmount, hasServices } = useServiceCart();
+  const { activeMode } = useToggleContext();
   const [isScreenFocused, setIsScreenFocused] = React.useState(false);
 
   // Handle screen focus to prevent tab bar flicker
@@ -482,7 +485,7 @@ export default function ServiceCartScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: activeMode === 'service' ? 60 : 0 }]}>
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Total Amount:</Text>
           <Text style={styles.totalAmount}>₹{Math.round(totalAmount)}</Text>

@@ -61,25 +61,22 @@ export default function FoodScreen() {
     const isServicesAvailable = location?.services !== false;
     const isFoodAvailable = location?.food !== false;
 
-    // If current mode is not available, switch to an available one
+    let nextMode: 'grocery' | 'service' | 'food' | null = null;
+
     if (activeMode === 'grocery' && !isGroceryAvailable) {
-      if (isServicesAvailable) {
-        setActiveMode('service');
-      } else if (isFoodAvailable) {
-        setActiveMode('food');
-      }
+      if (isServicesAvailable) nextMode = 'service';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeMode === 'service' && !isServicesAvailable) {
-      if (isGroceryAvailable) {
-        setActiveMode('grocery');
-      } else if (isFoodAvailable) {
-        setActiveMode('food');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isFoodAvailable) nextMode = 'food';
     } else if (activeMode === 'food' && !isFoodAvailable) {
-      if (isGroceryAvailable) {
-        setActiveMode('grocery');
-      } else if (isServicesAvailable) {
-        setActiveMode('service');
-      }
+      if (isGroceryAvailable) nextMode = 'grocery';
+      else if (isServicesAvailable) nextMode = 'service';
+    }
+
+    if (nextMode) {
+      const t = setTimeout(() => setActiveMode(nextMode!), 0);
+      return () => clearTimeout(t);
     }
   }, [location?.grocery, location?.services, location?.food, activeMode, setActiveMode]);
 
