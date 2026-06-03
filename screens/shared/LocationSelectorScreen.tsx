@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   Platform,
+  StatusBar,
   ActivityIndicator,
   Image,
   Modal,
@@ -32,6 +33,7 @@ import { useLocationContext } from "../../context/LocationContext"; // location 
 import { fetchLocationFlags } from "../../utils/fetchLocationFlags";
 import { useCart } from "../../context/CartContext";
 import { useServiceCart } from "../../context/ServiceCartContext";
+import { FirestoreService } from "../../services/firestoreService";
 import Loader from "@/components/VideoLoader";
 
 type LocationSelectorScreenNavigationProp = StackNavigationProp<
@@ -483,6 +485,29 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
         ...flags,
       });
 
+      // If screen was opened specifically to pick a delivery address for FoodCheckout,
+      // save this address directly to user's saved addresses and return.
+      const isSelectingDeliveryAddress = (route.params as any)?.isSelectingDeliveryAddress;
+      if (isSelectingDeliveryAddress) {
+        const user = auth().currentUser;
+        if (user) {
+          try {
+            await FirestoreService.saveUserAddress({
+              fullAddress: addr,
+              houseNo: houseNo?.trim() || "",
+              landmark: placeLabel?.trim() || "",
+              addressType: "Home",
+              isDefault: false,
+            });
+          } catch (e) {
+            console.warn("Failed to save delivery address:", e);
+          }
+        }
+        // Navigate back to the caller (FoodCheckout) so it can refresh addresses
+        navigation.goBack();
+        return;
+      }
+
       if (fromScreenKey === "cart") {
         const allCartsEmpty = isAllCartsEmpty();
         
@@ -607,28 +632,51 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       };
       await saveLocationForUser(newLoc, houseNo, placeLabel);
 
-      setShowSaveForm(false);
-      if (fromScreenKey === "cart") {
-        (navigation.navigate as any)("AppTabs", {
-          screen: "CartFlow",
-          params: {
-            screen: "CartHome",
-            params: { selectedLocation: newLoc },
-          },
-        });
-      } else if (fromScreenKey === "servicecheckout") {
-        // Navigate back to checkout screen
-        navigation.goBack();
-      } else if (fromScreenKey === "services") {
-        returnToServices();
+      // Check if this is for delivery address selection in food checkout
+      const isSelectingDeliveryAddress = (route.params as any)?.isSelectingDeliveryAddress;
+      
+      if (isSelectingDeliveryAddress) {
+        // Save as a delivery address
+        const user = auth().currentUser;
+        if (user) {
+          const addressId = await FirestoreService.saveUserAddress({
+            fullAddress: location.address,
+            houseNo: houseNo.trim(),
+            landmark: placeLabel.trim(),
+            addressType: "Home",
+            isDefault: false,
+          });
+          
+          // Navigate back to FoodCheckout
+          navigation.goBack();
+        } else {
+          Alert.alert("Error", "User not authenticated");
+        }
       } else {
-        (navigation.navigate as any)("AppTabs", {
-          screen: "CategoriesTab",
-          params: { selectedLocation: newLoc },
-        });
+        setShowSaveForm(false);
+        if (fromScreenKey === "cart") {
+          (navigation.navigate as any)("AppTabs", {
+            screen: "CartFlow",
+            params: {
+              screen: "CartHome",
+              params: { selectedLocation: newLoc },
+            },
+          });
+        } else if (fromScreenKey === "servicecheckout") {
+          // Navigate back to checkout screen
+          navigation.goBack();
+        } else if (fromScreenKey === "services") {
+          returnToServices();
+        } else {
+          (navigation.navigate as any)("AppTabs", {
+            screen: "CategoriesTab",
+            params: { selectedLocation: newLoc },
+          });
+        }
       }
     } catch (err) {
       console.error("Error in handleSaveLocationForm:", err);
+      Alert.alert("Error", "Failed to save address. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -681,7 +729,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
       </View>
 
       {/* TOP SECTION */}
-      <SafeAreaView style={styles.topSection}>
+      <View style={[styles.topSection, { paddingTop: (StatusBar.currentHeight ?? 24) + 8 }]}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity 
@@ -693,8 +741,9 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
           </TouchableOpacity>
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>Choose Location</Text>
+            <Text style={styles.headerSubtitle}>Set your delivery address</Text>
           </View>
-          <View style={styles.backBtn} />
+          <View style={{ width: 40 }} />
         </View>
 
         {/* Search Bar */}
@@ -777,7 +826,7 @@ const LocationSelectorScreen: React.FC<Props> = ({ navigation, route }) => {
             <Ionicons name="chevron-forward" size={18} color="#FF9500" />
           </TouchableOpacity>
         )}
-      </SafeAreaView>
+      </View>
 
       {/* BOTTOM SECTION */}
       <View style={styles.bottomSection}>
@@ -1004,8 +1053,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 8,
+    paddingTop: 0,
     paddingBottom: 16,
+    gap: 12,
   },
   backBtn: {
     width: 40,
@@ -1025,10 +1075,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#000",
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+    fontWeight: "500",
   },
 
   /*****************************************
@@ -1036,42 +1092,48 @@ const styles = StyleSheet.create({
    *****************************************/
   searchWrapper: {
     marginBottom: 12,
+    marginTop: 4,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     gap: 10,
+    borderWidth: 2,
+    borderColor: "#f0f0f0",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: "#000",
     padding: 0,
+    fontWeight: "500",
   },
 
   /*****************************************
    * AUTOCOMPLETE RESULTS
    *****************************************/
   resultsContainer: {
-    marginTop: 8,
+    marginTop: 10,
     backgroundColor: "#fff",
-    borderRadius: 12,
-    maxHeight: 220,
+    borderRadius: 14,
+    maxHeight: 280,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
   },
   resultItem: {
     flexDirection: "row",

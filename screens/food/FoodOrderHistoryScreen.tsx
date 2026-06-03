@@ -58,10 +58,10 @@ export default function FoodOrderHistoryScreen({ mode = 'history' }: Props) {
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     setLoading(true); setOrders([]);
-    let query: any = firestore().collection('restaurant_Orders').where('userId', '==', user.uid).limit(30);
+    let query: any = firestore().collection('restaurant_Orders').where('orderedBy', '==', user.uid).limit(30);
     if (mode === 'reorder') {
       query = firestore().collection('restaurant_Orders')
-        .where('userId', '==', user.uid).where('status', '==', 'delivered').limit(20);
+        .where('orderedBy', '==', user.uid).where('status', '==', 'delivered').limit(20);
     }
     const unsub = query.onSnapshot(
       { includeMetadataChanges: false },
@@ -86,6 +86,25 @@ export default function FoodOrderHistoryScreen({ mode = 'history' }: Props) {
             await firestore().collection('restaurant_Orders').doc(order.orderId ?? order.id).delete();
           } catch (e) {
             Alert.alert('Error', 'Failed to delete order');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCancelOrder = (order: FoodOrder) => {
+    Alert.alert('Cancel Order', 'Are you sure you want to cancel this order?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes', style: 'destructive',
+        onPress: async () => {
+          try {
+            await firestore().collection('restaurant_Orders').doc(order.orderId ?? order.id).update({
+              status: 'cancelled',
+              cancelledAt: firestore.FieldValue.serverTimestamp(),
+            });
+          } catch (e) {
+            Alert.alert('Error', 'Failed to cancel order');
           }
         },
       },
@@ -255,6 +274,17 @@ export default function FoodOrderHistoryScreen({ mode = 'history' }: Props) {
                       </View>
                     )}
 
+                    {isActive && !isCancelled && (
+                      <TouchableOpacity
+                        style={s.cancelBtn}
+                        onPress={(e) => { e.stopPropagation(); handleCancelOrder(item); }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close-circle" size={14} color="#fff" />
+                        <Text style={s.cancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+
                     {/* 🧪 Testing only */}
                     <TouchableOpacity
                       style={s.deleteBtn}
@@ -330,6 +360,9 @@ const s = StyleSheet.create({
 
   trackBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   trackBtnText:{ color: '#2563eb', fontWeight: '600', fontSize: 12 },
+
+  cancelBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ef4444', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 },
+  cancelText:  { color: '#fff', fontWeight: '700', fontSize: 13 },
 
   empty:       { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyTitle:  { fontSize: 16, fontWeight: '600', color: '#94a3b8' },

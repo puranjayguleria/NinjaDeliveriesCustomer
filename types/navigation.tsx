@@ -14,7 +14,7 @@ export type LocationData = {
 
 export type RootStackParamList = {
   AppTabs: { screen?: string; params?: any } | undefined;
-  LocationSelector: { fromScreen?: string } | undefined;
+  LocationSelector: { fromScreen?: string; isSelectingDeliveryAddress?: boolean } | undefined;
   ProductsHome: undefined;
   CategoriesTab: { selectedLocation?: LocationData } | undefined;
   CartFlow: {

@@ -14,30 +14,37 @@ import Loader from "@/components/VideoLoader";
 import riderIcon     from "../../assets/rider-icon-1.png";
 import dropoffMarker from "../../assets/dropoff-marker.png";
 
-const { height: SH } = Dimensions.get("window");
+const { height: SH, width: SW } = Dimensions.get("window");
 const ORANGE = "#FC8019";
 const DARK   = "#1C1C1C";
 const GRAY   = "#686B78";
 
-type OrderStatus = "preparing" | "ready" | "out_for_delivery" | "scheduled" | "completed" | "cancelled";
+type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "out_for_delivery" | "scheduled" | "completed" | "cancelled";
 
 const tabs = [
-  { key: "preparing", label: "Preparing", icon: "restaurant" },
-  { key: "ready", label: "Ready", icon: "checkmark-circle" },
-  { key: "out_for_delivery", label: "Out for Delivery", icon: "car" },
-  { key: "scheduled", label: "Scheduled", icon: "calendar" },
-  { key: "completed", label: "Completed", icon: "checkmark-done" },
+  { key: "pending",          label: "Order Placed",      icon: "time-outline" },
+  { key: "preparing",        label: "Preparing",         icon: "restaurant" },
+  { key: "accepted",         label: "Accepted by Rider", icon: "person-circle-outline" },
+  { key: "ready",            label: "Ready",             icon: "checkmark-circle" },
+  { key: "picked_up",        label: "Picked Up",         icon: "bag-check-outline" },
+  { key: "out_for_delivery", label: "Out for Delivery",  icon: "bicycle" },
+  { key: "completed",        label: "Delivered",         icon: "checkmark-done" },
 ];
+
+const STATUS_ORDER = ["pending", "preparing", "accepted", "ready", "picked_up", "out_for_delivery", "completed"];
 
 const getStatusColor = (status: OrderStatus): string => {
   switch (status) {
-    case "preparing": return "#FF9500";
-    case "ready": return "#34C759";
-    case "out_for_delivery": return "#007AFF";
-    case "scheduled": return "#9333EA";
-    case "completed": return "#10B981";
-    case "cancelled": return "#FF3B30";
-    default: return "#007AFF";
+    case "pending":           return "#f59e0b";
+    case "accepted":          return "#FF9500";
+    case "preparing":         return "#FF9500";
+    case "ready":             return "#34C759";
+    case "picked_up":         return "#0ea5e9";
+    case "out_for_delivery":  return "#007AFF";
+    case "scheduled":         return "#9333EA";
+    case "completed":         return "#10B981";
+    case "cancelled":         return "#FF3B30";
+    default:                  return ORANGE;
   }
 };
 
@@ -60,10 +67,9 @@ export default function FoodTrackingScreen() {
   const [eta,         setEta]         = useState(0);
   const [path,        setPath]        = useState<LatLng[]>([]);
   const [loading,     setLoading]     = useState(true);
+  const orderRef = orderId ? firestore().collection("restaurant_Orders").doc(orderId) : null;
   const [mapReady,    setMapReady]    = useState(false);
   const [showBill,    setShowBill]    = useState(false);
-
-  // review
   const [reviewModal, setReviewModal] = useState(false);
   const [rating,      setRating]      = useState(0);
   const [reviewText,  setReviewText]  = useState("");
@@ -82,7 +88,7 @@ export default function FoodTrackingScreen() {
 
   const fitMap = (coords: LatLng[]) =>
     mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: { top: 160, right: 60, bottom: SH * 0.38 + 40, left: 60 },
+      edgePadding: { top: 80, right: 60, bottom: SH * 0.48 + 20, left: 60 },
       animated: true,
     });
 
@@ -92,59 +98,56 @@ export default function FoodTrackingScreen() {
 
   useEffect(() => {
     if (!orderId) return;
-    return firestore().collection("restaurant_Orders").doc(orderId).onSnapshot(snap => {
+    let riderUnsub: (() => void) | null = null;
+    const orderUnsub = firestore().collection("restaurant_Orders").doc(orderId).onSnapshot(snap => {
       const d = snap.data();
       if (!d) { setLoading(false); return; }
-      setOrderDoc(d); 
-      // Get status from Firebase and normalize to lowercase
-      const firebaseStatus = (d.status || "preparing").toLowerCase().trim();
+      setOrderDoc(d);
+      const rawStatus = (d.status || d.acceptedByRider || d.acceptedBy || "pending").toString().toLowerCase().trim();
+      const firebaseStatus = rawStatus === "acceptedbyrider" ? "accepted" : rawStatus;
       setStatus(firebaseStatus as OrderStatus);
-
-      // If restaurant rejected the order, go back to food screen
       if (firebaseStatus === "rejected") {
-        const restName = d.restaurantName ?? "the restaurant";
-        navigation.reset({
-          index: 0,
-          routes: [
-            {
-              name: "AppTabs",
-              params: { rejectedBy: restName },
-            },
-          ],
-        });
+        navigation.reset({ index: 0, routes: [{ name: "AppTabs", params: { rejectedBy: d.restaurantName ?? "the restaurant" } }] });
         return;
-      }      
+      }
       if (firebaseStatus === "completed" && !reviewShown.current && !d.reviewed) {
         reviewShown.current = true;
         setTimeout(openReview, 900);
       }
       const rid = d.riderId || d.acceptedBy || null;
-      if (rid) {
+      if (rid && rid !== riderId) {
+        if (riderUnsub) { riderUnsub(); riderUnsub = null; }
         setRiderId(rid);
-        const u = firestore().collection("riderDetails").doc(rid).onSnapshot(rs => {
+        riderUnsub = firestore().collection("riderDetails").doc(rid).onSnapshot(rs => {
           const rd = rs.data();
           if (!rd) return;
-          setRiderInfo({ name: rd.name || "Delivery Partner", phone: rd.contactNumber || "" });
+          setRiderInfo({ name: rd.name || "Delivery Partner", phone: rd.contactNumber || rd.phone || "" });
           if (rd.location?.latitude && rd.location?.longitude) {
             const loc: LatLng = { latitude: rd.location.latitude, longitude: rd.location.longitude };
-            const dCoords: LatLng|null =
-              d.deliveryLat && d.deliveryLng
-                ? { latitude: d.deliveryLat, longitude: d.deliveryLng }
-                : d.deliveryCoords ?? null;
+            const dCoords: LatLng | null = d.deliveryLat && d.deliveryLng
+              ? { latitude: d.deliveryLat, longitude: d.deliveryLng } : d.deliveryCoords ?? null;
             setRiderLoc(loc);
-            if (dCoords) { setPath([loc, dCoords]); setEta(Math.round((haversine(loc, dCoords)/30)*60)); }
+            if (dCoords) { setPath([loc, dCoords]); setEta(Math.round((haversine(loc, dCoords) / 30) * 60)); }
             else { setPath([]); setEta(0); }
           }
           setLoading(false);
         });
-        return u;
-      } else { setLoading(false); }
+      } else if (!rid) { setLoading(false); }
     });
-  }, [orderId]);
+    return () => { orderUnsub(); if (riderUnsub) riderUnsub(); };
+  }, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!orderId || !orderRef || !orderDoc) return;
+    const remoteStatus = (orderDoc.status || "pending").toLowerCase().trim();
+    if (remoteStatus !== status) {
+      orderRef.update({ status }).catch(() => null);
+    }
+  }, [orderId, orderRef, orderDoc, status]);
 
   useEffect(() => {
     if (riderLoc && mapReady) fitMap(dest ? [riderLoc, dest] : [riderLoc]);
-  }, [riderLoc, mapReady]);
+  }, [riderLoc, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openReview = () => {
     setReviewModal(true);
@@ -157,9 +160,7 @@ export default function FoodTrackingScreen() {
     Animated.parallel([
       Animated.timing(scaleA, { toValue: 0.88, duration: 180, useNativeDriver: true }),
       Animated.timing(opacA,  { toValue: 0,    duration: 180, useNativeDriver: true }),
-    ]).start(() => {
-      setReviewModal(false);
-    });
+    ]).start(() => setReviewModal(false));
   };
   const submitReview = async () => {
     if (!rating) { Alert.alert("Rating Required", "Please select a star rating."); return; }
@@ -174,27 +175,8 @@ export default function FoodTrackingScreen() {
       });
       await firestore().collection("restaurant_Orders").doc(orderId).update({ reviewed: true });
       setReviewed(true);
-      
-      // Navigate to food home after 2 seconds
       setTimeout(() => {
-        navigation.reset({
-          index: 0,
-          routes: [
-            {
-              name: 'AppTabs',
-              state: {
-                routes: [
-                  {
-                    name: 'FoodTab',
-                    state: {
-                      routes: [{ name: 'FoodHome' }],
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        });
+        navigation.reset({ index: 0, routes: [{ name: "AppTabs", state: { routes: [{ name: "FoodTab", state: { routes: [{ name: "FoodHome" }] } }] } }] });
       }, 2000);
     } catch { Alert.alert("Error", "Failed to submit review."); }
     finally { setSubmitting(false); }
@@ -207,295 +189,261 @@ export default function FoodTrackingScreen() {
   const isScheduled = status === "scheduled";
   const statusColor = getStatusColor(status);
 
-  console.log("Current status:", status, "isCompleted:", isCompleted, "isCancelled:", isCancelled, "isScheduled:", isScheduled);
-
-  // Format scheduled time
   const formatScheduledTime = () => {
     if (!orderDoc?.scheduledFor) return '';
-    const scheduledDate = orderDoc.scheduledFor.toDate();
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    const isToday = scheduledDate.toDateString() === today.toDateString();
-    const isTomorrow = scheduledDate.toDateString() === tomorrow.toDateString();
-    
-    const timeStr = scheduledDate.toLocaleTimeString('en-IN', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
-    });
-    
-    if (isToday) return `Today at ${timeStr}`;
-    if (isTomorrow) return `Tomorrow at ${timeStr}`;
-    
-    const dateStr = scheduledDate.toLocaleDateString('en-IN', { 
-      day: 'numeric', 
-      month: 'short',
-      year: 'numeric'
-    });
-    return `${dateStr} at ${timeStr}`;
+    const d = orderDoc.scheduledFor.toDate();
+    const today = new Date(); const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    if (d.toDateString() === today.toDateString()) return `Today at ${timeStr}`;
+    if (d.toDateString() === tomorrow.toDateString()) return `Tomorrow at ${timeStr}`;
+    return `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} at ${timeStr}`;
   };
 
-  // Header messages based on status
   const headerMsg =
-    isCompleted ? "Order Completed!" :
-    isCancelled ? "Order Cancelled"  :
+    isCompleted ? "Order Delivered! 🎉" :
+    isCancelled ? "Order Cancelled" :
     isScheduled ? "Order Scheduled" :
     status === "out_for_delivery" && eta > 0 ? `Arriving in ${eta} mins` :
-    status === "out_for_delivery" ? "Out for delivery!" :
-    status === "ready" ? "Order is ready!" :
-    status === "preparing" ? "Preparing your order" :
-    "Order Placed";
+    status === "out_for_delivery" ? "Out for Delivery!" :
+    status === "picked_up"  ? "Order Picked Up!" :
+    status === "ready"      ? "Order is Ready!" :
+    status === "accepted"   ? "Rider Accepted!" :
+    status === "preparing"  ? "Preparing your order..." :
+    "Order Placed!";
 
   const headerSub =
-    isCompleted ? `Your order from ${orderDoc?.restaurantName} has been completed` :
+    isCompleted ? `Delivered from ${orderDoc?.restaurantName}` :
     isCancelled ? "Your order was cancelled" :
     isScheduled ? formatScheduledTime() :
-    status === "out_for_delivery" ? `Your order is on the way` :
-    status === "ready" ? `Your order is ready for pickup by delivery partner` :
-    status === "preparing" ? `${orderDoc?.restaurantName} is preparing your food` :
-    `${orderDoc?.restaurantName} will start preparing your order soon`;
+    status === "out_for_delivery" ? `${orderDoc?.restaurantName} · On the way` :
+    status === "picked_up"  ? "Rider heading to you" :
+    status === "ready"      ? "Waiting for rider pickup" :
+    status === "accepted"   ? `${riderInfo.name || "Rider"} is on the way to restaurant` :
+    status === "preparing"  ? `${orderDoc?.restaurantName} is cooking` :
+    `${orderDoc?.restaurantName} will confirm soon`;
 
   return (
     <View style={s.root}>
-      <StatusBar backgroundColor={statusColor} barStyle="light-content" />
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
-      {/* ΓöÇΓöÇΓöÇ HEADER ΓöÇΓöÇΓöÇ */}
-      <View style={[s.header, { backgroundColor: statusColor }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.headerBack}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
+      {/* ── FULL SCREEN MAP ── */}
+      <MapView
+        ref={mapRef}
+        style={s.map}
+        onMapReady={() => setMapReady(true)}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
+        initialRegion={
+          dest    ? { ...dest,    latitudeDelta: 0.04, longitudeDelta: 0.04 }
+          : riderLoc ? { ...riderLoc, latitudeDelta: 0.04, longitudeDelta: 0.04 }
+          : { latitude: 28.6139, longitude: 77.2090, latitudeDelta: 0.04, longitudeDelta: 0.04 }
+        }
+      >
+        {riderLoc && (
+          <Marker coordinate={riderLoc} anchor={{ x: 0.5, y: 0.5 }}>
+            <Image source={riderIcon} style={{ width: 36, height: 52 }} />
+          </Marker>
+        )}
+        {dest && (
+          <Marker coordinate={dest} anchor={{ x: 0.5, y: 1 }}>
+            <Image source={dropoffMarker} style={{ width: 36, height: 52 }} />
+          </Marker>
+        )}
+        {path.length > 1 && <Polyline coordinates={path} strokeColor={statusColor} strokeWidth={4} />}
+      </MapView>
+
+      {/* ── TOP BAR (floating over map) ── */}
+      <View style={[s.topBar, { paddingTop: (StatusBar.currentHeight ?? 44) + 8 }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={20} color={DARK} />
         </TouchableOpacity>
-        <View style={s.headerCenter}>
-          <Text style={s.headerTitle}>{headerMsg}</Text>
-          <Text style={s.headerSub} numberOfLines={1}>{headerSub}</Text>
-        </View>
-        <View style={{ width: 36 }} />
-      </View>
-
-      {/* ΓöÇΓöÇΓöÇ MAP ΓöÇΓöÇΓöÇ */}
-      <View style={s.mapWrap}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFill}
-          onMapReady={() => setMapReady(true)}
-          showsUserLocation={false}
-          showsMyLocationButton={false}
-          showsCompass={false}
-          toolbarEnabled={false}
-          initialRegion={
-            dest ? { ...dest, latitudeDelta: 0.04, longitudeDelta: 0.04 }
-            : riderLoc ? { ...riderLoc, latitudeDelta: 0.04, longitudeDelta: 0.04 }
-            : { latitude: 28.6139, longitude: 77.2090, latitudeDelta: 0.04, longitudeDelta: 0.04 }
-          }
-        >
-          {riderLoc && (
-            <Marker coordinate={riderLoc} anchor={{ x: 0.5, y: 0.5 }}>
-              <Image source={riderIcon} style={{ width: 36, height: 52 }} />
-            </Marker>
-          )}
-          {dest && (
-            <Marker coordinate={dest} anchor={{ x: 0.5, y: 1 }}>
-              <Image source={dropoffMarker} style={{ width: 36, height: 52 }} />
-            </Marker>
-          )}
-          {path.length > 1 && (
-            <Polyline coordinates={path} strokeColor={statusColor} strokeWidth={4} />
-          )}
-        </MapView>
-
-        {/* locate button */}
         {riderLoc && (
           <TouchableOpacity style={s.locateBtn}
-            onPress={() => mapRef.current?.animateToRegion({ ...riderLoc, latitudeDelta: 0.012, longitudeDelta: 0.012 }, 500)}>
+            onPress={() => mapRef.current?.animateToRegion({ ...riderLoc!, latitudeDelta: 0.012, longitudeDelta: 0.012 }, 500)}>
             <Ionicons name="locate" size={20} color={statusColor} />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* ΓöÇΓöÇΓöÇ BOTTOM CARD ΓöÇΓöÇΓöÇ */}
-      <View style={s.card}>
+      {/* ── BOTTOM SHEET ── */}
+      <View style={s.sheet}>
+        {/* drag handle */}
+        <View style={s.handle} />
 
-        {/* ΓöÇΓöÇ HORIZONTAL TABS ΓöÇΓöÇ */}
-        {!isCancelled && !isScheduled && (
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={s.tabsScroll}
-            contentContainerStyle={s.tabsContent}
-          >
-            {tabs.filter(tab => tab.key !== 'scheduled').map((tab, index) => {
-              const isActive = tab.key === status;
-              const tabIndex = tabs.findIndex(t => t.key === tab.key);
-              const currentIndex = tabs.findIndex(t => t.key === status);
-              const isPassed = tabIndex < currentIndex;
-              const tabColor = isActive ? statusColor : isPassed ? "#10B981" : "#E5E7EB";
-              const isLast = index === tabs.filter(t => t.key !== 'scheduled').length - 1;
-              
-              return (
-                <React.Fragment key={tab.key}>
-                  <View style={s.tabItem}>
-                    <View style={[s.tabIconWrap, { backgroundColor: tabColor }]}>
-                      <Ionicons 
-                        name={tab.icon as any} 
-                        size={14} 
-                        color="#fff" 
-                      />
+        {/* Status pill */}
+        <View style={[s.statusPill, { backgroundColor: `${statusColor}18` }]}>
+          <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[s.statusPillTxt, { color: statusColor }]}>{headerMsg}</Text>
+        </View>
+        <Text style={s.statusSub} numberOfLines={1}>{headerSub}</Text>
+
+        <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={{ flex: 1 }}>
+
+          {/* ── STEPPER ── */}
+          {!isCancelled && !isScheduled && (
+            <View style={s.stepperCard}>
+              {tabs.map((tab, index) => {
+                const isActive  = tab.key === status;
+                const tabIndex  = STATUS_ORDER.indexOf(tab.key);
+                const currIndex = STATUS_ORDER.indexOf(status);
+                const isPassed  = tabIndex < currIndex;
+                const isLast    = index === tabs.length - 1;
+                const dotBg     = isActive ? statusColor : isPassed ? "#10B981" : "#E5E7EB";
+                const lineColor = isPassed ? "#10B981" : "#E5E7EB";
+                return (
+                  <View key={tab.key} style={s.stepRow}>
+                    <View style={s.stepLeft}>
+                      <View style={[s.stepDot, { backgroundColor: dotBg }]}>
+                        <Ionicons name={tab.icon as any} size={11} color={isActive || isPassed ? "#fff" : "#aaa"} />
+                      </View>
+                      {!isLast && <View style={[s.stepLine, { backgroundColor: lineColor }]} />}
                     </View>
-                    <Text style={[
-                      s.tabLabel, 
-                      isActive && { color: statusColor, fontWeight: "700" },
-                      isPassed && { color: "#10B981", fontWeight: "600" }
-                    ]}>
-                      {tab.label}
-                    </Text>
-                    {isActive && <View style={[s.tabIndicator, { backgroundColor: statusColor }]} />}
+                    <View style={[s.stepBody, isActive && s.stepBodyActive, isActive && { borderLeftColor: statusColor }]}>
+                      <Text style={[s.stepLabel, isPassed && s.stepLabelDone, isActive && { color: statusColor, fontWeight: "700" }]}>
+                        {tab.label}
+                      </Text>
+                      {isActive && (
+                        <View style={[s.nowBadge, { backgroundColor: statusColor }]}>
+                          <Text style={s.nowBadgeTxt}>NOW</Text>
+                        </View>
+                      )}
+                      {isPassed && <Ionicons name="checkmark-circle" size={15} color="#10B981" />}
+                    </View>
                   </View>
-                  {!isLast && (
-                    <View style={[
-                      s.tabConnector,
-                      isPassed && { backgroundColor: "#10B981" }
-                    ]} />
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </ScrollView>
-        )}
+                );
+              })}
+            </View>
+          )}
 
-        {isScheduled && (
-          <View style={s.scheduledBox}>
-            <View style={s.scheduledIconWrap}>
+          {isScheduled && (
+            <View style={s.scheduledCard}>
               <Ionicons name="calendar" size={32} color="#9333EA" />
+              <Text style={s.scheduledTitle}>Scheduled Order</Text>
+              <Text style={s.scheduledTime}>{formatScheduledTime()}</Text>
+              <Text style={s.scheduledSub}>We'll start preparing at the scheduled time</Text>
             </View>
-            <Text style={s.scheduledTitle}>Order Scheduled</Text>
-            <Text style={s.scheduledTime}>{formatScheduledTime()}</Text>
-            <Text style={s.scheduledSub}>
-              We'll start preparing your order at the scheduled time
-            </Text>
-          </View>
-        )}
+          )}
 
-        {isCancelled && (
-          <View style={s.cancelledBox}>
-            <Ionicons name="close-circle" size={48} color="#FF3B30" />
-            <Text style={s.cancelledTitle}>Order Cancelled</Text>
-            <Text style={s.cancelledSub}>Your order has been cancelled</Text>
-          </View>
-        )}
+          {isCancelled && (
+            <View style={s.cancelledCard}>
+              <Ionicons name="close-circle" size={44} color="#FF3B30" />
+              <Text style={s.cancelledTitle}>Order Cancelled</Text>
+              <Text style={s.cancelledSub}>Your order has been cancelled</Text>
+            </View>
+          )}
 
-        <View style={s.sep} />
-
-        {/* ΓöÇΓöÇ RIDER ROW ΓöÇΓöÇ */}
-        {!isCompleted && !isCancelled && !isScheduled && (
-          <>
-            {riderId ? (
-              <View style={s.riderRow}>
-                <View style={s.riderLeft}>
-                  <View style={s.riderImgWrap}>
-                    <Image source={riderIcon} style={{ width: 32, height: 32 }} contentFit="contain" />
+          {/* ── RIDER CARD ── */}
+          {!isCompleted && !isCancelled && !isScheduled && (
+            <View style={s.riderCard}>
+              {riderId ? (
+                <View style={s.riderRow}>
+                  <View style={s.riderAvatar}>
+                    <Image source={riderIcon} style={{ width: 28, height: 28 }} contentFit="contain" />
                   </View>
-                  <View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={s.riderName}>{riderInfo.name}</Text>
-                    <Text style={s.riderSub}>Delivery Partner</Text>
+                    <Text style={s.riderRole}>Delivery Partner</Text>
                   </View>
+                  {!!riderInfo.phone && (
+                    <TouchableOpacity style={[s.callBtn, { backgroundColor: statusColor }]}
+                      onPress={() => Linking.openURL(`tel:${riderInfo.phone}`).catch(() => Alert.alert("Error", "Cannot make call"))}>
+                      <Ionicons name="call" size={16} color="#fff" />
+                      <Text style={s.callTxt}>Call</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                {!!riderInfo.phone && (
-                  <TouchableOpacity style={[s.callBtn, { backgroundColor: statusColor }]}
-                    onPress={() => Linking.openURL(`tel:${riderInfo.phone}`).catch(() => Alert.alert("Error","Cannot make call"))}>
-                    <Ionicons name="call" size={15} color="#fff" />
-                    <Text style={s.callTxt}>Call</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              <View style={s.noRiderRow}>
-                <Ionicons name="bicycle-outline" size={18} color={GRAY} />
-                <Text style={s.noRiderTxt}>Assigning a delivery partner...</Text>
-              </View>
-            )}
-            <View style={s.sep} />
-          </>
-        )}
-
-        {/* ΓöÇΓöÇ ORDER SUMMARY ΓöÇΓöÇ */}
-        <TouchableOpacity style={s.billToggle} onPress={() => setShowBill(v => !v)} activeOpacity={0.8}>
-          <View style={s.billToggleLeft}>
-            <Ionicons name="receipt-outline" size={16} color={DARK} />
-            <View style={{ marginLeft: 10 }}>
-              <Text style={s.billToggleTitle}>{orderDoc?.restaurantName}</Text>
-              <Text style={s.billToggleSub}>
-                {(orderDoc?.items?.length ?? 0)} item{(orderDoc?.items?.length ?? 0) !== 1 ? "s" : ""} ┬╖ Γé╣{(orderDoc?.grandTotal || 0).toFixed(0)}
-              </Text>
-            </View>
-          </View>
-          <Ionicons name={showBill ? "chevron-up" : "chevron-down"} size={18} color={GRAY} />
-        </TouchableOpacity>
-
-        {showBill && (
-          <ScrollView style={s.billBox} showsVerticalScrollIndicator={false} nestedScrollEnabled>
-            {(orderDoc?.items ?? []).map((item: any, i: number) => (
-              <View key={i} style={s.itemRow}>
-                <View style={s.itemQtyBox}>
-                  <Text style={s.itemQtyTxt}>{item.qty ?? item.quantity}</Text>
+              ) : (
+                <View style={s.noRiderRow}>
+                  <Ionicons name="bicycle-outline" size={18} color={GRAY} />
+                  <Text style={s.noRiderTxt}>Assigning a delivery partner...</Text>
                 </View>
-                <Text style={s.itemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={s.itemPrice}>Γé╣{((item.price ?? 0) * (item.qty ?? item.quantity ?? 1)).toFixed(0)}</Text>
-              </View>
-            ))}
-            <View style={s.billSep} />
-            <View style={s.billRow}><Text style={s.billLbl}>Item Total</Text><Text style={s.billVal}>Γé╣{(orderDoc?.subtotal||0).toFixed(0)}</Text></View>
-            <View style={s.billRow}>
-              <Text style={s.billLbl}>Delivery Fee</Text>
-              <Text style={[s.billVal, orderDoc?.deliveryFee===0 && {color:"#60b246"}]}>
-                {orderDoc?.deliveryFee===0 ? "FREE" : `Γé╣${(orderDoc?.deliveryFee||0).toFixed(0)}`}
-              </Text>
+              )}
             </View>
-            <View style={s.billRow}><Text style={s.billLbl}>Taxes & Charges</Text><Text style={s.billVal}>Γé╣{(orderDoc?.taxes||0).toFixed(0)}</Text></View>
-            <View style={[s.billRow, s.billTotalRow]}>
-              <Text style={s.billTotalLbl}>Bill Total</Text>
-              <Text style={s.billTotalVal}>Γé╣{(orderDoc?.grandTotal||0).toFixed(0)}</Text>
-            </View>
-          </ScrollView>
-        )}
+          )}
 
-        {/* ΓöÇΓöÇ RATE CTA ΓöÇΓöÇ */}
-        {isCompleted && !reviewed && !orderDoc?.reviewed && (
-          <TouchableOpacity style={[s.rateCta, { backgroundColor: statusColor }]} onPress={openReview} activeOpacity={0.9}>
-            <Text style={s.rateCtaTxt}>Rate your order</Text>
+          {/* ── BILL ── */}
+          <TouchableOpacity style={s.billHeader} onPress={() => setShowBill(v => !v)} activeOpacity={0.8}>
+            <View style={s.billHeaderLeft}>
+              <Ionicons name="receipt-outline" size={18} color={DARK} />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={s.billRestName} numberOfLines={1}>{orderDoc?.restaurantName}</Text>
+                <Text style={s.billMeta}>
+                  {(orderDoc?.items?.length ?? 0)} item{(orderDoc?.items?.length ?? 0) !== 1 ? "s" : ""} · ₹{(orderDoc?.grandTotal || 0).toFixed(0)}
+                </Text>
+              </View>
+            </View>
+            <View style={s.billChevron}>
+              <Ionicons name={showBill ? "chevron-up" : "chevron-down"} size={18} color={GRAY} />
+            </View>
           </TouchableOpacity>
-        )}
-        {(reviewed || orderDoc?.reviewed) && isCompleted && (
-          <View style={s.reviewedRow}>
-            <Ionicons name="checkmark-circle" size={16} color="#60b246" />
-            <Text style={s.reviewedTxt}>Thanks for your feedback!</Text>
-          </View>
-        )}
+
+          {showBill && (
+            <View style={s.billBody}>
+              {(orderDoc?.items ?? []).map((item: any, i: number) => (
+                <View key={i} style={s.itemRow}>
+                  <View style={s.itemQtyBox}><Text style={s.itemQtyTxt}>{item.qty ?? item.quantity ?? 1}</Text></View>
+                  <Text style={s.itemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={s.itemPrice}>₹{((item.price ?? 0) * (item.qty ?? item.quantity ?? 1)).toFixed(0)}</Text>
+                </View>
+              ))}
+              <View style={s.billDivider} />
+              <View style={s.billRow}><Text style={s.billLbl}>Item Total</Text><Text style={s.billVal}>₹{(orderDoc?.subtotal || 0).toFixed(0)}</Text></View>
+              <View style={s.billRow}>
+                <Text style={s.billLbl}>Delivery Fee</Text>
+                <Text style={[s.billVal, orderDoc?.deliveryFee === 0 && { color: "#10B981" }]}>
+                  {orderDoc?.deliveryFee === 0 ? "FREE" : `₹${(orderDoc?.deliveryFee || 0).toFixed(0)}`}
+                </Text>
+              </View>
+              {(orderDoc?.gst > 0 || orderDoc?.taxes > 0) && (
+                <View style={s.billRow}><Text style={s.billLbl}>Taxes & Charges</Text><Text style={s.billVal}>₹{(orderDoc?.gst ?? orderDoc?.taxes ?? 0).toFixed(0)}</Text></View>
+              )}
+              {orderDoc?.platformFee > 0 && <View style={s.billRow}><Text style={s.billLbl}>Platform Fee</Text><Text style={s.billVal}>₹{(orderDoc?.platformFee || 0).toFixed(0)}</Text></View>}
+              {orderDoc?.packagingFee > 0 && <View style={s.billRow}><Text style={s.billLbl}>Packaging</Text><Text style={s.billVal}>₹{(orderDoc?.packagingFee || 0).toFixed(0)}</Text></View>}
+              {orderDoc?.surgeCharge > 0 && <View style={s.billRow}><Text style={s.billLbl}>Surge Charge</Text><Text style={s.billVal}>₹{(orderDoc?.surgeCharge || 0).toFixed(0)}</Text></View>}
+              <View style={s.billTotalRow}>
+                <Text style={s.billTotalLbl}>Bill Total</Text>
+                <Text style={s.billTotalVal}>₹{(orderDoc?.grandTotal || 0).toFixed(0)}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Rate CTA */}
+          {isCompleted && !reviewed && !orderDoc?.reviewed && (
+            <TouchableOpacity style={[s.rateCta, { backgroundColor: statusColor }]} onPress={openReview} activeOpacity={0.9}>
+              <Ionicons name="star-outline" size={18} color="#fff" />
+              <Text style={s.rateCtaTxt}>Rate your order</Text>
+            </TouchableOpacity>
+          )}
+          {(reviewed || orderDoc?.reviewed) && isCompleted && (
+            <View style={s.reviewedRow}>
+              <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              <Text style={s.reviewedTxt}>Thanks for your feedback!</Text>
+            </View>
+          )}
+
+          <View style={{ height: 32 }} />
+        </ScrollView>
       </View>
 
-      {/* ΓöÇΓöÇΓöÇ REVIEW MODAL ΓöÇΓöÇΓöÇ */}
+      {/* ── REVIEW MODAL ── */}
       <Modal visible={reviewModal} transparent animationType="none" onRequestClose={closeReview}>
         <View style={s.overlay}>
           <Animated.View style={[s.modalCard, { transform: [{ scale: scaleA }], opacity: opacA }]}>
             {reviewed ? (
               <View style={s.successWrap}>
-                <Ionicons name="checkmark-circle" size={60} color="#60b246" />
+                <Ionicons name="checkmark-circle" size={60} color="#10B981" />
                 <Text style={s.mTitle}>Thank you!</Text>
                 <Text style={s.mSub}>Your feedback has been submitted.</Text>
                 <View style={s.starsRow}>
-                  {[1,2,3,4,5].map(n => (
-                    <Ionicons key={n} name={n<=rating?"star":"star-outline"} size={22} color={n<=rating?"#f59e0b":"#e2e8f0"} />
-                  ))}
+                  {[1,2,3,4,5].map(n => <Ionicons key={n} name={n<=rating?"star":"star-outline"} size={22} color={n<=rating?"#f59e0b":"#e2e8f0"} />)}
                 </View>
               </View>
             ) : (
               <>
-                <TouchableOpacity style={s.mClose} onPress={closeReview}>
-                  <Ionicons name="close" size={18} color="#aaa" />
-                </TouchableOpacity>
-                <View style={s.mIconWrap}>
-                  <Ionicons name="restaurant" size={28} color={statusColor} />
-                </View>
+                <TouchableOpacity style={s.mClose} onPress={closeReview}><Ionicons name="close" size={18} color="#aaa" /></TouchableOpacity>
+                <View style={s.mIconWrap}><Ionicons name="restaurant" size={28} color={statusColor} /></View>
                 <Text style={s.mTitle}>Rate your order</Text>
                 <Text style={s.mSub}>from {orderDoc?.restaurantName}</Text>
                 <View style={s.starsRow}>
@@ -507,14 +455,12 @@ export default function FoodTrackingScreen() {
                 </View>
                 {rating > 0 && <Text style={s.ratingLbl}>{["","Poor","Fair","Good","Great","Excellent!"][rating]}</Text>}
                 <TextInput
-                  style={s.reviewInput}
-                  placeholder="Tell us about your experience..."
-                  placeholderTextColor="#bbb"
-                  value={reviewText} onChangeText={setReviewText}
+                  style={s.reviewInput} placeholder="Tell us about your experience..."
+                  placeholderTextColor="#bbb" value={reviewText} onChangeText={setReviewText}
                   multiline maxLength={300}
                 />
-                <TouchableOpacity style={[s.submitBtn, { backgroundColor: statusColor }, submitting && {opacity:0.65}]} onPress={submitReview} disabled={submitting} activeOpacity={0.9}>
-                  <Text style={s.submitTxt}>{submitting ? "Submitting..." : "Submit"}</Text>
+                <TouchableOpacity style={[s.submitBtn, { backgroundColor: statusColor }, submitting && { opacity: 0.65 }]} onPress={submitReview} disabled={submitting} activeOpacity={0.9}>
+                  <Text style={s.submitTxt}>{submitting ? "Submitting..." : "Submit Review"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={closeReview} style={{ marginTop: 14 }}>
                   <Text style={s.skipTxt}>Skip for now</Text>
@@ -532,321 +478,191 @@ const s = StyleSheet.create({
   root:   { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  // ΓöÇΓöÇ header ΓöÇΓöÇ
-  header: {
-    backgroundColor: ORANGE,
-    paddingTop: Platform.OS === "ios" ? 52 : (StatusBar.currentHeight ?? 24) + 8,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headerBack: { padding: 4, marginRight: 8 },
-  headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: "#fff" },
-  headerSub:   { fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
+  // full-screen map
+  map: { ...StyleSheet.absoluteFillObject },
 
-  // ΓöÇΓöÇ map ΓöÇΓöÇ
-  mapWrap: { height: SH * 0.42, backgroundColor: "#e8e8e8" },
+  // floating top bar
+  topBar: {
+    position: "absolute", top: 0, left: 0, right: 0,
+    flexDirection: "row", justifyContent: "space-between",
+    paddingHorizontal: 16, zIndex: 10,
+  },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "#fff", justifyContent: "center", alignItems: "center",
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 6,
+  },
   locateBtn: {
-    position: "absolute", bottom: 16, right: 16,
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: "#fff",
-    justifyContent: "center", alignItems: "center",
-    shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 8,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "#fff", justifyContent: "center", alignItems: "center",
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 6,
   },
 
-  // ΓöÇΓöÇ bottom card ΓöÇΓöÇ
-  card: {
-    flex: 1,
+  // bottom sheet
+  sheet: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    height: SH * 0.56,
     backgroundColor: "#fff",
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === "ios" ? 30 : 16,
+    paddingTop: 10,
+    shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 20,
+    shadowOffset: { width: 0, height: -4 }, elevation: 20,
+  },
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: "#E0E0E0", alignSelf: "center", marginBottom: 14,
   },
 
-  sep: { height: 1, backgroundColor: "#f0f0f0", marginVertical: 12 },
+  // status
+  statusPill: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, marginBottom: 4,
+  },
+  statusDot:    { width: 8, height: 8, borderRadius: 4 },
+  statusPillTxt:{ fontSize: 14, fontWeight: "800" },
+  statusSub:    { fontSize: 12, color: GRAY, marginBottom: 14, fontWeight: "500" },
 
-  // tabs
-  tabsScroll: {
-    marginBottom: 6,
-    marginTop: 6,
+  // stepper card
+  stepperCard: {
+    backgroundColor: "#FAFAFA", borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginBottom: 12,
+    borderWidth: 1, borderColor: "#F0F0F0",
   },
-  tabsContent: {
-    paddingHorizontal: 2,
-    alignItems: "center",
+  stepRow:  { flexDirection: "row", alignItems: "flex-start" },
+  stepLeft: { alignItems: "center", width: 30 },
+  stepDot:  { width: 26, height: 26, borderRadius: 13, justifyContent: "center", alignItems: "center" },
+  stepLine: { width: 2, flex: 1, minHeight: 12, marginVertical: 2 },
+  stepBody: {
+    flex: 1, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10, paddingVertical: 5,
+    marginBottom: 2, minHeight: 34,
+    borderLeftWidth: 0,
   },
-  tabItem: {
-    alignItems: "center",
-    minWidth: 68,
-    paddingVertical: 6,
+  stepBodyActive: {
+    backgroundColor: "#fff", borderRadius: 10,
+    borderLeftWidth: 3,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 }, elevation: 2,
   },
-  tabIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  tabLabel: {
-    fontSize: 9.5,
-    color: "#9CA3AF",
-    textAlign: "center",
-    fontWeight: "600",
-    lineHeight: 12,
-  },
-  tabIndicator: {
-    width: 22,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 5,
-  },
-  tabConnector: {
-    width: 28,
-    height: 2.5,
-    backgroundColor: "#E5E7EB",
-    marginTop: 25,
-    borderRadius: 2,
-  },
+  stepLabel:     { fontSize: 12, fontWeight: "600", color: "#9CA3AF", flex: 1 },
+  stepLabelDone: { color: "#10B981" },
+  nowBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  nowBadgeTxt:   { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
 
-  // cancelled
-  cancelledBox: {
-    alignItems: "center",
-    paddingVertical: 28,
-    backgroundColor: "#FFF5F5",
-    marginVertical: 8,
+  // scheduled / cancelled
+  scheduledCard: {
+    alignItems: "center", paddingVertical: 28, backgroundColor: "#FAF5FF",
+    borderRadius: 16, marginBottom: 12, gap: 6,
+    borderWidth: 1, borderColor: "#E9D5FF",
   },
-  cancelledTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#FF3B30",
-    marginTop: 12,
+  scheduledTitle: { fontSize: 16, fontWeight: "700", color: "#9333EA" },
+  scheduledTime:  { fontSize: 14, fontWeight: "700", color: DARK },
+  scheduledSub:   { fontSize: 12, color: GRAY, textAlign: "center", paddingHorizontal: 20 },
+  cancelledCard: {
+    alignItems: "center", paddingVertical: 24, backgroundColor: "#FFF5F5",
+    borderRadius: 16, marginBottom: 12, gap: 6,
   },
-  cancelledSub: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 6,
-  },
-
-  // scheduled
-  scheduledBox: {
-    alignItems: "center",
-    paddingVertical: 32,
-    backgroundColor: "#FAF5FF",
-    marginVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-  },
-  scheduledIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#F3E8FF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: "#E9D5FF",
-  },
-  scheduledTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#9333EA",
-    marginBottom: 8,
-  },
-  scheduledTime: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  scheduledSub: {
-    fontSize: 13,
-    color: "#6B7280",
-    textAlign: "center",
-    paddingHorizontal: 24,
-    lineHeight: 19,
-  },
+  cancelledTitle: { fontSize: 16, fontWeight: "700", color: "#FF3B30" },
+  cancelledSub:   { fontSize: 12, color: GRAY },
 
   // rider
-  riderRow: {
-    flexDirection: "row", 
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FAFAFA",
-    padding: 14,
-    marginVertical: 4,
+  riderCard: {
+    backgroundColor: "#FAFAFA", borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginBottom: 12, borderWidth: 1, borderColor: "#F0F0F0",
   },
-  riderLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  riderImgWrap: {
-    width: 52, 
-    height: 52, 
-    borderRadius: 26,
-    backgroundColor: "#FFF5EE",
-    justifyContent: "center", 
-    alignItems: "center",
-    borderWidth: 2, 
-    borderColor: "#FFE0C8",
+  riderRow:   { flexDirection: "row", alignItems: "center" },
+  riderAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "#FFF5EE", justifyContent: "center", alignItems: "center",
+    borderWidth: 2, borderColor: "#FFE0C8",
   },
-  riderName: { fontSize: 15, fontWeight: "700", color: DARK },
-  riderSub:  { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  riderName: { fontSize: 14, fontWeight: "700", color: DARK },
+  riderRole: { fontSize: 11, color: GRAY, marginTop: 2 },
   callBtn: {
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 6,
-    paddingVertical: 10, 
-    paddingHorizontal: 20, 
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingVertical: 9, paddingHorizontal: 16, borderRadius: 22,
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
-  callTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  callTxt:    { color: "#fff", fontWeight: "700", fontSize: 13 },
+  noRiderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  noRiderTxt: { fontSize: 12, color: GRAY, fontWeight: "500" },
 
-  noRiderRow: {
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: "#F9FAFB",
-    marginVertical: 4,
+  // bill
+  billHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "#FAFAFA", borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginBottom: 4, borderWidth: 1, borderColor: "#F0F0F0",
   },
-  noRiderTxt: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
-
-  // bill toggle
-  billToggle: {
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "space-between",
-    paddingVertical: 4,
+  billHeaderLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
+  billRestName:   { fontSize: 14, fontWeight: "700", color: DARK },
+  billMeta:       { fontSize: 11, color: GRAY, marginTop: 2 },
+  billChevron:    { marginLeft: 8 },
+  billBody: {
+    backgroundColor: "#FAFAFA", borderRadius: 16,
+    paddingHorizontal: 14, paddingTop: 4, paddingBottom: 12,
+    marginBottom: 12, borderWidth: 1, borderColor: "#F0F0F0",
   },
-  billToggleLeft: { flexDirection: "row", alignItems: "center" },
-  billToggleTitle: { fontSize: 15, fontWeight: "700", color: DARK },
-  billToggleSub:   { fontSize: 12, color: "#6B7280", marginTop: 2 },
-
-  billBox: { maxHeight: 220, marginTop: 12, paddingHorizontal: 4 },
-  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 10 },
-  itemQtyBox: {
-    width: 24, 
-    height: 24, 
-    borderWidth: 1.5, 
-    borderColor: ORANGE,
-    justifyContent: "center", 
-    alignItems: "center",
-    backgroundColor: "#FFF5EE",
-  },
-  itemQtyTxt: { fontSize: 11, fontWeight: "700", color: ORANGE },
+  itemRow:    { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 10 },
+  itemQtyBox: { width: 22, height: 22, borderWidth: 1.5, borderColor: ORANGE, justifyContent: "center", alignItems: "center", backgroundColor: "#FFF5EE", borderRadius: 4 },
+  itemQtyTxt: { fontSize: 10, fontWeight: "700", color: ORANGE },
   itemName:   { flex: 1, fontSize: 13, color: DARK, fontWeight: "500" },
   itemPrice:  { fontSize: 13, fontWeight: "700", color: DARK },
-  billSep:    { height: 1, backgroundColor: "#E5E7EB", marginVertical: 10 },
-  billRow:    { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  billLbl:    { fontSize: 13, color: "#6B7280", fontWeight: "500" },
-  billVal:    { fontSize: 13, color: DARK, fontWeight: "600" },
-  billTotalRow: { 
-    borderTopWidth: 1.5, 
-    borderTopColor: "#E5E7EB", 
-    paddingTop: 10, 
-    backgroundColor: "#FAFAFA",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 8,
-  },
-  billTotalLbl: { fontSize: 15, fontWeight: "700", color: DARK },
-  billTotalVal: { fontSize: 15, fontWeight: "800", color: DARK },
+  billDivider:{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 8 },
+  billRow:    { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  billLbl:    { fontSize: 12, color: GRAY, fontWeight: "500" },
+  billVal:    { fontSize: 12, color: DARK, fontWeight: "600" },
+  billTotalRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 8, marginTop: 4 },
+  billTotalLbl: { fontSize: 14, fontWeight: "700", color: DARK },
+  billTotalVal: { fontSize: 14, fontWeight: "800", color: DARK },
 
-  // rate cta
+  // rate
   rateCta: {
-    marginTop: 16,
-    paddingVertical: 15, 
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    marginTop: 4, paddingVertical: 14, borderRadius: 14,
+    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 5,
   },
   rateCtaTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
   reviewedRow: {
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "center", 
-    gap: 8,
-    marginTop: 16, 
-    backgroundColor: "#F0FDF4", 
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "#BBF7D0",
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    marginTop: 4, backgroundColor: "#F0FDF4", paddingVertical: 12, borderRadius: 14,
+    borderWidth: 1, borderColor: "#BBF7D0",
   },
-  reviewedTxt: { color: "#16A34A", fontWeight: "700", fontSize: 14 },
+  reviewedTxt: { color: "#16A34A", fontWeight: "700", fontSize: 13 },
 
   // modal
-  overlay: {
-    flex: 1, 
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 24,
-  },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
   modalCard: {
-    backgroundColor: "#fff", 
-    padding: 32,
-    width: "100%", 
-    alignItems: "center",
-    shadowColor: "#000", 
-    shadowOpacity: 0.25, 
-    shadowRadius: 30, 
-    shadowOffset: { width: 0, height: 10 }, 
-    elevation: 20,
+    backgroundColor: "#fff", padding: 32, width: "100%", alignItems: "center",
+    borderRadius: 24, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 30,
+    shadowOffset: { width: 0, height: 10 }, elevation: 20,
   },
-  mClose: { position: "absolute", top: 18, right: 18, padding: 8 },
-  mIconWrap: {
-    width: 68, 
-    height: 68, 
-    borderRadius: 34,
-    backgroundColor: "#FFF5EE", 
-    justifyContent: "center", 
-    alignItems: "center", 
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: "#FFE0C8",
-  },
-  mTitle: { fontSize: 22, fontWeight: "800", color: DARK, marginBottom: 6 },
-  mSub:   { fontSize: 14, color: "#6B7280", marginBottom: 24 },
-  starsRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  mClose:    { position: "absolute", top: 18, right: 18, padding: 8 },
+  mIconWrap: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#FFF5EE", justifyContent: "center", alignItems: "center", marginBottom: 16, borderWidth: 2, borderColor: "#FFE0C8" },
+  mTitle:    { fontSize: 22, fontWeight: "800", color: DARK, marginBottom: 6 },
+  mSub:      { fontSize: 14, color: GRAY, marginBottom: 24 },
+  starsRow:  { flexDirection: "row", gap: 8, marginBottom: 10 },
   ratingLbl: { fontSize: 14, fontWeight: "700", color: "#f59e0b", marginBottom: 16 },
   reviewInput: {
-    width: "100%", 
-    borderWidth: 1.5, 
-    borderColor: "#E5E7EB",
-    padding: 16, 
-    fontSize: 14, 
-    color: DARK,
-    minHeight: 100, 
-    textAlignVertical: "top", 
-    marginBottom: 20, 
-    marginTop: 8,
-    backgroundColor: "#FAFAFA",
+    width: "100%", borderWidth: 1.5, borderColor: "#E5E7EB", padding: 16,
+    fontSize: 14, color: DARK, minHeight: 100, textAlignVertical: "top",
+    marginBottom: 20, marginTop: 8, backgroundColor: "#FAFAFA", borderRadius: 12,
   },
   submitBtn: {
-    width: "100%",
-    paddingVertical: 16, 
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    width: "100%", paddingVertical: 16, alignItems: "center", borderRadius: 14,
+    shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
-  submitTxt: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  skipTxt:   { fontSize: 14, color: "#9CA3AF", fontWeight: "500" },
+  submitTxt:   { color: "#fff", fontWeight: "700", fontSize: 16 },
+  skipTxt:     { fontSize: 14, color: "#9CA3AF", fontWeight: "500" },
   successWrap: { alignItems: "center", paddingVertical: 24 },
 });

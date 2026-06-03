@@ -46,7 +46,7 @@ export default function FoodOrderBillScreen() {
       const timeStr = order.createdAt?.toDate?.()?.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) ?? '';
 
       const itemsHtml = (order.items ?? []).map((item: any, i: number) => `
-        <tr style="background:${i % 2 === 0 ? '#fff' : '#fafafa'};">
+        <tr style="background-color:${i % 2 === 0 ? '#fff' : '#fafafa'};">
           <td style="padding:10px 12px;">
             <div style="font-weight:600;font-size:13px;color:#282C3F;">${item.name}</div>
             ${item.variant ? `<div style="font-size:11px;color:#93959F;margin-top:2px;">${item.variant}</div>` : ''}
@@ -62,23 +62,23 @@ export default function FoodOrderBillScreen() {
         <html><head><meta charset="utf-8"/>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f4f6f9; color: #282C3F; padding: 30px 20px; }
-          .page { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.10); }
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f6f9; color: #282C3F; padding: 30px 20px; }
+          .page { max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.10); }
 
           /* Header */
-          .header { background: linear-gradient(135deg, #FC8019 0%, #e86c00 100%); padding: 32px 28px 24px; }
+          .header { background-color: #FC8019; background-image: linear-gradient(135deg, #FC8019 0%, #e86c00 100%); padding: 32px 28px 24px; }
           .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
           .brand { color: #fff; }
           .brand-name { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; }
           .brand-sub { font-size: 12px; opacity: 0.85; margin-top: 2px; }
-          .invoice-label { background: rgba(255,255,255,0.2); color: #fff; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+          .invoice-label { background-color: rgba(255,255,255,0.2); color: #fff; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
           .header-bottom { margin-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
           .restaurant-name { color: #fff; font-size: 16px; font-weight: 700; }
           .order-meta { text-align: right; color: rgba(255,255,255,0.9); font-size: 12px; line-height: 1.6; }
 
           /* Status Banner */
-          .status-banner { background: #f0fdf4; border-left: 4px solid #3d9b6d; margin: 20px 28px; padding: 12px 16px; border-radius: 0 8px 8px 0; display: flex; align-items: center; gap: 10px; }
-          .status-dot { width: 10px; height: 10px; background: #3d9b6d; border-radius: 50%; flex-shrink: 0; }
+          .status-banner { background-color: #f0fdf4; border-left: 4px solid #3d9b6d; margin: 20px 28px; padding: 12px 16px; border-radius: 0 8px 8px 0; display: flex; align-items: center; gap: 10px; }
+          .status-dot { width: 10px; height: 10px; background-color: #3d9b6d; border-radius: 50%; flex-shrink: 0; }
           .status-text { font-size: 13px; font-weight: 700; color: #3d9b6d; }
 
           /* Section */
@@ -87,30 +87,30 @@ export default function FoodOrderBillScreen() {
 
           /* Items Table */
           table { width: 100%; border-collapse: collapse; border-radius: 10px; overflow: hidden; border: 1px solid #f0f0f0; }
-          thead tr { background: #fff8f3; }
+          thead tr { background-color: #fff8f3; }
           thead th { padding: 10px 12px; font-size: 11px; font-weight: 700; color: #FC8019; letter-spacing: 0.8px; text-transform: uppercase; }
           thead th:last-child { text-align: right; }
           thead th:nth-child(2) { text-align: center; }
 
           /* Bill Summary */
-          .bill-box { background: #fafafa; border: 1px solid #f0f0f0; border-radius: 10px; overflow: hidden; }
+          .bill-box { background-color: #fafafa; border: 1px solid #f0f0f0; border-radius: 10px; overflow: hidden; }
           .bill-row { display: flex; justify-content: space-between; padding: 9px 16px; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
           .bill-row:last-child { border-bottom: none; }
           .bill-label { color: #93959F; }
           .bill-value { font-weight: 600; color: #282C3F; }
           .bill-free { font-weight: 600; color: #3d9b6d; }
-          .bill-total-row { display: flex; justify-content: space-between; padding: 14px 16px; background: #fff8f3; border-top: 2px solid #FC8019; }
+          .bill-total-row { display: flex; justify-content: space-between; padding: 14px 16px; background-color: #fff8f3; border-top: 2px solid #FC8019; }
           .bill-total-label { font-size: 15px; font-weight: 800; color: #282C3F; }
           .bill-total-value { font-size: 17px; font-weight: 800; color: #FC8019; }
 
           /* Payment */
-          .payment-badge { display: inline-flex; align-items: center; gap: 6px; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; color: #475569; }
+          .payment-badge { display: inline-flex; align-items: center; gap: 6px; background-color: #f1f5f9; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; color: #475569; }
 
           /* Address */
-          .address-box { background: #fafafa; border: 1px solid #f0f0f0; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #555; line-height: 1.6; }
+          .address-box { background-color: #fafafa; border: 1px solid #f0f0f0; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #555; line-height: 1.6; }
 
           /* Footer */
-          .footer { background: #282C3F; padding: 18px 28px; text-align: center; }
+          .footer { background-color: #282C3F; padding: 18px 28px; text-align: center; }
           .footer-text { color: rgba(255,255,255,0.6); font-size: 11px; line-height: 1.8; }
           .footer-brand { color: #FC8019; font-weight: 700; font-size: 13px; }
         </style>

@@ -25,10 +25,18 @@ import auth from "@react-native-firebase/auth";
 
 const { width: SW } = Dimensions.get("window");
 
-const ORANGE = "#FC8019";
-const DARK   = "#1C1C2E";
-const GRAY   = "#8A8A9A";
-const GREEN  = "#2ECC71";
+const PRIMARY = "#317959";
+const SECONDARY = "#788F7E";
+const MUTED_GREEN = "#78907E";
+const BACKGROUND = "#FDFDFD";
+const SURFACE = "#EFF1F0";
+const BORDER = "#D3D7D1";
+const TEXT = "#4F4335";
+const ACCENT = "#B88F58";
+const ORANGE = ACCENT;
+const DARK = TEXT;
+const GRAY = "#6E6D66";
+const GREEN = PRIMARY;
 
 const profileLogoMap: Record<string, any> = {
   grocery: require("../../assets/profile_logo/grocery_logo.png"),
@@ -44,6 +52,39 @@ const FILTER_CHIPS: FilterChip[] = [
   { id: "budget",   label: "Budget",      emoji: "💰" },
   { id: "new",      label: "New",         emoji: "✨" },
 ];
+
+type ActiveFoodOrder = {
+  id: string;
+  orderId?: string;
+  restaurantName?: string;
+  status?: string;
+  isScheduled?: boolean;
+  createdAt?: any;
+};
+
+const ORDER_STATUS: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  pending:          { label: "Order placed", color: "#b45309", bg: "#fffbeb", icon: "time-outline" },
+  accepted:         { label: "Accepted",     color: "#ea580c", bg: "#fff7ed", icon: "checkmark-circle-outline" },
+  preparing:        { label: "Preparing",    color: "#c2410c", bg: "#fff7ed", icon: "restaurant-outline" },
+  ready:            { label: "Ready",        color: "#0e7490", bg: "#ecfeff", icon: "checkmark-circle-outline" },
+  out_for_delivery: { label: "On the way",   color: "#1d4ed8", bg: "#eff6ff", icon: "bicycle-outline" },
+  scheduled:        { label: "Scheduled",    color: "#6d28d9", bg: "#f5f3ff", icon: "calendar-outline" },
+};
+
+const ACTIVE_ORDER_STATUSES = new Set([
+  "pending",
+  "accepted",
+  "preparing",
+  "ready",
+  "out_for_delivery",
+  "scheduled",
+]);
+
+const getOrderStatusMeta = (order?: ActiveFoodOrder | null) => {
+  const raw = (order?.status ?? "pending").toLowerCase().trim();
+  const key = order?.isScheduled && (raw === "pending" || raw === "scheduled") ? "scheduled" : raw;
+  return ORDER_STATUS[key] ?? { label: raw || "Order placed", color: "#64748b", bg: "#f8fafc", icon: "ellipse-outline" };
+};
 
 const FOOD_IMAGES = [
   require("../../assets/food/burger.png"),
@@ -162,6 +203,7 @@ export default function FoodScreen() {
   const [vegRestaurantIds,     setVegRestaurantIds]     = useState<Set<string>>(new Set());
   const [nonVegRestaurantIds,  setNonVegRestaurantIds]  = useState<Set<string>>(new Set());
   const [rejectionModal, setRejectionModal] = useState<{ visible: boolean; restaurantName: string }>({ visible: false, restaurantName: "" });
+  const [activeFoodOrder, setActiveFoodOrder] = useState<ActiveFoodOrder | null>(null);
   // Track which companies have menu_phases role
   const [menuPhasesCompanyIds, setMenuPhasesCompanyIds] = useState<Set<string>>(new Set());
 
@@ -223,23 +265,56 @@ export default function FoodScreen() {
 
   useEffect(() => {
     const user = auth().currentUser;
-    if (!user) return;
-    const unsub = firestore().collection("restaurant_Orders").where("userId", "==", user.uid)
-      .onSnapshot(snap => {
-        if (!snap) return;
-        snap.docChanges().forEach(change => {
-          const data = change.doc.data();
-          if (change.type === "modified" && (data?.status ?? "").toLowerCase().trim() === "rejected") {
-            const name = data?.restaurantName ?? "the restaurant";
-            rejScaleAnim.setValue(0.85); rejOpacAnim.setValue(0);
-            setRejectionModal({ visible: true, restaurantName: name });
-            Animated.parallel([
-              Animated.spring(rejScaleAnim, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }),
-              Animated.timing(rejOpacAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
-            ]).start();
-          }
-        });
-      }, err => console.error(err));
+    if (!user) {
+      setActiveFoodOrder(null);
+      return;
+    }
+    let hasServerSnapshot = false;
+    const query = firestore().collection("restaurant_Orders").where("userId", "==", user.uid);
+
+    const processSnapshot = (snap: any) => {
+      if (!snap) return;
+      const orders = snap.docs
+        .map((d: any) => ({ id: d.id, ...(d.data() as any) } as ActiveFoodOrder))
+        .sort((a, b) => (b.createdAt?.toDate?.()?.getTime?.() ?? 0) - (a.createdAt?.toDate?.()?.getTime?.() ?? 0));
+      const activeOrder = orders.find(order => {
+        const status = (order.status ?? "").toLowerCase().trim();
+        return ACTIVE_ORDER_STATUSES.has(status);
+      }) ?? null;
+      setActiveFoodOrder(activeOrder);
+
+      snap.docChanges().forEach((change: any) => {
+        const data = change.doc.data();
+        if (change.type === "modified" && (data?.status ?? "").toLowerCase().trim() === "rejected") {
+          const name = data?.restaurantName ?? "the restaurant";
+          rejScaleAnim.setValue(0.85); rejOpacAnim.setValue(0);
+          setRejectionModal({ visible: true, restaurantName: name });
+          Animated.parallel([
+            Animated.spring(rejScaleAnim, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }),
+            Animated.timing(rejOpacAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
+          ]).start();
+        }
+      });
+    };
+
+    const loadServerSnapshot = async () => {
+      try {
+        const serverSnap = await query.get({ source: "server" });
+        hasServerSnapshot = true;
+        processSnapshot(serverSnap);
+      } catch (err) {
+        console.error("FoodScreen server order fetch failed:", err);
+      }
+    };
+    loadServerSnapshot();
+
+    const unsub = query.onSnapshot({ includeMetadataChanges: true }, snap => {
+      if (!snap) return;
+      if (!hasServerSnapshot && snap.metadata?.fromCache) return;
+      hasServerSnapshot = true;
+      processSnapshot(snap);
+    }, err => console.error(err));
+
     return () => unsub();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -420,14 +495,10 @@ export default function FoodScreen() {
     return list;
   }, [restaurants, selectedFilter, selectedCategoryId, categoryRestaurantIds, vegFilter, vegRestaurantIds]);
 
+  const activeOrderStatus = getOrderStatusMeta(activeFoodOrder);
+
   return (
     <View style={s.root}>
-      {/* foodScreenbg.png — full screen background, always visible */}
-      <Image
-        source={require("../../assets/foodScreenbg.png")}
-        style={StyleSheet.absoluteFillObject}
-        contentFit="cover"
-      />
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* ── Loading Modal ── */}
@@ -499,7 +570,7 @@ export default function FoodScreen() {
                 onPress={() => setPendingVegFilter('veg')}
               >
                 <View style={[s.vegOptionIcon2, { backgroundColor: "#DCFCE7", borderColor: GREEN }]}>
-                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: GREEN, borderRadius: 3, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" }}>
+                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: GREEN, borderRadius: 3, backgroundColor: BACKGROUND, justifyContent: "center", alignItems: "center" }}>
                     <View style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN }} />
                   </View>
                 </View>
@@ -519,7 +590,7 @@ export default function FoodScreen() {
                 onPress={() => setPendingVegFilter('nonveg')}
               >
                 <View style={[s.vegOptionIcon2, { backgroundColor: "#FFE4E4", borderColor: "#cc2200" }]}>
-                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: "#cc2200", borderRadius: 3, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" }}>
+                  <View style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: "#cc2200", borderRadius: 3, backgroundColor: BACKGROUND, justifyContent: "center", alignItems: "center" }}>
                     <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 9, borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: "#cc2200", transform: [{ rotate: "180deg" }] }} />
                   </View>
                 </View>
@@ -607,13 +678,18 @@ export default function FoodScreen() {
           {/* Header UI overlaid on hero */}
           <View style={[s.headerUI, { top: insets.top + 12 }]}>
             <View style={s.heroTopRow}>
-              <TouchableOpacity style={s.locationPill} activeOpacity={0.8}
-                onPress={() => navigation.navigate("LocationSelector", { fromScreen: "Food" })}>
-                <Ionicons name="location-sharp" size={15} color={ORANGE} />
+              <TouchableOpacity
+                style={s.locationPill}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                onPress={() => navigation.navigate("LocationSelector", { fromScreen: "Food" })}
+              >
+                <Ionicons name="location-sharp" size={14} color={DARK} />
                 <Text style={s.locationTxt} numberOfLines={1}>
                   {location?.address || "Set delivery location"}
                 </Text>
-                <Ionicons name="chevron-down" size={13} color="rgba(255,255,255,0.8)" />
+                <Ionicons name="chevron-down" size={12} color={DARK} />
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => navigation.navigate("Profile")} 
@@ -865,25 +941,77 @@ export default function FoodScreen() {
               );
             })
           )}
-          <View style={{ height: 100 }} />
+          <View style={{ height: activeFoodOrder ? 154 : 100 }} />
         </View>
       </ScrollView>
+
+      {activeFoodOrder && (
+        <TouchableOpacity
+          style={[s.orderStatusPill, { bottom: insets.bottom + 14, backgroundColor: activeOrderStatus.bg }]}
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate("FoodTracking", { orderId: activeFoodOrder.orderId ?? activeFoodOrder.id })}
+        >
+          <View style={[s.orderStatusIcon, { backgroundColor: activeOrderStatus.color }]}>
+            <Ionicons name={activeOrderStatus.icon as any} size={18} color="#fff" />
+          </View>
+          <View style={s.orderStatusTextWrap}>
+            <Text style={s.orderStatusTitle} numberOfLines={1}>
+              {activeOrderStatus.label}
+            </Text>
+            <Text style={s.orderStatusSub} numberOfLines={1}>
+              {activeFoodOrder.restaurantName || "Your food order"} · Tap to track
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={activeOrderStatus.color} />
+        </TouchableOpacity>
+      )}
 
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F0F8F8" },
+  root: { flex: 1, backgroundColor: BACKGROUND },
+
+  orderStatusPill: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    minHeight: 56,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(252,128,25,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 12,
+    zIndex: 500,
+  },
+  orderStatusIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  orderStatusTextWrap: { flex: 1, minWidth: 0 },
+  orderStatusTitle: { fontSize: 15, fontWeight: "800", color: DARK },
+  orderStatusSub: { fontSize: 12, color: "#64748b", marginTop: 2, fontWeight: "600" },
 
   // ── Modals ──
   modalBg:  { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 },
-  loadCard: { backgroundColor: "#fff", borderRadius: 24, padding: 32, alignItems: "center", width: "85%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
+  loadCard: { backgroundColor: SURFACE, borderRadius: 24, padding: 32, alignItems: "center", width: "85%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
   loadImg:  { width: 140, height: 140, borderRadius: 16, marginBottom: 20 },
   loadTitle:{ fontSize: 20, fontWeight: "700", color: DARK, marginBottom: 6 },
   loadSub:  { fontSize: 14, color: GRAY },
 
-  vegCard:       { backgroundColor: "#fff", borderRadius: 24, width: "88%", maxWidth: 380, shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 20, overflow: "hidden" },
+  vegCard:       { backgroundColor: SURFACE, borderRadius: 24, width: "88%", maxWidth: 380, shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 20, overflow: "hidden" },
   vegBand:       { paddingTop: 18, paddingBottom: 14, paddingHorizontal: 18, position: "relative" },
   vegBandImg:    { width: 70, height: 70, marginBottom: 10 },
   vegBandTitle:  { fontSize: 17, fontWeight: "800", color: "#fff", letterSpacing: -0.3 },
@@ -901,21 +1029,21 @@ const s = StyleSheet.create({
   vegHeaderImgGlow: { position: "absolute", width: 50, height: 50, borderRadius: 25, backgroundColor: ORANGE, opacity: 0.15 },
   vegSubtitle:   { fontSize: 11, color: GRAY, paddingHorizontal: 18, marginBottom: 10 },
   vegOptionsWrap:{ gap: 7, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 },
-  vegOption:     { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#fafafa", borderWidth: 1.5, borderColor: "#efefef" },
+  vegOption:     { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: SURFACE, borderWidth: 1.5, borderColor: BORDER },
   vegOptionActive: { backgroundColor: "#FFF8F0", borderColor: ORANGE },
   vegOptionActiveNonVeg: { backgroundColor: "#FFF5F5", borderColor: "#cc2200" },
   vegOptionContent: { flexDirection: "row", alignItems: "center", gap: 12 },
   vegOptionIcon2: { width: 40, height: 40, borderRadius: 11, justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#e5e5e5" },
-  vegOptionIconWrap: { width: 40, height: 40, borderRadius: 11, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#e5e5e5" },
+  vegOptionIconWrap: { width: 40, height: 40, borderRadius: 11, backgroundColor: BACKGROUND, justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: BORDER },
   vegOptionIconWrapActive: { borderColor: ORANGE, backgroundColor: "#FFF8F0" },
-  vegOptionIconWrapActiveVeg: { borderColor: GREEN, backgroundColor: "#f0fdf4" },
+  vegOptionIconWrapActiveVeg: { borderColor: GREEN, backgroundColor: SURFACE },
   vegOptionIconWrapActiveNonVeg: { borderColor: "#cc2200", backgroundColor: "#FFF5F5" },
   vegOptionIcon: { fontSize: 20 },
   vegOptionText: { fontSize: 13, color: DARK, fontWeight: "700", marginBottom: 2 },
   vegOptionTextActive: { color: ORANGE },
   vegOptionTextActiveNonVeg: { color: "#cc2200" },
   vegOptionDesc: { fontSize: 11, color: GRAY, fontWeight: "400" },
-  radioOuter:    { width: 19, height: 19, borderRadius: 9.5, borderWidth: 2, borderColor: "#d5d5d5", justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
+  radioOuter:    { width: 19, height: 19, borderRadius: 9.5, borderWidth: 2, borderColor: BORDER, justifyContent: "center", alignItems: "center", backgroundColor: BACKGROUND },
   radioOuterActive: { borderColor: GREEN },
   radioOuterActiveNonVeg: { borderColor: "#cc2200" },
   radioInner:    { width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN },
@@ -926,7 +1054,7 @@ const s = StyleSheet.create({
   vegApplyBtn:   { flex: 2, paddingVertical: 12, borderRadius: 12, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
   vegApplyBtnTxt: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.2 },
 
-  rejCard:    { backgroundColor: "#fff", borderRadius: 24, padding: 28, alignItems: "center", width: "88%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
+  rejCard:    { backgroundColor: SURFACE, borderRadius: 24, padding: 28, alignItems: "center", width: "88%", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
   rejIconWrap:{ width: 88, height: 88, borderRadius: 44, backgroundColor: "#fef2f2", justifyContent: "center", alignItems: "center", marginBottom: 16 },
   rejTitle:   { fontSize: 22, fontWeight: "800", color: DARK, marginBottom: 6 },
   rejSub:     { fontSize: 14, color: GRAY },
@@ -937,7 +1065,7 @@ const s = StyleSheet.create({
 
   // ── Hero ──
   hero:        { width: "100%", overflow: "hidden", marginBottom: 0 },
-  heroDim:     { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
+  heroDim:     { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.18)" },
   heroOverlay: { flex: 1, paddingHorizontal: 16, paddingBottom: 16, justifyContent: "flex-start", gap: 10 },
 
   // Header UI floats over hero image
@@ -946,17 +1074,17 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     gap: 10,
   },
   heroTopRow:  { flexDirection: "row", alignItems: "center", zIndex: 100 },
-  locationPill:{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.3)", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
-  locationTxt: { flex: 1, fontSize: 14, fontWeight: "600", color: "#fff" },
+  locationPill:{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: BACKGROUND, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 0.5, borderColor: BORDER, shadowColor: "rgba(0,0,0,0.08)", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.4, shadowRadius: 3, elevation: 2 },
+  locationTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: "#111" },
   avatarBtn:   { marginLeft: 10, zIndex: 200 },
   avatar:      { width: 44, height: 44, borderRadius: 22, borderWidth: 2.5, borderColor: "rgba(255,255,255,0.7)" },
 
   searchWrap:   { flexDirection: "row", alignItems: "center", gap: 10 },
-  searchBar:    { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+  searchBar:    { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: BACKGROUND, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3 },
   searchTxt:    { fontSize: 14, color: GRAY, flex: 1 },
   modeToggleWrap: { paddingHorizontal: 0 },
 
@@ -973,16 +1101,16 @@ const s = StyleSheet.create({
   },
   catList:    { paddingHorizontal: 16, gap: 8 },
   catItem:    { alignItems: "center", width: 68 },
-  catImgWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center", marginBottom: 6, borderWidth: 2, borderColor: "transparent" },
+  catImgWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: SURFACE, justifyContent: "center", alignItems: "center", marginBottom: 6, borderWidth: 2, borderColor: "transparent" },
   catImgActive:{ backgroundColor: ORANGE, borderColor: ORANGE },
   catImg:     { width: 56, height: 56, borderRadius: 28 },
   catName:    { fontSize: 11, color: DARK, fontWeight: "600", textAlign: "center" },
   catNameActive:{ color: ORANGE, fontWeight: "700" },
 
   // ── Banners ──
-  bannerSection:{ paddingVertical: 16, backgroundColor: "transparent" },
+  bannerSection:{ paddingVertical: 18, backgroundColor: "transparent" },
   bannerSlide:  { width: SW - 32, marginHorizontal: 16, borderRadius: 16, overflow: "hidden" },
-  bannerImg:    { width: "100%", height: 130, borderRadius: 16 },
+  bannerImg:    { width: "100%", height: 150, borderRadius: 16 },
   bannerDots:   { flexDirection: "row", justifyContent: "center", marginTop: 10, gap: 6 },
   bannerDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: "#DDD" },
   bannerDotActive:{ width: 18, backgroundColor: ORANGE },
@@ -990,8 +1118,8 @@ const s = StyleSheet.create({
   // ── Filters ──
   filterWrap: { backgroundColor: "transparent", borderBottomWidth: 0 },
   filterList: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
-  chip:       { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: "#EBEBF0", backgroundColor: "#FAFAFA" },
-  chipActive: { borderColor: ORANGE, backgroundColor: "#FFF4EB" },
+  chip:       { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: BORDER, backgroundColor: SURFACE },
+  chipActive: { borderColor: ORANGE, backgroundColor: BACKGROUND },
   chipEmoji:  { fontSize: 13 },
   chipTxt:    { fontSize: 13, color: GRAY, fontWeight: "500" },
   chipTxtActive:{ color: ORANGE, fontWeight: "700" },
@@ -1004,10 +1132,10 @@ const s = StyleSheet.create({
   countBadge:  { backgroundColor: ORANGE, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   countTxt:    { color: "#fff", fontSize: 13, fontWeight: "700" },
 
-  card:         { marginHorizontal: 16, marginBottom: 16, marginTop: 0, backgroundColor: "#fff", borderRadius: 16, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 },
+  card:         { marginHorizontal: 16, marginBottom: 16, marginTop: 0, backgroundColor: SURFACE, borderRadius: 18, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 6 },
   cardImgWrap:  { position: "relative" },
-  cardImg:      { width: "100%", height: 180 },
-  cardImgPlaceholder: { width: "100%", height: 180, backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center" },
+  cardImg:      { width: "100%", height: 160 },
+  cardImgPlaceholder: { width: "100%", height: 160, backgroundColor: BACKGROUND, justifyContent: "center", alignItems: "center" },
   rushOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.75)", zIndex: 1 },
   rushOverlayContent: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "center", alignItems: "center", zIndex: 2 },
   rushOverlayTitle: { fontSize: 22, fontWeight: "800", color: "#fff", marginTop: 8, letterSpacing: 1.5 },
@@ -1018,15 +1146,15 @@ const s = StyleSheet.create({
   trendingBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700" },
   rushBadge:    { position: "absolute", top: 12, right: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f59e0b", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3, zIndex: 2 },
   rushBadgeTxt: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
-  cardBody:     { padding: 16 },
-  cardRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
-  cardName:     { fontSize: 17, fontWeight: "700", color: DARK, flex: 1, marginRight: 8 },
+  cardBody:     { padding: 18 },
+  cardRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  cardName:     { fontSize: 18, fontWeight: "800", color: DARK, flex: 1, marginRight: 8 },
   rushTimeRow:  { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: "flex-start" },
   rushTimeText: { fontSize: 11, color: "#92400e", fontWeight: "600" },
   ratingBadge:  { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: GREEN, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
   ratingTxt:    { color: "#fff", fontSize: 11, fontWeight: "700" },
   cardCuisine:  { fontSize: 13, color: GRAY, marginBottom: 10 },
-  hoursRow:     { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: "#f0fdf4", borderRadius: 6, alignSelf: "flex-start" },
+  hoursRow:     { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: SURFACE, borderRadius: 6, alignSelf: "flex-start" },
   hoursRowClosed: { backgroundColor: "#fef2f2" },
   hoursTxt:     { fontSize: 11, color: GREEN, fontWeight: "600" },
   hoursTxtClosed: { color: "#ef4444" },

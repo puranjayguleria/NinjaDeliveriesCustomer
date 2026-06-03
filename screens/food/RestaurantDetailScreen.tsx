@@ -51,12 +51,13 @@ export default function RestaurantDetailScreen() {
   const { addItem, removeItem, getItemQty, totalItems, totalPrice } = useFoodCart();
 
   const [menuItems,     setMenuItems]     = useState<MenuItem[]>([]);
+  const [addons,        setAddons]        = useState<MenuAddon[]>([]);
   const [offers,        setOffers]        = useState<RestaurantOffer[]>([]);
   const [categories,    setCategories]    = useState<Category[]>([]);
   const [restaurant,    setRestaurant]    = useState<Restaurant | null>(null);
   const [restaurantRating, setRestaurantRating] = useState<{ avgRating: number; totalReviews: number } | null>(null);
   const [loading,       setLoading]       = useState(true);
-  const [activeCategory,setActiveCategory]= useState<string>('');
+  const [activeCategory,setActiveCategory]= useState<Set<string>>(new Set());
   const [showMenuDrawer,   setShowMenuDrawer]   = useState(false);
   const [offersExpanded,   setOffersExpanded]   = useState(false);
   const [activeFilter,     setActiveFilter]     = useState<string | null>(null);
@@ -67,11 +68,12 @@ export default function RestaurantDetailScreen() {
   const [showMoreSheet,    setShowMoreSheet]    = useState(false);
   const [descExpanded,     setDescExpanded]     = useState(false);
   const [itemSheet,        setItemSheet]        = useState<{
-    visible: boolean; item: MenuItem | null; qty: number; cookingNote: string;
-  }>({ visible: false, item: null, qty: 1, cookingNote: '' });
+    visible: boolean; item: MenuItem | null; qty: number; cookingNote: string; selectedAddons: string[];
+  }>({ visible: false, item: null, qty: 1, cookingNote: '', selectedAddons: [] });
   const [lastAddedItem,    setLastAddedItem]    = useState<MenuItem | null>(null);
   const [suggestions,      setSuggestions]      = useState<MenuItem[]>([]);
   const itemSheetAnim = useRef(new Animated.Value(0)).current;
+  const itemSheetOpenRef = useRef(false);
   const scheduleAnim   = useRef(new Animated.Value(0)).current;
   const searchAnim     = useRef(new Animated.Value(0)).current;
   const moreSheetAnim  = useRef(new Animated.Value(0)).current;
@@ -83,13 +85,14 @@ export default function RestaurantDetailScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [items, , offerItems, restData] = await Promise.all([
+      const [items, addonItems, offerItems, restData] = await Promise.all([
         getMenuByRestaurant(restaurantId),
         getAddonsByRestaurant(restaurantId),
         getOffersByRestaurant(restaurantId),
         getRestaurantById(restaurantId),
       ]);
       setMenuItems(items);
+      setAddons(addonItems);
       setOffers(offerItems);
       if (restData) {
         setRestaurant(restData);
@@ -126,7 +129,7 @@ export default function RestaurantDetailScreen() {
       });
       const cats = Array.from(catMap.values());
       setCategories(cats);
-      if (cats.length > 0) setActiveCategory(cats[0].id);
+      if (cats.length > 0) setActiveCategory(new Set(cats.map(c => c.id)));
     } catch (e) {
       console.error('[RestaurantDetail] fetch error:', e);
     } finally {
@@ -159,11 +162,9 @@ export default function RestaurantDetailScreen() {
   };
 
   const openSearch = () => {
-    setShowSearch(true);
     setSearchQuery('');
-    Animated.timing(searchAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start(() => {
-      searchInputRef.current?.focus();
-    });
+    setShowSearch(true);
+    Animated.timing(searchAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
   };
   const closeSearch = () => {
     Animated.timing(searchAnim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
@@ -183,12 +184,17 @@ export default function RestaurantDetailScreen() {
   };
 
   const openItemSheet = (item: MenuItem) => {
-    setItemSheet({ visible: true, item, qty: 1, cookingNote: '' });
+    if (itemSheetOpenRef.current) return;
+    itemSheetOpenRef.current = true;
+    setItemSheet({ visible: true, item, qty: 1, cookingNote: '', selectedAddons: [] });
     Animated.spring(itemSheetAnim, { toValue: 1, friction: 7, tension: 60, useNativeDriver: true }).start();
   };
   const closeItemSheet = () => {
     Animated.timing(itemSheetAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() =>
-      setItemSheet({ visible: false, item: null, qty: 1, cookingNote: '' })
+      {
+        itemSheetOpenRef.current = false;
+        setItemSheet({ visible: false, item: null, qty: 1, cookingNote: '', selectedAddons: [] });
+      }
     );
   };
 
@@ -270,6 +276,33 @@ export default function RestaurantDetailScreen() {
     }
   };
 
+  const getItemOffer = (item: MenuItem) =>
+    offers.find(o =>
+      o.menuItemId === item.id ||
+      o.menuItemName?.toLowerCase().trim() === item.name?.toLowerCase().trim()
+    );
+
+  const getAddonsForItem = (item: MenuItem) => {
+    const itemName = item.name?.toLowerCase().trim();
+    return addons.filter(a => {
+      if (a.menuItemId === item.id) return true;
+      const addonItemName = (a.menuItemName || '').replace(/^"|"$/g, '').toLowerCase().trim();
+      return addonItemName === itemName;
+    });
+  };
+
+  const getCartDetails = (item: MenuItem) => {
+    const offer = getItemOffer(item);
+    const defaultVariant = item.variants?.[0] ?? null;
+    return {
+      id: defaultVariant ? item.id + defaultVariant.size : item.id,
+      name: defaultVariant ? `${item.name} (${defaultVariant.size})` : item.name,
+      price: offer ? Math.max(0, offer.discountedPrice) : Number(defaultVariant?.price ?? item.price),
+      variant: defaultVariant?.size,
+      offer,
+    };
+  };
+
   const isPureVeg = (restaurant?.cuisineType ?? cuisineType) === 'veg';
   const displayRating    = restaurant?.rating;
   const displayDelivery  = restaurant?.deliveryTime ?? deliveryTime;
@@ -349,7 +382,14 @@ export default function RestaurantDetailScreen() {
 
           <View style={s.infoRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.restName}>{restaurantName}</Text>
+              <TouchableOpacity
+                style={s.restNameRow}
+                activeOpacity={0.75}
+                onPress={openMenuDrawer}
+              >
+                <Text style={s.restName}>{restaurantName}</Text>
+                <Ionicons name="chevron-down" size={18} color="#282c3f" style={{ marginTop: 4 }} />
+              </TouchableOpacity>
               
               {/* Restaurant Description */}
               {displayDescription && (
@@ -383,13 +423,6 @@ export default function RestaurantDetailScreen() {
                 <Text style={s.metaTxt}>
                   {displayDelivery ? `${displayDelivery} mins` : '30–40 mins'}
                 </Text>
-                <Text style={s.metaDot}>·</Text>
-                <TouchableOpacity onPress={openSchedule} activeOpacity={0.7} style={s.scheduleBtn}>
-                  <Text style={s.scheduleTxt}>
-                    {scheduledTime ? `Scheduled: ${scheduledTime}` : 'Schedule for later'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={12} color={GREEN} />
-                </TouchableOpacity>
               </View>
             </View>
 
@@ -438,7 +471,7 @@ export default function RestaurantDetailScreen() {
                 <MaterialIcons name="local-offer" size={16} color="#fff" />
               </View>
               <Text style={s.offerMainTxt} numberOfLines={1}>
-                {offers[0].discountPercentage}% OFF on selected items
+                {Math.max(0, offers[0].discountPercentage)}% OFF on selected items
               </Text>
               <Text style={s.offerCount}>{offers.length} offers</Text>
               <Ionicons name={offersExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={GRAY} />
@@ -447,7 +480,7 @@ export default function RestaurantDetailScreen() {
               <View key={o.id} style={s.offerExpandRow}>
                 <View style={s.offerExpandDot} />
                 <Text style={s.offerExpandTxt}>
-                  {o.discountPercentage}% OFF on {o.menuItemName} — ₹{o.discountedPrice} instead of ₹{o.originalPrice}
+                  {Math.max(0, o.discountPercentage)}% OFF on {o.menuItemName} — ₹{Math.max(0, o.discountedPrice)} instead of ₹{Math.max(0, o.originalPrice)}
                 </Text>
               </View>
             ))}
@@ -458,15 +491,6 @@ export default function RestaurantDetailScreen() {
 
         {/* ── Filter Chips ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterList}>
-          <TouchableOpacity
-            style={[s.filterChip, !!activeFilter && s.filterChipActive]}
-            activeOpacity={0.75}
-            onPress={() => setActiveFilter(null)}
-          >
-            <Ionicons name="options-outline" size={13} color={activeFilter ? '#fff' : '#3d3d3d'} />
-            <Text style={[s.filterChipTxt, !!activeFilter && s.filterChipTxtActive]}>Filters</Text>
-            {activeFilter && <Ionicons name="close" size={12} color="#fff" />}
-          </TouchableOpacity>
           {FILTER_CHIPS.map(f => {
             const active = activeFilter === f.id;
             return (
@@ -477,6 +501,7 @@ export default function RestaurantDetailScreen() {
                 onPress={() => setActiveFilter(active ? null : f.id)}
               >
                 <Text style={[s.filterChipTxt, active && s.filterChipTxtActive]}>{f.label}</Text>
+                {active && <Ionicons name="close" size={12} color="#fff" />}
               </TouchableOpacity>
             );
           })}
@@ -497,25 +522,39 @@ export default function RestaurantDetailScreen() {
               <TouchableOpacity
                 style={s.catHeader}
                 activeOpacity={0.8}
-                onPress={() => setActiveCategory(activeCategory === cat.id ? '' : cat.id)}
+                onPress={() => setActiveCategory(prev => {
+                    const next = new Set(prev);
+                    next.has(cat.id) ? next.delete(cat.id) : next.add(cat.id);
+                    return next;
+                  })}
               >
                 <Text style={s.catHeaderTxt}>{cat.name}</Text>
                 <View style={s.catHeaderRight}>
                   <Text style={s.catCount}>{items.length}</Text>
                   <Ionicons
-                    name={activeCategory === cat.id ? 'chevron-up' : 'chevron-down'}
+                    name={activeCategory.has(cat.id) ? 'chevron-up' : 'chevron-down'}
                     size={16} color="#3d3d3d"
                   />
                 </View>
               </TouchableOpacity>
 
-              {/* Items */}
-              {items.map((item, idx) => {
-                const qty   = getItemQty(item.id);
-                const offer = offers.find(o =>
-                  o.menuItemId === item.id ||
-                  o.menuItemName?.toLowerCase().trim() === item.name?.toLowerCase().trim()
-                );
+              {/* Items — only show when category is expanded */}
+              {activeCategory.has(cat.id) && items.map((item, idx) => {
+                const cartDetails = getCartDetails(item);
+                const { offer } = cartDetails;
+                const qty = getItemQty(cartDetails.id);
+                const addMenuItemToCart = () => {
+                  addItem({
+                    id: cartDetails.id,
+                    name: cartDetails.name,
+                    price: cartDetails.price,
+                    image: item.image,
+                    restaurantId,
+                    restaurantName,
+                    variant: cartDetails.variant,
+                    description: item.description,
+                  });
+                };
                 const isVeg    = (item.foodType || '').toLowerCase() === 'veg';
                 const isNonVeg = (item.foodType || '').toLowerCase().includes('nonveg') ||
                                  (item.foodType || '').toLowerCase().includes('non-veg');
@@ -535,8 +574,8 @@ export default function RestaurantDetailScreen() {
                       <Text style={s.itemName}>{item.name}</Text>
                       {offer ? (
                         <View style={s.priceRow}>
-                          <Text style={s.priceDiscounted}>₹{offer.discountedPrice}</Text>
-                          <Text style={s.priceOriginal}>₹{offer.originalPrice}</Text>
+                          <Text style={s.priceDiscounted}>₹{Math.max(0, offer.discountedPrice)}</Text>
+                          <Text style={s.priceOriginal}>₹{Math.max(0, offer.originalPrice)}</Text>
                         </View>
                       ) : (
                         <Text style={s.itemPrice}>₹{item.price}</Text>
@@ -576,49 +615,22 @@ export default function RestaurantDetailScreen() {
                         <Pressable
                           style={s.addBtn}
                           onPress={() => {
-                            if (!item.variants || item.variants.length === 0) {
-                              addItem({
-                                id: item.id,
-                                name: item.name,
-                                price: offer ? offer.discountedPrice : Number(item.price),
-                                image: item.image,
-                                restaurantId,
-                                restaurantName,
-                                description: item.description,
-                              });
-                              setLastAddedItem(item);
-                              fetchSuggestions(item.id);
-                            } else {
-                              openItemSheet(item);
-                            }
+                            addMenuItemToCart();
+                            setLastAddedItem(item);
+                            fetchSuggestions(item.id);
                           }}
                         >
                           <Text style={s.addBtnTxt}>ADD</Text>
-                          {item.variants?.length > 0 && <Text style={s.addBtnPlus}>+</Text>}
                         </Pressable>
                       ) : (
                         <View style={s.qtyControl}>
-                          <Pressable style={s.qtyBtn} onPress={() => removeItem(item.id)}>
+                          <Pressable style={s.qtyBtn} onPress={() => removeItem(cartDetails.id)}>
                             <Ionicons name="remove" size={15} color={GREEN} />
                           </Pressable>
                           <Text style={s.qtyTxt}>{qty}</Text>
                           <Pressable
                             style={s.qtyBtn}
-                            onPress={() => {
-                              if (!item.variants || item.variants.length === 0) {
-                                addItem({
-                                  id: item.id,
-                                  name: item.name,
-                                  price: offer ? offer.discountedPrice : Number(item.price),
-                                  image: item.image,
-                                  restaurantId,
-                                  restaurantName,
-                                  description: item.description,
-                                });
-                              } else {
-                                openItemSheet(item);
-                              }
-                            }}
+                            onPress={addMenuItemToCart}
                           >
                             <Ionicons name="add" size={15} color={GREEN} />
                           </Pressable>
@@ -641,7 +653,7 @@ export default function RestaurantDetailScreen() {
       {lastAddedItem != null && suggestions.length > 0 && (
         <View style={[s.suggestionsBar, { bottom: totalItems > 0 ? insets.bottom + 76 : insets.bottom + 12 }]}>
           <View style={s.suggestionsHeader}>
-            <Text style={s.suggestionsTitleSmall}>You'll love pairing it with</Text>
+            <Text style={s.suggestionsTitleSmall}>{"You'll love pairing it with"}</Text>
             <TouchableOpacity onPress={() => { setLastAddedItem(null); setSuggestions([]); }} activeOpacity={0.7}>
               <Ionicons name="close" size={16} color={GRAY} />
             </TouchableOpacity>
@@ -652,22 +664,22 @@ export default function RestaurantDetailScreen() {
                 o.menuItemId === sug.id ||
                 o.menuItemName?.toLowerCase().trim() === sug.name?.toLowerCase().trim()
               );
-              const sugPrice = sugOffer ? sugOffer.discountedPrice : Number(sug.price);
+              const sugPrice = sugOffer ? Math.max(0, sugOffer.discountedPrice) : Number(sug.price);
               return (
-                <TouchableOpacity
+                <View
                   key={sug.id}
                   style={s.suggestionCard}
-                  activeOpacity={0.85}
-                  onPress={() => openItemSheet(sug)}
                 >
-                  {sug.image
-                    ? <Image source={{ uri: sug.image }} style={s.suggestionImg} contentFit="cover" />
-                    : <View style={[s.suggestionImg, s.suggestionImgPlaceholder]}>
-                        <Ionicons name="fast-food-outline" size={20} color="#ccc" />
-                      </View>
-                  }
-                  <Text style={s.suggestionName} numberOfLines={2}>{sug.name}</Text>
-                  <Text style={s.suggestionPrice}>₹{sugPrice}</Text>
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => openItemSheet(sug)}>
+                    {sug.image
+                      ? <Image source={{ uri: sug.image }} style={s.suggestionImg} contentFit="cover" />
+                      : <View style={[s.suggestionImg, s.suggestionImgPlaceholder]}>
+                          <Ionicons name="fast-food-outline" size={20} color="#ccc" />
+                        </View>
+                    }
+                    <Text style={s.suggestionName} numberOfLines={2}>{sug.name}</Text>
+                    <Text style={s.suggestionPrice}>₹{sugPrice}</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={s.suggestionAddBtn}
                     activeOpacity={0.85}
@@ -681,7 +693,7 @@ export default function RestaurantDetailScreen() {
                   >
                     <Text style={s.suggestionAddTxt}>ADD</Text>
                   </TouchableOpacity>
-                </TouchableOpacity>
+                </View>
               );
             })}
           </ScrollView>
@@ -708,12 +720,13 @@ export default function RestaurantDetailScreen() {
       {/* ── Floating Menu FAB (bottom-right, Swiggy style) ── */}
       {categories.length > 0 && (
         <TouchableOpacity
-          style={[s.menuFab, { bottom: (totalItems > 0 ? insets.bottom + 72 : insets.bottom + 20) }]}
+          style={[s.menuFab, { bottom: (totalItems > 0 ? insets.bottom + 64 : insets.bottom + 12) }]}
           onPress={openMenuDrawer}
           activeOpacity={0.85}
+          accessibilityLabel="Open menu categories"
         >
-          <Ionicons name="book-outline" size={16} color="#fff" />
-          <Text style={s.menuFabTxt}>Menu</Text>
+          <Ionicons name="receipt-outline" size={22} color="#fff" />
+          <Text style={s.menuFabTxt}>MENU</Text>
         </TouchableOpacity>
       )}
 
@@ -723,13 +736,16 @@ export default function RestaurantDetailScreen() {
           <Animated.View style={[s.drawerOverlay, { opacity: drawerAnim }]} />
         </TouchableWithoutFeedback>
         <Animated.View style={[s.drawerSheet, {
-          transform: [{ translateY: drawerAnim.interpolate({ inputRange: [0,1], outputRange: [500, 0] }) }],
+          bottom: totalItems > 0 ? insets.bottom + 130 : insets.bottom + 78,
+          transform: [
+            { translateY: drawerAnim.interpolate({ inputRange: [0,1], outputRange: [18, 0] }) },
+            { scale: drawerAnim.interpolate({ inputRange: [0,1], outputRange: [0.96, 1] }) },
+          ],
         }]}>
-          <View style={s.drawerHandle} />
           <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
             {categories.map((cat, i) => {
               const count = menuItems.filter(x => x.categoryId === cat.id).length;
-              const isFirst = i === 0;
+              const isActive = activeCategory.has(cat.id);
               return (
                 <TouchableOpacity
                   key={cat.id}
@@ -742,24 +758,17 @@ export default function RestaurantDetailScreen() {
                     closeMenuDrawer();
                   }}
                 >
-                  <Text style={[s.menuDrawerName, isFirst && s.menuDrawerNameFirst]}>{cat.name}</Text>
-                  <Text style={[s.menuDrawerCount, isFirst && s.menuDrawerCountFirst]}>{count}</Text>
+                  <Text style={[s.menuDrawerName, isActive && s.menuDrawerNameActive]} numberOfLines={1}>{cat.name}</Text>
+                  <Text style={[s.menuDrawerCount, isActive && s.menuDrawerCountActive]}>{count}</Text>
                 </TouchableOpacity>
               );
             })}
-            <View style={{ height: 80 }} />
           </ScrollView>
-
-          {/* Close Button */}
-          <TouchableOpacity style={s.menuCloseBtn} onPress={closeMenuDrawer} activeOpacity={0.85}>
-            <Ionicons name="close" size={16} color="#fff" />
-            <Text style={s.menuCloseTxt}>Close</Text>
-          </TouchableOpacity>
         </Animated.View>
       </Modal>
 
-      {/* ── Search Screen ── */}
-      <Modal visible={showSearch} transparent animationType="none" statusBarTranslucent onRequestClose={closeSearch}>
+      {/* ── Search Screen (absolute overlay, not Modal — so keyboard opens instantly) ── */}
+      {showSearch && (
         <Animated.View style={[s.searchScreen, { opacity: searchAnim, paddingTop: insets.top }]}>
           {/* Search Header */}
           <View style={s.searchHeader}>
@@ -776,7 +785,9 @@ export default function RestaurantDetailScreen() {
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoCorrect={false}
+                autoFocus={true}
                 returnKeyType="search"
+                onLayout={() => searchInputRef.current?.focus()}
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
@@ -864,7 +875,7 @@ export default function RestaurantDetailScreen() {
             <View style={{ height: 40 }} />
           </ScrollView>
         </Animated.View>
-      </Modal>
+      )}
 
       {/* ── More Options Sheet ── */}
       <Modal visible={showMoreSheet} transparent animationType="none" statusBarTranslucent onRequestClose={closeMoreSheet}>
@@ -901,49 +912,6 @@ export default function RestaurantDetailScreen() {
         </Animated.View>
       </Modal>
 
-      {/* ── Schedule for Later Modal ── */}
-      <Modal visible={showSchedule} transparent animationType="none" statusBarTranslucent onRequestClose={closeSchedule}>
-        <TouchableWithoutFeedback onPress={closeSchedule}>
-          <Animated.View style={[s.drawerOverlay, { opacity: scheduleAnim }]} />
-        </TouchableWithoutFeedback>
-        <Animated.View style={[s.drawerSheet, {
-          transform: [{ translateY: scheduleAnim.interpolate({ inputRange: [0, 1], outputRange: [500, 0] }) }],
-        }]}>
-          <View style={s.drawerHandle} />
-          <View style={s.scheduleHeader}>
-            <Text style={s.drawerTitle}>Schedule Delivery</Text>
-            {scheduledTime && (
-              <TouchableOpacity onPress={() => { setScheduledTime(null); closeSchedule(); }} activeOpacity={0.7}>
-                <Text style={s.scheduleClear}>Clear</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <Text style={s.scheduleSubtitle}>Choose a delivery time slot</Text>
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-            <View style={s.slotGrid}>
-              {timeSlots.map(slot => {
-                const selected = scheduledTime === slot;
-                return (
-                  <TouchableOpacity
-                    key={slot}
-                    style={[s.slotBtn, selected && s.slotBtnActive]}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      setScheduledTime(slot);
-                      closeSchedule();
-                    }}
-                  >
-                    <Ionicons name="time-outline" size={14} color={selected ? '#fff' : GREEN} />
-                    <Text style={[s.slotTxt, selected && s.slotTxtActive]}>{slot}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={{ height: 20 }} />
-          </ScrollView>
-        </Animated.View>
-      </Modal>
-
       {/* ── Item Detail Sheet ── */}
       <Modal
         visible={itemSheet.visible}
@@ -960,16 +928,11 @@ export default function RestaurantDetailScreen() {
         }]}>
           {itemSheet.item && (() => {
             const item = itemSheet.item!;
-            const offer = offers.find(o =>
-              o.menuItemId === item.id ||
-              o.menuItemName?.toLowerCase().trim() === item.name?.toLowerCase().trim()
-            );
+            const itemAddons = getAddonsForItem(item);
             const isVeg    = (item.foodType || '').toLowerCase() === 'veg';
             const isNonVeg = (item.foodType || '').toLowerCase().includes('nonveg') ||
                              (item.foodType || '').toLowerCase().includes('non-veg');
             const dotColor = isVeg ? GREEN : isNonVeg ? '#c0392b' : GREEN;
-            const price    = offer ? offer.discountedPrice : Number(item.price);
-            const total    = price * itemSheet.qty;
 
             return (
               <ScrollView
@@ -1018,6 +981,42 @@ export default function RestaurantDetailScreen() {
                     <Text style={s.itemSheetDesc}>{item.description}</Text>
                   ) : null}
 
+                  {itemAddons.length > 0 && (
+                    <View style={s.addonsSection}>
+                      <Text style={s.addonsTitle}>Add-ons (optional)</Text>
+                      {itemAddons.map(addon => {
+                        const selected = itemSheet.selectedAddons.includes(addon.id);
+                        return (
+                          <TouchableOpacity
+                            key={addon.id}
+                            style={s.addonRow}
+                            activeOpacity={0.75}
+                            onPress={() => setItemSheet(p => ({
+                              ...p,
+                              selectedAddons: selected
+                                ? p.selectedAddons.filter(id => id !== addon.id)
+                                : [...p.selectedAddons, addon.id],
+                            }))}
+                          >
+                            <View style={[s.addonCheckbox, selected && s.addonCheckboxActive]}>
+                              {selected && <Ionicons name="checkmark" size={12} color="#fff" />}
+                            </View>
+                            <View style={s.addonInfo}>
+                              <Text style={s.addonName}>{addon.name}</Text>
+                              {addon.description ? (
+                                <Text style={s.addonDesc} numberOfLines={1}>{addon.description}</Text>
+                              ) : null}
+                            </View>
+                            {addon.image ? (
+                              <Image source={{ uri: addon.image }} style={s.addonImage} contentFit="cover" />
+                            ) : null}
+                            <Text style={s.addonPrice}>+₹{addon.price}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
                   {/* Cooking request */}
                   <View style={s.cookingSection}>
                     <View style={s.cookingHeader}>
@@ -1031,9 +1030,9 @@ export default function RestaurantDetailScreen() {
                       value={itemSheet.cookingNote}
                       onChangeText={t => setItemSheet(p => ({ ...p, cookingNote: t }))}
                       multiline
-                      maxLength={100}
+                      maxLength={50}
                     />
-                    <Text style={s.cookingCount}>{itemSheet.cookingNote.length}/100</Text>
+                    <Text style={s.cookingCount}>{itemSheet.cookingNote.length}/50</Text>
                   </View>
 
                   <View style={{ height: 100 }} />
@@ -1045,12 +1044,23 @@ export default function RestaurantDetailScreen() {
           {/* Bottom bar: qty + Add item */}
           {itemSheet.item && (() => {
             const item = itemSheet.item!;
-            const offer = offers.find(o =>
-              o.menuItemId === item.id ||
-              o.menuItemName?.toLowerCase().trim() === item.name?.toLowerCase().trim()
-            );
-            const price = offer ? offer.discountedPrice : Number(item.price);
-            const total = price * itemSheet.qty;
+            const cartDetails = getCartDetails(item);
+            const modalQty = itemSheet.qty;
+            const selectedAddonObjects = itemSheet.selectedAddons
+              .map(addonId => {
+                const addon = addons.find(a => a.id === addonId);
+                if (!addon) return null;
+                return {
+                  name: addon.name,
+                  price: Number(addon.price),
+                  image: addon.image || undefined,
+                };
+              })
+              .filter(Boolean) as { name: string; price: number; image?: string }[];
+            const addonsTotal = selectedAddonObjects.reduce((sum, addon) => sum + addon.price, 0);
+            const total = (cartDetails.price + addonsTotal) * modalQty;
+            const totalLabel = Number.isInteger(total) ? `${total}` : total.toFixed(2);
+            const addLabel = modalQty > 1 ? `Add ${modalQty} items` : 'Add item';
 
             return (
               <View style={[s.itemSheetBar, { paddingBottom: insets.bottom + 12 }]}>
@@ -1078,21 +1088,23 @@ export default function RestaurantDetailScreen() {
                   style={s.itemSheetAddBtn}
                   activeOpacity={0.88}
                   onPress={() => {
-                    for (let i = 0; i < itemSheet.qty; i++) {
+                    for (let i = 0; i < modalQty; i++) {
                       addItem({
-                        id: item.id,
-                        name: item.name,
-                        price,
+                        id: cartDetails.id,
+                        name: cartDetails.name,
+                        price: cartDetails.price,
                         image: item.image,
                         restaurantId,
                         restaurantName,
+                        variant: cartDetails.variant,
+                        addons: selectedAddonObjects,
                         description: item.description,
                       });
                     }
                     closeItemSheet();
                   }}
                 >
-                  <Text style={s.itemSheetAddTxt}>Add item  ₹{total}</Text>
+                  <Text style={s.itemSheetAddTxt}>{addLabel}  ₹{totalLabel}</Text>
                 </TouchableOpacity>
               </View>
             );
@@ -1173,7 +1185,8 @@ const s = StyleSheet.create({
   },
   pureVegTxt: { fontSize: 11, fontWeight: '700', color: '#3d9b6e' },
   infoRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingLeft: 96 },
-  restName:   { fontSize: 22, fontWeight: '800', color: '#282c3f', marginBottom: 6 },
+  restNameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 6 },
+  restName:   { fontSize: 22, fontWeight: '800', color: '#282c3f' },
   descSection: { marginBottom: 8 },
   restDescription: { fontSize: 13, color: '#686b78', lineHeight: 18 },
   seeMoreBtn: { marginTop: 4 },
@@ -1303,27 +1316,33 @@ const s = StyleSheet.create({
 
   // ── Menu FAB ──
   menuFab: {
-    position: 'absolute', right: 20,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
+    position: 'absolute', right: 8,
+    width: 64, height: 64,
+    alignItems: 'center', justifyContent: 'center',
+    gap: 4,
     backgroundColor: '#282c3f',
-    paddingHorizontal: 18, paddingVertical: 11,
-    borderRadius: 24,
+    borderRadius: 32,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+    shadowOpacity: 0.28, shadowRadius: 8, elevation: 8,
   },
-  menuFabTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  menuFabTxt: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
 
   // ── Menu Drawer ──
-  drawerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  drawerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.06)' },
   drawerSheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    maxHeight: '75%',
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1, shadowRadius: 12, elevation: 16,
+    position: 'absolute',
+    right: 16,
+    width: 300,
+    maxHeight: 380,
+    backgroundColor: '#050912',
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 16,
   },
   drawerHandle: {
     width: 40, height: 4, borderRadius: 2, backgroundColor: '#e8e8e8',
@@ -1333,25 +1352,14 @@ const s = StyleSheet.create({
   // New clean menu drawer rows
   menuDrawerItem: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 18,
+    gap: 16,
+    paddingVertical: 12,
   },
-  menuDrawerItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f5' },
-  menuDrawerName:       { fontSize: 15, fontWeight: '500', color: '#686b78', flex: 1 },
-  menuDrawerNameFirst:  { color: GREEN, fontWeight: '700' },
-  menuDrawerCount:      { fontSize: 15, fontWeight: '500', color: '#686b78' },
-  menuDrawerCountFirst: { color: GREEN, fontWeight: '700' },
-
-  // Close button inside drawer
-  menuCloseBtn: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 36 : 20, right: 20,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#282c3f',
-    paddingHorizontal: 18, paddingVertical: 11,
-    borderRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
-  },
-  menuCloseTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  menuDrawerItemBorder: { borderBottomWidth: 0 },
+  menuDrawerName:       { fontSize: 13, fontWeight: '400', color: '#cfd3dc', flex: 1 },
+  menuDrawerNameActive: { color: '#fff', fontWeight: '800' },
+  menuDrawerCount:      { minWidth: 28, textAlign: 'right', fontSize: 13, fontWeight: '500', color: '#cfd3dc' },
+  menuDrawerCountActive:{ color: '#fff', fontWeight: '800' },
 
   // Old drawer styles kept for schedule drawer reuse
   drawerTitle:        { fontSize: 16, fontWeight: '800', color: '#282c3f', marginBottom: 10 },
@@ -1468,6 +1476,23 @@ const s = StyleSheet.create({
     minHeight: 80, textAlignVertical: 'top',
   },
   cookingCount: { fontSize: 11, color: '#93959f', textAlign: 'right', marginTop: 4 },
+  addonsSection: { marginTop: 18, paddingTop: 18, borderTopWidth: 1, borderTopColor: '#f0f0f5' },
+  addonsTitle: { fontSize: 14, fontWeight: '700', color: '#282c3f', marginBottom: 8 },
+  addonRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
+  },
+  addonCheckbox: {
+    width: 20, height: 20, borderRadius: 5,
+    borderWidth: 1.5, borderColor: '#d4d5d9',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  addonCheckboxActive: { backgroundColor: GREEN, borderColor: GREEN },
+  addonInfo: { flex: 1 },
+  addonName: { fontSize: 13, fontWeight: '600', color: '#282c3f' },
+  addonDesc: { fontSize: 11, color: '#93959f', marginTop: 2 },
+  addonImage: { width: 38, height: 38, borderRadius: 8 },
+  addonPrice: { fontSize: 13, fontWeight: '700', color: '#282c3f' },
   itemSheetBar: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 20, paddingTop: 16,

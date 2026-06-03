@@ -176,6 +176,9 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 const SERVICE_PAYMENT_RECOVERY_KEY = "service_payment_recovery";
 const SERVICE_CONFIRMED_BANNER_KEY = "service_confirmed_banner";
 
+const FOOD_PAYMENT_RECOVERY_KEY = 'food_payment_recovery';
+const FOOD_CART_STORAGE_KEY = '@food_cart_items';
+
 type ServiceConfirmedBannerPayload = {
   razorpayOrderId: string;
   createdAt: number;
@@ -253,6 +256,128 @@ const StartupServicePaymentRecovery: React.FC<{ user: any; firebaseReady: boolea
       cancelled = true;
     };
   }, [user, firebaseReady, clearServiceCart]);
+
+  return null;
+};
+
+const StartupFoodPaymentRecovery: React.FC<{ user: any; firebaseReady: boolean }> = ({ user, firebaseReady }) => {
+  const { clearCart: clearFoodCart } = useFoodCart();
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+
+    let cancelled = false;
+    const runFoodPaymentRecovery = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(FOOD_PAYMENT_RECOVERY_KEY);
+        if (!raw) return;
+
+        const recovery = JSON.parse(raw);
+        const razorpayOrderId = String(recovery?.razorpayOrderId || "");
+        const firestoreOrderId = String(recovery?.firestoreOrderId || "");
+        if (!razorpayOrderId && !firestoreOrderId) return;
+        if (cancelled) return;
+
+        if (firestoreOrderId) {
+          try {
+            const snap = await firestore().collection('restaurant_Orders').doc(firestoreOrderId).get();
+            const docData = snap.exists ? (snap.data() as any) : null;
+            const docPaid = !!(
+              docData &&
+              (
+                (docData.payment && docData.payment.status === 'paid') ||
+                docData.paymentStatus === 'paid'
+              )
+            );
+            if (docPaid) {
+              clearFoodCart();
+              await AsyncStorage.removeItem(FOOD_CART_STORAGE_KEY).catch(() => {});
+              await AsyncStorage.removeItem(FOOD_PAYMENT_RECOVERY_KEY);
+              return;
+            }
+          } catch (e) {
+            if (__DEV__) console.warn('🧾[FoodPay] app_start_recovery_firestore_failed', e);
+          }
+        }
+
+        const axios = require('axios').default;
+        const api = axios.create({ timeout: 20000, headers: { 'Content-Type': 'application/json' } });
+
+        const token = await user.getIdToken(true);
+        const headers = { Authorization: `Bearer ${token}`, __session: token };
+
+        const CLOUD_FUNCTIONS_BASE_URL = 'https://asia-south1-ninjadeliveries-91007.cloudfunctions.net';
+        const CLOUD_FUNCTIONS_BASE_URL_USC1 = 'https://us-central1-ninjadeliveries-91007.cloudfunctions.net';
+        const httpUrl = (fn: string, base = CLOUD_FUNCTIONS_BASE_URL) => `${base}/${fn}`;
+
+        const callableUrl = (fnName: string, base = CLOUD_FUNCTIONS_BASE_URL) => `${base}/${fnName}:call`;
+        const postWith404Fallback = async (fnName: string, body: any, headers: any) => {
+          try {
+            return await api.post(httpUrl(fnName), body, { headers });
+          } catch (e: any) {
+            const status = e?.response?.status;
+            const httpsOnly = fnName === 'servicePaymentsCreateIntent' || fnName === 'createRazorpayOrder' || fnName === 'servicePaymentsReconcile' || fnName === 'servicePaymentsVerifyAndFinalize';
+
+            if (status === 404) {
+              return await api.post(httpUrl(fnName, CLOUD_FUNCTIONS_BASE_URL_USC1), body, { headers });
+            }
+
+            if (!httpsOnly && (status === 401 || status === 403)) {
+              const resp = await api.post(callableUrl(fnName), { data: body }, { headers });
+              const unwrapped = resp?.data?.result ?? resp?.data;
+              return { ...resp, data: unwrapped };
+            }
+
+            throw e;
+          }
+        };
+
+        const { data } = await postWith404Fallback('servicePaymentsReconcile', { orderIds: [razorpayOrderId] }, headers);
+
+        const finalizedOrderIds: string[] = Array.isArray(data?.finalizedOrderIds)
+          ? data.finalizedOrderIds.map((x: any) => String(x))
+          : [];
+        const createdOrderIds: string[] = Array.isArray(data?.createdOrderIds)
+          ? data.createdOrderIds.map((x: any) => String(x))
+          : [];
+        const createdIds: string[] = Array.isArray(data?.createdIds)
+          ? data.createdIds.map((x: any) => String(x))
+          : [];
+        const createdBookingIdsByOrder: string[] = Array.isArray(data?.createdBookingIdsByOrder?.[razorpayOrderId])
+          ? data.createdBookingIdsByOrder[razorpayOrderId].map((x: any) => String(x))
+          : [];
+        const isFinalizedForThisOrder = finalizedOrderIds.includes(razorpayOrderId);
+
+        const shouldClear =
+          (data?.ok && (
+            isFinalizedForThisOrder ||
+            createdOrderIds.length > 0 ||
+            createdIds.length > 0 ||
+            createdBookingIdsByOrder.length > 0 ||
+            Number(data?.createdBookings || 0) > 0 ||
+            Number(data?.updatedBookings || 0) > 0 ||
+            !!data?.alreadyFinalized ||
+            Number(data?.finalizedIntents || 0) > 0
+          )) ||
+          finalizedOrderIds.length > 0 ||
+          createdOrderIds.length > 0 ||
+          createdIds.length > 0 ||
+          createdBookingIdsByOrder.length > 0;
+
+        if (!shouldClear) return;
+
+        clearFoodCart();
+        await AsyncStorage.removeItem(FOOD_PAYMENT_RECOVERY_KEY);
+      } catch (e) {
+        if (__DEV__) console.warn('🧾[FoodPay] app_start_recovery_failed_nonfatal', e);
+      }
+    };
+
+    runFoodPaymentRecovery();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, firebaseReady, clearFoodCart]);
 
   return null;
 };
@@ -531,6 +656,36 @@ function HomeStack() {
       <Stack.Screen
         name="FoodTracking"
         component={FoodTrackingScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodSearch"
+        component={FoodSearchScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodOrderHistory"
+        component={FoodOrderHistoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodOrderBill"
+        component={FoodOrderBillScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FoodDishDetails"
+        component={FoodDishDetailsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="LocationSelector"
+        component={LocationSelectorScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DropoffLocation"
+        component={DropoffLocationScreen}
         options={{ headerShown: false }}
       />
 
@@ -870,6 +1025,11 @@ function FoodHomeStack() {
       <FoodStack.Screen name="FoodHome" component={FoodScreen} />
       <FoodStack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
       <FoodStack.Screen name="FoodSearch" component={FoodSearchScreen} />
+      <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
+      <FoodStack.Screen name="FoodCart" component={FoodCartScreen} />
+      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
+      <FoodStack.Screen name="FoodOrderSuccess" component={FoodOrderSuccessScreen} />
+      <FoodStack.Screen name="FoodOrderBill" component={FoodOrderBillScreen} />
       <FoodStack.Screen name="LocationSelector" component={LocationSelectorScreen} />
       <FoodStack.Screen name="DropoffLocation" component={DropoffLocationScreen} />
       <FoodStack.Screen name="Profile" component={ProfileScreen} />
@@ -882,6 +1042,7 @@ function FoodCartStack() {
   return (
     <FoodStack.Navigator screenOptions={{ headerShown: false }}>
       <FoodStack.Screen name="FoodCartHome" component={FoodCartScreen} />
+      <FoodStack.Screen name="FoodCheckout" component={FoodCheckoutScreen} />
       <FoodStack.Screen name="FoodOrderSuccess" component={FoodOrderSuccessScreen} />
       <FoodStack.Screen name="FoodTracking" component={FoodTrackingScreen} />
       <FoodStack.Screen name="RazorpayWebView" component={RazorpayWebView} />
@@ -1819,6 +1980,36 @@ const App: React.FC = () => {
     return () => sub.remove();
   }, []);
 
+  /* Handle notification tap → navigate to food order tracking screen */
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      ({ notification }) => {
+        const data = notification.request.content.data;
+        const type = String(data?.type || '').toLowerCase();
+
+        if (
+          (type === 'order_placed' || type === 'order_status_update') &&
+          data?.orderId
+        ) {
+          // Navigate into the food tab stack to show order status
+          if (navigationRef.isReady()) {
+            (navigationRef.navigate as any)('AppTabs', {
+              screen: 'FoodRestaurants',
+              params: {
+                screen: 'FoodTracking',
+                params: {
+                  orderId: data.orderId,
+                  fromNotification: true,
+                },
+              },
+            });
+          }
+        }
+      }
+    );
+    return () => sub.remove();
+  }, []);
+
   // NOTE: auth listener is handled above (gated by firebaseReady)
 
   /* Check for pending payments on app startup - SILENT RECOVERY */
@@ -1931,6 +2122,7 @@ const App: React.FC = () => {
             <FoodCartProvider>
             <ServiceCartProvider>
               <StartupServicePaymentRecovery user={user} firebaseReady={firebaseReady} />
+              <StartupFoodPaymentRecovery user={user} firebaseReady={firebaseReady} />
               <LocationProvider>
                 <WeatherProvider>
                   <OrderProvider>

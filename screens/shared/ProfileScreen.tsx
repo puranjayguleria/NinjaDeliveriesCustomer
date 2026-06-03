@@ -928,7 +928,25 @@ const ProfileScreen: React.FC = () => {
               subtitle="Track & manage orders"
               onPress={() => {
                 vibrateTap();
-                (navigation as any).navigate("Orders");
+                // Check if we're in Food context by checking route names
+                const state = navigation.getState();
+                const currentRoute = state?.routes?.[state.index];
+                const isFoodContext = currentRoute?.name?.includes('Food') || 
+                                     currentRoute?.state?.routes?.some((r: any) => r.name?.includes('Food'));
+                
+                if (isFoodContext) {
+                  // Navigate to FoodHistoryTab (Orders tab in food)
+                  const parentNav = navigation.getParent();
+                  if (parentNav) {
+                    parentNav.navigate("FoodHistoryTab" as never);
+                  }
+                } else {
+                  // Fallback: grocery/service context
+                  navigation.navigate("AppTabs" as never, {
+                    screen: "HomeTab",
+                    params: { screen: "Orders" },
+                  } as never);
+                }
               }}
             />
 

@@ -131,7 +131,7 @@ export default function DishModal({
       addItem({
         id: item.id,
         name: item.name,
-        price: itemOffer ? itemOffer.discountedPrice : Number(item.price),
+        price: itemOffer ? Math.max(0, itemOffer.discountedPrice) : Number(item.price),
         image: item.image,
         restaurantId,
         restaurantName,
@@ -151,7 +151,7 @@ export default function DishModal({
     addItem({
       id: item.id,
       name: item.name,
-      price: itemOffer ? itemOffer.discountedPrice : Number(item.price),
+      price: itemOffer ? Math.max(0, itemOffer.discountedPrice) : Number(item.price),
       image: item.image,
       restaurantId,
       restaurantName,
@@ -165,7 +165,7 @@ export default function DishModal({
     if (!selectedItem) return;
     const itemOffer = getOfferForItem(selectedItem);
     const basePrice = itemOffer
-      ? itemOffer.discountedPrice
+      ? Math.max(0, itemOffer.discountedPrice)
       : (selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price));
     
     // Map selected addon IDs to full addon objects with name, price, image
@@ -224,10 +224,10 @@ export default function DishModal({
           <Text style={s.dishName} numberOfLines={1}>{item.name}</Text>
           {offer ? (
             <View style={s.priceRow}>
-              <Text style={s.dishPriceDiscounted}>₹{offer.discountedPrice}</Text>
-              <Text style={s.dishPriceOriginal}>₹{offer.originalPrice}</Text>
+              <Text style={s.dishPriceDiscounted}>₹{Math.max(0, offer.discountedPrice)}</Text>
+              <Text style={s.dishPriceOriginal}>₹{Math.max(0, offer.originalPrice)}</Text>
               <View style={s.offerBadge}>
-                <Text style={s.offerBadgeText}>{offer.discountPercentage}% OFF</Text>
+                <Text style={s.offerBadgeText}>{Math.max(0, offer.discountPercentage)}% OFF</Text>
               </View>
             </View>
           ) : (
@@ -335,10 +335,10 @@ export default function DishModal({
                 if (itemOffer) {
                   return (
                     <View style={s.detailPriceRow}>
-                      <Text style={s.itemDetailPriceDiscounted}>₹{itemOffer.discountedPrice}</Text>
-                      <Text style={s.itemDetailPriceOriginal}>₹{itemOffer.originalPrice}</Text>
+                      <Text style={s.itemDetailPriceDiscounted}>₹{Math.max(0, itemOffer.discountedPrice)}</Text>
+                      <Text style={s.itemDetailPriceOriginal}>₹{Math.max(0, itemOffer.originalPrice)}</Text>
                       <View style={s.offerBadgeLg}>
-                        <Text style={s.offerBadgeLgText}>{itemOffer.discountPercentage}% OFF</Text>
+                        <Text style={s.offerBadgeLgText}>{Math.max(0, itemOffer.discountPercentage)}% OFF</Text>
                       </View>
                     </View>
                   );
@@ -419,7 +419,7 @@ export default function DishModal({
                     (() => {
                       const itemOffer = getOfferForItem(selectedItem);
                       const base = itemOffer
-                        ? itemOffer.discountedPrice
+                        ? Math.max(0, itemOffer.discountedPrice)
                         : (selectedVariant ? Number(selectedVariant.price) : Number(selectedItem.price));
                       return base + selectedAddons.reduce((sum, aid) => {
                         const a = addons.find(x => x.id === aid);

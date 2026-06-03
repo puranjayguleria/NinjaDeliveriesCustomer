@@ -192,6 +192,8 @@ export default function FoodSearchScreen() {
             onChangeText={setQuery}
             autoFocus
             returnKeyType="search"
+            keyboardType="default"
+            autoCorrect={false}
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery("")}>

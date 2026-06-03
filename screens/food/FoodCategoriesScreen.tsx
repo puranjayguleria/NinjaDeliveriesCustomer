@@ -145,7 +145,7 @@ export default function FoodCategoriesScreen() {
     addItem({
       id: item.id,
       name: item.name,
-      price: offer ? offer.discountedPrice : Number(item.price),
+      price: offer ? Math.max(0, offer.discountedPrice) : Number(item.price),
       image: item.image,
       restaurantId: item.restaurantId,
       restaurantName: restaurantName,
@@ -240,8 +240,8 @@ export default function FoodCategoriesScreen() {
             <View style={styles.priceContainer}>
               {offer ? (
                 <>
-                  <Text style={styles.priceDiscounted}>₹{offer.discountedPrice}</Text>
-                  <Text style={styles.priceOriginal}>₹{offer.originalPrice}</Text>
+                  <Text style={styles.priceDiscounted}>₹{Math.max(0, offer.discountedPrice)}</Text>
+                  <Text style={styles.priceOriginal}>₹{Math.max(0, offer.originalPrice)}</Text>
                 </>
               ) : (
                 <Text style={styles.price}>₹{item.price}</Text>
@@ -254,7 +254,7 @@ export default function FoodCategoriesScreen() {
             </View>
             {offer && (
               <View style={styles.offerBadge}>
-                <Text style={styles.offerBadgeText}>{offer.discountPercentage}% OFF</Text>
+                <Text style={styles.offerBadgeText}>{Math.max(0, offer.discountPercentage)}% OFF</Text>
               </View>
             )}
           </View>
