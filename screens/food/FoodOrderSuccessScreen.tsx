@@ -4,7 +4,7 @@ import {
   Animated, Modal, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { CommonActions, useNavigation, useRoute } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 const AUTO_SECONDS = 4;
@@ -52,7 +52,20 @@ export default function FoodOrderSuccessScreen() {
 
   const navigateAway = () => {
     setVisible(false);
-    navigation.reset({ index: 0, routes: [{ name: 'FoodRestaurants' }] });
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'AppTabs',
+            state: {
+              index: 0,
+              routes: [{ name: 'FoodRestaurants' }],
+            },
+          },
+        ],
+      })
+    );
   };
 
   return (
@@ -96,13 +109,30 @@ export default function FoodOrderSuccessScreen() {
               style={s.trackBtn}
               onPress={() => {
                 setVisible(false);
-                navigation.reset({
-                  index: 0,
-                  routes: [
-                    { name: 'FoodRestaurants' },
-                    { name: 'FoodTracking', params: { orderId } },
-                  ],
-                });
+                navigation.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [
+                      {
+                        name: 'AppTabs',
+                        state: {
+                          index: 0,
+                          routes: [
+                            {
+                              name: 'FoodRestaurants',
+                              state: {
+                                index: 0,
+                                routes: [
+                                  { name: 'FoodTracking', params: { orderId } },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  })
+                );
               }}
               activeOpacity={0.85}
             >

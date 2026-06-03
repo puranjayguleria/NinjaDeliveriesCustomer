@@ -25,18 +25,18 @@ import auth from "@react-native-firebase/auth";
 
 const { width: SW } = Dimensions.get("window");
 
-const PRIMARY = "#317959";
-const SECONDARY = "#788F7E";
-const MUTED_GREEN = "#78907E";
-const BACKGROUND = "#FDFDFD";
-const SURFACE = "#EFF1F0";
-const BORDER = "#D3D7D1";
-const TEXT = "#4F4335";
-const ACCENT = "#B88F58";
+const PRIMARY = "#FF6B35";
+const SECONDARY = "#FF9B6C";
+const MUTED_GREEN = "#6E6D66";
+const BACKGROUND = "#F8F9FC";
+const SURFACE = "#FFFFFF";
+const BORDER = "#E8EBF3";
+const TEXT = "#1A1D2E";
+const ACCENT = "#FF6B35";
 const ORANGE = ACCENT;
 const DARK = TEXT;
-const GRAY = "#6E6D66";
-const GREEN = PRIMARY;
+const GRAY = "#8A8FA8";
+const GREEN = "#22C55E";
 
 const profileLogoMap: Record<string, any> = {
   grocery: require("../../assets/profile_logo/grocery_logo.png"),

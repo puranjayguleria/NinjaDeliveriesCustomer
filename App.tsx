@@ -1501,12 +1501,14 @@ function AppTabs() {
         }}
       />
 
-      <PromotionalFoodBannerModal
-        hasLocation={!!(location?.storeId || location?.address)}
-        onBannerPress={() => {
-          setActiveMode("food");
-        }}
-      />
+      {activeMode !== 'food' && (
+        <PromotionalFoodBannerModal
+          hasLocation={!!(location?.storeId || location?.address)}
+          onBannerPress={() => {
+            setActiveMode("food");
+          }}
+        />
+      )}
 
       {/* ── Grocery + Service: original Tab.Navigator ── */}
       {activeMode !== 'food' && (

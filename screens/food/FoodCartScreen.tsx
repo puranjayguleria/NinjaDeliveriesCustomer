@@ -47,6 +47,14 @@ export default function FoodCartScreen() {
   const [restaurantMenu, setRestaurantMenu] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(false);
 
+  const parseMenuPrice = (value?: string | number): number => {
+    if (typeof value === 'number') return value;
+    if (!value) return 0;
+    const cleaned = String(value).replace(/[^0-9.]/g, '');
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   useEffect(() => {
     if (!currentRestaurantId) {
       setRestaurantMenu([]);
@@ -310,9 +318,12 @@ export default function FoodCartScreen() {
                 }}
               >
                 {displayedMenu.map((item, index) => {
-                  const price = Number(item.price) || 0;
+                  const variant = item.variants?.[0];
+                  const basePrice = parseMenuPrice(variant?.price ?? item.price);
+                  const cardId = variant ? `${item.id}_${variant.size}` : item.id;
+                  const cardName = variant ? `${item.name} (${variant.size})` : item.name;
                   return (
-                    <View key={item.id ?? index} style={s.suggestionCard}>
+                    <View key={cardId ?? index} style={s.suggestionCard}>
                       {item.image ? (
                         <Image source={{ uri: item.image }} style={s.suggestionImg} contentFit="cover" />
                       ) : (
@@ -322,29 +333,29 @@ export default function FoodCartScreen() {
                       )}
                       <View style={s.suggestionInfo}>
                         <View style={s.suggestionTextWrap}>
-                          <Text style={s.suggestionName} numberOfLines={2}>{item.name}</Text>
-                          <Text style={s.suggestionPrice}>₹{price}</Text>
+                          <Text style={s.suggestionName} numberOfLines={2}>{cardName}</Text>
+                          <Text style={s.suggestionPrice}>₹{basePrice}</Text>
                         </View>
                         <TouchableOpacity
                           activeOpacity={0.85}
                           style={s.suggestionAddBtn}
                           onPress={() => {
                             addItem({
-                              id: item.id,
-                              name: item.name,
-                              price,
+                              id: cardId,
+                              name: cardName,
+                              price: basePrice,
                               image: item.image,
                               restaurantId: item.restaurantId,
                               restaurantName: currentRestaurantName,
                               description: item.description,
                               cookingTimeHours: item.cookingTimeHours,
                               cookingTimeMinutes: item.cookingTimeMinutes,
-                              variant: undefined,
+                              variant: variant?.size,
                               addons: [],
                             });
                             // only remove locally if the item was actually added to cart
                                 setTimeout(() => {
-                              if (getItemQty(item.id) > 0) {
+                              if (getItemQty(cardId) > 0) {
                                 setRestaurantMenu(prev => prev.filter(m => m.id !== item.id));
                                 // pause & resume auto-scroll
                                 stopAutoScroll();

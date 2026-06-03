@@ -198,6 +198,26 @@ export default function FoodCheckoutScreen() {
 
   const getSelectedAddress = () => savedAddresses.find(a => a.id === selectedAddressId) ?? null;
 
+  const deleteAddress = async (addressId: string) => {
+    try {
+      await FirestoreService.deleteUserAddress(addressId);
+      await loadSavedAddresses();
+      
+      // If we deleted the selected address, select another one
+      if (selectedAddressId === addressId) {
+        const remainingAddresses = await FirestoreService.getUserSavedAddresses();
+        if (remainingAddresses.length > 0) {
+          setSelectedAddressId(remainingAddresses[0].id);
+        } else {
+          setSelectedAddressId(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting address:', error);
+      Alert.alert('Error', 'Failed to delete address');
+    }
+  };
+
   // Geocoding removed: use LocationSelector screen to obtain coordinates directly.
 
   const ensureDeliverableOrAlert = async (): Promise<boolean> => {
