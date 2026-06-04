@@ -7,6 +7,8 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { useLocationContext } from "@/context/LocationContext";
+import { DHARAMSHALA_CENTER } from "@/utils/locationUtils";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import MapView, { Marker, Polyline, LatLng } from "react-native-maps";
@@ -19,7 +21,7 @@ const ORANGE = "#FC8019";
 const DARK   = "#1C1C1C";
 const GRAY   = "#686B78";
 
-type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "out_for_delivery" | "scheduled" | "completed" | "cancelled";
+type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "out_for_delivery" | "scheduled" | "completed" | "cancelled" | "rejected";
 
 const tabs = [
   { key: "pending",          label: "Order Placed",      icon: "time-outline" },
@@ -33,6 +35,24 @@ const tabs = [
 
 const STATUS_ORDER = ["pending", "preparing", "accepted", "ready", "picked_up", "out_for_delivery", "completed"];
 
+const normalizeOrderStatus = (rawStatus: string | null | undefined): OrderStatus => {
+  const value = (rawStatus ?? "pending").toString().toLowerCase().trim();
+  const normalized = value.replace(/[^a-z]/g, "");
+
+  if (normalized === "acceptedbyrider") return "accepted";
+  if (normalized === "pickedup") return "picked_up";
+  if (normalized === "outfordelivery" || normalized === "outofdelivery" || normalized === "outdelivery") return "out_for_delivery";
+  if (normalized === "ready") return "ready";
+  if (normalized === "accepted") return "accepted";
+  if (normalized === "preparing") return "preparing";
+  if (normalized === "scheduled") return "scheduled";
+  if (normalized === "completed") return "completed";
+  if (normalized === "cancelled" || normalized === "canceled") return "cancelled";
+  if (normalized === "rejected") return "rejected";
+
+  return "pending";
+};
+
 const getStatusColor = (status: OrderStatus): string => {
   switch (status) {
     case "pending":           return "#f59e0b";
@@ -44,6 +64,7 @@ const getStatusColor = (status: OrderStatus): string => {
     case "scheduled":         return "#9333EA";
     case "completed":         return "#10B981";
     case "cancelled":         return "#FF3B30";
+    case "rejected":          return "#FF3B30";
     default:                  return ORANGE;
   }
 };
@@ -58,6 +79,7 @@ const haversine = (a: LatLng, b: LatLng) => {
 export default function FoodTrackingScreen() {
   const navigation = useNavigation<any>();
   const { orderId } = useRoute<any>().params ?? {};
+  const { location } = useLocationContext();
 
   const [orderDoc,    setOrderDoc]    = useState<any>(null);
   const [status,      setStatus]      = useState<OrderStatus>("preparing");
@@ -81,10 +103,17 @@ export default function FoodTrackingScreen() {
   const scaleA      = useRef(new Animated.Value(0.88)).current;
   const opacA       = useRef(new Animated.Value(0)).current;
 
+  const selectedLocation: LatLng | null =
+    location?.lat != null && location?.lng != null
+      ? { latitude: location.lat, longitude: location.lng }
+      : null;
+
   const dest: LatLng|null =
     orderDoc?.deliveryLat && orderDoc?.deliveryLng
       ? { latitude: orderDoc.deliveryLat, longitude: orderDoc.deliveryLng }
-      : orderDoc?.deliveryCoords ?? null;
+      : orderDoc?.deliveryLocation?.lat != null && orderDoc?.deliveryLocation?.lng != null
+        ? { latitude: orderDoc.deliveryLocation.lat, longitude: orderDoc.deliveryLocation.lng }
+        : orderDoc?.deliveryCoords ?? selectedLocation;
 
   const fitMap = (coords: LatLng[]) =>
     mapRef.current?.fitToCoordinates(coords, {
@@ -103,9 +132,10 @@ export default function FoodTrackingScreen() {
       const d = snap.data();
       if (!d) { setLoading(false); return; }
       setOrderDoc(d);
-      const rawStatus = (d.status || d.acceptedByRider || d.acceptedBy || "pending").toString().toLowerCase().trim();
-      const firebaseStatus = rawStatus === "acceptedbyrider" ? "accepted" : rawStatus;
-      setStatus(firebaseStatus as OrderStatus);
+      const firebaseStatus = normalizeOrderStatus(
+        d.status || d.acceptedByRider || d.acceptedBy || "pending"
+      );
+      setStatus(firebaseStatus);
       if (firebaseStatus === "rejected") {
         navigation.reset({ index: 0, routes: [{ name: "AppTabs", params: { rejectedBy: d.restaurantName ?? "the restaurant" } }] });
         return;
@@ -139,7 +169,7 @@ export default function FoodTrackingScreen() {
 
   useEffect(() => {
     if (!orderId || !orderRef || !orderDoc) return;
-    const remoteStatus = (orderDoc.status || "pending").toLowerCase().trim();
+    const remoteStatus = normalizeOrderStatus(orderDoc.status);
     if (remoteStatus !== status) {
       orderRef.update({ status }).catch(() => null);
     }
@@ -222,6 +252,18 @@ export default function FoodTrackingScreen() {
     status === "preparing"  ? `${orderDoc?.restaurantName} is cooking` :
     `${orderDoc?.restaurantName} will confirm soon`;
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate("AppTabs" as any, {
+      screen: "FoodRestaurants",
+      params: { screen: "FoodHome" },
+    } as any);
+  };
+
   return (
     <View style={s.root}>
       <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
@@ -235,11 +277,7 @@ export default function FoodTrackingScreen() {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        initialRegion={
-          dest    ? { ...dest,    latitudeDelta: 0.04, longitudeDelta: 0.04 }
-          : riderLoc ? { ...riderLoc, latitudeDelta: 0.04, longitudeDelta: 0.04 }
-          : { latitude: 28.6139, longitude: 77.2090, latitudeDelta: 0.04, longitudeDelta: 0.04 }
-        }
+        initialRegion={{ ...DHARAMSHALA_CENTER, latitudeDelta: 0.04, longitudeDelta: 0.04 }}
       >
         {riderLoc && (
           <Marker coordinate={riderLoc} anchor={{ x: 0.5, y: 0.5 }}>
@@ -256,7 +294,7 @@ export default function FoodTrackingScreen() {
 
       {/* ── TOP BAR (floating over map) ── */}
       <View style={[s.topBar, { paddingTop: (StatusBar.currentHeight ?? 44) + 8 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={s.backBtn} onPress={handleBack}>
           <Ionicons name="arrow-back" size={20} color={DARK} />
         </TouchableOpacity>
         {riderLoc && (
