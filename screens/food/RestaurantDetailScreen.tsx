@@ -58,6 +58,7 @@ export default function RestaurantDetailScreen() {
   const [restaurantRating, setRestaurantRating] = useState<{ avgRating: number; totalReviews: number } | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [activeCategory,setActiveCategory]= useState<Set<string>>(new Set());
+  const isCategoryActive = (id: string) => activeCategory instanceof Set && activeCategory.has(id);
   const [showMenuDrawer,   setShowMenuDrawer]   = useState(false);
   const [offersExpanded,   setOffersExpanded]   = useState(false);
   const [activeFilter,     setActiveFilter]     = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function RestaurantDetailScreen() {
         getRestaurantById(restaurantId),
       ]);
       setMenuItems(items);
+      console.log('[RestaurantDetail] Loaded menu items:', items.map(i => ({ id: i.id, image: i.image ? i.image.substring(0, 100) : 'EMPTY' })));
       setAddons(addonItems);
       setOffers(offerItems);
       if (restData) {
@@ -140,6 +142,14 @@ export default function RestaurantDetailScreen() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const itemsByCategory = (catId: string) => menuItems.filter(i => i.categoryId === catId);
+
+  const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+  };
 
   const openMenuDrawer = () => {
     setShowMenuDrawer(true);
@@ -532,114 +542,108 @@ export default function RestaurantDetailScreen() {
                 <View style={s.catHeaderRight}>
                   <Text style={s.catCount}>{items.length}</Text>
                   <Ionicons
-                    name={activeCategory.has(cat.id) ? 'chevron-up' : 'chevron-down'}
+                    name={isCategoryActive(cat.id) ? 'chevron-up' : 'chevron-down'}
                     size={16} color="#3d3d3d"
                   />
                 </View>
               </TouchableOpacity>
 
               {/* Items — only show when category is expanded */}
-              {activeCategory.has(cat.id) && items.map((item, idx) => {
-                const cartDetails = getCartDetails(item);
-                const { offer } = cartDetails;
-                const qty = getItemQty(cartDetails.id);
-                const addMenuItemToCart = () => {
-                  addItem({
-                    id: cartDetails.id,
-                    name: cartDetails.name,
-                    price: cartDetails.price,
-                    image: item.image,
-                    restaurantId,
-                    restaurantName,
-                    variant: cartDetails.variant,
-                    description: item.description,
-                  });
-                };
-                const isVeg    = (item.foodType || '').toLowerCase() === 'veg';
-                const isNonVeg = (item.foodType || '').toLowerCase().includes('nonveg') ||
-                                 (item.foodType || '').toLowerCase().includes('non-veg');
-                const dotColor = isVeg ? GREEN : isNonVeg ? '#c0392b' : GREEN;
+              {isCategoryActive(cat.id) && chunkArray(items, 2).map((row, rowIdx) => (
+                <View key={`${cat.id}-row-${rowIdx}`} style={s.menuRow}>
+                  {row.map((item, colIdx) => {
+                    const cartDetails = getCartDetails(item);
+                    const { offer } = cartDetails;
+                    const qty = getItemQty(cartDetails.id);
+                    const rawImage = item.image || item.imageUrl || item.imageURL ||
+                      ((item as any).images && Array.isArray((item as any).images) && (item as any).images[0]) || '';
+                    const itemImage = rawImage ? String(rawImage).trim() : '';
+                    const addMenuItemToCart = () => {
+                      addItem({
+                        id: cartDetails.id,
+                        name: cartDetails.name,
+                        price: cartDetails.price,
+                        image: itemImage,
+                        restaurantId,
+                        restaurantName,
+                        variant: cartDetails.variant,
+                        description: item.description,
+                      });
+                    };
+                    const isVeg    = (item.foodType || '').toLowerCase() === 'veg';
+                    const isNonVeg = (item.foodType || '').toLowerCase().includes('nonveg') ||
+                                     (item.foodType || '').toLowerCase().includes('non-veg');
+                    const dotColor = isVeg ? GREEN : isNonVeg ? '#c0392b' : GREEN;
 
-                return (
-                  <View key={item.id} style={[s.menuItem, idx < items.length - 1 && s.menuItemBorder]}>
-
-                    {/* ── Left: tap = open sheet ── */}
-                    <Pressable
-                      style={s.menuLeft}
-                      onPress={() => openItemSheet(item)}
-                    >
-                      <View style={[s.vegSquare, { borderColor: dotColor }]}>
-                        <View style={[s.vegSquareInner, { backgroundColor: dotColor }]} />
-                      </View>
-                      <Text style={s.itemName}>{item.name}</Text>
-                      {offer ? (
-                        <View style={s.priceRow}>
-                          <Text style={s.priceDiscounted}>₹{Math.max(0, offer.discountedPrice)}</Text>
-                          <Text style={s.priceOriginal}>₹{Math.max(0, offer.originalPrice)}</Text>
-                        </View>
-                      ) : (
-                        <Text style={s.itemPrice}>₹{item.price}</Text>
-                      )}
-                      <View style={s.reorderRow}>
-                        <View style={s.reorderBar} />
-                        <Text style={s.reorderTxt}>Highly reordered</Text>
-                      </View>
-                      {item.description ? (
-                        <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
-                      ) : null}
-                      <View style={s.itemActions}>
-                        <View style={s.iconBtn}>
-                          <Ionicons name="bookmark-outline" size={16} color={GRAY} />
-                        </View>
-                        <View style={s.iconBtn}>
-                          <Ionicons name="share-social-outline" size={16} color={GRAY} />
-                        </View>
-                      </View>
-                    </Pressable>
-
-                    {/* ── Right: image + ADD — completely isolated ── */}
-                    <View style={s.menuRight}>
-                      {/* Image tap → open sheet */}
-                      <Pressable onPress={() => openItemSheet(item)}>
-                        {item.image ? (
-                          <Image source={{ uri: item.image }} style={s.itemImg} contentFit="cover" />
-                        ) : (
-                          <View style={[s.itemImg, s.itemImgPlaceholder]}>
-                            <Ionicons name="fast-food-outline" size={28} color="#ccc" />
-                          </View>
-                        )}
-                      </Pressable>
-
-                      {/* ADD button — direct add only, no modal */}
-                      {qty === 0 ? (
-                        <Pressable
-                          style={s.addBtn}
-                          onPress={() => {
-                            addMenuItemToCart();
-                            setLastAddedItem(item);
-                            fetchSuggestions(item.id);
-                          }}
-                        >
-                          <Text style={s.addBtnTxt}>ADD</Text>
+                    return (
+                      <View key={item.id} style={s.menuItem}>
+                        <Pressable style={s.menuImageWrap} onPress={() => openItemSheet(item)}>
+                          {itemImage ? (
+                            <Image
+                              source={{ uri: itemImage }}
+                              style={s.itemImg}
+                              contentFit="cover"
+                              onError={() => console.log('Menu image failed:', itemImage)}
+                            />
+                          ) : (
+                            <View style={[s.itemImg, s.itemImgPlaceholder]}>
+                              <Ionicons name="fast-food-outline" size={28} color="#ccc" />
+                            </View>
+                          )}
                         </Pressable>
-                      ) : (
-                        <View style={s.qtyControl}>
-                          <Pressable style={s.qtyBtn} onPress={() => removeItem(cartDetails.id)}>
-                            <Ionicons name="remove" size={15} color={GREEN} />
-                          </Pressable>
-                          <Text style={s.qtyTxt}>{qty}</Text>
-                          <Pressable
-                            style={s.qtyBtn}
-                            onPress={addMenuItemToCart}
-                          >
-                            <Ionicons name="add" size={15} color={GREEN} />
-                          </Pressable>
+                        <View style={s.menuBody}>
+                        <Pressable style={s.menuLeft} onPress={() => openItemSheet(item)}>
+                          <View style={[s.vegSquare, { borderColor: dotColor }]}>
+                            <View style={[s.vegSquareInner, { backgroundColor: dotColor }]} />
+                          </View>
+                          <Text style={s.itemName}>{item.name}</Text>
+                          {offer ? (
+                            <View style={s.priceRow}>
+                              <Text style={s.priceDiscounted}>₹{Math.max(0, offer.discountedPrice)}</Text>
+                              <Text style={s.priceOriginal}>₹{Math.max(0, offer.originalPrice)}</Text>
+                            </View>
+                          ) : (
+                            <Text style={s.itemPrice}>₹{item.price}</Text>
+                          )}
+                          <View style={s.reorderRow}>
+                            <View style={s.reorderBar} />
+                            <Text style={s.reorderTxt}>Highly reordered</Text>
+                          </View>
+                          {item.description ? (
+                            <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
+                          ) : null}
+                        </Pressable>
                         </View>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
+
+                        <View style={s.menuRight}>
+                          {qty === 0 ? (
+                            <Pressable
+                              style={s.addBtn}
+                              onPress={() => {
+                                addMenuItemToCart();
+                                setLastAddedItem(item);
+                                fetchSuggestions(item.id);
+                              }}
+                            >
+                              <Text style={s.addBtnTxt}>ADD</Text>
+                            </Pressable>
+                          ) : (
+                            <View style={s.qtyControl}>
+                              <Pressable style={s.qtyBtn} onPress={() => removeItem(cartDetails.id)}>
+                                <Ionicons name="remove" size={15} color={GREEN} />
+                              </Pressable>
+                              <Text style={s.qtyTxt}>{qty}</Text>
+                              <Pressable style={s.qtyBtn} onPress={addMenuItemToCart}>
+                                <Ionicons name="add" size={15} color={GREEN} />
+                              </Pressable>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
 
               <View style={s.sectionDivider} />
             </View>
@@ -745,14 +749,18 @@ export default function RestaurantDetailScreen() {
           <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
             {categories.map((cat, i) => {
               const count = menuItems.filter(x => x.categoryId === cat.id).length;
-              const isActive = activeCategory.has(cat.id);
+              const isActive = isCategoryActive(cat.id);
               return (
                 <TouchableOpacity
                   key={cat.id}
                   style={[s.menuDrawerItem, i < categories.length - 1 && s.menuDrawerItemBorder]}
                   activeOpacity={0.75}
                   onPress={() => {
-                    setActiveCategory(cat.id);
+                    setActiveCategory(prev => {
+                      const next = new Set(prev);
+                      next.add(cat.id);
+                      return next;
+                    });
                     const y = sectionRefs.current[cat.id];
                     if (y !== undefined) scrollRef.current?.scrollTo({ y, animated: true });
                     closeMenuDrawer();
@@ -1249,13 +1257,40 @@ const s = StyleSheet.create({
   catCount:       { fontSize: 13, color: '#686b78' },
 
   // ── Menu Item ──
+  menuRow: {
+    flexDirection: 'row', justifyContent: 'space-between', gap: 12,
+    alignItems: 'flex-start', flexWrap: 'wrap',
+    paddingHorizontal: 16, marginTop: 12,
+  },
   menuItem: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 16, backgroundColor: '#fff',
+    flexBasis: '48%',
+    maxWidth: '48%',
+    flexDirection: 'column',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    minWidth: 0,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+    marginBottom: 12,
   },
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f5' },
-  menuLeft:  { flex: 1, paddingRight: 12 },
-  menuRight: { alignItems: 'center', width: 110 },
+  menuImageWrap: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 12,
+    backgroundColor: '#f0f0f5',
+  },
+  menuBody: {
+    width: '100%',
+  },
+  menuLeft:  { flex: 1 },
+  menuRight: { alignItems: 'stretch', width: '100%', marginTop: 12 },
 
   vegSquare: {
     width: 16, height: 16, borderRadius: 3, borderWidth: 1.5,
@@ -1277,22 +1312,22 @@ const s = StyleSheet.create({
   itemActions: { flexDirection: 'row', gap: 4, marginTop: 4 },
   iconBtn:     { padding: 6, borderRadius: 20, borderWidth: 1, borderColor: '#e8e8e8' },
 
-  itemImg:            { width: 100, height: 90, borderRadius: 10, marginBottom: 8 },
+  itemImg:            { width: '100%', alignSelf: 'stretch', height: 140, borderRadius: 14, marginBottom: 12, backgroundColor: '#f0f0f5' },
   itemImgPlaceholder: { backgroundColor: '#f0f0f5', justifyContent: 'center', alignItems: 'center' },
 
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#3d9b6e', borderRadius: 8,
-    paddingHorizontal: 20, paddingVertical: 7, backgroundColor: '#fff',
-    gap: 2, width: 100,
+    borderWidth: 1.5, borderColor: '#3d9b6e', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#fff',
+    gap: 4, width: '100%',
   },
   addBtnTxt:  { color: '#3d9b6e', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
   addBtnPlus: { color: '#3d9b6e', fontSize: 10, fontWeight: '700' },
 
   qtyControl: {
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1.5, borderColor: '#3d9b6e', borderRadius: 8,
-    overflow: 'hidden', width: 100,
+    borderWidth: 1.5, borderColor: '#3d9b6e', borderRadius: 10,
+    overflow: 'hidden', width: '100%',
   },
   qtyBtn: { paddingHorizontal: 10, paddingVertical: 7, backgroundColor: '#edfaf3' },
   qtyTxt: { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: '#282c3f' },

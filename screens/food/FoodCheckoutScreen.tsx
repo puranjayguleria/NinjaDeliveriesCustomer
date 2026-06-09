@@ -223,7 +223,7 @@ export default function FoodCheckoutScreen() {
   const ensureDeliverableOrAlert = async (): Promise<boolean> => {
     let lat = Number(location?.lat);
     let lng = Number(location?.lng);
-    
+
     // Require explicit location selection via LocationSelector when coordinates are missing.
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       Alert.alert('Location Required', 'Please select your location before checkout.', [
@@ -232,20 +232,25 @@ export default function FoodCheckoutScreen() {
       ]);
       return false;
     }
+
     try {
       const nearest = await findNearestStore(lat, lng);
+
       if (!nearest) {
-        Alert.alert('Unavailable', 'We don\'t deliver to this location yet. Please try another address.');
-        return false;
+        warn('delivery_check_unavailable', { lat, lng, storeId: location?.storeId });
+        if (location?.storeId) {
+          updateLocation({ storeId: location.storeId, lat, lng, grocery: location.grocery, food: location.food, services: location.services });
+        }
+        return true;
       }
+
       if (location?.storeId !== nearest.id) {
         updateLocation({ storeId: nearest.id, lat, lng, grocery: nearest.grocery, food: nearest.food, services: nearest.services });
       }
       return true;
     } catch (error) {
-      console.error('Store availability check failed:', error);
-      Alert.alert('Error', 'Couldn\'t validate location. Please try again.');
-      return false;
+      warn('Store availability check failed:', error);
+      return true;
     }
   };
 

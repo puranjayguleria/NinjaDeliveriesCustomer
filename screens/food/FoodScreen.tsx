@@ -470,13 +470,7 @@ export default function FoodScreen() {
 
   return (
     <View style={s.root}>
-      {/* foodScreenbg.png — full screen background, always visible */}
-      <Image
-        source={require("../../assets/foodScreenbg.png")}
-        style={StyleSheet.absoluteFillObject}
-        contentFit="cover"
-      />
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       {/* ── Loading Modal ── */}
       <Modal visible={showSearchModal} transparent animationType="fade" statusBarTranslucent>
@@ -833,80 +827,82 @@ export default function FoodScreen() {
               return (
                 <TouchableOpacity key={item.id} style={s.card} activeOpacity={0.9}
                   onPress={() => openDish(
-                    item.id, 
-                    item.restaurantName, 
-                    undefined, 
-                    isRushHour, 
+                    item.id,
+                    item.restaurantName,
+                    undefined,
+                    isRushHour,
                     rushTimeText,
                     item.coverImage,
                     item.profileImage,
                     item.image,
                     item.description
                   )}>
-                  <View style={s.cardImgWrap}>
-                    {item.coverImage || item.profileImage || item.image
-                      ? <Image source={{ uri: item.coverImage || item.profileImage || item.image }} style={s.cardImg} contentFit="cover" />
-                      : <View style={s.cardImgPlaceholder}><Ionicons name="restaurant" size={40} color={ORANGE} /></View>
-                    }
-                    {/* Dark overlay for rush hours - covers entire image */}
-                    {isRushHour && (
-                      <>
+                  <View style={s.cardRowMain}>
+                    <View style={s.cardImgWrap}>
+                      {item.coverImage || item.profileImage || item.image
+                        ? <Image source={{ uri: item.coverImage || item.profileImage || item.image }} style={s.cardImg} contentFit="cover" />
+                        : <View style={s.cardImgPlaceholder}><Ionicons name="restaurant" size={40} color={ORANGE} /></View>
+                      }
+                      {isRushHour && (
                         <View style={s.rushOverlay} />
-                        {/* Rush Hours text centered on image */}
-                        <View style={s.rushOverlayContent}>
-                          <Ionicons name="time" size={40} color="#fff" />
-                          <Text style={s.rushOverlayTitle}>RUSH HOURS</Text>
-                          {rushTimeText && (
-                            <Text style={s.rushOverlayTime}>Until {rushTimeText}</Text>
-                          )}
+                      )}
+                      {item.isTrending && !isRushHour && (
+                        <View style={s.trendingBadge}>
+                          <Text style={s.trendingBadgeTxt}>🔥 Trending</Text>
                         </View>
-                      </>
-                    )}
-                    
-                    {(item as any).cuisineType === "veg" && (
-                      <View style={s.vegBadge}>
-                        <Ionicons name="leaf" size={10} color="#fff" />
-                        <Text style={s.vegBadgeTxt}>PURE VEG</Text>
-                      </View>
-                    )}
-                    {item.isTrending && !isRushHour && (
-                      <View style={s.trendingBadge}>
-                        <Text style={s.trendingBadgeTxt}>🔥 Trending</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={s.cardBody}>
-                    <View style={s.cardRow}>
-                      <Text style={s.cardName} numberOfLines={1}>{item.restaurantName}</Text>
-                      {item.rating != null && (
-                        <View style={s.ratingBadge}>
-                          <Ionicons name="star" size={11} color="#fff" />
-                          <Text style={s.ratingTxt}>{item.rating.toFixed(1)}</Text>
+                      )}
+                      {(item as any).cuisineType === "veg" && (
+                        <View style={s.vegBadge}>
+                          <Ionicons name="leaf" size={10} color="#fff" />
+                          <Text style={s.vegBadgeTxt}>PURE VEG</Text>
                         </View>
                       )}
                     </View>
-                    <Text style={s.cardCuisine} numberOfLines={1}>
-                      {item.type === "restaurant" ? "Multi-cuisine" : (item.type ?? "Restaurant")}
-                    </Text>
-                    {/* Operating Hours */}
-                    {hasHours && (
-                      <View style={[s.hoursRow, !open && s.hoursRowClosed]}>
-                        <Ionicons name="time-outline" size={13} color={open ? GREEN : "#ef4444"} />
-                        <Text style={[s.hoursTxt, !open && s.hoursTxtClosed]}>
-                          {open ? `Open: ${opening} - ${closing}` : `Closed • Opens at ${opening}`}
-                        </Text>
+                    <View style={s.cardBody}>
+                      <View style={s.cardBodyHeader}>
+                        <Text style={s.cardName} numberOfLines={2}>{item.restaurantName}</Text>
+                        {item.rating != null && (
+                          <View style={s.ratingBadge}>
+                            <Ionicons name="star" size={11} color="#fff" />
+                            <Text style={s.ratingTxt}>{item.rating.toFixed(1)}</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                    <View style={s.cardMeta}>
-                      <Ionicons name="time-outline" size={13} color={GRAY} />
-                      <Text style={s.metaTxt}>
-                        {item.deliveryTime != null ? `${item.deliveryTime} min` : "30–40 min"}
+
+                      <Text style={s.cardCuisine} numberOfLines={1}>
+                        {item.type === "restaurant" ? "Multi-cuisine" : (item.type ?? "Restaurant")}
                       </Text>
-                      <View style={s.metaSep} />
-                      <Ionicons name="bicycle-outline" size={13} color={GRAY} />
-                      <Text style={s.metaTxt}>
-                        {item.freeDelivery ? "Free delivery" : item.avgPrice != null ? `₹${item.avgPrice} for one` : "Free delivery"}
-                      </Text>
+
+                      {hasHours && (
+                        <View style={[s.hoursRow, !open && s.hoursRowClosed]}>
+                          <Ionicons name="time-outline" size={13} color={open ? GREEN : "#ef4444"} />
+                          <Text style={[s.hoursTxt, !open && s.hoursTxtClosed]}>
+                            {open ? `Open: ${opening} - ${closing}` : `Closed • Opens at ${opening}`}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View style={s.cardMeta}> 
+                        <View style={s.metaItem}>
+                          <Ionicons name="time-outline" size={13} color={GRAY} />
+                          <Text style={s.metaTxt}>
+                            {item.deliveryTime != null ? `${item.deliveryTime} min` : "30–40 min"}
+                          </Text>
+                        </View>
+                        <View style={s.metaItem}>
+                          <Ionicons name="bicycle-outline" size={13} color={GRAY} />
+                          <Text style={s.metaTxt}>
+                            {item.freeDelivery ? "Free delivery" : item.avgPrice != null ? `₹${item.avgPrice} for one` : "Free delivery"}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {isRushHour && rushTimeText ? (
+                        <View style={s.rushTimeRow}>
+                          <Ionicons name="time-outline" size={13} color="#92400e" />
+                          <Text style={s.rushTimeText}>Until {rushTimeText}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -943,7 +939,7 @@ export default function FoodScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F0F8F8" },
+  root: { flex: 1, backgroundColor: "#FFFFFF" },
 
   orderStatusPill: {
     position: "absolute",
@@ -1104,33 +1100,35 @@ const s = StyleSheet.create({
   countBadge:  { backgroundColor: ORANGE, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   countTxt:    { color: "#fff", fontSize: 13, fontWeight: "700" },
 
-  card:         { marginHorizontal: 16, marginBottom: 16, marginTop: 0, backgroundColor: "#fff", borderRadius: 16, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 },
-  cardImgWrap:  { position: "relative" },
-  cardImg:      { width: "100%", height: 180 },
-  cardImgPlaceholder: { width: "100%", height: 180, backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center" },
-  rushOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.75)", zIndex: 1 },
-  rushOverlayContent: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "center", alignItems: "center", zIndex: 2 },
-  rushOverlayTitle: { fontSize: 22, fontWeight: "800", color: "#fff", marginTop: 8, letterSpacing: 1.5 },
-  rushOverlayTime: { fontSize: 15, fontWeight: "600", color: "#fbbf24", marginTop: 4 },
-  vegBadge:     { position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#22c55e", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3, zIndex: 3 },
-  vegBadgeTxt:  { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
-  trendingBadge: { position: "absolute", top: 12, right: 12, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, zIndex: 3 },
+  card:         { width: SW - 32, alignSelf: "center", marginBottom: 16, backgroundColor: "#fff", borderRadius: 18, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 6 },
+  cardRowMain:  { flexDirection: "row" },
+  cardImgWrap:  { width: 130, height: 160, position: "relative" },
+  cardImg:      { width: "100%", height: "100%" },
+  cardImgPlaceholder: { width: "100%", height: "100%", backgroundColor: "#FFF3EC", justifyContent: "center", alignItems: "center" },
+  rushOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)", zIndex: 1 },
+  rushOverlayContent: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "center", alignItems: "center", zIndex: 2, padding: 10 },
+  rushOverlayTitle: { fontSize: 18, fontWeight: "800", color: "#fff", marginTop: 8, letterSpacing: 1.2 },
+  rushOverlayTime: { fontSize: 13, fontWeight: "600", color: "#fbbf24", marginTop: 4 },
+  vegBadge:     { position: "absolute", top: 10, left: 10, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#22c55e", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 4, zIndex: 3 },
+  vegBadgeTxt:  { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
+  trendingBadge: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, zIndex: 3 },
   trendingBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  rushBadge:    { position: "absolute", top: 12, right: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f59e0b", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3, zIndex: 2 },
+  rushBadge:    { position: "absolute", top: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f59e0b", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3, zIndex: 2 },
   rushBadgeTxt: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
-  cardBody:     { padding: 16 },
-  cardRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  cardBody:     { flex: 1, padding: 16, justifyContent: "space-between" },
+  cardBodyHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 },
   cardName:     { fontSize: 17, fontWeight: "700", color: DARK, flex: 1, marginRight: 8 },
+  cardCuisine:  { fontSize: 13, color: GRAY, marginBottom: 10 },
+  cardMeta:     { flexDirection: "column", gap: 8 },
+  metaItem:     { flexDirection: "row", alignItems: "center", gap: 6 },
   rushTimeRow:  { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: "flex-start" },
   rushTimeText: { fontSize: 11, color: "#92400e", fontWeight: "600" },
   ratingBadge:  { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: GREEN, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
   ratingTxt:    { color: "#fff", fontSize: 11, fontWeight: "700" },
-  cardCuisine:  { fontSize: 13, color: GRAY, marginBottom: 10 },
   hoursRow:     { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: "#f0fdf4", borderRadius: 6, alignSelf: "flex-start" },
   hoursRowClosed: { backgroundColor: "#fef2f2" },
   hoursTxt:     { fontSize: 11, color: GREEN, fontWeight: "600" },
   hoursTxtClosed: { color: "#ef4444" },
-  cardMeta:     { flexDirection: "row", alignItems: "center", gap: 6 },
   metaTxt:      { fontSize: 12, color: GRAY, fontWeight: "500" },
   metaSep:      { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#CCC" },
 

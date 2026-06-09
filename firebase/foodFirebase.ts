@@ -227,10 +227,12 @@ export async function getMenuByRestaurant(restaurantId: string): Promise<MenuIte
     .get();
   return snap.docs.map(d => {
     const data = d.data() as any;
+    const rawImage = data.image || data.imageUrl || data.imageURL || data.image_url ||
+      data.imageUri || data.imageURI || (Array.isArray(data.images) && data.images[0]) || '';
     return {
       id: d.id,
       ...data,
-      image: data.image || data.imageUrl || data.imageURL || '',
+      image: typeof rawImage === 'string' ? rawImage.trim() : String(rawImage || ''),
     } as MenuItem;
   });
 }
@@ -245,10 +247,12 @@ export async function getMenuByCategory(restaurantId: string, categoryId: string
     .get();
   return snap.docs.map(d => {
     const data = d.data() as any;
+    const rawImage = data.image || data.imageUrl || data.imageURL ||
+      (Array.isArray(data.images) && data.images[0]) || '';
     return {
       id: d.id,
       ...data,
-      image: data.image || data.imageUrl || data.imageURL || '',
+      image: typeof rawImage === 'string' ? rawImage.trim() : String(rawImage || ''),
     } as MenuItem;
   });
 }
@@ -266,7 +270,9 @@ export function listenMenuByRestaurant(
     .onSnapshot(
       snap => onData(snap.docs.map(d => {
         const data = d.data() as any;
-        return { id: d.id, ...data, image: data.image || data.imageUrl || data.imageURL || '' };
+        const rawImage = data.image || data.imageUrl || data.imageURL ||
+          (Array.isArray(data.images) && data.images[0]) || '';
+        return { id: d.id, ...data, image: typeof rawImage === 'string' ? rawImage.trim() : String(rawImage || '') };
       })),
       onError
     );
